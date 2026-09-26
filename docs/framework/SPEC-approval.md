@@ -9,8 +9,8 @@ Issue: [#37](https://github.com/yea-protocol/yea/issues/37). Map: [README.md](RE
 
 ## Objective
 
-A developer marks a tool as a job, for example `refund`, and returns plans instead of acting.
-From then on:
+A developer marks a tool as a job, for example `reschedule`, `send_email`, `delete_branch` or
+`refund`, and returns plans instead of acting. From then on:
 
 - **Within the person's policy**, the call runs the safest plan and returns a receipt.
 - **Outside it**, the same call pauses, shows the person the plans, and runs the one they pick
@@ -22,17 +22,22 @@ From then on:
 The model can never approve anything on the person's behalf, and a replayed or stale approval
 never runs anything.
 
+**Approval is about what an action does, not only what it costs.** A plan is judged on which
+tool it belongs to, how risky it is, and whether it can be undone. Money is one more check that
+applies only to plans that declare a cost, and most jobs (sending an email, moving a meeting,
+deleting a branch) have none.
+
 **Users.** Server authors adopting YEA one tool at a time, and the people whose agents call
 those servers.
 
 ## How a job call runs
 
 Terms: a **plan** is the existing `Plan` (`summary`, `effects`, `cost`, `risk`, `apply()`,
-optional `revert()` and `undoWindow`). The **policy** is the person's standing rules. The
-**store** holds consumed approvals, receipts and the spend ledger.
+optional `revert()` and `undoWindow`). `cost` is optional. The **policy** is the person's
+standing rules. The **store** holds consumed approvals, receipts and the usage ledger.
 
 ```
-call refund({who: "Chen"})
+call delete_branch({repo: "site", branch: "old-nav"})
   │
   ├─ preview: true ─────────────────────────────▶ plans as text; nothing runs, nothing stored
   │
@@ -64,7 +69,7 @@ planHash = sha256(canonical({ tool, input, summary, effects, cost, risk, undoWin
 ```
 
 It leaves out volatile fields (proposal ids, expiry, `data`), unlike today's `proposalHash`.
-`input` is the tool's validated input, so an approval for Chen's refund can't run Ana's.
+`input` is the tool's validated input, so an approval to delete `old-nav` can't delete `main`.
 
 ### 2. Policy
 
@@ -72,14 +77,22 @@ The person's standing rules. The default is empty, so every job asks.
 
 ```ts
 policy: {
+  can: ['calendar.*', 'git.delete_branch'], // tools that may run without asking at all
   maxRisk: 'low',                       // plans above this ask
-  perAction: money(25),                 // any single plan costing more asks
-  total: { limit: money(100), per: '30d' },  // auto-run spend in the window
-  requireUndo: true,                    // irreversible plans ask
+  requireUndo: true,                    // plans that can't be undone ask
   outOfBand: 'high',                    // plans at this risk need approval outside the chat
   deny: ['billing.delete_customer'],    // never runs, even with approval
+  // Checked only for plans that declare a cost:
+  perAction: money(25),                 // any single plan costing more asks
+  total: { limit: money(100), per: '30d' },  // auto-run spend in the window
 }
 ```
+
+A plan runs without asking only when it passes every rule that applies to it: its tool is in
+`can`, its risk is at most `maxRisk`, it can be undone (if `requireUndo`), and, if it has a
+cost, the cost fits `perAction` and `total`. A policy of `can: ['calendar.*']` and
+`maxRisk: 'low'` lets an agent move meetings on its own and asks about everything else, with
+no money involved.
 
 The policy decides **only what runs without asking**. Anything the server offers, except what
 `deny` lists, can still run with explicit approval. Only `plans[0]` is ever auto-run, so
@@ -89,7 +102,8 @@ authors list the safest common choice first, as the service-design guide already
 files (Claude Code can) must not be able to raise its own limits. So:
 
 - A policy that auto-runs anything is a **grant signed with the principal key**. `yea grant`
-  already issues these, and the caveats map one to one: `risk`, `per`, `spend`, `exp`. The
+  already issues these, and the caveats map one to one: `can`, `risk`, `per`, `spend`, `exp`.
+  (`requireUndo`, `outOfBand` and `deny` only ever tighten, so they need no signature.) The
   server verifies it against the principal's public key, which the server author configures.
   MCP callers have no YEA key of their own, so grants and consents are issued **to the
   server's own key**, which the plugin generates on first run. The existing holder and proof
@@ -106,17 +120,21 @@ the key on another account or device for real protection.
 
 The request is a form-mode elicitation. Forms allow only flat fields, so:
 
-- `message`: the plans in Lens (effects, cost, risk, undo window), plus why approval is needed
-  ("cost 71.36 USD is over your 25.00 USD per-action limit").
+- `message`: the plans in Lens (effects, cost if any, risk, undo window), plus why approval is
+  needed: "`git.delete_branch` can't be undone", "risk is high, and your limit is low", or
+  "cost 71.36 USD is over your 25.00 USD per-action limit".
 - `plan`: a single-select enum. Each option's value is the plan hash and its title is the
   plan's summary (`oneOf` of `const` and `title`). It's omitted when there's one plan.
-- `confirm`: a required string. The person types the chosen plan's cost as shown (`22.87`),
-  or `approve` when the plan costs nothing. Typing the amount makes the person read it.
+- `confirm`: a required string. The person types **the thing that matters most** about the
+  chosen plan, which makes them read it. A tool can name that phrase for each plan, the way
+  GitHub asks you to type a repository's name before deleting it: the branch name, the
+  recipient, the amount. If the tool doesn't, the default is the plan's cost as shown
+  (`22.87`) when it has one, and `approve` otherwise.
 
-An accepted form counts as approval **only** when `confirm` matches. Amounts compare as
-numbers, and the currency code is optional: `22.87`, `22.870` and `22.87 USD` all match
-22.87 USD. `approve` compares after trimming and lowercasing. Both rules are pinned in the
-conformance cases. A bare accept or an empty form never counts: some clients auto-accept forms that
+An accepted form counts as approval **only** when `confirm` matches. Phrases compare after
+trimming, case-insensitively. Amounts compare as numbers, and the currency code is optional:
+`22.87`, `22.870` and `22.87 USD` all match 22.87 USD. A tool must derive its phrase from the
+plan or the input, which the plan hash covers. The rules are pinned in the conformance cases. A bare accept or an empty form never counts: some clients auto-accept forms that
 have no fields. This proves the form was filled in, not that a person read it. That is the
 level form mode can give. Plans at or above `policy.outOfBand` skip the form and go straight
 to out-of-band approval.
@@ -161,15 +179,18 @@ On retry:
 4. **Consume the nonce** with `store.consumeOnce(nonce, exp)`, which is atomic. If it was
    already consumed, refuse the call. Resending the same approved call never runs twice.
 5. Apply, then record the receipt. If `apply()` fails after the approval was consumed, the
-   result says so plainly ("approved, but the refund failed: …; nothing was charged"). The
+   result says so plainly ("approved, but deleting `old-nav` failed: …; nothing changed"). The
    approval isn't reusable, so a retry asks again.
 
-**Spend is reserved, not added afterwards.** Auto-runs call `store.reserveSpend(principal,
-cost, window)` **before** `apply()`, which fails if the reservation would pass the cap. Then
-they `settle` on success or `release` on failure. Two concurrent calls can't overshoot the
-cap, and a crash never under-counts. The SDK core already reserves spend this way for grants.
-Explicitly approved spend is recorded in the same ledger, so the auto-run budget sees it, but
-the cap never blocks it: the person approved it knowing the cost.
+**Totals are reserved, not added afterwards.** This applies only to plans with a cost when the
+policy has a `total`. Auto-runs call `store.reserve(principal, limit, amount, window)`
+**before** `apply()`, which fails if the reservation would pass the limit. Then they `settle`
+on success or `release` on failure. Two concurrent calls can't overshoot the limit, and a crash
+never under-counts. The SDK core already reserves spend this way for grants. Explicitly
+approved plans are recorded in the same ledger, so the auto-run total sees them, but the limit
+never blocks them: the person approved them knowing what they do. The ledger counts in plain
+numbers under a named limit (`spend:USD`), so a later count limit ("at most 20 emails a day")
+needs no store change.
 
 ### 6. When the client can't ask
 
@@ -207,7 +228,7 @@ interface ApprovalStore {
   putReceipt(r: Receipt): Promise<void>;
   getReceipt(id: string): Promise<Receipt | null>;
   markUndone(id: string): Promise<boolean>;                          // true the first time only
-  reserveSpend(principal: string, amount: Money, window: string): Promise<Reservation | null>; // null: over the cap
+  reserve(principal: string, limit: string, amount: number, window: string): Promise<Reservation | null>; // null: over the limit
   settle(r: Reservation): Promise<void>;
   release(r: Reservation): Promise<void>;
   pendingConsent(code: string): Promise<string | null>;              // a signed pc1. token from `yea approve`
@@ -224,7 +245,7 @@ Implementations:
 - `FileStore` lives under `~/.yea`. Local stdio servers share it with the `yea` command.
 - A custom store (Redis, SQL) is for multi-process servers.
 
-**Fail closed.** An HTTP server with a spend cap on the default memory store refuses to start
+**Fail closed.** An HTTP server with a `total` limit on the default memory store refuses to start
 unless the author passes `store` or sets `singleProcess: true`.
 
 ## Mapping to the protocol
@@ -261,13 +282,13 @@ TypeScript, and small named functions that don't use `any` or `!`. For example:
 
 ```ts
 /** What a job call should do with these plans under this policy. */
-export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
+export function decide(plans: Plan[], policy: Policy, usage: Usage): Decision {
   if (plans.length === 0) {
     return { kind: 'nothing' };
   }
 
   const first = plans[0];
-  const why = needsApproval(first, policy, spent);
+  const why = needsApproval(first, policy, usage);
 
   if (why === null) {
     return { kind: 'run', plan: first };
@@ -290,7 +311,7 @@ export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
   - how every answer is judged: accept, decline, cancel, wrong confirmation, unknown plan,
     replay, and plans that changed;
   - the `FileStore` on-disk format.
-- **Unit tests** for the store: consume-once under concurrent calls, undo once, and spend
+- **Unit tests** for the store: consume-once under concurrent calls, undo once, and
   reservations under concurrency and failure.
 - **Security tests** in `ts/test/security.test.ts` and its Python counterpart: an unsigned
   approval is rejected; an unsigned policy can't loosen the defaults; a consent for one plan
@@ -320,19 +341,26 @@ export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
 - `undo` works once within the window, and never outside it or for another principal.
 - An unsigned approval, or an unsigned policy that would loosen the defaults, is rejected.
   Only the principal's signature can make something run without the form.
-- Concurrent auto-runs never spend past the cap, and a failed `apply()` releases its
+- A policy with no money rules (`can`, `maxRisk`, `requireUndo`) works for tools that have no
+  cost, and a plan with no cost is never checked against `perAction` or `total`.
+- Concurrent auto-runs never go past a `total` limit, and a failed `apply()` releases its
   reservation.
-- An HTTP server with a spend cap and the default store refuses to start.
+- An HTTP server with a `total` limit and the default store refuses to start.
 
 ## Open questions
 
-Proposed answers are marked. parley-05's review agrees with each.
+Proposed answers are marked. parley-05's review agreed with 1 and 3 to 5. Question 2 changed
+when approval stopped being about money, and question 6 is new.
 
-1. **Does explicit approval go past the caps?** Proposed: yes, since caps only govern what
+1. **Does explicit approval go past the limits?** Proposed: yes, since limits only govern what
    runs without asking. `deny` covers things that must never run.
-2. **What does the person type?** Proposed: the plan's cost when it has one, otherwise
-   `approve`.
+2. **What does the person type?** Proposed: a phrase the tool names for each plan (the
+   branch name, the recipient, the amount). By default, the plan's cost when it has one,
+   otherwise `approve`.
 3. **Remote servers.** Proposed: local, signed `yea approve` is enough for v0, and url-mode
    pages come later.
 4. **Should undo ask?** Proposed: no, within the window.
 5. **Should SPEC.md get an "MCP binding" appendix?** Proposed: after v0 ships.
+6. **Count limits.** Should the policy cap how often a tool runs without asking ("at most
+   20 emails a day")? Proposed: after v0. The ledger already supports it, and as a
+   tightening-only rule it needs no signature.
