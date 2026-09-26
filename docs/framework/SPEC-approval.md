@@ -68,7 +68,7 @@ It leaves out volatile fields (proposal ids, expiry, `data`), unlike today's `pr
 
 ### 2. Policy
 
-Local config owned by the person running the server. The default is empty, so every job asks.
+The person's standing rules. The default is empty, so every job asks.
 
 ```ts
 policy: {
@@ -77,15 +77,27 @@ policy: {
   total: { limit: money(100), per: '30d' },  // auto-run spend in the window
   requireUndo: true,                    // irreversible plans ask
   outOfBand: 'high',                    // plans at this risk need approval outside the chat
+  deny: ['billing.delete_customer'],    // never runs, even with approval
 }
 ```
 
-The policy decides **only what runs without asking**. Anything the server offers can still
-run with explicit approval. Only `plans[0]` is ever auto-run, so authors list the safest
-common choice first, as the service-design guide already says.
+The policy decides **only what runs without asking**. Anything the server offers, except what
+`deny` lists, can still run with explicit approval. Only `plans[0]` is ever auto-run, so
+authors list the safest common choice first, as the service-design guide already says.
 
-A server can take the policy from its own options or from `~/.yea/policy.json`, which the
-`yea` command writes. The file wins, because the person running the server owns it.
+**Anything that loosens the policy must be signed by the person.** An agent that can write
+files (Claude Code can) must not be able to raise its own limits. So:
+
+- A policy that auto-runs anything is a **grant signed with the principal key**. `yea grant`
+  already issues these, and the caveats map one to one: `risk`, `per`, `spend`, `exp`. The
+  server verifies it against the principal's public key, which the server author configures.
+- An unsigned policy, from server options or `~/.yea/policy.json`, **may only tighten** the
+  defaults: add to `deny`, or require out-of-band approval. It can never auto-run anything.
+
+Where the principal key lives decides how strong this is. If it sits in `~/.yea` on the
+machine the agent runs on, an agent with shell access can sign for itself. The
+`YEA_PRINCIPAL_HOME` option and its caveat carry over from the security guide unchanged: keep
+the key on another account or device for real protection.
 
 ### 3. Asking: the approval form
 
@@ -93,15 +105,16 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
 
 - `message`: the plans in Lens (effects, cost, risk, undo window), plus why approval is needed
   ("cost 71.36 USD is over your 25.00 USD per-action limit").
-- `plan`: a single-select enum of the plans, titled with their summaries. It's omitted when
-  there's one plan.
-- `confirm`: a required string. The person types `approve`.
+- `plan`: a single-select enum. Each option's value is the plan hash and its title is the
+  plan's summary (`oneOf` of `const` and `title`). It's omitted when there's one plan.
+- `confirm`: a required string. The person types the chosen plan's cost as shown (`22.87`),
+  or `approve` when the plan costs nothing. Typing the amount makes the person read it.
 
-An accepted form counts as approval **only** when `confirm` is exactly `approve`, after
-trimming and lowercasing. A bare accept or an empty form never counts: some clients
-auto-accept forms that have no fields. This proves the form was filled in, not that a person
-read it. That is the level form mode can give. Plans at or above `policy.outOfBand` skip the
-form and go straight to out-of-band approval.
+An accepted form counts as approval **only** when `confirm` matches, after trimming and
+lowercasing. A bare accept or an empty form never counts: some clients auto-accept forms that
+have no fields. This proves the form was filled in, not that a person read it. That is the
+level form mode can give. Plans at or above `policy.outOfBand` skip the form and go straight
+to out-of-band approval.
 
 ### 4. The state that goes round the client
 
@@ -118,7 +131,18 @@ The `input_required` result carries a `requestState`. Its plaintext is:
   principal (`authInfo.clientId` or subject). Over stdio there is one user per process.
 - **Keys.** Each process gets a random key, which is only safe while one process handles every
   round. Multi-process HTTP servers must pass a shared key.
-- **Lifetime.** 10 minutes by default.
+- **Lifetime.** 10 minutes by default. Our `exp` must be no later than the SDK's own state
+  lifetime.
+- **Nesting.** A job tool may also ask its own questions. Our state wraps the tool's own as
+  `{ "yea": {…}, "inner": "<the tool's requestState>" }`, and each side reads only its own
+  half.
+- **Per-language mechanics.** This spec defines the logical round and the plaintext. How each
+  SDK carries it across protocol eras belongs to `mcp-ts` and `mcp-py`:
+  - The TypeScript v2 legacy shim re-runs the handler for 2025-era clients.
+  - Python doesn't shim a raw `InputRequiredResult`, and its `Resolve`/`Elicit` helpers own
+    `requestState`, so they can't carry our nonce. `mcp-py` returns a raw
+    `InputRequiredResult` on 2026-07-28 and falls back to an in-call `ctx.elicit` on 2025-era
+    clients.
 
 ### 5. Checking the answer
 
@@ -131,7 +155,14 @@ On retry:
    ask again and say the plans changed.
 4. **Consume the nonce** with `store.consumeOnce(nonce, exp)`, which is atomic. If it was
    already consumed, refuse the call. Resending the same approved call never runs twice.
-5. Apply, then record the receipt and add the cost to the ledger.
+5. Apply, then record the receipt. If `apply()` fails after the approval was consumed, the
+   result says so plainly ("approved, but the refund failed: …; nothing was charged"). The
+   approval isn't reusable, so a retry asks again.
+
+**Spend is reserved, not added afterwards.** Auto-runs call `store.reserveSpend(principal,
+cost, window)` **before** `apply()`, which fails if the reservation would pass the cap. Then
+they `settle` on success or `release` on failure. Two concurrent calls can't overshoot the
+cap, and a crash never under-counts. The SDK core already reserves spend this way for grants.
 
 ### 6. When the client can't ask
 
@@ -142,9 +173,14 @@ returns an error result with:
 - a one-time **approval code** that encodes the tool, the input hash and the plan hash, and
 - the line: *Ask the user to run `yea approve <code>` in their terminal, then call again.*
 
-`yea approve` shows the plan, asks the person to confirm, and writes the approval to the
-store. On the next identical call the server finds it, consumes it, and runs the plan. v0
-supports this where the server and the `yea` command share a store (a local stdio server).
+`yea approve` shows the plan, asks the person to confirm, and writes a **consent signed with
+the principal key**. This is the existing `pc1.` consent grant, bound to the plan hash. On the
+next identical call, the server verifies the signature against the principal's public key,
+consumes the consent, and runs the plan. An unsigned approval in the store is never accepted,
+so an agent that writes files or runs commands can't approve for the person. The key-location
+caveat in section 2 applies here too.
+
+v0 supports this where the server and the `yea` command share a store (a local stdio server).
 For remote HTTP servers, url-mode approval pages come later.
 
 ### 7. Undo
@@ -162,10 +198,16 @@ interface ApprovalStore {
   putReceipt(r: Receipt): Promise<void>;
   getReceipt(id: string): Promise<Receipt | null>;
   markUndone(id: string): Promise<boolean>;                          // true the first time only
-  addSpend(principal: string, amount: Money, window: string): Promise<Money>; // new total
-  pendingApproval(code: string): Promise<Approval | null>;           // written by `yea approve`
+  reserveSpend(principal: string, amount: Money, window: string): Promise<Reservation | null>; // null: over the cap
+  settle(r: Reservation): Promise<void>;
+  release(r: Reservation): Promise<void>;
+  pendingConsent(code: string): Promise<string | null>;              // a signed pc1. token from `yea approve`
 }
 ```
+
+`FileStore`'s on-disk format is pinned in this spec's conformance cases. That way the
+TypeScript and Python servers and the `yea` command can share one store. `consumeOnce` and
+`markUndone` create a marker file with `O_EXCL`, so they are atomic across processes.
 
 Implementations:
 
@@ -183,7 +225,8 @@ unless the author passes `store` or sets `singleProcess: true`.
 | Job tool call | `INTENT` with `auto`, then `COMMIT` of `plans[0]` |
 | `preview: true` | `INTENT` without commit |
 | Approval form and typed confirmation | Consent bound to a plan (the `pc1.` consent grant's role) |
-| Policy | The principal's grant caveats, held locally and unsigned |
+| `yea approve <code>` | A `pc1.` consent grant signed by the principal |
+| Policy | A grant signed by the principal (its caveats); unsigned config can only tighten it |
 | `undo(receipt)` | `UNDO` |
 
 The wire protocol doesn't change. Whether SPEC.md gets an "MCP binding" section is an open
@@ -236,9 +279,13 @@ export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
   - the form schema;
   - the state plaintext;
   - how every answer is judged: accept, decline, cancel, wrong confirmation, unknown plan,
-    replay, and plans that changed.
+    replay, and plans that changed;
+  - the `FileStore` on-disk format.
 - **Unit tests** for the store: consume-once under concurrent calls, undo once, and spend
-  totals across windows.
+  reservations under concurrency and failure.
+- **Security tests** in `ts/test/security.test.ts` and its Python counterpart: an unsigned
+  approval is rejected; an unsigned policy can't loosen the defaults; a consent for one plan
+  can't run another; a replayed state or consent runs nothing.
 - **End-to-end tests** live in `mcp-ts` and `mcp-py`, with in-memory MCP clients: 2026-era,
   2025-era through the legacy shim, and no elicitation.
 
@@ -249,8 +296,9 @@ export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
   and Python together.
 - **Ask first:** changing SPEC.md or the wire format; storing anything beyond hashes in the
   state; changing a default in a way that runs more without asking.
-- **Never:** treat a bare accept as approval; let the model approve; use sampling; auto-run
-  anything but `plans[0]`.
+- **Never:** treat a bare accept as approval; let the model approve; accept an unsigned
+  approval, or an unsigned policy that loosens the defaults; use sampling; auto-run anything
+  but `plans[0]`.
 
 ## Success criteria
 
@@ -260,15 +308,21 @@ export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
 - Over the same policy, a job either runs, asks, or fails closed with an approval code, and
   never does anything else.
 - `undo` works once within the window, and never outside it or for another principal.
+- An unsigned approval, or an unsigned policy that would loosen the defaults, is rejected.
+  Only the principal's signature can make something run without the form.
+- Concurrent auto-runs never spend past the cap, and a failed `apply()` releases its
+  reservation.
 - An HTTP server with a spend cap and the default store refuses to start.
 
 ## Open questions
 
+Proposed answers are marked. parley-05's review agrees with each.
+
 1. **Does explicit approval go past the caps?** Proposed: yes, since caps only govern what
-   runs without asking. Alternatively, add an optional hard `deny` list for things that must
-   never run.
-2. **What does the person type?** `approve`, or the amount (`22.87`) so they must read it?
-3. **Remote servers.** Should url-mode approval pages be in v0, or is local
-   `yea approve` enough?
+   runs without asking. `deny` covers things that must never run.
+2. **What does the person type?** Proposed: the plan's cost when it has one, otherwise
+   `approve`.
+3. **Remote servers.** Proposed: local, signed `yea approve` is enough for v0, and url-mode
+   pages come later.
 4. **Should undo ask?** Proposed: no, within the window.
-5. **Should SPEC.md get an "MCP binding" appendix** now, or after v0 ships?
+5. **Should SPEC.md get an "MCP binding" appendix?** Proposed: after v0 ships.
