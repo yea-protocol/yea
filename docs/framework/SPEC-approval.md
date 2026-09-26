@@ -91,6 +91,9 @@ files (Claude Code can) must not be able to raise its own limits. So:
 - A policy that auto-runs anything is a **grant signed with the principal key**. `yea grant`
   already issues these, and the caveats map one to one: `risk`, `per`, `spend`, `exp`. The
   server verifies it against the principal's public key, which the server author configures.
+  MCP callers have no YEA key of their own, so grants and consents are issued **to the
+  server's own key**, which the plugin generates on first run. The existing holder and proof
+  checks then run unchanged, and a grant copied from another server doesn't work here.
 - An unsigned policy, from server options or `~/.yea/policy.json`, **may only tighten** the
   defaults: add to `deny`, or require out-of-band approval. It can never auto-run anything.
 
@@ -110,8 +113,10 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
 - `confirm`: a required string. The person types the chosen plan's cost as shown (`22.87`),
   or `approve` when the plan costs nothing. Typing the amount makes the person read it.
 
-An accepted form counts as approval **only** when `confirm` matches, after trimming and
-lowercasing. A bare accept or an empty form never counts: some clients auto-accept forms that
+An accepted form counts as approval **only** when `confirm` matches. Amounts compare as
+numbers, and the currency code is optional: `22.87`, `22.870` and `22.87 USD` all match
+22.87 USD. `approve` compares after trimming and lowercasing. Both rules are pinned in the
+conformance cases. A bare accept or an empty form never counts: some clients auto-accept forms that
 have no fields. This proves the form was filled in, not that a person read it. That is the
 level form mode can give. Plans at or above `policy.outOfBand` skip the form and go straight
 to out-of-band approval.
@@ -163,6 +168,8 @@ On retry:
 cost, window)` **before** `apply()`, which fails if the reservation would pass the cap. Then
 they `settle` on success or `release` on failure. Two concurrent calls can't overshoot the
 cap, and a crash never under-counts. The SDK core already reserves spend this way for grants.
+Explicitly approved spend is recorded in the same ledger, so the auto-run budget sees it, but
+the cap never blocks it: the person approved it knowing the cost.
 
 ### 6. When the client can't ask
 
@@ -175,8 +182,10 @@ returns an error result with:
 
 `yea approve` shows the plan, asks the person to confirm, and writes a **consent signed with
 the principal key**. This is the existing `pc1.` consent grant, bound to the plan hash. On the
-next identical call, the server verifies the signature against the principal's public key,
-consumes the consent, and runs the plan. An unsigned approval in the store is never accepted,
+next identical call, the server recomputes the plans, verifies the signature against the
+principal's public key, and checks that the consent's plan hash is still offered. If it is,
+the server consumes the consent and runs the plan. If not, it issues a fresh code. The
+consent's own expiry bounds how long a code stays usable. An unsigned approval in the store is never accepted,
 so an agent that writes files or runs commands can't approve for the person. The key-location
 caveat in section 2 applies here too.
 
@@ -287,7 +296,8 @@ export function decide(plans: Plan[], policy: Policy, spent: Money): Decision {
   approval is rejected; an unsigned policy can't loosen the defaults; a consent for one plan
   can't run another; a replayed state or consent runs nothing.
 - **End-to-end tests** live in `mcp-ts` and `mcp-py`, with in-memory MCP clients: 2026-era,
-  2025-era through the legacy shim, and no elicitation.
+  2025-era (TypeScript through the SDK's legacy shim, Python through an in-call `ctx.elicit`),
+  and no elicitation.
 
 ## Boundaries
 
