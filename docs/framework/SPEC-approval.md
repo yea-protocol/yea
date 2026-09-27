@@ -22,18 +22,18 @@ A developer marks a tool as a job, for example `reschedule`, `send_email`, `dele
 The model can never approve anything on the person's behalf, and a replayed or stale approval
 never runs anything.
 
-**Approval is about what an action does, not only what it costs.** A plan is judged on which
-tool it belongs to, how risky it is, and whether it can be undone. Money is one more check that
-applies only to plans that declare a cost, and most jobs (sending an email, moving a meeting,
-deleting a branch) have none.
+**Approval is about what an action does.** A plan is judged on which tool it belongs to, how
+risky it is, whether it can be undone, and what it uses up. What it uses is the protocol's
+generic `uses` (SPEC.md §5.1): money, emails, deletions, anything the tool reports. Most jobs
+(moving a meeting, deleting a branch) use nothing that's limited.
 
 **Users.** Server authors adopting YEA one tool at a time, and the people whose agents call
 those servers.
 
 ## How a job call runs
 
-Terms: a **plan** is the existing `Plan` (`summary`, `effects`, `cost`, `risk`, `apply()`,
-optional `revert()` and `undoWindow`). `cost` is optional. The **policy** is the person's
+Terms: a **plan** is the existing `Plan` (`summary`, `effects`, `uses`, `risk`, `apply()`,
+optional `revert()` and `undoWindow`). `uses` is optional. The **policy** is the person's
 standing rules. The **store** holds consumed approvals, receipts and the usage ledger.
 
 ```
@@ -65,7 +65,7 @@ call delete_branch({repo: "site", branch: "old-nav"})
 Approval binds to a **plan hash** that stays the same when the same plan is recomputed:
 
 ```
-planHash = sha256(canonical({ tool, input, summary, effects, cost, risk, undoWindow }))
+planHash = sha256(canonical({ tool, input, summary, effects, uses, risk, undoWindow }))
 ```
 
 It leaves out volatile fields (proposal ids, expiry, `data`), unlike today's `proposalHash`.
@@ -80,24 +80,29 @@ need out-of-band approval.
 policy: {
   can: ['reschedule', 'delete_branch'], // tools that may run without asking at all
   maxRisk: 'low',                       // plans above this ask
+  each: [{ of: 'spend', max: 2500, scale: 2, unit: 'USD' }], // any single plan using more asks
+  total: [{ of: 'emails', max: 20 }],   // auto-runs over the policy's lifetime
+  exp: 1790000000,                      // the policy ends
   outOfBand: 'high',                    // plans at this risk need approval outside the chat (default)
   deny: ['delete_customer'],            // never runs, even with approval
-  // Checked only for plans that declare a cost:
-  perAction: money(25),                 // any single plan costing more asks
-  total: { limit: money(100), per: '30d' },  // auto-run spend in the window
 }
 ```
 
 A plan runs without asking only when it passes every rule that applies to it: its tool is in
-`can`, its risk is at most `maxRisk`, **it can be undone**, and, if it has a cost, the cost
-fits `perAction` and `total`. A policy of `can: ['reschedule']` and `maxRisk: 'low'` lets an
-agent move meetings on its own and asks about everything else, with no money involved.
+`can`, its risk is at most `maxRisk`, **it can be undone**, and what it `uses` fits every
+`each` and `total` limit. These are the protocol's own limits (SPEC.md §6.3), with the same
+rules: units must match exactly, values compare exactly, and a plan that doesn't report a
+measure passes a limit on it. A policy of `can: ['reschedule']` and `maxRisk: 'low'` lets an
+agent move meetings on its own and asks about everything else, with no limits at all.
+
+A `total` runs for the policy's lifetime, as a grant's does, not over a rolling window. To cap
+"20 emails a day", issue a policy that expires in a day.
 
 **Only undoable plans run without asking.** This is the protocol's rule (SPEC.md §4.3.1, "if,
 and only if" the proposal is undoable), and the framework can't be looser than the protocol.
 So `send_email` always asks, while `delete_branch` can auto-run if its `revert()` restores
 the branch at its old commit. Letting a signed grant allow irreversible auto-runs would be a
-protocol change; see open question 7.
+protocol change; see decision 7.
 
 **What `can` matches.** A pattern matches the MCP tool's registered name, exactly or as a
 prefix ending in `*`, the same rule as the grant `can` caveat. `delete_*` matches
@@ -113,19 +118,19 @@ authors list the safest common choice first, as the service-design guide already
 files (Claude Code can) must not be able to raise its own limits. So:
 
 - A policy that auto-runs anything is a **grant signed with the principal key**. `yea grant`
-  already issues these, and the caveats map one to one: `can`, `risk`, `per`, `spend`, `exp`.
-  The
-  server verifies it against the principal's public key, which the server author configures.
+  already issues these, and the caveats map one to one: `can`, `risk` (`maxRisk`), `each`,
+  `total` and `exp`. The server verifies it against the principal's public key, which the server author configures.
   MCP callers have no YEA key of their own, so grants and consents are issued **to the
   server's own key**, which the plugin generates on first run. The existing holder and proof
   checks then run unchanged, and a grant copied from another server doesn't work here.
 - An unsigned policy, from server options or `~/.yea/policy.json`, **may only tighten** the
-  defaults: add to `deny`, or lower `outOfBand` to `medium` or `low`. It can never auto-run anything.
+  defaults: add to `deny`, or lower `outOfBand` to `medium` or `low`. It can never auto-run
+  anything.
 - **Unsigned rules are best effort.** An agent that can write `~/.yea` can also delete a `deny`
   entry it doesn't like. Deleting the file only returns the server to its defaults, so the
   guaranteed floor is: nothing auto-runs without a signed grant, irreversible plans never
   auto-run, and `high` risk goes out of band. Rules above that floor hold only as long as the
-  file does. Signed tightening rules would need new caveats; see open question 6.
+  file does. Signed tightening rules would need new caveats; see decision 6.
 
 Where the principal key lives decides how strong this is. If it sits in `~/.yea` on the
 machine the agent runs on, an agent with shell access can sign for itself. The
@@ -136,18 +141,17 @@ the key on another account or device for real protection.
 
 The request is a form-mode elicitation. Forms allow only flat fields, so:
 
-- `message`: the plans in Lens (effects, cost if any, risk, undo window), plus why approval is
-  needed: "`send_email` can't be undone", "risk is high, and your limit is low", or
-  "cost 71.36 USD is over your 25.00 USD per-action limit".
+- `message`: the plans in Lens (effects, uses, risk, undo window), plus why approval is
+  needed: "`send_email` can't be undone", "risk is high, and your limit is low", or the
+  protocol's limit reason, "spend over the per-commit limit of 25.00 USD".
 - `plan`: a single-select enum. Each option's value is the plan hash and its title is the
   plan's summary (`oneOf` of `const` and `title`). It's omitted when there's one plan.
 - `confirm`: a required string. The person types **the thing that matters most** about the
   chosen plan, which makes them read it. A tool can name that phrase for each plan
-  (`confirmWith(plan, input): string | Money`), the way GitHub asks you to type a
+  (`confirmWith(plan, input): string | Quantity`), the way GitHub asks you to type a
   repository's name before deleting it: the branch name, the recipient, the amount. If the
-  tool doesn't, the default is the plan's cost when it has one, and `approve` otherwise. The
-  field's description shows the exact phrase to type; with several plans, the message names
-  each plan's phrase next to it.
+  tool doesn't, the phrase is `approve`. The field's description shows the exact phrase to
+  type; with several plans, the message names each plan's phrase next to it.
 
 An accepted form counts as approval **only** when `confirm` matches:
 
@@ -155,8 +159,9 @@ An accepted form counts as approval **only** when `confirm` matches:
   whitespace (U+0009 to U+000D, U+0020, U+00A0, U+FEFF, a set both languages strip the same
   way), then lowercased with `toLowerCase()` / `str.lower()`. Not `casefold()`, which has no
   JavaScript equivalent.
-- **Money phrases**: compare as numbers, and the currency code is optional: `22.87`, `22.870`
-  and `22.87 USD` all match 22.87 USD. A different currency code doesn't match.
+- **Quantity phrases**: compare as exact decimals, and the unit is optional: `22.87`,
+  `22.870` and `22.87 USD` all match `{amount: 2287, scale: 2, unit: 'USD'}`. A different
+  unit doesn't match.
 
 A tool must derive its phrase from the plan or the input, which the plan hash covers. Both
 rules, including the whitespace and Unicode edge cases, are pinned in the conformance cases.
@@ -170,7 +175,7 @@ to out-of-band approval.
 The `input_required` result carries a `requestState`. Its plaintext is:
 
 ```json
-{ "v": 1, "tool": "refund", "inputHash": "…", "plans": ["<planHash>", "…"], "nonce": "…", "exp": 1790000000 }
+{ "v": 1, "tool": "delete_branch", "inputHash": "…", "plans": ["<planHash>", "…"], "nonce": "…", "exp": 1790000000 }
 ```
 
 - **Sealing.** In Python, the SDK seals it (AES-256-GCM). In TypeScript, the plugin must
@@ -208,21 +213,22 @@ On retry:
    result says so plainly ("approved, but deleting `old-nav` failed: …; nothing changed"). The
    approval isn't reusable, so a retry asks again.
 
-**Totals are reserved, not added afterwards.** This applies only to plans with a cost when the
-policy has a `total`. Auto-runs call `store.reserve(principal, limit, amount, window)`
-**before** `apply()`, which fails if the reservation would pass the limit. Then they `settle`
-on success or `release` on failure. Two concurrent calls can't overshoot the limit, and a crash
-never under-counts. The SDK core already reserves spend this way for grants. Explicitly
-approved plans are written with `store.record(...)`, which never fails, into the same ledger:
-the auto-run total sees them, but the limit never blocks them, since the person approved them
-knowing what they do.
+**Totals are reserved, not added afterwards.** This applies when the policy has a `total` and
+the plan reports that measure. Auto-runs call `store.reserve(key, amount, max)` **before**
+`apply()`, which fails if the reservation would pass the limit. Then they `settle` on success
+or `release` on failure. Two concurrent calls can't overshoot the limit, and a crash never
+under-counts. The SDK core reserves grant totals the same way. A `total` repeated in one
+policy is reserved once.
 
-The ledger counts **integers** under a named limit: money in minor units, as on the wire
-(`spend:USD` holds cents), so sums never drift and both languages agree exactly. A later count
-limit ("at most 20 emails a day") needs no store change. Currencies are never converted: a
-plan costing EUR checked against a USD `perAction` or `total` asks, as the grant checks already
-fail closed on a currency mismatch. `Usage` is what `decide` reads: a map from limit name to
-the amount used in its window.
+Explicitly approved plans are written with `store.record(key, amount)`, which never fails,
+into the same ledger: the auto-run total sees them, but the limit never blocks them, since
+the person approved them knowing what they do. This is stricter than the core protocol, where
+a consented `COMMIT` is authorized by the consent grant and counts against no total.
+
+The ledger is keyed by the policy grant's block id and the measure name, as in SPEC.md §6.3,
+and holds **exact values**: the SDK core's `exact()`, an integer at scale 18, stored as a
+decimal string. Units are never converted, and sums never drift. `Usage` is what `decide`
+reads: a map from measure name to the exact amount used under the policy.
 
 ### 6. When the client can't ask
 
@@ -260,13 +266,15 @@ interface ApprovalStore {
   putReceipt(r: Receipt): Promise<void>;
   getReceipt(id: string): Promise<Receipt | null>;
   markUndone(id: string): Promise<boolean>;                          // true the first time only
-  reserve(principal: string, limit: string, amount: number, max: number, window: string): Promise<Reservation | null>; // null: over max
-  record(principal: string, limit: string, amount: number, window: string): Promise<void>;   // approved plans; never refuses
-  usage(principal: string, window: string): Promise<Usage>;          // limit name → integer used
+  reserve(key: LedgerKey, amount: bigint, max: bigint): Promise<Reservation | null>; // null: over max
+  record(key: LedgerKey, amount: bigint): Promise<void>;             // approved plans; never refuses
+  usage(policyId: string): Promise<Usage>;                           // measure → exact amount used
   settle(r: Reservation): Promise<void>;
   release(r: Reservation): Promise<void>;
   pendingConsent(code: string): Promise<string | null>;              // a signed pc1. token from `yea approve`
 }
+
+type LedgerKey = { policyId: string; of: string };                  // the grant's block id and the measure
 ```
 
 `FileStore`'s on-disk format is pinned in this spec's conformance cases. That way the
@@ -293,8 +301,7 @@ unless the author passes `store` or sets `singleProcess: true`.
 | Policy | A grant signed by the principal (its caveats); unsigned config can only tighten it |
 | `undo(receipt)` | `UNDO` |
 
-The wire protocol doesn't change. Whether SPEC.md gets an "MCP binding" section is an open
-question.
+The wire protocol doesn't change. SPEC.md gets an "MCP binding" section after v0 (decision 5).
 
 ## Where the code lives
 
@@ -377,32 +384,30 @@ export function decide(plans: Plan[], policy: Policy, usage: Usage): Decision {
 - `undo` works once within the window, and never outside it or for another principal.
 - An unsigned approval, or an unsigned policy that would loosen the defaults, is rejected.
   Only the principal's signature can make something run without the form.
-- A policy with no money rules (`can`, `maxRisk`) works for tools that have no
-  cost, and a plan with no cost is never checked against `perAction` or `total`.
+- A policy with no limits (`can`, `maxRisk`) works for any tool, and a plan that doesn't
+  report a measure is never held back by a limit on it.
 - Concurrent auto-runs never go past a `total` limit, and a failed `apply()` releases its
   reservation.
 - An HTTP server with a `total` limit and the default store refuses to start.
 
-## Open questions
+## Decisions
 
-Proposed answers are marked. parley-05's review agreed with 1 and 3 to 5. Question 2 changed
-when approval stopped being about money; 6 and 7 are new, and 7 is the real decision.
+These were open questions. They were adopted as proposed on 2026-09-27, when James asked for
+the work to keep moving; any of them can be reopened. parley-05's review agreed with each.
 
-1. **Does explicit approval go past the limits?** Proposed: yes, since limits only govern what
-   runs without asking. `deny` covers things that must never run.
-2. **What does the person type?** Proposed: a phrase the tool names for each plan (the
-   branch name, the recipient, the amount). By default, the plan's cost when it has one,
-   otherwise `approve`.
-3. **Remote servers.** Proposed: local, signed `yea approve` is enough for v0, and url-mode
-   pages come later.
-4. **Should undo ask?** Proposed: no, within the window.
-5. **Should SPEC.md get an "MCP binding" appendix?** Proposed: after v0 ships.
-6. **Signed tightening and count limits.** Should `deny`, `outOfBand` and count limits ("at
-   most 20 emails a day") also be caveats in the signed grant, so an agent can't delete them?
-   The server would take the union of signed and unsigned rules. Proposed: after v0. It needs
-   new caveats in SPEC.md; until then, unsigned rules are best effort above a fixed floor (§2).
-7. **Can anything irreversible run without asking?** Proposed: no, for v0. Only undoable plans
-   auto-run, as SPEC.md §4.3.1 already requires, so `send_email` and most refunds always ask.
-   The alternative is a new grant caveat that lets the person allow named irreversible tools
-   to auto-run. That's a protocol change (SPEC.md, vectors, TypeScript and Python), and
-   allowing it would always need a signature.
+1. **Explicit approval can go past the limits.** Limits only govern what runs without asking.
+   `deny` covers what must never run.
+2. **The person types a phrase the tool names for each plan** (the branch name, the
+   recipient, the amount), or `approve` when it names none.
+3. **Remote servers.** Local, signed `yea approve` is enough for v0. Url-mode pages come
+   later.
+4. **Undo doesn't ask** within its window.
+5. **SPEC.md's "MCP binding" appendix** comes after v0 ships.
+6. **Count limits** are already in the protocol (`total` on any measure, SPEC.md §6.3), so
+   they're signed like any other limit. **Signed `deny` and `outOfBand`** would need new
+   caveats, so they come after v0. Until then, unsigned rules are best effort above a fixed
+   floor (§2).
+7. **Nothing irreversible runs without asking** in v0. Only undoable plans auto-run, as
+   SPEC.md §4.3.1 requires, so `send_email` and most refunds always ask. Allowing named
+   irreversible tools to auto-run would be a new, always-signed grant caveat: a protocol
+   change.
