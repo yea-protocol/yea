@@ -45,8 +45,8 @@ proposal to the MCP spec. Align with SEP-2793 first.
   clients auto-accept empty forms.
 - **Policy is signed by the person.** It decides what runs without asking: which tools, up to
   what risk (only undoable plans ever run without asking), and `each`/`total` limits on
-  anything a plan uses (money, emails, deletions). Anything that loosens it is a grant signed with the principal key; unsigned
-  local config can only tighten it.
+  anything a plan uses (money, emails, deletions). Anything that loosens it is a grant signed
+  with the principal key; unsigned local config can only tighten it.
 - **The protocol stays.** SPEC.md and the wire format don't change. The framework maps YEA's
   verbs onto MCP.
 

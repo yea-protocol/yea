@@ -19,8 +19,9 @@ A developer marks a tool as a job, for example `reschedule`, `send_email`, `dele
   somewhere else.
 - **Afterwards**, anything reversible can be undone within its window.
 
-The model can never approve anything on the person's behalf, and a replayed or stale approval
-never runs anything.
+The model can't approve anything on the person's behalf, and a replayed or stale approval
+never runs anything. Both hold only as far as the principal key, the principal's public key
+and the store are out of the agent's reach (§9).
 
 **Approval is about what an action does.** A plan is judged on which tool it belongs to, how
 risky it is, whether it can be undone, and what it uses up. What it uses is the protocol's
@@ -32,9 +33,15 @@ those servers.
 
 ## How a job call runs
 
-Terms: a **plan** is the existing `Plan` (`summary`, `effects`, `uses`, `risk`, `apply()`,
-optional `revert()` and `undoWindow`). `uses` is optional. The **policy** is the person's
-standing rules. The **store** holds consumed approvals, receipts and the usage ledger.
+Terms:
+- A **plan** is the existing `Plan`: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`
+  and `apply()`. A plan's `risk` defaults to the tool's declared risk, else `medium`.
+- The **policy** is the person's standing rules (§2).
+- The **store** holds consumed approvals, receipts and the usage ledger (§8).
+
+The tool's handler only computes plans. It MUST NOT change anything, because it runs again on
+preview, on every retry, and under the TypeScript legacy shim (as SPEC.md §4.3 requires of
+`INTENT`).
 
 ```
 call delete_branch({repo: "site", branch: "old-nav"})
@@ -43,99 +50,114 @@ call delete_branch({repo: "site", branch: "old-nav"})
   │
   ├─ plans = handler(input)             (or a clarification: returned as is)
   │
-  ├─ policy allows plans[0]? ── yes ───────────▶ apply, record receipt + ledger, return receipt
-  │        │ no
+  ├─ policy allows plans[0]? ── yes ─ reserve ─▶ apply, record receipt, return receipt
+  │        │ no                     (fails: ask)
   │        ▼
-  ├─ client can elicit (form)? ── no ──────────▶ fail closed: plans + approval code (see below)
+  ├─ client can elicit (form)? ── no ──────────▶ fail closed: plans + approval code (§6)
   │        │ yes
   │        ▼
   └─ return input_required: approval form + sealed state
         │
         retry with the person's answer
         │
-        ├─ state invalid, expired or already used ▶ refuse, nothing runs
+        ├─ state invalid, expired, used, or for other input ▶ refuse, nothing runs
         ├─ declined or cancelled ─────────────────▶ "not approved", nothing runs
-        ├─ confirmation wrong ────────────────────▶ ask again (up to 3 rounds)
+        ├─ confirmation wrong ────────────────────▶ ask again (3 rounds in all)
         ├─ plans recomputed; chosen hash gone ────▶ ask again with the new plans
-        └─ consume approval, apply, record receipt + ledger, return receipt
+        ├─ chosen plan at or above outOfBand ─────▶ fail closed with an approval code (§6)
+        └─ consume approval, apply, record receipt, return receipt
 ```
+
+Each call is a new request. MCP has no frame id to deduplicate on, so a client that resends an
+auto-run call runs it again, as it would any MCP tool. Tools that must not repeat should be
+idempotent themselves (the Stripe example passes an idempotency key).
 
 ### 1. Plan hash
 
 Approval binds to a **plan hash** that stays the same when the same plan is recomputed:
 
 ```
-planHash = sha256(canonical({ tool, input, summary, effects, uses, risk, undoWindow }))
+planHash = b64url(sha256(canonical({ tool, input, summary, effects, uses, risk, undoWindow })))
 ```
 
-It leaves out volatile fields (proposal ids, expiry, `data`), unlike today's `proposalHash`.
-`input` is the tool's validated input, so an approval to delete `old-nav` can't delete `main`.
+- `b64url` and `canonical` are SPEC.md's (§6.1, §10). Absent optional fields are left out.
+- It leaves out volatile fields (proposal ids, expiry, `data`), unlike today's `proposalHash`.
+- `input` is the tool's validated input, so an approval to delete `old-nav` can't delete
+  `main`.
+- Canonical JSON allows only integers, so a job tool's input MUST NOT contain other numbers.
+  A call whose input has one fails closed with an error that tells the author to use a string
+  or an integer instead.
 
 ### 2. Policy
 
-The person's standing rules. By default nothing runs without asking, and plans at `high` risk
-need out-of-band approval.
+The person's standing rules come in two parts.
+
+**The signed part** is a grant signed with the principal key (`yea grant` issues it). Its
+caveats are the protocol's own, and only it can make anything run without asking:
 
 ```ts
-policy: {
-  can: ['reschedule', 'delete_branch'], // tools that may run without asking at all
-  maxRisk: 'low',                       // plans above this ask
-  each: [{ of: 'spend', max: 2500, scale: 2, unit: 'USD' }], // any single plan using more asks
-  total: [{ of: 'emails', max: 20 }],   // auto-runs over the policy's lifetime
-  exp: 1790000000,                      // the policy ends
-  outOfBand: 'high',                    // plans at this risk need approval outside the chat (default)
-  deny: ['delete_customer'],            // never runs, even with approval
-}
+// caveats of the signed policy grant
+[
+  { can: ['reschedule', 'delete_branch'] },               // tools that may run without asking
+  { risk: 'low' },                                         // plans above this ask
+  { each: { of: 'spend', max: 2500, scale: 2, unit: 'USD' } }, // any single plan using more asks
+  { total: { of: 'emails', max: 20 } },                    // for the grant's lifetime
+  { exp: 1790000000 },                                     // the policy ends
+]
 ```
 
-A plan runs without asking only when it passes every rule that applies to it: its tool is in
-`can`, its risk is at most `maxRisk`, **it can be undone**, and what it `uses` fits every
-`each` and `total` limit. These are the protocol's own limits (SPEC.md §6.3), with the same
-rules: units must match exactly, values compare exactly, and a plan that doesn't report a
-measure passes a limit on it. A policy of `can: ['reschedule']` and `maxRisk: 'low'` lets an
-agent move meetings on its own and asks about everything else, with no limits at all.
+**The unsigned part**, from server options or `~/.yea/policy.json`, can only tighten:
 
-A `total` runs for the policy's lifetime, as a grant's does, not over a rolling window. To cap
-"20 emails a day", issue a policy that expires in a day.
+```json
+{ "deny": ["delete_customer"], "outOfBand": "medium" }
+```
+
+A plan runs without asking only when **all** of these hold:
+
+1. a valid signed policy exists, and its tool is in `can`;
+2. its risk is at most the `risk` caveat, and below `outOfBand` (default `high`);
+3. **it can be undone**: it has an `undoWindow` and the tool has `revert` (§7);
+4. what it `uses` fits every `each` and `total` limit, by SPEC.md §6.3's rules (units match
+   exactly, values compare exactly, a plan that doesn't report a measure passes);
+5. its tool isn't in `deny`.
+
+A policy of `can: ['reschedule']` and `risk: 'low'` lets an agent move meetings on its own and
+asks about everything else. A `total` runs for the grant's lifetime, not a rolling window: for
+"20 emails a day", issue a grant that expires in a day.
 
 **Only undoable plans run without asking.** This is the protocol's rule (SPEC.md §4.3.1, "if,
 and only if" the proposal is undoable), and the framework can't be looser than the protocol.
-So `send_email` always asks, while `delete_branch` can auto-run if its `revert()` restores
-the branch at its old commit. Letting a signed grant allow irreversible auto-runs would be a
-protocol change; see decision 7.
+So `send_email` always asks, while `delete_branch` can auto-run if its `revert` restores the
+branch at its old commit. Allowing irreversible auto-runs would be a protocol change (decision
+7).
 
 **What `can` matches.** A pattern matches the MCP tool's registered name, exactly or as a
 prefix ending in `*`, the same rule as the grant `can` caveat. `delete_*` matches
 `delete_branch`; `calendar*` also matches `calendarx`, so end prefixes with a separator.
-Names aren't unique across servers: what scopes a grant to one server is its audience, the
-server's own key (below).
 
 The policy decides **only what runs without asking**. Anything the server offers, except what
 `deny` lists, can still run with explicit approval. Only `plans[0]` is ever auto-run, so
 authors list the safest common choice first, as the service-design guide already says.
 
-**Anything that loosens the policy must be signed by the person.** An agent that can write
-files (Claude Code can) must not be able to raise its own limits. So:
+**Verifying the signed part.**
+- The server verifies the grant against the principal's public key, and the grant must be
+  issued **to the server's own key**. MCP callers have no YEA key of their own. The plugin
+  generates the server key on first run. The existing holder and proof checks then run
+  unchanged, and a grant copied from another server doesn't work here.
+- The principal's public key is pinned by **the person**, in a file the agent can't write:
+  `YEA_PRINCIPAL_PUB` names it, and the plugin refuses to trust a key file that the server's
+  own OS user can write. A key read from `~/.yea` or from an MCP config the agent can edit
+  (`.mcp.json`) proves nothing, because the agent could swap in its own key.
 
-- A policy that auto-runs anything is a **grant signed with the principal key**. `yea grant`
-  already issues these, and the caveats map one to one: `can`, `risk` (`maxRisk`), `each`,
-  `total` and `exp`. The server verifies it against the principal's public key, which the server author configures.
-  MCP callers have no YEA key of their own, so grants and consents are issued **to the
-  server's own key**, which the plugin generates on first run. The existing holder and proof
-  checks then run unchanged, and a grant copied from another server doesn't work here.
-- An unsigned policy, from server options or `~/.yea/policy.json`, **may only tighten** the
-  defaults: add to `deny`, or lower `outOfBand` to `medium` or `low`. It can never auto-run
-  anything.
-- **Unsigned rules are best effort.** An agent that can write `~/.yea` can also delete a `deny`
-  entry it doesn't like. Deleting the file only returns the server to its defaults, so the
-  guaranteed floor is: nothing auto-runs without a signed grant, irreversible plans never
-  auto-run, and `high` risk goes out of band. Rules above that floor hold only as long as the
-  file does. Signed tightening rules would need new caveats; see decision 6.
+**Reading the unsigned part.** Unknown fields and anything that would loosen (removing a
+default, raising `outOfBand` above `high`) are ignored with a warning on stderr, and the valid
+tightenings still apply. A file that isn't valid JSON is ignored the same way.
 
-Where the principal key lives decides how strong this is. If it sits in `~/.yea` on the
-machine the agent runs on, an agent with shell access can sign for itself. The
-`YEA_PRINCIPAL_HOME` option and its caveat carry over from the security guide unchanged: keep
-the key on another account or device for real protection.
+**The floor.** Unsigned rules are best effort: an agent that can write `~/.yea` can delete a
+`deny` entry. Deleting the file only returns the server to its defaults. So what holds without
+any file is: nothing auto-runs without a signed grant, irreversible plans never auto-run, and
+`high` risk always goes out of band. Signed `deny` and `outOfBand` would need new caveats
+(decision 6).
 
 ### 3. Asking: the approval form
 
@@ -145,44 +167,43 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
   needed: "`send_email` can't be undone", "risk is high, and your limit is low", or the
   protocol's limit reason, "spend over the per-commit limit of 25.00 USD".
 - `plan`: a single-select enum. Each option's value is the plan hash and its title is the
-  plan's summary (`oneOf` of `const` and `title`). It's omitted when there's one plan.
-- `confirm`: a required string. The person types **the thing that matters most** about the
-  chosen plan, which makes them read it. A tool can name that phrase for each plan
-  (`confirmWith(plan, input): string | Quantity`), the way GitHub asks you to type a
-  repository's name before deleting it: the branch name, the recipient, the amount. If the
-  tool doesn't, the phrase is `approve`. The field's description shows the exact phrase to
-  type; with several plans, the message names each plan's phrase next to it.
+  plan's summary (`oneOf` of `const` and `title`). It's omitted when there's one plan. Plans
+  at or above `outOfBand` are listed in the message but left out of the enum, with a note that
+  they need out-of-band approval.
+- `confirm`: a required string. The person types **the phrase for the chosen plan**, which
+  makes them read it. A tool can name a phrase for each plan with
+  `confirmWith(plan, input): string`, the way GitHub asks you to type a repository's name
+  before deleting it: the branch name, the recipient, the amount as written in the summary.
+  If the tool names none, the phrase is `approve`. The field's description shows the exact
+  phrase; with several plans, the message names each plan's phrase next to it.
 
-An accepted form counts as approval **only** when `confirm` matches:
+An accepted form counts as approval **only** when `confirm` matches the phrase: both sides are
+NFC-normalized, then stripped of leading and trailing characters in **exactly** this set:
+U+0009 to U+000D, U+0020, U+00A0 and U+FEFF (not `trim()` or `strip()`, which strip different
+sets), then lowercased with `toLowerCase()` / `str.lower()` (not `casefold()`, which has no
+JavaScript equivalent). A tool must derive its phrase from the plan or the input, which the
+plan hash covers. The rule and its edge cases are pinned in the conformance cases.
 
-- **Text phrases**: both sides are NFC-normalized, stripped of leading and trailing
-  whitespace (U+0009 to U+000D, U+0020, U+00A0, U+FEFF, a set both languages strip the same
-  way), then lowercased with `toLowerCase()` / `str.lower()`. Not `casefold()`, which has no
-  JavaScript equivalent.
-- **Quantity phrases**: compare as exact decimals, and the unit is optional: `22.87`,
-  `22.870` and `22.87 USD` all match `{amount: 2287, scale: 2, unit: 'USD'}`. A different
-  unit doesn't match.
-
-A tool must derive its phrase from the plan or the input, which the plan hash covers. Both
-rules, including the whitespace and Unicode edge cases, are pinned in the conformance cases.
-A bare accept or an empty form never counts: some clients auto-accept forms that
-have no fields. This proves the form was filled in, not that a person read it. That is the
-level form mode can give. Plans at or above `policy.outOfBand` skip the form and go straight
-to out-of-band approval.
+A bare accept or an empty form never counts: some clients auto-accept forms that have no
+fields. This proves the form was filled in, not that a person read it. That is the level form
+mode can give.
 
 ### 4. The state that goes round the client
 
 The `input_required` result carries a `requestState`. Its plaintext is:
 
 ```json
-{ "v": 1, "tool": "delete_branch", "inputHash": "…", "plans": ["<planHash>", "…"], "nonce": "…", "exp": 1790000000 }
+{ "v": 1, "tool": "delete_branch", "inputHash": "…", "sub": "…", "plans": ["<planHash>", "…"],
+  "round": 1, "nonce": "…", "exp": 1790000000 }
 ```
 
+- `inputHash` is `b64url(sha256(canonical(input)))`. `sub` is the authenticated principal
+  (`authInfo.clientId` or subject) when the transport has one, and `""` over stdio, where
+  there is one user per process. `round` counts the forms shown for this call, from 1.
 - **Sealing.** In Python, the SDK seals it (AES-256-GCM). In TypeScript, the plugin must
   install `createRequestStateCodec` (HMAC-SHA256). That codec **signs but doesn't encrypt**,
-  so the plaintext must never hold secrets or personal data. Hashes and a nonce only.
-- **Binding.** Bind to the tool name and, when the transport has one, the authenticated
-  principal (`authInfo.clientId` or subject). Over stdio there is one user per process.
+  so the plaintext must never hold secrets or personal data: hashes, a counter and a nonce
+  only.
 - **Keys.** Each process gets a random key, which is only safe while one process handles every
   round. Multi-process HTTP servers must pass a shared key.
 - **Lifetime.** 10 minutes by default. Our `exp` must be no later than the SDK's own state
@@ -202,59 +223,78 @@ The `input_required` result carries a `requestState`. Its plaintext is:
 
 On retry:
 
-1. Verify the state. A failure, whatever the reason, refuses the call with the same message.
-2. Read the answer with the SDK's schema-aware helper. A decline or cancel returns "not
-   approved". A wrong `confirm` asks again.
+1. **Verify the state**: its seal, `exp`, `tool`, `sub`, and that `inputHash` matches the
+   retried call's input. Any failure refuses the call with the same message.
+2. **Read the answer** with the SDK's schema-aware helper. A decline or cancel returns "not
+   approved". A wrong `confirm` asks again with `round + 1`. After round 3, the call is
+   refused.
 3. **Recompute the plans** and find the one whose `planHash` matches the choice. If it's gone,
    ask again and say the plans changed.
-4. **Consume the nonce** with `store.consumeOnce(nonce, exp)`, which is atomic. If it was
+4. **Check out-of-band**: if the chosen plan's risk is at or above `outOfBand`, fail closed
+   with an approval code (§6).
+5. **Consume the nonce** with `store.consumeOnce(nonce, exp)`, which is atomic. If it was
    already consumed, refuse the call. Resending the same approved call never runs twice.
-5. Apply, then record the receipt. If `apply()` fails after the approval was consumed, the
+6. **Apply**, then record the receipt. If `apply()` fails after the approval was consumed, the
    result says so plainly ("approved, but deleting `old-nav` failed: …; nothing changed"). The
    approval isn't reusable, so a retry asks again.
 
-**Totals are reserved, not added afterwards.** This applies when the policy has a `total` and
-the plan reports that measure. Auto-runs call `store.reserve(key, amount, max)` **before**
-`apply()`, which fails if the reservation would pass the limit. Then they `settle` on success
-or `release` on failure. Two concurrent calls can't overshoot the limit, and a crash never
-under-counts. The SDK core reserves grant totals the same way. A `total` repeated in one
-policy is reserved once.
+**Totals are reserved, not added afterwards.** An auto-run whose plan reports a measure that a
+`total` limits calls `store.reserve(...)` **before** `apply()`, for every `total` in every
+block of the policy grant (one reservation per block and measure, even if a block repeats a
+limit). If any reservation would pass its limit, the call asks instead of running. It
+`settle`s on success and `release`s on failure. Two concurrent calls can't overshoot a limit,
+and a crash never under-counts.
 
-Explicitly approved plans are written with `store.record(key, amount)`, which never fails,
-into the same ledger: the auto-run total sees them, but the limit never blocks them, since
-the person approved them knowing what they do. This is stricter than the core protocol, where
-a consented `COMMIT` is authorized by the consent grant and counts against no total.
-
-The ledger is keyed by the policy grant's block id and the measure name, as in SPEC.md §6.3,
-and holds **exact values**: the SDK core's `exact()`, an integer at scale 18, stored as a
-decimal string. Units are never converted, and sums never drift. `Usage` is what `decide`
-reads: a map from measure name to the exact amount used under the policy.
+**Explicitly approved plans don't count against the policy's totals**, as in the protocol: a
+consented `COMMIT` is authorized by the consent grant, which has no `total` (SPEC.md §6.6).
+Limits govern only what runs without asking (decision 1).
 
 ### 6. When the client can't ask
 
-Claude Desktop, claude.ai and Gemini CLI can't elicit today. A job outside the policy then
-returns an error result with:
+Claude Desktop, claude.ai and Gemini CLI can't elicit today. A job outside the policy, or a
+chosen plan at or above `outOfBand`, then returns an error result with:
 
 - the plans in Lens,
-- a one-time **approval code** that encodes the tool, the input hash and the plan hash, and
+- a **consent code** for each plan that may be approved, and
 - the line: *Ask the user to run `yea approve <code>` in their terminal, then call again.*
 
-`yea approve` shows the plan, asks the person to confirm, and writes a **consent signed with
-the principal key**. This is the existing `pc1.` consent grant, bound to the plan hash. On the
-next identical call, the server recomputes the plans, verifies the signature against the
-principal's public key, and checks that the consent's plan hash is still offered. If it is,
-the server consumes the consent and runs the plan. If not, it issues a fresh code. The
-consent's own expiry bounds how long a code stays usable. An unsigned approval in the store is never accepted,
-so an agent that writes files or runs commands can't approve for the person. The key-location
-caveat in section 2 applies here too.
+The consent code is the existing unsigned `pc1.` code (SPEC.md's consent request, with the
+plan details). For a job it carries the server's key and `service` id, the tool, the full
+plan-hash preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, `undoWindow`), the
+plan hash, and `exp`. It is deterministic: the same plan gives the same code until it expires.
 
-v0 supports this where the server and the `yea` command share a store (a local stdio server).
-For remote HTTP servers, url-mode approval pages come later.
+`yea approve <code>`:
+1. recomputes the plan hash from the preimage and refuses on a mismatch;
+2. shows the plan in Lens, never only a summary;
+3. asks the person to type the plan's phrase (§3), the same check as the form;
+4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
+   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: planHash}, {exp}]`, and
+   saves it in the store under the code.
+
+On the next identical call, the server finds the consent, verifies it against the pinned
+principal key (§2), checks that its plan hash is still among the recomputed plans, consumes
+it with `consumeOnce(<consent grant id>, exp)`, and runs the plan. If the plan is gone, it
+issues a fresh code. `exp` is 10 minutes by default. An unsigned approval in the store is
+never accepted.
+
+This needs `yea approve` changes (today it issues to the agent key and checks
+`proposalHash`), and a store shared by the server and the `yea` command: a local stdio server
+with `FileStore`. For remote HTTP servers, url-mode approval pages come later.
 
 ### 7. Undo
 
-`undo({ receipt })` looks up the receipt. It runs only within the plan's undo window, only for
-the same principal, and only once. It calls `revert()` and records that the action was undone.
+A plan is undoable when it has an `undoWindow` and the tool defines
+`revert({ input, planHash, result })`. `revert` is on the tool, not the plan, so a receipt can
+be undone from any process: the receipt stores what it needs.
+
+`undo({ receipt })` looks up the receipt and runs only within its undo window, only for the
+same principal (`sub`), and only once:
+
+1. `store.claimUndo(id)` (atomic; false if already claimed or undone);
+2. call the tool's `revert` with the stored input, plan hash and result;
+3. on success, `store.markUndone(id)`; on failure, `store.releaseUndo(id)`, so it can be tried
+   again.
+
 Undo needs no approval, because it restores what the person already approved changing. An
 irreversible plan's receipt says `undo: never`, and undo refuses it with that reason.
 
@@ -262,33 +302,62 @@ irreversible plan's receipt says `undo: never`, and undo refuses it with that re
 
 ```ts
 interface ApprovalStore {
-  consumeOnce(nonce: string, expiresAt: number): Promise<boolean>;  // true the first time only
-  putReceipt(r: Receipt): Promise<void>;
-  getReceipt(id: string): Promise<Receipt | null>;
-  markUndone(id: string): Promise<boolean>;                          // true the first time only
-  reserve(key: LedgerKey, amount: bigint, max: bigint): Promise<Reservation | null>; // null: over max
-  record(key: LedgerKey, amount: bigint): Promise<void>;             // approved plans; never refuses
-  usage(policyId: string): Promise<Usage>;                           // measure → exact amount used
+  consumeOnce(id: string, expiresAt: number): Promise<boolean>;    // true the first time only
+  putReceipt(r: JobReceipt): Promise<void>;
+  getReceipt(id: string): Promise<JobReceipt | null>;
+  claimUndo(id: string): Promise<boolean>;                           // true the first time only
+  releaseUndo(id: string): Promise<void>;
+  markUndone(id: string): Promise<void>;
+  reserve(k: LedgerKey, amount: bigint, max: bigint): Promise<Reservation | null>; // null: over max
   settle(r: Reservation): Promise<void>;
   release(r: Reservation): Promise<void>;
-  pendingConsent(code: string): Promise<string | null>;              // a signed pc1. token from `yea approve`
+  used(k: LedgerKey): Promise<bigint>;                               // settled + reserved
+  putConsent(code: string, grant: string): Promise<void>;            // from `yea approve`
+  getConsent(code: string): Promise<string | null>;                  // a signed pg1. consent grant
 }
 
-type LedgerKey = { policyId: string; of: string };                  // the grant's block id and the measure
+type LedgerKey = { block: string; of: string };  // a policy grant block id and a measure
+type Reservation = { key: LedgerKey; amount: bigint; id: string };
+type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus what undo needs
+  tool: string; input: unknown; planHash: string; sub: string;
+};
 ```
 
-`FileStore`'s on-disk format is pinned in this spec's conformance cases. That way the
-TypeScript and Python servers and the `yea` command can share one store. `consumeOnce` and
-`markUndone` create a marker file with `O_EXCL`, so they are atomic across processes.
+Amounts are the SDK core's `exact()` values: integers at scale 18.
 
-Implementations:
+**Store selection.** Stdio servers use `FileStore` by default, because `yea approve` and undo
+across restarts need it. HTTP servers use `MemoryStore` by default, and one with a `total`
+limit refuses to start on it unless the author passes `store` or sets `singleProcess: true`.
+A custom store (Redis, SQL) is for multi-process servers.
 
-- `MemoryStore` is the default, for a single process.
-- `FileStore` lives under `~/.yea`. Local stdio servers share it with the `yea` command.
-- A custom store (Redis, SQL) is for multi-process servers.
+**`FileStore` format**, under `~/.yea/store/` (or `YEA_HOME`), pinned by the conformance
+cases so the TypeScript and Python servers and the `yea` command share one store:
 
-**Fail closed.** An HTTP server with a `total` limit on the default memory store refuses to start
-unless the author passes `store` or sets `singleProcess: true`.
+```
+consumed/<b64url(sha256(id))>        empty marker, created with O_EXCL; holds exp as text
+undo/<receipt id>.claim, .done       markers, created with O_EXCL
+receipts/<receipt id>.json           the JobReceipt, canonical JSON
+ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
+consents/<b64url(sha256(code))>      the pg1. consent grant
+```
+
+Ledger files are updated under an exclusive lock file (`<of>.lock`, `O_EXCL`, retried), and
+bigints are written as decimal strings. Expired markers may be removed after `exp`.
+
+## 9. Security
+
+- **Keep the agent away from three things.** The principal key (or it signs for itself), the
+  pinned principal public key (or it swaps in its own), and the store (or it resets totals,
+  deletes a `consumeOnce` marker to replay a consent within its `exp`, or deletes receipts).
+  `YEA_PRINCIPAL_HOME`, the write check on `YEA_PRINCIPAL_PUB`, and running the server as
+  another OS user are how. On one account with a shell-capable agent, the guarantees are best
+  effort, as the security guide already says for the principal key.
+- **A restarted server keeps its totals** only with a persistent store, which is why stdio
+  defaults to `FileStore`.
+- **Short consents.** Consent grants expire in 10 minutes by default, which bounds a replay
+  if a marker is ever deleted.
+- **Fail closed** everywhere: an invalid state, a missing or unsigned policy, an unpinned key,
+  a non-integer input, or a store error all mean nothing runs.
 
 ## Mapping to the protocol
 
@@ -296,9 +365,9 @@ unless the author passes `store` or sets `singleProcess: true`.
 |---|---|
 | Job tool call | `INTENT` with `auto`, then `COMMIT` of `plans[0]` |
 | `preview: true` | `INTENT` without commit |
-| Approval form and typed confirmation | Consent bound to a plan (the `pc1.` consent grant's role) |
-| `yea approve <code>` | A `pc1.` consent grant signed by the principal |
-| Policy | A grant signed by the principal (its caveats); unsigned config can only tighten it |
+| Approval form and typed confirmation | Consent bound to one plan (the role of a consent grant) |
+| Consent code and `yea approve` | A `pc1.` consent request, then a `pg1.` consent grant signed by the principal |
+| Signed policy | A grant signed by the principal, with its caveats; unsigned config can only tighten |
 | `undo(receipt)` | `UNDO` |
 
 The wire protocol doesn't change. SPEC.md gets an "MCP binding" section after v0 (decision 5).
@@ -308,6 +377,7 @@ The wire protocol doesn't change. SPEC.md gets an "MCP binding" section after v0
 ```
 ts/src/approval.ts        plan hash, policy decision, form builder, state payload, answer check
 ts/src/store.ts           ApprovalStore, MemoryStore, FileStore
+ts/src/cli.ts             yea approve for job consent codes
 ts/test/approval.test.ts  unit tests + the shared conformance cases
 python/src/yea/approval.py, store.py, python/tests/test_approval.py   the same, for Python
 conformance/approval.json shared cases, generated from the TS reference (like the other vectors)
@@ -323,21 +393,20 @@ TypeScript, and small named functions that don't use `any` or `!`. For example:
 
 ```ts
 /** What a job call should do with these plans under this policy. */
-export function decide(plans: Plan[], policy: Policy, usage: Usage): Decision {
+export function decide(plans: Plan[], policy: Policy, used: Usage): Decision {
   if (plans.length === 0) {
     return { kind: 'nothing' };
   }
 
   const first = plans[0];
-  const why = needsApproval(first, policy, usage);
 
-  if (why === null) {
-    return { kind: 'run', plan: first };
+  if (atLeast(first.risk, policy.outOfBand)) {
+    return { kind: 'out-of-band', why: outOfBandReason(first, policy) };
   }
 
-  return atLeast(first.risk, policy.outOfBand)
-    ? { kind: 'out-of-band', why }
-    : { kind: 'ask', why };
+  const why = needsApproval(first, policy, used);
+
+  return why === null ? { kind: 'run', plan: first } : { kind: 'ask', why };
 }
 ```
 
@@ -346,19 +415,26 @@ export function decide(plans: Plan[], policy: Policy, usage: Usage): Decision {
 - **Conformance cases** (`conformance/approval.json`). Given plans, a policy and a ledger, both
   languages agree on:
   - the decision, and the reason text;
-  - the plan hashes;
-  - the form schema;
+  - the plan hashes, and the refusal of non-integer inputs;
+  - the form schema, including plans left out for `outOfBand`;
   - the state plaintext;
-  - how every answer is judged: accept, decline, cancel, wrong confirmation, unknown plan,
-    replay, and plans that changed;
+  - how every answer is judged: accept, decline, cancel, a wrong confirmation (and three),
+    an unknown plan, a replay, other input, and plans that changed;
+  - confirmation matching, with its whitespace and Unicode edge cases;
+  - reading an unsigned policy file with loosening and unknown fields;
   - the `FileStore` on-disk format.
-- **Unit tests** for the store: consume-once under concurrent calls, undo once, and
+- **Unit tests** for the store: consume-once under concurrent calls, claim-undo once, and
   reservations under concurrency and failure.
-- **Security tests** in `ts/test/security.test.ts` and its Python counterpart: an unsigned
-  approval is rejected; an unsigned policy can't loosen the defaults; a consent for one plan
-  can't run another; a replayed state or consent runs nothing; an irreversible plan never
-  auto-runs, whatever the grant says; deleting the unsigned policy file returns to the
-  defaults, never to something looser.
+- **Security tests** in `ts/test/security.test.ts` and its Python counterpart:
+  - an unsigned approval is rejected, and an unsigned policy can't loosen the defaults;
+  - a consent for one plan can't run another, and a replayed state or consent runs nothing;
+  - an irreversible plan never auto-runs, whatever the grant says;
+  - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
+  - a `deny`ed tool never runs, even with approval;
+  - a writable principal public key file is refused;
+  - deleting the unsigned policy file returns to the defaults, never to something looser;
+  - undo refuses outside its window, for another principal, and a second time;
+  - an HTTP server with a `total` limit on the memory store refuses to start.
 - **End-to-end tests** live in `mcp-ts` and `mcp-py`, with in-memory MCP clients: 2026-era,
   2025-era (TypeScript through the SDK's legacy shim, Python through an in-call `ctx.elicit`),
   and no elicitation.
@@ -371,34 +447,36 @@ export function decide(plans: Plan[], policy: Policy, usage: Usage): Decision {
 - **Ask first:** changing SPEC.md or the wire format; storing anything beyond hashes in the
   state; changing a default in a way that runs more without asking.
 - **Never:** treat a bare accept as approval; let the model approve; accept an unsigned
-  approval, or an unsigned policy that loosens the defaults; use sampling; auto-run anything
-  but `plans[0]`.
+  approval, or an unsigned policy that loosens the defaults; trust a principal key the agent
+  can write; use sampling; auto-run anything but `plans[0]`.
 
 ## Success criteria
 
 - Both languages pass `conformance/approval.json`.
 - A resent approved call runs once. A call whose plans changed asks again. A wrong
   confirmation asks again, and three wrong ones refuse the call.
-- Over the same policy, a job either runs, asks, or fails closed with an approval code, and
-  never does anything else.
-- `undo` works once within the window, and never outside it or for another principal.
-- An unsigned approval, or an unsigned policy that would loosen the defaults, is rejected.
-  Only the principal's signature can make something run without the form.
-- A policy with no limits (`can`, `maxRisk`) works for any tool, and a plan that doesn't
-  report a measure is never held back by a limit on it.
+- Over the same policy, a job either runs, asks, or fails closed with a consent code, and never
+  does anything else.
+- `undo` works once within the window, from any process, and never outside it or for another
+  principal.
+- An unsigned approval, an unsigned policy that would loosen the defaults, or a writable
+  principal key is rejected. Only the principal's signature can make something run without
+  the form.
+- A policy with no limits (`can`, `risk`) works for any tool, and a plan that doesn't report a
+  measure is never held back by a limit on it.
 - Concurrent auto-runs never go past a `total` limit, and a failed `apply()` releases its
   reservation.
-- An HTTP server with a `total` limit and the default store refuses to start.
 
 ## Decisions
 
 These were open questions. They were adopted as proposed on 2026-09-27, when James asked for
 the work to keep moving; any of them can be reopened. parley-05's review agreed with each.
 
-1. **Explicit approval can go past the limits.** Limits only govern what runs without asking.
-   `deny` covers what must never run.
+1. **Explicit approval can go past the limits.** Limits only govern what runs without asking,
+   and approved plans don't count against them (§5). `deny` covers what must never run.
 2. **The person types a phrase the tool names for each plan** (the branch name, the
-   recipient, the amount), or `approve` when it names none.
+   recipient, the amount as written), or `approve` when it names none. Phrases are text only
+   in v0.
 3. **Remote servers.** Local, signed `yea approve` is enough for v0. Url-mode pages come
    later.
 4. **Undo doesn't ask** within its window.
