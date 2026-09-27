@@ -17,6 +17,10 @@ Money leaving the principal's control: charges, payments, payouts, and refunds t
 | `scale` | the currency's minor-unit digits: `2` for USD and EUR, `0` for JPY, `3` for KWD |
 | `amount` | the value in minor units: 22.87 USD is `{"amount": 2287, "scale": 2, "unit": "USD"}` |
 
+Limits don't need the currency's scale. Values compare exactly across scales, so a grant can
+say `{"each": {"of": "spend", "max": 25, "unit": "USD"}}` (scale 0), and it limits proposals
+reported in cents correctly.
+
 A plan that costs money in two currencies can't report both under `spend`, because a map
 holds one quantity per name. Offer one plan per currency instead. A `spend` limit in one
 currency never admits another: the units don't match, so the check asks the person instead.

@@ -298,7 +298,8 @@ absent, clients render Lens locally (§9).
     converts between units. Conventions for common measures, such as money, are in
     [`docs/conventions.md`](docs/conventions.md) (non-normative).
   - An absent or empty `uses` means the commit uses nothing the service measures. A service
-    MUST NOT send a malformed `uses`; limits treat one as a hard failure (§6.3).
+    MUST NOT send a malformed `uses`. Clients MUST treat a proposal with a malformed `uses`
+    as invalid, and limits treat one as a hard failure (§6.3).
 - `risk`: `low` | `medium` | `high`, as assessed by the service.
 - `undo`: `null` if irreversible, else `{"window": seconds}` counted from commit.
 - `expires`: unix seconds after which the proposal cannot be committed. Services SHOULD use whole minutes (the reference implementation rounds up: `ceil(t/60)*60`).
@@ -365,7 +366,7 @@ not a list) and `{"risk": "extreme"}` both fail.
 | `{"exp": int}` | now < exp |
 | `{"nbf": int}` | now ≥ nbf |
 | `{"each": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and its value ≤ the limit's value |
-| `{"total": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and the values committed under *this block's id* for `of`, plus this one, ≤ the limit's value |
+| `{"total": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and the values committed or reserved under *this block's id* for `of`, plus this one, ≤ the limit's value |
 | `{"risk": level}` | `COMMIT` only: the proposal risk ≤ level (`low` < `medium` < `high`) |
 | `{"only": proposalHash}` | `COMMIT` only: the proposal hash equals it |
 
@@ -376,13 +377,15 @@ For `UNDO`, `can` is checked against the capability of the receipt being undone.
 
 - **Units must match exactly.** A quantity and a limit match when both have the same `unit`
   string or both have none. A unit on only one side is a mismatch. A mismatch fails the
-  caveat, and nothing is ever converted.
+  caveat like any value over the limit, so a `COMMIT` gets `consent_required` (§6.6), and
+  nothing is ever converted.
 - **Values are exact.** Values compare and add as exact decimals, whatever their scales:
   `100` at scale 0 equals `10000` at scale 2. Implementations MUST NOT round or use
   floating point. For example, they can scale both sides to the larger scale in
   arbitrary-precision integers.
 - **Out of range is malformed.** A limit outside the ranges of §5.1 fails closed as a hard
-  failure. So does a malformed `uses` in the proposal being checked.
+  (`forbidden`) failure. So does a malformed `uses` in the proposal being checked. Only
+  malformed values are hard failures; a mismatch or a value over the limit is soft.
 - **Limits bind only what is reported.** A proposal that doesn't report `of` passes. The
   service is trusted to report `uses` truthfully and completely, as it is for `effects`.
 
