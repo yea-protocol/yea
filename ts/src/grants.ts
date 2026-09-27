@@ -284,7 +284,8 @@ function malformed(k: string, v: unknown, env: CaveatEnv): string | null {
   const p = env.p;
   const isLimitCaveat = k === 'each' || k === 'total';
 
-  return isLimitCaveat && p && Object.hasOwn(p, 'uses') && !isUses(p.uses)
+  // `undefined` means absent; JSON can't carry it, so a `null` is still malformed.
+  return isLimitCaveat && p && p.uses !== undefined && !isUses(p.uses)
     ? 'malformed uses on the proposal'
     : null;
 }

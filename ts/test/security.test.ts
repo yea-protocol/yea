@@ -544,4 +544,37 @@ describe('security regressions', () => {
       expect(r.lens).not.toContain('fake');
     }
   });
+
+  it('[U7] a proposal that uses nothing passes a limit, on COMMIT and on auto-commit', async () => {
+    const svc = P.service({
+      id: 'cal',
+      name: 'Cal',
+      summary: 'cal',
+      trust: [principal.public],
+    }).intent('cal.move', {
+      summary: 'move',
+      plan: () => ({
+        summary: 'move it',
+        effects: [P.update('event/1', 'start', 'a', 'b')],
+        apply: () => null,
+        revert: () => null,
+      }),
+    });
+    const c = await client(svc, agent, principal, [
+      { each: { of: 'spend', max: 1, unit: 'USD' } },
+      { total: { of: 'emails', max: 0 } },
+    ]);
+
+    expect((await c.intent('cal.move', {}, { auto: true })).kind).toBe(
+      'RECEIPT',
+    );
+
+    const r = await c.intent('cal.move', {});
+
+    if (r.kind !== 'PROPOSALS') {
+      throw new Error(r.lens);
+    }
+
+    expect((await c.commit(r.proposals[0])).kind).toBe('RECEIPT');
+  });
 });

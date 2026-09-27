@@ -445,7 +445,7 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
     d.id !== consent.proposal ||
     d.hash !== consent.hash ||
     d.capability !== consent.capability ||
-    (Object.hasOwn(d, 'uses') && !isUses(d.uses)) ||
+    (d.uses !== undefined && !isUses(d.uses)) ||
     (await proposalHash(d)) !== consent.hash
   ) {
     die("✗ this consent code's proposal doesn't match its hash: refusing");

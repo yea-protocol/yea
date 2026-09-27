@@ -71,7 +71,7 @@ function rejectMalformedUses(reply: FinalReply): FinalReply {
       : reply.kind === 'RECEIPT'
         ? [reply.receipt]
         : [];
-  const bad = items.find((x) => Object.hasOwn(x, 'uses') && !isUses(x.uses));
+  const bad = items.find((x) => x.uses !== undefined && !isUses(x.uses));
 
   if (!bad) {
     return reply;

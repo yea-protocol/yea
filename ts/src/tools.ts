@@ -309,7 +309,7 @@ async function consentFor(
   }
 
   if (
-    (Object.hasOwn(p, 'uses') && !isUses(p.uses)) ||
+    (p.uses !== undefined && !isUses(p.uses)) ||
     (await proposalHash(p)) !== p.hash
   ) {
     return null;
