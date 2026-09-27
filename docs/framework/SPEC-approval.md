@@ -120,7 +120,7 @@ files (Claude Code can) must not be able to raise its own limits. So:
   server's own key**, which the plugin generates on first run. The existing holder and proof
   checks then run unchanged, and a grant copied from another server doesn't work here.
 - An unsigned policy, from server options or `~/.yea/policy.json`, **may only tighten** the
-  defaults: add to `deny`, or lower `outOfBand` to `medium`. It can never auto-run anything.
+  defaults: add to `deny`, or lower `outOfBand` to `medium` or `low`. It can never auto-run anything.
 - **Unsigned rules are best effort.** An agent that can write `~/.yea` can also delete a `deny`
   entry it doesn't like. Deleting the file only returns the server to its defaults, so the
   guaranteed floor is: nothing auto-runs without a signed grant, irreversible plans never
