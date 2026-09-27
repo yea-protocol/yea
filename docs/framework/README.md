@@ -1,8 +1,8 @@
 # YEA framework v0
 
 YEA is the protocol. The product people adopt is a set of plugins for the **official MCP
-SDKs**. With them, an MCP server's risky tools return a previewed plan: its effects, cost, risk
-and undo window. A plan runs only with a person's explicit approval, or within that person's
+SDKs**. With them, an MCP server's risky tools return a previewed plan: its effects, what it uses,
+risk and undo window. A plan runs only with a person's explicit approval, or within that person's
 policy, and it can be undone afterwards. Adoption is incremental, one tool at a time.
 
 This page is the capability map for Framework v0 ([#35](https://github.com/yea-protocol/yea/issues/35)).
@@ -13,7 +13,7 @@ the index of what exists.
 
 | Module id | Responsibility | Depends on | Owner |
 |---|---|---|---|
-| `approval` | The approval contract, independent of language. It covers how a plan is shown and how approval is asked for (an MRTR elicitation with a typed confirmation). It also covers how an approval binds to a plan's hash, re-checked on commit, and that approvals are consumed once. It covers policy auto-approve, failing closed when the client can't elicit, undo, and a pluggable store for consumed approvals, receipts and the spend ledger. It's implemented in the SDK core in TypeScript and Python, with conformance vectors. | existing SDK core | parley-80 (TS), parley-05 (Python) |
+| `approval` | The approval contract, independent of language. It covers how a plan is shown and how approval is asked for (an MRTR elicitation with a typed confirmation). It also covers how an approval binds to a plan's hash, re-checked on commit, and that approvals are consumed once. It covers policy auto-approve, failing closed when the client can't elicit, undo, and a pluggable store for consumed approvals, receipts and the usage ledger. It's implemented in the SDK core in TypeScript and Python, with conformance vectors. | existing SDK core | parley-80 (TS), parley-05 (Python) |
 | `mcp-ts` | `@yea-protocol/mcp`, a plugin for the TypeScript SDK v2 (`@modelcontextprotocol/server`). It registers job tools, or wraps an existing tool. | `approval` | parley-80 |
 | `mcp-py` | `yea-mcp`, a plugin for the official `mcp` 2.x (`MCPServer`, `Extension.intercept_tool_call`), with a FastMCP 4 middleware adapter. | `approval` | parley-05 |
 | `bridge` | Moves `yea mcp`, which was written against the 2025 protocol, onto `mcp-ts`, so there is one MCP implementation that speaks 2026-07-28. | `mcp-ts` | parley-80 |
@@ -43,9 +43,10 @@ proposal to the MCP spec. Align with SEP-2793 first.
   approval (`yea approve <code>`). The model can never approve on a person's behalf.
 - **An accept alone isn't trusted.** Approval forms require a typed confirmation, because some
   clients auto-accept empty forms.
-- **Policy in framework mode is local config** owned by the person running the server: a risk
-  ceiling, per-action and total spend, and an expiry. Signed grants remain for multi-party
-  setups.
+- **Policy is signed by the person.** It decides what runs without asking: which tools, up to
+  what risk (only undoable plans ever run without asking), and `each`/`total` limits on
+  anything a plan uses (money, emails, deletions). Anything that loosens it is a grant signed
+  with the principal key; unsigned local config can only tighten it.
 - **The protocol stays.** SPEC.md and the wire format don't change. The framework maps YEA's
   verbs onto MCP.
 
@@ -69,6 +70,6 @@ proposal to the MCP spec. Align with SEP-2793 first.
 - **Nothing accepted in MCP covers preview, dry-run or undo.** The closest open proposal is
   SEP-2793 (Tool Risk Metadata). The nearest library is
   [mcp-approval](https://github.com/ni-c/mcp-approval), which adds approval prompts only: no
-  plans, costs, undo or Python.
+  plans, limits, undo or Python.
 
 Full notes and sources: [#35](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093).
