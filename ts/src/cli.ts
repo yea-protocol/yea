@@ -26,7 +26,7 @@ import {
   removeService,
 } from './setup.js';
 import type { ConsentRequest, Proposal, Risk, Verb } from './types.js';
-import { isLimit, type Limit } from './uses.js';
+import { isLimit, isUses, type Limit } from './uses.js';
 
 const HELP = `yea — the protocol agents speak
 
@@ -118,8 +118,9 @@ function duration(s: string): number {
 /** `spend=25.00USD` or `emails=20` → a limit on that measure (SPEC §6.3). */
 function limit(s: string): Limit {
   const m =
-    /^([a-z][a-z0-9_.-]*)=(\d+)(?:\.(\d+))?\s*([A-Za-z0-9_./%-]*)$/.exec(s) ??
-    die(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
+    /^([a-z][a-z0-9_.-]*)=(\d+)(?:\.(\d+))?\s*([A-Za-z%][A-Za-z0-9_./%-]*)?$/.exec(
+      s,
+    ) ?? die(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
   const decimals = m[3] ?? '';
   const l = {
     of: m[1],
@@ -444,6 +445,7 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
     d.id !== consent.proposal ||
     d.hash !== consent.hash ||
     d.capability !== consent.capability ||
+    (Object.hasOwn(d, 'uses') && !isUses(d.uses)) ||
     (await proposalHash(d)) !== consent.hash
   ) {
     die("✗ this consent code's proposal doesn't match its hash: refusing");

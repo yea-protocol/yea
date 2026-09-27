@@ -9,6 +9,7 @@ import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
 import { lens } from './lens.js';
 import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
+import { isUses } from './uses.js';
 
 const str = { type: 'string' };
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -307,7 +308,10 @@ async function consentFor(
     return null;
   }
 
-  if ((await proposalHash(p)) !== p.hash) {
+  if (
+    (Object.hasOwn(p, 'uses') && !isUses(p.uses)) ||
+    (await proposalHash(p)) !== p.hash
+  ) {
     return null;
   }
 

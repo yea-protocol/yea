@@ -214,6 +214,9 @@ const oldShape = await badLimit('n13', {
 });
 const oldCaveat = await badLimit('n14', { per: { max: 1, currency: 'USD' } });
 const badName = await badLimit('n15', { each: { of: 'Spend', max: 1 } });
+const extraAmount = await badLimit('n16', {
+  each: { of: 'spend', max: 100, amount: 7 },
+});
 const rootBlocks = P.decodeGrant(root);
 const tampered = P.encodeGrant([
   { ...rootBlocks[0], p: { ...rootBlocks[0].p, caveats: [] } },
@@ -462,6 +465,27 @@ const cases = [
     root,
     agent.public,
     c(using({ spend: { amount: 1, scale: 2, unit: 'USD', currency: 'USD' } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses: null fails closed',
+    root,
+    agent.public,
+    c(using(null)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses fails closed even when the limit is on another measure',
+    root,
+    agent.public,
+    c(using({ emails: { amount: -1 } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed limit: an extra amount key',
+    extraAmount,
+    agent.public,
+    c(commit(1)),
     { ok: false, code: 'forbidden' },
   ],
   [
@@ -1130,6 +1154,8 @@ const wellFormed = [
   ['name starting with a digit', { '1st': { amount: 1 } }],
   ['name of 65 characters', { ['a'.repeat(65)]: { amount: 1 } }],
   ['not an object', [{ amount: 1 }]],
+  ['null', null],
+  ['null quantity', { spend: null }],
 ].map(([name, uses]) => ({ name, uses, valid: P.isUses(uses) }));
 
 out('uses', { quantities, wellFormed });

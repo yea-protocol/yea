@@ -768,6 +768,85 @@
       }
     },
     {
+      "name": "malformed uses: null fails closed",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNBIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_U",
+          "uses": null,
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "forbidden"
+      }
+    },
+    {
+      "name": "malformed uses fails closed even when the limit is on another measure",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNBIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_U",
+          "uses": {
+            "emails": {
+              "amount": -1
+            }
+          },
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "forbidden"
+      }
+    },
+    {
+      "name": "malformed limit: an extra amount key",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJlYWNoIjp7ImFtb3VudCI6NywibWF4IjoxMDAsIm9mIjoic3BlbmQifX1dLCJpYXQiOjE3OTAwMDAwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjE2Iiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiIwVEZZSUZTR01FLVptbGhPQ0dHeEdncmxJSVZjUUctbFhlaWx4dWFFSVJtY05DWmhfdVFjdDZkQ0xzS3dUMTQzaGRndFhfY0sxUFNFQ2I0b1NLd2FBZyJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 1,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "forbidden"
+      }
+    },
+    {
       "name": "malformed limit: scale over 18",
       "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJlYWNoIjp7Im1heCI6MSwib2YiOiJzcGVuZCIsInNjYWxlIjoxOSwidW5pdCI6IlVTRCJ9fV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJuMTEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InFZeklRRmZNRmxBb1Q1RFV4eEJSdjBNQVEzYzloNnlaN0w2MXNOSUU3UmNYTkY5SElnYWs0WlhhNGpTSkY1dFhyTHYxVUNHeC1ocjZHN3pwd2hrVUFnIn1d",
       "trusted": [

@@ -229,7 +229,7 @@ sequenceDiagram
     alt within policy and undoable
         S-->>A: RECEIPT (auto) + undo window
     else needs review
-        S-->>A: PROPOSALS (effects · cost · risk · undo · hash)
+        S-->>A: PROPOSALS (effects · uses · risk · undo · hash)
         A->>S: COMMIT id + hash + grant + proof
         opt beyond policy
             S-->>A: ERROR consent_required (hash)
@@ -495,7 +495,7 @@ They connect agents to agents (A2A) or agents to editors (ACP). YEA connects an 
 <details>
 <summary><b>Does the model need to learn a new format?</b></summary>
 
-No. Lens is designed to be read cold: tables for uniform lists, `~ update`/`+ create`/`$ charge` effect lines, explicit costs and undo windows. In our [real session](docs/claude-code-session.md) Claude used it correctly with no documentation.
+No. Lens is designed to be read cold: tables for uniform lists, `~ update`/`+ create`/`> send` effect lines, explicit uses and undo windows. In our [real session](docs/claude-code-session.md) Claude used it correctly with no documentation.
 </details>
 
 <details>

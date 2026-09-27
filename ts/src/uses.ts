@@ -88,8 +88,12 @@ export const limitQuantity = (l: Limit): Quantity => ({
   ...(l.unit === undefined ? {} : { unit: l.unit }),
 });
 
-/** Lens rendering (SPEC §9.2): exactly `scale` decimals, then the unit. */
+/** Lens rendering (SPEC §9.2): exactly `scale` decimals, then the unit; `?` if malformed. */
 export function fmtQuantity(q: Quantity): string {
+  if (!isQuantity(q)) {
+    return '?';
+  }
+
   const scale = q.scale ?? 0;
   const digits = String(q.amount).padStart(scale + 1, '0');
   const whole = digits.slice(0, digits.length - scale);
@@ -98,8 +102,12 @@ export function fmtQuantity(q: Quantity): string {
   return q.unit ? `${value} ${q.unit}` : value;
 }
 
-/** `emails 1, spend 22.90 USD`: names in canonical (code point) order. */
+/** `emails 1, spend 22.90 USD`: names in canonical (code point) order; `?` if malformed. */
 export function fmtUses(uses: Uses): string {
+  if (!isUses(uses)) {
+    return '?';
+  }
+
   return Object.keys(uses)
     .sort(byCodePoint)
     .map((k) => `${k} ${fmtQuantity(uses[k])}`)

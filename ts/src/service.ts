@@ -810,7 +810,18 @@ export class Service {
       return replayOf(prior, req.id);
     }
 
-    const auth = await this.authorizeRequired(req, scope);
+    const auth = await this.authorizeRequired(req, scope).catch((e) => {
+      if (this.commits.has(proposal.id)) {
+        return null; // it was committed while we waited; answer as a replay below
+      }
+
+      throw e;
+    });
+
+    // Another COMMIT of this proposal may have started while this one was being authorized.
+    if (!auth || this.commits.has(proposal.id)) {
+      return this.onCommit(req, budget, emit);
+    }
 
     this.checkRequester(stored, auth);
 
@@ -1217,7 +1228,10 @@ function usesOf(plan: Plan): { uses?: Uses } {
     throw new Error(`plan has a malformed uses: ${JSON.stringify(plan.uses)}`);
   }
 
-  return Object.keys(plan.uses).length ? { uses: plan.uses } : {};
+  // A copy, so a plan that changes its object after hashing can't change what is reserved.
+  return Object.keys(plan.uses).length
+    ? { uses: structuredClone(plan.uses) }
+    : {};
 }
 
 function receiptFor(proposal: Proposal, result: unknown, at: number): Receipt {

@@ -272,11 +272,21 @@ const VALID_CAVEAT: Record<string, (v: unknown) => boolean> = {
 };
 
 /** Caveats with malformed values fail closed (as a hard failure). */
-function malformed(k: string, v: unknown): string | null {
+function malformed(k: string, v: unknown, env: CaveatEnv): string | null {
   // unknown keys are handled by caveatDenial
   const ok = Object.hasOwn(VALID_CAVEAT, k) ? VALID_CAVEAT[k](v) : true;
 
-  return ok ? null : `malformed caveat ${JSON.stringify({ [k]: v })}`;
+  if (!ok) {
+    return `malformed caveat ${JSON.stringify({ [k]: v })}`;
+  }
+
+  // A limit can't be judged against a malformed `uses` (SPEC §6.3), so that fails closed too.
+  const p = env.p;
+  const isLimitCaveat = k === 'each' || k === 'total';
+
+  return isLimitCaveat && p && Object.hasOwn(p, 'uses') && !isUses(p.uses)
+    ? 'malformed uses on the proposal'
+    : null;
 }
 
 export function matchCapability(pattern: string, cap: string): boolean {
@@ -406,10 +416,7 @@ function overLimit(
     return null;
   }
 
-  if (p.uses !== undefined && !isUses(p.uses)) {
-    return 'malformed uses on the proposal';
-  }
-
+  // `malformed` has already rejected a malformed `uses`.
   const q = usedOf(p.uses, l.of);
 
   if (!q) {
@@ -467,13 +474,18 @@ function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
   const keys = Object.keys(c);
   const k = keys.length === 1 ? keys[0] : '';
   const v = (c as Record<string, unknown>)[k];
-  const why = malformed(k, v) ?? caveatDenial(c, k, v, env);
+  const bad = malformed(k, v, env);
+
+  if (bad) {
+    out.hard.push({ c: c as Caveat, why: bad });
+
+    return;
+  }
+
+  const why = caveatDenial(c, k, v, env);
 
   if (why) {
-    (CONSENTABLE.has(k) && !why.startsWith('malformed')
-      ? out.soft
-      : out.hard
-    ).push({ c: c as Caveat, why });
+    (CONSENTABLE.has(k) ? out.soft : out.hard).push({ c: c as Caveat, why });
   } else if (k === 'total' && env.ctx.verb === 'COMMIT') {
     const l = v as Limit;
 

@@ -158,7 +158,12 @@ async function call(name: string, a: Args): Promise<unknown> {
         deliver: a.deliver,
       });
 
-      return { ...(result as object), total_usd: proposal.cost!.amount / 100 };
+      const spend = proposal.uses?.spend;
+
+      return {
+        ...(result as object),
+        total_usd: spend ? spend.amount / 10 ** (spend.scale ?? 0) : 0,
+      };
     }
     case 'list_orders':
       return data(shop, 'shop.orders', {});

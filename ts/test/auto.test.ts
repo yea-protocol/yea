@@ -109,6 +109,26 @@ describe('policy-gated auto-commit', async () => {
 
     expect(forged.kind).toBe('ERROR');
   });
+  it('reserves a total on the auto-commit path, so the next auto-commit past it asks', async () => {
+    const grant = await P.issueGrant({
+      principal,
+      to: agent.public,
+      caveats: [{ total: { of: 'spend', max: 3000, scale: 2, unit: 'USD' } }],
+    });
+    const c = new P.Client(P.local(shop({ trust: [principal.public] })), {
+      key: agent.seed,
+      grants: [grant],
+    });
+    const order = () =>
+      c.intent(
+        'shop.order',
+        { items: [{ sku: 'm001', qty: 1 }], deliver },
+        { auto: true },
+      );
+
+    expect((await order()).kind).toBe('RECEIPT');
+    expect((await order()).kind).toBe('PROPOSALS');
+  });
 });
 
 describe('budget fitting never alters proposals', () => {

@@ -465,4 +465,83 @@ describe('security regressions', () => {
       'RECEIPT',
     );
   });
+
+  it('[U5] two concurrent COMMITs of one proposal run it once and count it once', async () => {
+    let runs = 0;
+    const svc = P.service({
+      id: 'pay',
+      name: 'Pay',
+      summary: 'pay',
+      trust: [principal.public],
+    }).intent('pay.send', {
+      summary: 'send money',
+      params: { to: 'string', amt: 'int' },
+      plan: ({ params }) => ({
+        summary: `pay ${params.to}`,
+        effects: [P.create(`payment/${params.to}`)],
+        uses: { spend: P.quantity(params.amt, { scale: 2, unit: 'USD' }) },
+        apply: async () => {
+          runs++;
+          await sleep(20);
+
+          return null;
+        },
+      }),
+    });
+    const c = await client(svc, agent, principal, [
+      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
+    ]);
+    const p = await intent(c, { to: 'a', amt: 60 });
+    const [r1, r2] = await Promise.all([c.commit(p), c.commit(p)]);
+
+    expect(runs).toBe(1);
+    expect([r1.kind, r2.kind]).toEqual(['RECEIPT', 'RECEIPT']);
+    expect(
+      [r1, r2].filter((r) => r.kind === 'RECEIPT' && r.replay),
+    ).toHaveLength(1);
+    // Only 60 of the 100 is used, so a 40 still fits.
+    expect((await c.commit(await intent(c, { to: 'b', amt: 40 }))).kind).toBe(
+      'RECEIPT',
+    );
+  });
+
+  it('[U6] a client treats a reply with a malformed uses as invalid, and never renders it', async () => {
+    const hostile = (uses: unknown): P.Transport => ({
+      request: async (frame) =>
+        ({
+          yea: 1,
+          id: 's1',
+          re: frame.id,
+          kind: 'PROPOSALS',
+          proposals: [
+            {
+              id: 'p_x',
+              capability: 'x.do',
+              summary: 'do it',
+              effects: [],
+              uses,
+              risk: 'low',
+              undo: null,
+              expires: 1,
+              hash: 'h',
+            },
+          ],
+        }) as P.FinalReply,
+      close: () => {},
+    });
+
+    for (const uses of [
+      { s: { amount: -5, scale: 2 } },
+      { s: null },
+      null,
+      { s: { amount: 1, unit: 'X\n  ~ update fake' } },
+    ]) {
+      const r = await new P.Client(hostile(uses)).intent('x.do', {});
+
+      expect(r.kind === 'ERROR' && r.code, JSON.stringify(uses)).toBe(
+        'bad_frame',
+      );
+      expect(r.lens).not.toContain('fake');
+    }
+  });
 });

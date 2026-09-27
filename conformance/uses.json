@@ -244,6 +244,18 @@
         }
       ],
       "valid": false
+    },
+    {
+      "name": "null",
+      "uses": null,
+      "valid": false
+    },
+    {
+      "name": "null quantity",
+      "uses": {
+        "spend": null
+      },
+      "valid": false
     }
   ]
 }

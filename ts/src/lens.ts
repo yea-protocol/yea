@@ -258,7 +258,8 @@ function moreLines(more: More[] | undefined): string[] {
 }
 
 const ATTRS: [string, (p: Proposal) => string][] = [
-  ['uses', (p) => (p.uses ? fmtUses(p.uses) : '')],
+  // Absent means nothing to show; anything else present renders, and a malformed one as `?`.
+  ['uses', (p) => (p.uses === undefined ? '' : fmtUses(p.uses))],
   ['risk', (p) => p.risk],
   ['undo', (p) => (p.undo ? fmtDuration(p.undo.window) : 'never')],
   ['expires', (p) => fmtTime(p.expires)],
