@@ -246,3 +246,19 @@ def test_client_passes_well_formed_uses():
         assert (await Client(_Canned(frame)).send({"verb": "INTENT"})).kind == "PROPOSALS"
 
     asyncio.run(go())
+
+
+def test_a_proposal_without_uses_passes_limits_on_commit_and_auto():
+    """Regression guard (TS [U7]): no uses must mean absent, never a present-but-malformed null."""
+
+    async def go():
+        svc = Service("s", "S", trust=[ALICE.public])
+        svc.intent("x.note", "n")(lambda ctx: Plan("note", [create("note/1")], lambda c: "ok", revert=lambda c: None))
+        c = _client(svc, {"each": {"of": "spend", "max": 0, "unit": "USD"}}, {"total": {"of": "emails", "max": 0}})
+        p = (await c.intent("x.note")).proposals[0]
+        assert "uses" not in p and "uses" not in svc._proposals[p["id"]].proposal
+        assert (await c.commit(p)).kind == "RECEIPT"
+        auto = await c.intent("x.note", auto=True)
+        assert auto.kind == "RECEIPT" and auto.auto is True
+
+    asyncio.run(go())
