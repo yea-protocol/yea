@@ -9,6 +9,7 @@ import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
 import { lens } from './lens.js';
 import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
+import { isUses } from './uses.js';
 
 const str = { type: 'string' };
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -40,7 +41,7 @@ export const TOOLS = [
   {
     name: 'yea_intent',
     description:
-      "Do something: the user's goal as params (names, days are fine). auto:true finishes now if their policy allows; else returns proposals (effects, cost, risk, undo) or a question.",
+      "Do something: the user's goal as params (names, days are fine). auto:true finishes now if their policy allows; else returns proposals (effects, uses, risk, undo) or a question.",
     inputSchema: obj(
       {
         service: str,
@@ -307,7 +308,10 @@ async function consentFor(
     return null;
   }
 
-  if ((await proposalHash(p)) !== p.hash) {
+  if (
+    (p.uses !== undefined && !isUses(p.uses)) ||
+    (await proposalHash(p)) !== p.hash
+  ) {
     return null;
   }
 

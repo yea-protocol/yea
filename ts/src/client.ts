@@ -12,11 +12,13 @@ import type {
   FinalReply,
   Proposal,
   Proposals,
+  Receipt,
   ReceiptReply,
   Reply,
   Request,
   Verb,
 } from './types.js';
+import { isUses } from './uses.js';
 
 const MAX_REPLY = 16 << 20;
 
@@ -58,6 +60,33 @@ function grantCovers(token: string, aud: string): boolean {
   }
 }
 
+/**
+ * SPEC §5.1: a proposal or receipt with a malformed `uses` is invalid, so the reply becomes a
+ * local `bad_frame` error instead of something a model or a person might act on.
+ */
+function rejectMalformedUses(reply: FinalReply): FinalReply {
+  const items: (Proposal | Receipt)[] =
+    reply.kind === 'PROPOSALS'
+      ? reply.proposals
+      : reply.kind === 'RECEIPT'
+        ? [reply.receipt]
+        : [];
+  const bad = items.find((x) => x.uses !== undefined && !isUses(x.uses));
+
+  if (!bad) {
+    return reply;
+  }
+
+  return {
+    yea: 1,
+    id: reply.id,
+    re: reply.re,
+    kind: 'ERROR',
+    code: 'bad_frame',
+    message: `${reply.kind === 'PROPOSALS' ? 'proposal' : 'receipt'} ${bad.id} from the service has a malformed uses, so it was ignored`,
+  };
+}
+
 export class Client {
   private serviceId?: string;
   private grants: string[];
@@ -82,10 +111,11 @@ export class Client {
     onEvent?: (e: WithLens<Event>) => void,
   ): Promise<WithLens<T>> {
     const frame = { yea: 1, id: randomId('c', 6), ...body } as Request;
-    const reply = await this.transport.request(
+    const received = await this.transport.request(
       frame,
       onEvent && ((e) => onEvent({ ...e, lens: e.lens ?? lens(e) })),
     );
+    const reply = rejectMalformedUses(received);
 
     return { ...reply, lens: reply.lens ?? lens(reply) } as WithLens<T>;
   }

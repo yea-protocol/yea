@@ -1,15 +1,19 @@
 // A meal-delivery shop that speaks YEA. Shows budgets (a big catalog, fitted to the
-// agent's token budget with EXPAND handles), money (cost on every proposal, spend caps
-// in grants) and human consent for anything over the agent's limits.
+// agent's token budget with EXPAND handles), money (what each order spends, and spend
+// limits in grants) and human consent for anything over the agent's limits.
 import {
-  charge,
   create,
   fix,
-  money,
   type Plan,
+  quantity,
   service,
   YeaError,
 } from '../index.js';
+
+/** Cents charged, reported under the `spend` convention (docs/conventions.md). */
+const spent = (cents: number) => ({
+  spend: quantity(cents, { scale: 2, unit: 'USD' }),
+});
 
 const MENU: [string, string[]][] = [
   ['Miso Glazed Salmon', ['high-protein']],
@@ -121,8 +125,8 @@ export function shop(opts: {
       risk: 'medium',
       plan: ({ params }) => ({
         summary: `Tip ${params.usd} USD on ${params.order}`,
-        effects: [charge('card ••4242', `tip ${params.usd} USD`)],
-        cost: money(Math.round(params.usd * 100)),
+        effects: [create('tip', `${params.usd} USD to card ••4242`)],
+        uses: spent(Math.round(params.usd * 100)),
         apply: () => ({ tipped: params.usd }),
       }),
     });
@@ -190,9 +194,9 @@ function orderPlan(
     summary: `${meals} meals for ${deliver}${express ? ' (express, by noon)' : ''} — ${(total / 100).toFixed(2)} USD`,
     effects: [
       create(`order/${id}`, lines.map((l) => `${l.qty}× ${l.name}`).join(', ')),
-      charge('card ••4242', `${(total / 100).toFixed(2)} USD`),
+      create('charge', `${(total / 100).toFixed(2)} USD to card ••4242`),
     ],
-    cost: money(total),
+    uses: spent(total),
     risk: riskFor(total),
     undoWindow: 7200,
     data: {

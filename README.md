@@ -63,19 +63,19 @@ agent ──UNDO r1 (the human changed their mind)──────────
 | The agent-era problem | What YEA does |
 |---|---|
 | Agents want **outcomes**, but APIs expose **CRUD** | `INTENT` carries the goal, and the service answers with concrete **proposals** |
-| Agents make mistakes | Nothing happens until `COMMIT`. Every proposal lists its **effects, cost, risk and undo window**, and its hash binds the commit to exactly what was shown |
-| "Are you sure?" isn't a protocol primitive | **Policy-gated auto-commit**: the human's grant decides what can skip review. Low-risk, undoable changes take one round trip; costly, risky or irreversible ones stop for review |
+| Agents make mistakes | Nothing happens until `COMMIT`. Every proposal lists its **effects, what it uses, risk and undo window**, and its hash binds the commit to exactly what was shown |
+| "Are you sure?" isn't a protocol primitive | **Policy-gated auto-commit**: the human's grant decides what can skip review. Low-risk, undoable changes within the limits take one round trip; anything over a limit, risky or irreversible stops for review |
 | Undo is an afterthought | Reversible proposals declare an undo window, receipts carry it, and `UNDO` is a verb (effects that can't be reversed, like a sent email, are marked as such) |
 | Context windows are expensive | Every request carries a **token budget**. Replies fit inside it and leave `EXPAND` handles for the rest |
 | Models read text; APIs return JSON for code | **Lens** is a canonical, deterministic, compact text rendering of every message, defined in the spec and byte-identical across implementations |
-| Credentials are scoped to resources, not to money, risk or a specific action | **Grants** are Ed25519 capability chains with spend caps, expiry, service and capability scopes, and risk ceilings. They're verified offline and can be delegated to sub-agents but only narrowed |
+| Credentials are scoped to resources, not to risk, amounts or a specific action | **Grants** are Ed25519 capability chains with limits on anything an action uses (money, emails, deletions), expiry, service and capability scopes, and risk ceilings. They're verified offline and can be delegated to sub-agents but only narrowed |
 | A human approval is a checkbox in someone's UI | **Consent** is a one-shot signed grant for `COMMIT` of one exact proposal hash, and nothing else |
 | Errors say *what* failed | Errors say **how to fix it**, with machine-applicable patches. Ambiguity is a first-class reply (`CLARIFY`), not an error |
 
 **YEA is for you if**
 - ✅ your agent **spends money or changes things** for someone, and "just trust it" isn't a policy
 - ✅ you want agents to **show what they're about to do** before they do it, and undo it after
-- ✅ you want a **spend cap, a risk ceiling and an expiry** on your agent, not an all-powerful API key
+- ✅ you want **limits, a risk ceiling and an expiry** on your agent (at most 100 USD, at most 20 emails), not an all-powerful API key
 - ✅ you're tired of tool results that **blow up the context window**
 - ✅ you run a service and want agents to use it **safely and cheaply**, without writing a bespoke MCP server
 
@@ -85,7 +85,7 @@ agent ──UNDO r1 (the human changed their mind)──────────
 |---|---|
 | **Not an agent framework.** | It doesn't run your agent or pick your model. Any agent that can call tools can speak it. |
 | **Not a replacement for MCP.** | It runs *over* MCP today. MCP is how a model finds tools; YEA is what a trustworthy tool looks like. |
-| **Not a wallet or payments rail.** | Spend caps bound what an agent may *commit* to. Money still moves through the service's own payments. |
+| **Not a wallet or payments rail.** | Limits bound what an agent may *commit* to. Money still moves through the service's own payments. |
 | **Not a sandbox.** | It constrains what an agent may ask services to do, not what code it runs on your machine. |
 
 ## See it
@@ -129,14 +129,14 @@ model reads. The human's taps are simulated in code. Excerpt from
    │ 2 proposals — undo: 2h · expires: 2026-09-24T02:28Z:
    │ [p_GCFpf4dl] 4 meals for 2026-09-26 — 71.36 USD
    │   + create order/o1001 — 2× Falafel Plate, 2× Tofu Pad Thai
-   │   $ charge card ••4242 — 71.36 USD
-   │   cost: 71.36 USD · risk: low
+   │   + create charge — 71.36 USD to card ••4242
+   │   uses: spend 71.36 USD · risk: low
    │   …
    │ [p_A4Dy2FmC] 4 meals for 2026-09-26 (express, by noon) — 80.35 USD
    │   …
 
 8. 🤖 agent commits [p_GCFpf4dl]:
-   │ ✗ consent_required: cost exceeds the per-commit limit of 40.00 USD; your principal must approve this exact proposal
+   │ ✗ consent_required: spend over the per-commit limit of 40.00 USD; your principal must approve this exact proposal
 
 9. 👤 human (simulated) gets a push notification, reads the exact effects and taps Approve, which signs a one-time consent for this proposal only:
    → COMMIT p_GCFpf4dl + consent grant
@@ -181,10 +181,10 @@ The same tasks as a scripted token count (o200k), isolating what each protocol s
 |---|---|---|---|---|---|---|
 | Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 1,548 | **59%** | 61% |
 | Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 1,548 | **4%** | 5% |
-| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 2,708 | **15%** | 26% |
+| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 2,710 | **15%** | 26% |
 | Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 2,495 | **28%** | 45% |
 | Skim the menu (first 30 items: REST limit=30, YEA budget=800) | 1 → 1 | 2,467 | 3,027 | 1,961 | **21%** | 35% |
-| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 8,712 | **32%** | 43% |
+| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 8,714 | **32%** | 43% |
 
 - Minified JSON is the fair baseline. Pretty-printed JSON is shown because many servers return it.
 - Most of the scripted reschedule win is API design (an outcome-level intent). Against a REST server with an equivalent endpoint it's only ~4%.
@@ -224,12 +224,12 @@ sequenceDiagram
     participant H as Human (principal)
     participant A as Agent
     participant S as Service
-    H->>A: grant (signed policy: scopes, spend caps, risk ceiling, expiry)
+    H->>A: grant (signed policy: scopes, limits, risk ceiling, expiry)
     A->>S: INTENT goal + params (+ auto)
     alt within policy and undoable
         S-->>A: RECEIPT (auto) + undo window
     else needs review
-        S-->>A: PROPOSALS (effects · cost · risk · undo · hash)
+        S-->>A: PROPOSALS (effects · uses · risk · undo · hash)
         A->>S: COMMIT id + hash + grant + proof
         opt beyond policy
             S-->>A: ERROR consent_required (hash)
@@ -316,7 +316,7 @@ Python has the same concepts in snake_case (`issue_grant`, `consent_grant`, `len
 ```sh
 yea init                                              # your principal key + an agent key (~/.yea)
 yea grant --svc cal.example.com --svc shop.example \
-             --risk low --per 40USD --spend 100USD --exp 8h   # signed policy for your agent
+             --risk low --each spend=40.00USD --total spend=100.00USD --exp 8h   # signed policy for your agent
 yea inspect <token>                                   # read any grant chain
 yea delegate <token> --to <sub-agent key> --verbs ASK,INTENT   # narrower authority for a sub-agent
 yea approve <pc1.code>                               # review and sign a one-time consent for one proposal
@@ -363,7 +363,7 @@ items[7]:
 1 proposal:
 [p_HGgxOZ4L] POST /api/v3/pet
   + create petstore3.swagger.io/api/v3/pet — body {"name":"Rex","photoUrls":["x"],"status":"available"}
-  cost: free · risk: low · undo: never · expires: 2026-09-24T02:54Z
+  risk: low · undo: never · expires: 2026-09-24T02:54Z
 ```
 
 That endpoint returns **4,019 pets, about 120,000 tokens**. A typical MCP wrapper would put
@@ -416,15 +416,15 @@ device or OS user and send the agent a grant:
 
 ```sh
 # on your phone/laptop/other user (holds the principal key)
-yea init && yea grant --to <agent key> --svc shop.example --risk low --per 25USD --spend 100USD --exp 30d
+yea init && yea grant --to <agent key> --svc shop.example --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d
 # on the agent's machine
 yea grant-import <token>
 ```
 
 To try things quickly on one machine, use `yea install --with-principal`. Be aware that
-an agent with shell access (Claude Code has it) could then read the key. Pair `--per` with
-`--spend`: a per-action cap alone can be dodged by splitting a purchase, and `--spend`
-bounds the total.
+an agent with shell access (Claude Code has it) could then read the key. Pair `--each` with
+`--total`: a per-action limit alone can be dodged by splitting a purchase, and `--total`
+bounds the sum.
 <!-- #endregion claude-code -->
 
 ## How it compares
@@ -432,9 +432,9 @@ bounds the total.
 | | REST / HTTP APIs | MCP | **YEA** |
 |---|---|---|---|
 | Unit of interaction | resource (CRUD) | tool call (usually wraps an endpoint) | **intent → proposal → commit** |
-| Preview before side effects | rare, per-API (dry-run flags) | tool annotations (`destructiveHint` …) as hints only; no effect preview | **✓** effects, cost, risk and undo window on every proposal, bound by hash |
+| Preview before side effects | rare, per-API (dry-run flags) | tool annotations (`destructiveHint` …) as hints only; no effect preview | **✓** effects, what it uses, risk and undo window on every proposal, bound by hash |
 | Undo | per-API, if at all | not in the protocol | **✓** a protocol verb with declared windows |
-| Delegation | API keys, OAuth scopes (resource-scoped) | OAuth at the transport | **✓** attenuable capability chains: spend caps, risk ceilings, sub-agent delegation, offline verification |
+| Delegation | API keys, OAuth scopes (resource-scoped) | OAuth at the transport | **✓** attenuable capability chains: limits on anything an action uses, risk ceilings, sub-agent delegation, offline verification |
 | Human approval | app-specific | elicitation (not bound to an action) | **✓** a consent grant signed over the exact proposal hash |
 | Context budget | pagination / field selection, per-API | list pagination only | **✓** every reply fits the requested budget, with `EXPAND` for the rest |
 | Model-facing format | JSON | text or structured content, per server; no canonical form | **✓** Lens: canonical, compact, byte-identical across implementations |
@@ -495,7 +495,7 @@ They connect agents to agents (A2A) or agents to editors (ACP). YEA connects an 
 <details>
 <summary><b>Does the model need to learn a new format?</b></summary>
 
-No. Lens is designed to be read cold: tables for uniform lists, `~ update`/`+ create`/`$ charge` effect lines, explicit costs and undo windows. In our [real session](docs/claude-code-session.md) Claude used it correctly with no documentation.
+No. Lens is designed to be read cold: tables for uniform lists, `~ update`/`+ create`/`> send` effect lines, explicit uses and undo windows. In our [real session](docs/claude-code-session.md) Claude used it correctly with no documentation.
 </details>
 
 <details>

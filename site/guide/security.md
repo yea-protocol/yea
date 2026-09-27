@@ -24,7 +24,7 @@ The spec requires this of tooling: implementations must not let an agent trigger
 | An agent committing something other than what it (or a human) saw | Proposal hashes: `COMMIT` must carry the exact hash, and consent grants are bound to it |
 | A party preparing a proposal for someone else's agent to commit | Requester binding: only the agent whose verified proof was on the `INTENT` can commit its proposals |
 | A consent approval being reused | Consent grants are scoped to `COMMIT` of one hash, one capability, one service, until expiry |
-| Concurrent commits blowing through a spend cap | Spend is reserved atomically before executing, and released on failure |
+| Concurrent commits blowing through a `total` limit | Usage is reserved atomically before executing, and released on failure |
 | Replayed commits | Commits are idempotent, and replays are authorized like commits |
 | Replayed auto-commit frames | The proof binds the frame id, and services remember `(key, id)` beyond the proof's lifetime |
 | Sub-agents exceeding their authority | Delegation can only add caveats. Unknown or malformed caveats fail closed |
@@ -35,7 +35,7 @@ The spec requires this of tooling: implementations must not let an agent trigger
 
 - **Services are trusted to describe their own effects.** YEA makes the description explicit and binds commits to it, but a malicious service can still lie. Signed receipts are on the roadmap.
 - **No revocation.** Keep grants short-lived with `exp`.
-- **`spend` is counted per service.** Scope money grants with `svc`.
+- **`total` is counted per service.** Scope limits with `svc`.
 - **`auto` proofs bind the frame id, not the params,** because floats have no canonical form. Run YEA over TLS (`yeas://`, `https://`) so frames can't be rewritten in transit.
 - **The reference services keep state in memory.**
 

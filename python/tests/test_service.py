@@ -14,19 +14,21 @@ from yea import (
     YeaError,
     Plan,
     Service,
-    charge,
     clarify,
     connect,
     consent_grant,
+    create,
     est,
     issue_grant,
     key_from_seed,
     local,
-    money,
+    quantity,
     serve_http,
     serve_tcp,
     sign_proof,
+    spend,
 )
+from yea.uses import value
 
 PRINCIPAL = key_from_seed(bytes([1]) * 32)
 AGENT = key_from_seed(bytes([2]) * 32)
@@ -56,8 +58,8 @@ def shop():
             orders.append(qty)
             return {"order": len(orders)}
 
-        return Plan(f"Order {qty}× {ctx.params['sku']}", [charge("card/default", f"{qty} items")], apply,
-                    cost=money(1500 * qty), revert=lambda c: orders.pop(), undo_window=600)
+        return Plan(f"Order {qty}× {ctx.params['sku']}", [create("card/default", f"{qty} items")], apply,
+                    uses={"spend": quantity(1500 * qty, scale=2, unit="USD")}, revert=lambda c: orders.pop(), undo_window=600)
 
     @svc.intent("shop.pick", "Ambiguous", {})
     def pick(ctx):
@@ -103,7 +105,7 @@ def test_commit_flow_replay_undo_and_events():
         props = await c.intent("shop.order", {"sku": "m002", "qty": 2})
         assert props.kind == "PROPOSALS"
         p = props.proposals[0]
-        assert p["undo"] == {"window": 600} and p["cost"] == {"amount": 3000, "currency": "USD"}
+        assert p["undo"] == {"window": 600} and p["uses"] == {"spend": {"amount": 3000, "scale": 2, "unit": "USD"}}
         events = []
         rc = await c.commit(p, on_event=events.append)
         assert rc.kind == "RECEIPT" and svc.orders == [2]
@@ -113,7 +115,8 @@ def test_commit_flow_replay_undo_and_events():
         assert "(replay)" in again.lens.splitlines()[0]
         un = await c.undo(rc.receipt["id"])
         assert un.receipt["undoes"] == rc.receipt["id"] and svc.orders == []
-        assert un.receipt["effects"] == [{"op": "other", "target": "card/default", "detail": "refund"}]
+        assert un.receipt["effects"] == [{"op": "delete", "target": "card/default", "detail": "2 items"}]
+        assert "uses" in rc.receipt and "uses" not in un.receipt
         assert (await c.undo(rc.receipt["id"])).replay is True and svc.orders == []
         assert (await c.undo(un.receipt["id"])).code == "not_found"
 
@@ -175,7 +178,7 @@ def test_forbidden_carries_need():
 def test_consent_flow_and_spend_accounting():
     async def go():
         svc = shop()
-        g = grant({"per": {"max": 5000, "currency": "USD"}}, {"spend": {"max": 6000, "currency": "USD"}})
+        g = grant({"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "USD"}}, {"total": {"of": "spend", "max": 6000, "scale": 2, "unit": "USD"}})
         c = Client(local(svc), key=AGENT, grants=[g])
         big = (await c.intent("shop.order", {"sku": "m002", "qty": 4})).proposals[0]  # 6000 > per 5000
         r = await c.commit(big)
@@ -202,7 +205,7 @@ def test_consent_grant_cannot_undo_or_reach_other_proposals():
 
     async def go():
         svc = shop()
-        normal = Client(local(svc), key=AGENT, grants=[grant({"per": {"max": 5000, "currency": "USD"}})])
+        normal = Client(local(svc), key=AGENT, grants=[grant({"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "USD"}})])
         a = await normal.commit((await normal.intent("shop.order", {"sku": "a", "qty": 1})).proposals[0])
         b = (await normal.intent("shop.order", {"sku": "b", "qty": 4})).proposals[0]
         need = await normal.commit(b)
@@ -305,7 +308,7 @@ def test_proposals_are_never_altered_by_budget():
 
     async def go():
         svc = Service("s", "S", trust=[PRINCIPAL.public])
-        svc.intent("x.many", "m")(lambda ctx: [Plan(summary, [charge("card", detail)], lambda c: None, data={"k": 1}) for _ in range(6)])
+        svc.intent("x.many", "m")(lambda ctx: [Plan(summary, [create("card", detail)], lambda c: None, data={"k": 1}) for _ in range(6)])
         r = await Client(local(svc)).intent("x.many", budget=500)
         assert est(r.lens) <= 500 and r.more[0]["path"] == "proposals"
         assert 0 < len(r.proposals) < 6
@@ -420,11 +423,11 @@ def _auto_shop():
 def test_auto_commits_when_policy_allows():
     async def go():
         svc = _auto_shop()
-        c = Client(local(svc), key=AGENT, grants=[grant({"per": {"max": 5000, "currency": "USD"}})])
+        c = Client(local(svc), key=AGENT, grants=[grant({"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "USD"}})])
         events = []
         r = await c.intent("shop.order", {"sku": "a", "qty": 1}, auto=True, on_event=events.append)
         assert r.kind == "RECEIPT" and r.auto is True and svc.orders == [1]
-        assert r.lens.splitlines()[1] == "  $ charge card/default — 1 items"  # auto receipts show effects
+        assert r.lens.splitlines()[1] == "  + create card/default — 1 items"  # auto receipts show effects
         assert [e.kind for e in events] == ["EVENT"]
         # Over the per-commit cap: needs consent, so no auto; plain proposals come back.
         big = await c.intent("shop.order", {"sku": "a", "qty": 4}, auto=True)
@@ -506,7 +509,7 @@ def test_replay_ignores_spent_limits_but_not_principal():
         svc = shop()
         other_principal = key_from_seed(bytes([9]) * 32)
         svc.trust.append(other_principal.public)
-        c = Client(local(svc), key=AGENT, grants=[grant({"per": {"max": 5000, "currency": "USD"}})])
+        c = Client(local(svc), key=AGENT, grants=[grant({"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "USD"}})])
         p = (await c.intent("shop.order", {"sku": "a", "qty": 4})).proposals[0]  # 6000: needs consent
         need = await c.commit(p)
         first = await c.commit(p, grants=[consent_grant(PRINCIPAL, AGENT.public, need.consent)])
@@ -532,8 +535,8 @@ def test_spend_is_reserved_before_apply_and_released_on_failure():
                 raise RuntimeError("card declined")
             return "ok"
 
-        svc.intent("x.buy", "b")(lambda ctx: Plan("buy", [charge("card")], apply, cost=money(600)))
-        g = grant({"spend": {"max": 1000, "currency": "USD"}})
+        svc.intent("x.buy", "b")(lambda ctx: Plan("buy", [create("charge/card")], apply, uses={"spend": spend("6.00", "USD")}))
+        g = grant({"total": {"of": "spend", "max": 1000, "scale": 2, "unit": "USD"}})
         c = Client(local(svc), key=AGENT, grants=[g])
         p1, p2 = [(await c.intent("x.buy")).proposals[0] for _ in range(2)]
         # Both pass the check alone (600 <= 1000) but not together; the second must not start.
@@ -543,14 +546,14 @@ def test_spend_is_reserved_before_apply_and_released_on_failure():
         assert r2.code == "consent_required"  # t1's reservation is already counted
         gate.set()
         assert (await t1).kind == "RECEIPT"
-        assert svc._spent[g.block_ids[0]] == 600
+        key = (g.block_ids[0], "spend")
+        assert svc._spent[key] == value(spend("6.00", "USD"))
         # A failed apply releases its reservation.
         fail["on"] = True
-        svc2_bid = g.block_ids[0]
         p3 = (await c.intent("x.buy")).proposals[0]
         assert (await c.commit(p3)).code == "consent_required"  # 600 + 600 > 1000, regardless
-        svc._spent[svc2_bid] = 0
-        assert (await c.commit(p3)).code == "internal" and svc._spent[svc2_bid] == 0
+        svc._spent[key] = 0
+        assert (await c.commit(p3)).code == "internal" and svc._spent[key] == 0
 
     run(go())
 

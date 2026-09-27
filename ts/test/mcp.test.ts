@@ -29,7 +29,7 @@ async function bridge(elicit: boolean) {
   const grant = await P.issueGrant({
     principal,
     to: agent.public,
-    caveats: [{ per: { max: 1000, currency: 'USD' } }],
+    caveats: [{ each: { of: 'spend', max: 1000, scale: 2, unit: 'USD' } }],
   });
   const client = new P.Client(P.local(shop({ trust: [principal.public] })), {
     key: agent.seed,

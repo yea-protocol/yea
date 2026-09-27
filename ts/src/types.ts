@@ -1,4 +1,5 @@
 /** Wire types for YEA v1. See SPEC.md. */
+import type { Uses } from './uses.js';
 
 export type Verb = 'HELLO' | 'ASK' | 'INTENT' | 'COMMIT' | 'UNDO' | 'EXPAND';
 
@@ -13,13 +14,7 @@ export type Kind =
 
 export type Risk = 'low' | 'medium' | 'high';
 
-export type EffectOp =
-  | 'create'
-  | 'update'
-  | 'delete'
-  | 'send'
-  | 'charge'
-  | 'other';
+export type EffectOp = 'create' | 'update' | 'delete' | 'send' | 'other';
 
 export type Scalar = string | number | boolean | null;
 
@@ -37,11 +32,6 @@ export type ErrorCode =
   | 'unavailable'
   | 'internal';
 
-export interface Money {
-  amount: number;
-  currency: string;
-}
-
 export interface Effect {
   op: EffectOp;
   target: string;
@@ -56,7 +46,7 @@ export interface Proposal {
   capability: string;
   summary: string;
   effects: Effect[];
-  cost: Money | null;
+  uses?: Uses;
   risk: Risk;
   undo: { window: number } | null;
   expires: number;
@@ -71,7 +61,7 @@ export interface Receipt {
   summary: string;
   at: number;
   effects: Effect[];
-  cost: Money | null;
+  uses?: Uses;
   undo: { until: number } | null;
   undoes?: string;
   result?: unknown;

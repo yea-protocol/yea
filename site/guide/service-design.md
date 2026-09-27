@@ -33,10 +33,10 @@ INTENT billing.refund {who: "Chen"}
 [p_tJnW1A-y] Refund 49.00 USD of ch_2 to Chen Wei (full)
   ~ update charge/ch_2.amount_refunded: 0.00 USD → 49.00 USD
   > send chen@wei.studio — refund receipt; back on the card in 5–10 days
-  cost: 49.00 USD
+  uses: spend 49.00 USD
 [p_VPlXarXR] Refund 22.87 USD of ch_2 to Chen Wei (unused 14 days)
   …
-  cost: 22.87 USD
+  uses: spend 22.87 USD
 ```
 
 The agent commits the second plan. Because it can't be undone, the human's policy decides whether the agent may do that alone.
@@ -139,7 +139,7 @@ An intent returns one or more **plans**. You fill in a plan from what you alread
 |---|---|---|
 | `summary` | One line a person would read | `Refund 22.87 USD of ch_2 to Chen Wei` |
 | `effects` | Everything the call changes, including emails | the charge, and the receipt email |
-| `cost` | The money it moves | `22.87 USD` |
+| `uses` | What it uses up, such as the money it moves | `spend 22.87 USD` |
 | `apply()` | The REST call | `POST /v1/refunds` |
 | `revert()` | The call that reverses it, if one exists | none, so `undo: never` |
 
@@ -189,6 +189,6 @@ The [playground](/playground) runs the same design with made-up data, no key nee
 - [ ] Names and emails work wherever ids do
 - [ ] Each `ASK` answers a whole question in one call
 - [ ] `apply()` makes the REST call; `revert()` reverses it, or doesn't exist
-- [ ] Every plan lists all its effects and its real cost
+- [ ] Every plan lists all its effects and what it really uses
 - [ ] Choices are separate plans, safest first
 - [ ] Every error says how to fix the request

@@ -9,13 +9,13 @@ import type {
   Effect,
   ErrorReply,
   Event,
-  Money,
   More,
   ParamSchema,
   Proposal,
   ReceiptReply,
   Reply,
 } from './types.js';
+import { fmtUses } from './uses.js';
 
 const BARE = /^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$/;
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/;
@@ -207,38 +207,11 @@ export function fmtDuration(s: number): string {
   return `${s}s`;
 }
 
-const ZERO_DECIMAL = new Set([
-  'JPY',
-  'KRW',
-  'VND',
-  'CLP',
-  'ISK',
-  'UGX',
-  'XAF',
-  'XOF',
-]);
-
-export function fmtMoney(m: Money | null | undefined): string {
-  if (!m) {
-    return 'free';
-  }
-
-  if (ZERO_DECIMAL.has(m.currency)) {
-    return `${m.amount} ${m.currency}`;
-  }
-
-  const neg = m.amount < 0 ? '-' : '';
-  const a = Math.abs(m.amount);
-
-  return `${neg}${Math.floor(a / 100)}.${String(a % 100).padStart(2, '0')} ${m.currency}`;
-}
-
 const SYM: Record<string, string> = {
   create: '+',
   update: '~',
   delete: '-',
   send: '>',
-  charge: '$',
   other: '*',
 };
 
@@ -285,11 +258,21 @@ function moreLines(more: More[] | undefined): string[] {
 }
 
 const ATTRS: [string, (p: Proposal) => string][] = [
-  ['cost', (p) => fmtMoney(p.cost)],
+  // Absent means nothing to show; anything else present renders, and a malformed one as `?`.
+  ['uses', (p) => (p.uses === undefined ? '' : fmtUses(p.uses))],
   ['risk', (p) => p.risk],
   ['undo', (p) => (p.undo ? fmtDuration(p.undo.window) : 'never')],
   ['expires', (p) => fmtTime(p.expires)],
 ];
+
+/** `k: v` for each attribute, joined with ` · `; an attribute that renders empty (no `uses`) is left out. */
+function attrLine(attrs: typeof ATTRS, p: Proposal): string {
+  return attrs
+    .map(([k, f]) => [k, f(p)])
+    .filter(([, v]) => v !== '')
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(' · ');
+}
 
 function proposalsLines(ps: Proposal[]): string[] {
   // Attributes identical across all (N ≥ 2) proposals are stated once, in the header.
@@ -298,8 +281,9 @@ function proposalsLines(ps: Proposal[]): string[] {
       ? ATTRS.filter(([, f]) => ps.every((p) => f(p) === f(ps[0])))
       : [];
   const own = ATTRS.filter((a) => !shared.includes(a));
+  const header = attrLine(shared, ps[0]);
   const out = [
-    `${ps.length} proposal${ps.length === 1 ? '' : 's'}${shared.length ? ` — ${shared.map(([k, f]) => `${k}: ${f(ps[0])}`).join(' · ')}` : ''}:`,
+    `${ps.length} proposal${ps.length === 1 ? '' : 's'}${header ? ` — ${header}` : ''}:`,
   ];
 
   for (const p of ps) {
@@ -308,8 +292,10 @@ function proposalsLines(ps: Proposal[]): string[] {
       ...p.effects.map((e) => `  ${effectLine(e)}`),
     );
 
-    if (own.length) {
-      out.push(`  ${own.map(([k, f]) => `${k}: ${f(p)}`).join(' · ')}`);
+    const line = attrLine(own, p);
+
+    if (line) {
+      out.push(`  ${line}`);
     }
 
     if (p.data !== undefined) {

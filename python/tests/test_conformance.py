@@ -5,7 +5,8 @@ import json
 import pytest
 from conftest import CONFORMANCE
 
-from yea import canonical, decode_grant, est, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
+from yea import canonical, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
+from yea.uses import is_uses
 
 
 def vectors(name):
@@ -59,10 +60,10 @@ def test_grants(case):
     assert r.code == case["expect"].get("code")
 
 
-def test_grants_root_spend_block_id():
+def test_grants_total_block_ids():
     data = vectors("grants")
     ids = {bid for c in data["cases"] for bid in _block_ids(c["token"])}
-    assert data["rootSpendBlockId"] in ids
+    assert data["rootTotalBlockId"] in ids and data["countsTotalBlockId"] in ids
 
 
 def _block_ids(token):
@@ -76,3 +77,21 @@ def _block_ids(token):
 def test_lens(case):
     out = lean(case["input"]) if case["type"] == "value" else lens(case["input"])
     assert out == case["lens"]
+
+
+def _uses_cases(key):
+    path = CONFORMANCE / "uses.json"
+    if not path.exists():
+        return [pytest.param(None, marks=pytest.mark.skip(reason=f"{path} missing"))]
+    items = json.loads(path.read_text(encoding="utf-8"))[key]
+    return [pytest.param(c, id=c.get("name") or c.get("lens")) for c in items]
+
+
+@pytest.mark.parametrize("case", _uses_cases("quantities"))
+def test_uses_quantity_lens(case):
+    assert fmt_quantity(case["quantity"]) == case["lens"]
+
+
+@pytest.mark.parametrize("case", _uses_cases("wellFormed"))
+def test_uses_well_formed(case):
+    assert is_uses(case["uses"]) is case["valid"]

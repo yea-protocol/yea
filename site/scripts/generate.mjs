@@ -126,7 +126,7 @@ out(
   'public/llms.txt',
   `# YEA
 
-> YEA is an open protocol for AI agents acting on behalf of people. Agents send an INTENT; services reply with proposals whose effects, cost, risk and undo window are listed up front; nothing changes until COMMIT, which carries a grant signed by the human's key. The human's policy decides what can commit without asking, and anything beyond it needs a one-shot consent bound to the exact proposal. Replies fit a token budget and are rendered as Lens, a compact text format for models. Implementations: TypeScript (reference) and Python. MCP clients use YEA through the bridge: \`npx -y @yea-protocol/cli mcp\`.
+> YEA is an open protocol for AI agents acting on behalf of people. Agents send an INTENT; services reply with proposals whose effects, what they use, risk and undo window are listed up front; nothing changes until COMMIT, which carries a grant signed by the human's key. The human's policy decides what can commit without asking, and anything beyond it needs a one-shot consent bound to the exact proposal. Replies fit a token budget and are rendered as Lens, a compact text format for models. Implementations: TypeScript (reference) and Python. MCP clients use YEA through the bridge: \`npx -y @yea-protocol/cli mcp\`.
 
 Full text of the key docs, the CLI and the spec in one file: ${SITE}/llms-full.txt
 

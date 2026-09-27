@@ -52,13 +52,15 @@ describe('billing example (service design guide)', () => {
     }
 
     expect(r.proposals.map((p) => p.undo)).toEqual([null, null]);
-    expect(r.proposals[0].cost).toEqual({ amount: 4900, currency: 'USD' });
+    expect(r.proposals[0].uses).toEqual({
+      spend: { amount: 4900, scale: 2, unit: 'USD' },
+    });
   });
 
   it('a per-action cap makes large refunds need consent', async () => {
     const { client } = await setup([
       { risk: 'medium' },
-      { per: { max: 2000, currency: 'USD' } },
+      { each: { of: 'spend', max: 2000, scale: 2, unit: 'USD' } },
     ]);
     const r = await client.intent('billing.refund', { who: 'Chen' });
 

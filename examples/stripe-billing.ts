@@ -11,8 +11,8 @@
 import {
   clarify,
   fix,
-  money,
   type Plan,
+  quantity,
   send,
   service,
   update,
@@ -380,7 +380,10 @@ function refunder(stripe: Stripe, c: Customer, ch: Charge) {
       ),
       send(c.email, `refund receipt; back on the card in 5–10 days`),
     ],
-    cost: money(amount, ch.currency.toUpperCase()),
+    // What the refund spends, by the `spend` convention (docs/conventions.md).
+    uses: {
+      spend: quantity(amount, { scale: 2, unit: ch.currency.toUpperCase() }),
+    },
     // YEA runs apply() at most once; the key covers a network retry.
     apply: () =>
       stripe(

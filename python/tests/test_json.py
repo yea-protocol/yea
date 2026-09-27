@@ -51,5 +51,5 @@ def test_compact_keeps_insertion_order():
 
 
 def test_proposal_hash_ignores_hash_and_data():
-    p = {"id": "p1", "cost": None}
+    p = {"id": "p1", "risk": "low"}
     assert proposal_hash(p) == proposal_hash({**p, "hash": "whatever", "data": {"x": 1.5}})

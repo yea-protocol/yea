@@ -47,7 +47,6 @@ export {
   type GrantInfo,
   inspectGrant,
   issueGrant,
-  type Limit,
   makeProof,
   matchCapability,
 } from './grants.js';
@@ -58,7 +57,6 @@ export {
   effectLine,
   est,
   fmtDuration,
-  fmtMoney,
   fmtTime,
   lean,
   lens,
@@ -69,10 +67,8 @@ export {
   type Clarification,
   type CommitCtx,
   type Ctx,
-  charge,
   clarify,
   create,
-  money,
   type Plan,
   remove,
   Service,
@@ -83,4 +79,19 @@ export {
 } from './service.js';
 
 export * from './types.js';
+
+export {
+  exact,
+  fmtQuantity,
+  fmtUses,
+  isLimit,
+  isQuantity,
+  isUses,
+  type Limit,
+  type Quantity,
+  quantity,
+  spend,
+  type Uses,
+} from './uses.js';
+
 export { validateParams } from './validate.js';

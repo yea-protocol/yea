@@ -50,7 +50,6 @@ const baseP = {
     },
     { op: 'send', target: 'ana@example.com', detail: 'update notification' },
   ],
-  cost: null,
   risk: 'low',
   undo: { window: 3600 },
   expires: 1790000600,
@@ -58,11 +57,14 @@ const baseP = {
 const hash = [
   { name: 'basic', proposal: baseP },
   {
-    name: 'with cost and data (data excluded)',
+    name: 'with uses and data (data excluded)',
     proposal: {
       ...baseP,
       id: 'p_2',
-      cost: { amount: 1250, currency: 'USD' },
+      uses: {
+        spend: { amount: 1250, scale: 2, unit: 'USD' },
+        emails: { amount: 1 },
+      },
       risk: 'medium',
       undo: null,
       data: { note: 'not hashed', n: 1.5 },
@@ -106,8 +108,8 @@ const root = await P.issueGrant({
     { svc: ['shop.example'] },
     { can: ['shop.*'] },
     { exp: now + 3600 },
-    { spend: { max: 5000, currency: 'USD' } },
-    { per: { max: 3000, currency: 'USD' } },
+    { total: { of: 'spend', max: 5000, scale: 2, unit: 'USD' } },
+    { each: { of: 'spend', max: 3000, scale: 2, unit: 'USD' } },
     { risk: 'medium' },
   ],
 });
@@ -179,16 +181,64 @@ const forged = await P.issueGrant({
   nonce: 'n4',
   caveats: [],
 });
+// Limits in other forms: a whole-dollar limit (scale 0), a count, and a name only a
+// prototype lookup would find.
+const counts = await P.issueGrant({
+  principal,
+  to: agent.public,
+  iat: now,
+  nonce: 'n10',
+  caveats: [
+    { each: { of: 'spend', max: 30, unit: 'USD' } },
+    { total: { of: 'emails', max: 3 } },
+    { total: { of: 'tenths', max: 3, scale: 1 } },
+    { each: { of: 'constructor', max: 0 } },
+    { each: { of: 'big', max: 9007199254740991, scale: 18 } },
+  ],
+});
+const countsId = await P.sha256(P.decodeGrant(counts)[0].s);
+const badLimit = (nonce, caveat) =>
+  P.issueGrant({
+    principal,
+    to: agent.public,
+    iat: now,
+    nonce,
+    caveats: [caveat],
+  });
+const scaleTooBig = await badLimit('n11', {
+  each: { of: 'spend', max: 1, scale: 19, unit: 'USD' },
+});
+const maxNotInt = await badLimit('n12', { total: { of: 'spend', max: '1' } });
+const oldShape = await badLimit('n13', {
+  each: { of: 'spend', max: 1, currency: 'USD' },
+});
+const oldCaveat = await badLimit('n14', { per: { max: 1, currency: 'USD' } });
+const badName = await badLimit('n15', { each: { of: 'Spend', max: 1 } });
+const extraAmount = await badLimit('n16', {
+  each: { of: 'spend', max: 100, amount: 7 },
+});
 const rootBlocks = P.decodeGrant(root);
 const tampered = P.encodeGrant([
   { ...rootBlocks[0], p: { ...rootBlocks[0].p, caveats: [] } },
 ]);
 const rootSpendId = await P.sha256(rootBlocks[0].s);
 const T = [principal.public];
-const commit = (cost, risk = 'low', hash = 'HASH_X') => ({
+const commit = (cents, risk = 'low', hash = 'HASH_X') => ({
   hash,
-  cost: cost === null ? null : { amount: cost, currency: 'USD' },
+  ...(cents === null
+    ? {}
+    : { uses: { spend: { amount: cents, scale: 2, unit: 'USD' } } }),
   risk,
+});
+/** A COMMIT of a proposal that reports `uses` (for the counts grant). */
+const using = (uses) => ({ hash: 'HASH_U', uses, risk: 'low' });
+const c = (proposal, extra = {}) => ({
+  service: 'shop.example',
+  verb: 'COMMIT',
+  capability: 'shop.order',
+  now,
+  proposal,
+  ...extra,
 });
 const cases = [
   [
@@ -260,7 +310,7 @@ const cases = [
       capability: 'shop.order',
       now,
       proposal: commit(2000),
-      spent: { [rootSpendId]: 4000 },
+      used: { [rootSpendId]: { spend: { amount: 4000, scale: 2 } } },
     },
     { ok: false, code: 'consent_required' },
   ],
@@ -278,21 +328,200 @@ const cases = [
     { ok: false, code: 'consent_required' },
   ],
   [
-    'root: other currency',
+    'root: other unit (never converted)',
     root,
     agent.public,
-    {
-      service: 'shop.example',
-      verb: 'COMMIT',
-      capability: 'shop.order',
-      now,
-      proposal: {
-        hash: 'H',
-        cost: { amount: 1, currency: 'EUR' },
-        risk: 'low',
-      },
-    },
+    c(using({ spend: { amount: 1, scale: 2, unit: 'EUR' } })),
     { ok: false, code: 'consent_required' },
+  ],
+  [
+    'root: unit on the limit only is a mismatch',
+    root,
+    agent.public,
+    c(using({ spend: { amount: 1, scale: 2 } })),
+    { ok: false, code: 'consent_required' },
+  ],
+  [
+    'counts: unit on the proposal only is a mismatch',
+    counts,
+    agent.public,
+    c(using({ emails: { amount: 1, unit: 'msg' } })),
+    { ok: false, code: 'consent_required' },
+  ],
+  [
+    'root: a proposal that uses nothing passes limits',
+    root,
+    agent.public,
+    c(commit(null)),
+    { ok: true },
+  ],
+  [
+    'root: an unlimited measure passes',
+    root,
+    agent.public,
+    c(using({ emails: { amount: 1000 } })),
+    { ok: true },
+  ],
+  ['root: empty uses passes', root, agent.public, c(using({})), { ok: true }],
+  [
+    'counts: 30 USD at scale 0 allows 3000 cents',
+    counts,
+    agent.public,
+    c(using({ spend: { amount: 3000, scale: 2, unit: 'USD' } })),
+    { ok: true },
+  ],
+  [
+    'counts: 30 USD at scale 0 refuses 3001 cents',
+    counts,
+    agent.public,
+    c(using({ spend: { amount: 3001, scale: 2, unit: 'USD' } })),
+    { ok: false, code: 'consent_required' },
+  ],
+  [
+    'counts: finer scale compares exactly (30.001 > 30)',
+    counts,
+    agent.public,
+    c(using({ spend: { amount: 30001, scale: 3, unit: 'USD' } })),
+    { ok: false, code: 'consent_required' },
+  ],
+  [
+    'counts: total within the limit',
+    counts,
+    agent.public,
+    c(using({ emails: { amount: 1 } }), {
+      used: { [countsId]: { emails: { amount: 2 } } },
+    }),
+    { ok: true },
+  ],
+  [
+    'counts: total over the limit',
+    counts,
+    agent.public,
+    c(using({ emails: { amount: 1 } }), {
+      used: { [countsId]: { emails: { amount: 3 } } },
+    }),
+    { ok: false, code: 'consent_required' },
+  ],
+  [
+    'counts: exact decimals, 0.1 + 0.2 fits 0.3',
+    counts,
+    agent.public,
+    c(using({ tenths: { amount: 2, scale: 1 } }), {
+      used: { [countsId]: { tenths: { amount: 1, scale: 1 } } },
+    }),
+    { ok: true },
+  ],
+  [
+    'counts: prototype names are not measures the proposal uses',
+    counts,
+    agent.public,
+    c(using({ emails: { amount: 1 } })),
+    { ok: true },
+  ],
+  [
+    'counts: largest values compare exactly',
+    counts,
+    agent.public,
+    c(using({ big: { amount: 9007199254740991, scale: 18 } })),
+    { ok: true },
+  ],
+  [
+    'counts: 10 is over 0.009007199254740991',
+    counts,
+    agent.public,
+    c(using({ big: { amount: 10 } })),
+    { ok: false, code: 'consent_required' },
+  ],
+  [
+    'malformed uses: negative amount fails closed',
+    root,
+    agent.public,
+    c(using({ spend: { amount: -1, scale: 2, unit: 'USD' } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses: scale over 18 fails closed',
+    root,
+    agent.public,
+    c(using({ spend: { amount: 1, scale: 19, unit: 'USD' } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses: bad measure name fails closed',
+    root,
+    agent.public,
+    c(using({ 'Bad Name': { amount: 1 } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses: amount past 2^53-1 fails closed',
+    root,
+    agent.public,
+    c(using({ spend: { amount: 9007199254740992, unit: 'USD' } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses: extra key fails closed',
+    root,
+    agent.public,
+    c(using({ spend: { amount: 1, scale: 2, unit: 'USD', currency: 'USD' } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses: null fails closed',
+    root,
+    agent.public,
+    c(using(null)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed uses fails closed even when the limit is on another measure',
+    root,
+    agent.public,
+    c(using({ emails: { amount: -1 } })),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed limit: an extra amount key',
+    extraAmount,
+    agent.public,
+    c(commit(1)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed limit: scale over 18',
+    scaleTooBig,
+    agent.public,
+    c(commit(1)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed limit: max not an integer',
+    maxNotInt,
+    agent.public,
+    c(commit(1)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed limit: the old currency shape',
+    oldShape,
+    agent.public,
+    c(commit(1)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'malformed limit: bad measure name',
+    badName,
+    agent.public,
+    c(commit(1)),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
+    'the removed per caveat is unknown',
+    oldCaveat,
+    agent.public,
+    c(commit(1)),
+    { ok: false, code: 'forbidden' },
   ],
   [
     'root: proof key is not holder',
@@ -473,12 +702,12 @@ const cases = [
 const gcases = [];
 
 for (const [name, token, proofKey, c, expect] of cases) {
-  const { trusted = T, spent, ...ctx } = c;
+  const { trusted = T, used, ...ctx } = c;
   const got = await P.checkGrant(token, {
     ...ctx,
     trusted,
     proofKey,
-    spent: (id) => spent?.[id] ?? 0,
+    used: (id, of) => P.exact(used?.[id]?.[of] ?? { amount: 0 }),
   });
   const actual = got.ok ? { ok: true } : { ok: false, code: got.code };
 
@@ -493,7 +722,7 @@ for (const [name, token, proofKey, c, expect] of cases) {
     token,
     trusted,
     proofKey,
-    ctx: { ...ctx, ...(spent ? { spent } : {}) },
+    ctx: { ...ctx, ...(used ? { used } : {}) },
     expect,
   });
 }
@@ -505,7 +734,8 @@ out('grants', {
     subagent: seed(3),
     mallory: seed(4),
   },
-  rootSpendBlockId: rootSpendId,
+  rootTotalBlockId: rootSpendId,
+  countsTotalBlockId: countsId,
   cases: gcases,
 });
 
@@ -628,11 +858,18 @@ const replies = [
           summary: 'Order 2 items',
           effects: [
             { op: 'create', target: 'order' },
-            { op: 'charge', target: 'card ••42', detail: '12.50 USD' },
+            {
+              op: 'create',
+              target: 'charge',
+              detail: '12.50 USD to card ••42',
+            },
             { op: 'delete', target: 'cart/1' },
             { op: 'other', target: 'x', to: 5 },
           ],
-          cost: { amount: 1250, currency: 'USD' },
+          uses: {
+            spend: { amount: 1250, scale: 2, unit: 'USD' },
+            emails: { amount: 2 },
+          },
           risk: 'medium',
           undo: null,
           expires: 1790000605,
@@ -650,7 +887,7 @@ const replies = [
           capability: 'shop.order',
           summary: 'Yen',
           effects: [],
-          cost: { amount: 500, currency: 'JPY' },
+          uses: { spend: { amount: 500, unit: 'JPY' } },
           risk: 'high',
           undo: { window: 90 },
           expires: 1790000000,
@@ -659,9 +896,12 @@ const replies = [
         {
           id: 'p_4',
           capability: 'shop.order',
-          summary: 'Refund',
+          summary: 'Tiny',
           effects: [],
-          cost: { amount: -5, currency: 'EUR' },
+          uses: {
+            zero: { amount: 0, scale: 2 },
+            fine: { amount: 5, scale: 18, unit: 'ETH' },
+          },
           risk: 'low',
           undo: { window: 172800 },
           expires: 1790000000,
@@ -686,12 +926,16 @@ const replies = [
     r({
       kind: 'PROPOSALS',
       proposals: [
-        { ...baseP, hash: 'h1', cost: { amount: 100, currency: 'USD' } },
+        {
+          ...baseP,
+          hash: 'h1',
+          uses: { spend: { amount: 100, scale: 2, unit: 'USD' } },
+        },
         {
           ...baseP,
           id: 'p_9',
           summary: 'Faster',
-          cost: { amount: 900, currency: 'USD' },
+          uses: { spend: { amount: 900, scale: 2, unit: 'USD' } },
           risk: 'medium',
           hash: 'h9',
           data: { eta: 'noon' },
@@ -711,7 +955,6 @@ const replies = [
         summary: 'Moved',
         at: 1790000100,
         effects: baseP.effects,
-        cost: null,
         undo: { until: 1790003700 },
       },
     }),
@@ -753,7 +996,6 @@ const replies = [
         summary: 'Moved',
         at: 1790000100,
         effects: baseP.effects,
-        cost: null,
         undo: { until: 1790003700 },
         result: { event: 'e42' },
       },
@@ -771,7 +1013,6 @@ const replies = [
         summary: 'Ordered',
         at: 1790000100,
         effects: [],
-        cost: null,
         undo: null,
       },
     }),
@@ -795,7 +1036,6 @@ const replies = [
             to: '2026-09-22T14:00:00Z',
           },
         ],
-        cost: null,
         undo: null,
         undoes: 'r_1',
       },
@@ -828,7 +1068,7 @@ const replies = [
     r({
       kind: 'ERROR',
       code: 'consent_required',
-      message: 'cost exceeds per-commit limit',
+      message: 'spend over the per-commit limit of 25.00 USD',
       consent: {
         proposal: 'p_2',
         hash: 'h2',
@@ -840,6 +1080,38 @@ const replies = [
       },
     }),
   ],
+  [
+    'proposals: uses shared when identical',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, hash: 'h1', uses: { emails: { amount: 1 } } },
+        {
+          ...baseP,
+          id: 'p_9',
+          summary: 'Also',
+          uses: { emails: { amount: 1 } },
+          hash: 'h9',
+        },
+      ],
+    }),
+  ],
+  [
+    'proposals: uses on one proposal only',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, hash: 'h1' },
+        {
+          ...baseP,
+          id: 'p_9',
+          summary: 'Notify too',
+          uses: { emails: { amount: 3 } },
+          hash: 'h9',
+        },
+      ],
+    }),
+  ],
   ['event', r({ kind: 'EVENT', message: 'charging card', progress: 0.42 })],
   ['event plain', r({ kind: 'EVENT', message: 'started' })],
 ];
@@ -849,6 +1121,44 @@ for (const [name, input] of replies) {
 }
 
 out('lens', lensCases);
+
+// uses: quantity rendering and which values are well-formed
+const quantities = [
+  { amount: 2290, scale: 2, unit: 'USD' },
+  { amount: 0, scale: 2 },
+  { amount: 5, scale: 3 },
+  { amount: 1 },
+  { amount: 500, unit: 'JPY' },
+  { amount: 1, scale: 18 },
+  { amount: 9007199254740991, scale: 18, unit: 'ETH' },
+  { amount: 12, unit: 'GB' },
+].map((q) => ({ quantity: q, lens: P.fmtQuantity(q) }));
+const wellFormed = [
+  ['plain', { emails: { amount: 1 } }],
+  ['empty', {}],
+  ['money', { spend: { amount: 2287, scale: 2, unit: 'USD' } }],
+  ['name with separators', { 'api_calls.v2-x': { amount: 3 } }],
+  ['unit symbols', { storage: { amount: 1, unit: 'GB/mo' } }],
+  ['max amount and scale', { big: { amount: 9007199254740991, scale: 18 } }],
+  ['negative amount', { spend: { amount: -1 } }],
+  ['float amount', { spend: { amount: 1.5 } }],
+  ['amount past 2^53-1', { spend: { amount: 9007199254740992 } }],
+  ['scale 19', { spend: { amount: 1, scale: 19 } }],
+  ['negative scale', { spend: { amount: 1, scale: -1 } }],
+  ['empty unit', { spend: { amount: 1, unit: '' } }],
+  ['unit with a space', { spend: { amount: 1, unit: 'US D' } }],
+  ['unit of 33 characters', { spend: { amount: 1, unit: 'U'.repeat(33) } }],
+  ['extra key', { spend: { amount: 1, currency: 'USD' } }],
+  ['missing amount', { spend: { scale: 2 } }],
+  ['uppercase name', { Spend: { amount: 1 } }],
+  ['name starting with a digit', { '1st': { amount: 1 } }],
+  ['name of 65 characters', { ['a'.repeat(65)]: { amount: 1 } }],
+  ['not an object', [{ amount: 1 }]],
+  ['null', null],
+  ['null quantity', { spend: null }],
+].map(([name, uses]) => ({ name, uses, valid: P.isUses(uses) }));
+
+out('uses', { quantities, wellFormed });
 
 // estimate
 out(

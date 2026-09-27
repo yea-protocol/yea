@@ -10,7 +10,7 @@ Previews, consent bound to hashes, capability grants, budgets and Lens have to h
 
 ## Does the model need to learn a new format?
 
-No. Lens is designed to be read cold: tables for uniform lists, `~ update` and `$ charge` effect lines, explicit costs and undo windows. In [a real session](/reference/claude-session), Claude read it correctly with no YEA documentation at all.
+No. Lens is designed to be read cold: tables for uniform lists, `~ update` and `> send` effect lines, and what each proposal uses and how long it can be undone. In [a real session](/reference/claude-session), Claude read it correctly with no YEA documentation at all.
 
 ## Does it cost more to use?
 

@@ -18,11 +18,12 @@ from .grants import (
     verify_grant,
 )
 from .keys import KeyPair, generate_key, key_from_seed, sign_proof, verify, verify_proof
-from .lens import effect_line, est, fmt_duration, fmt_money, fmt_time, lean, lens, scalar
+from .lens import effect_line, est, fmt_duration, fmt_time, lean, lens, scalar
 from .service import (
-    Clarification, CommitCtx, Ctx, Plan, Service, charge, clarify, create, money, remove, send, service, update,
+    Clarification, CommitCtx, Ctx, Plan, Service, clarify, create, remove, send, service, update,
 )
 from .transport import serve_http, serve_stdio, serve_stream, serve_tcp
+from .uses import fmt_quantity, quantity, spend
 from .validate import validate_params
 
 __version__ = "0.1.0"
@@ -30,9 +31,9 @@ __version__ = "0.1.0"
 __all__ = [
     "CanonicalError", "Clarification", "Client", "CommitCtx", "Ctx", "Grant", "GrantContext", "HandleStore", "KeyPair",
     "MemoryHandleStore", "YeaError", "Plan", "Reply", "Service", "Verification", "b64url_decode", "b64url_encode",
-    "canonical", "charge", "clarify", "compact", "check_consent", "connect", "consent_code", "consent_grant", "decode_consent_code", "create", "decode_grant", "delegate_grant",
-    "effect_line", "est", "fit", "fix", "fmt_duration", "fmt_money", "fmt_time", "generate_key", "issue_grant",
-    "key_from_seed", "lean", "lens", "local", "money", "proposal_hash", "remove", "scalar", "send", "serve_http",
-    "serve_stdio", "serve_stream", "serve_tcp", "service", "sign_proof", "update", "validate_params", "verify",
+    "canonical", "clarify", "compact", "check_consent", "connect", "consent_code", "consent_grant", "decode_consent_code", "create", "decode_grant", "delegate_grant",
+    "effect_line", "est", "fit", "fix", "fmt_duration", "fmt_quantity", "fmt_time", "generate_key", "issue_grant",
+    "key_from_seed", "lean", "lens", "local", "proposal_hash", "quantity", "remove", "scalar", "send", "serve_http",
+    "serve_stdio", "serve_stream", "serve_tcp", "service", "sign_proof", "spend", "update", "validate_params", "verify",
     "verify_grant", "verify_proof",
 ]

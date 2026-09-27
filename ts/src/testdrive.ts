@@ -137,8 +137,8 @@ async function throwawayClients(): Promise<Client[]> {
     to: agent.public,
     caveats: [
       { risk: 'low' },
-      { per: { max: 4000, currency: 'USD' } },
-      { spend: { max: 10000, currency: 'USD' } },
+      { each: { of: 'spend', max: 4000, scale: 2, unit: 'USD' } },
+      { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
       { exp: Math.floor(Date.now() / 1000) + 3600 },
     ],
   });

@@ -50,12 +50,13 @@ describe('conformance vectors', () => {
     const { cases } = load('grants');
 
     for (const c of cases) {
-      const { spent, ...ctx } = c.ctx;
+      const { used, ...ctx } = c.ctx;
       const got = await P.checkGrant(c.token, {
         ...ctx,
         trusted: c.trusted,
         proofKey: c.proofKey,
-        spent: (id: string) => spent?.[id] ?? 0,
+        used: (id: string, of: string) =>
+          P.exact(used?.[id]?.[of] ?? { amount: 0 }),
       });
 
       expect(
@@ -70,6 +71,17 @@ describe('conformance vectors', () => {
         c.type === 'value' ? P.lean(c.input) : P.lens(c.input),
         c.name,
       ).toBe(c.lens);
+    }
+  });
+  it('uses', () => {
+    const { quantities, wellFormed } = load('uses');
+
+    for (const q of quantities) {
+      expect(P.fmtQuantity(q.quantity)).toBe(q.lens);
+    }
+
+    for (const w of wellFormed) {
+      expect(P.isUses(w.uses), w.name).toBe(w.valid);
     }
   });
   it('estimate', () => {

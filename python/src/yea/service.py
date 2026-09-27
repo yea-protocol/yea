@@ -19,6 +19,7 @@ from .budget import HandleStore, MemoryHandleStore, fit
 from .errors import YeaError, fix
 from .grants import GrantContext, Trusted, Verification, verify_grant
 from .keys import verify_proof
+from .uses import check_uses, limit_value, same_unit, value
 from .validate import closest, validate_params
 
 log = logging.getLogger("yea")
@@ -72,12 +73,20 @@ class Plan:
     summary: str
     effects: list[dict]
     apply: Callable[[CommitCtx], Any]
-    cost: dict | None = None
+    uses: dict | None = None  # SPEC §5.1, e.g. {"spend": spend("22.87", "USD"), "emails": quantity(1)}
     risk: str | None = None
     expires_in: int | None = None  # seconds; default is the service's proposal_ttl
     data: Any = _UNSET
     revert: Callable[[CommitCtx], Any] | None = None  # makes the proposal undoable
     undo_window: int | None = None  # seconds; default one day when revert is set
+
+
+def _checked(proposal: dict) -> dict:
+    """The parts of a proposal that COMMIT caveats read (§6.3)."""
+    out = {"hash": proposal["hash"], "risk": proposal["risk"]}
+    if "uses" in proposal:
+        out["uses"] = proposal["uses"]
+    return out
 
 
 @dataclass
@@ -113,14 +122,6 @@ def remove(target: str, detail: str | None = None) -> dict:
 
 def send(target: str, detail: str | None = None) -> dict:
     return _effect("send", target, detail)
-
-
-def charge(target: str, detail: str | None = None) -> dict:
-    return _effect("charge", target, detail)
-
-
-def money(amount: int, currency: str = "USD") -> dict:
-    return {"amount": amount, "currency": currency}
 
 
 @dataclass
@@ -162,8 +163,6 @@ def _inverse(e: dict) -> dict:
     op = e.get("op")
     if op == "update":
         return {**e, "from": e.get("to"), "to": e.get("from")}
-    if op == "charge":
-        return {"op": "other", "target": e["target"], "detail": "refund"}
     if op == "send":
         return {"op": "other", "target": e["target"], "detail": "cannot unsend; follow-up sent if supported"}
     return {**e, "op": _INVERSE.get(op, "other")}
@@ -200,7 +199,7 @@ class Service:
         self._proposals: dict[str, _StoredProposal] = {}
         self._commits: dict[str, asyncio.Task] = {}
         self._receipts: dict[str, _StoredReceipt] = {}
-        self._spent: dict[str, int] = {}
+        self._spent: dict[tuple[str, str], int] = {}  # (block id, measure) -> exact value at scale 18
         self._auto_seen: dict[str, tuple[asyncio.Task, int]] = {}
 
     def now(self) -> int:
@@ -323,7 +322,7 @@ class Service:
         *, principal: str | None = None, replay: bool = False,
     ) -> Verification | None:
         """Verify grants and proof. ``principal``: only grants from this principal count (the
-        one a proposal was made for). ``replay``: money and risk limits were already spent by
+        one a proposal was made for). ``replay``: ``each``, ``total`` and risk were already checked by
         the original commit, so ``consent_required`` counts as authorized (§4.4)."""
         grants = frame.get("grants") or []
         required = verb in ("COMMIT", "UNDO") or self.require_grants
@@ -345,7 +344,7 @@ class Service:
             )
         ctx = GrantContext(
             self.id, verb, capability, now,
-            {"hash": proposal["hash"], "cost": proposal["cost"], "risk": proposal["risk"]} if proposal else None,
+            _checked(proposal) if proposal else None,
             self._spent,
         )
         checks = []
@@ -435,11 +434,13 @@ class Service:
                     "capability": name,
                     "summary": plan.summary,
                     "effects": plan.effects,
-                    "cost": plan.cost,
                     "risk": plan.risk or d.risk or "low",
                     "undo": None if window is None else {"window": window},
                     "expires": -(-(now + (plan.expires_in or self.proposal_ttl)) // 60) * 60,  # whole minutes
                 }
+                uses = check_uses(plan.uses)
+                if uses is not None:
+                    p["uses"] = uses
                 if plan.data is not _UNSET:
                     p["data"] = plan.data
                 p["hash"] = proposal_hash(p)
@@ -464,7 +465,7 @@ class Service:
         if verify_proof(frame.get("proof"), self.id, "INTENT", f"auto:{proposal['capability']}:{frame['id']}", now):
             return None
         ctx = GrantContext(self.id, "COMMIT", proposal["capability"], now,
-                           {"hash": proposal["hash"], "cost": proposal["cost"], "risk": proposal["risk"]}, self._spent)
+                           _checked(proposal), self._spent)
         for g in grants:
             c = verify_grant(g, self.trust, frame["proof"]["key"], ctx)
             if c.ok and (principal is None or c.principal == principal):
@@ -518,16 +519,13 @@ class Service:
         Spend is re-checked and reserved before anything can yield, and released on failure."""
         stored = self._proposals[pid]
         proposal, plan = stored.proposal, stored.plan
-        cost = proposal["cost"]["amount"] if proposal["cost"] else 0
-        blocks = [bid for bid, _ in auth.spend_blocks()] if cost else []
-        if any(self._spent.get(bid, 0) + cost > cav["max"] for bid, cav in auth.spend_blocks()) and cost:
+        held = self._reserve(proposal, auth)
+        if held is None:
             return self._error_reply(re, YeaError(
                 "consent_required",
-                "would exceed the spend limit (other commits are in flight); your principal must approve this exact proposal",
+                "would pass a total limit (other commits are in flight); your principal must approve this exact proposal",
                 consent=self._consent(proposal, auth.principal),
             ))
-        for bid in blocks:
-            self._spent[bid] = self._spent.get(bid, 0) + cost
 
         def progress(message: str, pct: float | None, data: Any) -> None:
             body: dict[str, Any] = {"message": message}
@@ -543,22 +541,41 @@ class Service:
                 at = self.now()
                 receipt: dict[str, Any] = {
                     "id": random_id("r"), "proposal": pid, "capability": proposal["capability"], "summary": proposal["summary"],
-                    "at": at, "effects": proposal["effects"], "cost": proposal["cost"],
+                    "at": at, "effects": proposal["effects"],
                     "undo": {"until": at + proposal["undo"]["window"]} if proposal["undo"] else None,
                 }
+                if "uses" in proposal:
+                    receipt["uses"] = proposal["uses"]
                 if result is not None:
                     receipt["result"] = result
                 self._receipts[receipt["id"]] = _StoredReceipt(receipt, plan, result, auth.principal)
                 return self._frame(re, "RECEIPT", {"receipt": receipt})
             except Exception as e:  # noqa: BLE001
-                for bid in blocks:  # release the reservation
-                    self._spent[bid] -= cost
+                for key, v in held:  # release the reservation
+                    self._spent[key] -= v
                 self._commits.pop(pid, None)  # failed commits may be retried
                 return self._error_reply(re, e)
 
         task = asyncio.ensure_future(run())
         self._commits[pid] = task
         return await asyncio.shield(task)
+
+    def _reserve(self, proposal: dict, auth: Verification) -> list[tuple[tuple[str, str], int]] | None:
+        """Reserve the proposal's quantities against every ``total`` limit of the authorizing grant
+        (§6.3), before anything can yield. None, reserving nothing, if one would pass its limit."""
+        uses = proposal.get("uses") or {}
+        held: dict[tuple[str, str], int] = {}
+        for bid, limit in auth.total_limits():
+            q = uses.get(limit["of"])
+            if q is None or not same_unit(q, limit):
+                continue  # not reported; a unit mismatch already failed the grant check
+            key = (bid, limit["of"])
+            held[key] = value(q)  # one reservation per (block, measure), however many limits name it
+            if self._spent.get(key, 0) + held[key] > limit_value(limit):
+                return None
+        for key, v in held.items():
+            self._spent[key] = self._spent.get(key, 0) + v
+        return list(held.items())
 
     async def _on_undo(self, frame: dict, budget: int, emit: Emit) -> dict:
         rid = frame.get("receipt")
@@ -589,7 +606,7 @@ class Service:
                 undo = {
                     "id": random_id("r"), "proposal": receipt["proposal"], "capability": receipt["capability"],
                     "summary": receipt["summary"], "at": self.now(), "effects": [_inverse(e) for e in receipt["effects"]],
-                    "cost": None, "undo": None, "undoes": receipt["id"],
+                    "undo": None, "undoes": receipt["id"],
                 }
                 return self._frame(re, "RECEIPT", {"receipt": undo})
             except Exception as e:  # noqa: BLE001

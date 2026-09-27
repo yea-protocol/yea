@@ -196,8 +196,8 @@ describe('shop: budgets, money, consent', () => {
       to: agent.public,
       caveats: [
         { svc: ['shop.example'] },
-        { per: { max: 5000, currency: 'USD' } },
-        { spend: { max: 8000, currency: 'USD' } },
+        { each: { of: 'spend', max: 5000, scale: 2, unit: 'USD' } },
+        { total: { of: 'spend', max: 8000, scale: 2, unit: 'USD' } },
       ],
     });
     const client = new P.Client(P.local(svc), {
@@ -332,7 +332,7 @@ describe('consent grants authorize exactly one commit', () => {
     const grant = await P.issueGrant({
       principal,
       to: agent.public,
-      caveats: [{ per: { max: 3000, currency: 'USD' } }],
+      caveats: [{ each: { of: 'spend', max: 3000, scale: 2, unit: 'USD' } }],
     });
     const c = new P.Client(P.local(svc), { key: agent.seed, grants: [grant] });
     const a = await c.intent('shop.order', {

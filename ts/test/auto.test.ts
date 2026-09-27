@@ -12,7 +12,7 @@ describe('policy-gated auto-commit', async () => {
     const grant = await P.issueGrant({
       principal,
       to: agent.public,
-      caveats: [{ per: { max: 5000, currency: 'USD' } }],
+      caveats: [{ each: { of: 'spend', max: 5000, scale: 2, unit: 'USD' } }],
     });
     const c = new P.Client(P.local(shop({ trust: [principal.public] })), {
       key: agent.seed,
@@ -26,14 +26,14 @@ describe('policy-gated auto-commit', async () => {
 
     expect(r.kind).toBe('RECEIPT');
     expect(r.lens).toMatch(/^✓ .* · undo until/);
-    expect(r.lens).toContain('$ charge card');
+    expect(r.lens).toContain('+ create charge');
   });
 
   it('falls back to proposals when consent would be needed', async () => {
     const grant = await P.issueGrant({
       principal,
       to: agent.public,
-      caveats: [{ per: { max: 500, currency: 'USD' } }],
+      caveats: [{ each: { of: 'spend', max: 500, scale: 2, unit: 'USD' } }],
     });
     const c = new P.Client(P.local(shop({ trust: [principal.public] })), {
       key: agent.seed,
@@ -108,6 +108,26 @@ describe('policy-gated auto-commit', async () => {
     });
 
     expect(forged.kind).toBe('ERROR');
+  });
+  it('reserves a total on the auto-commit path, so the next auto-commit past it asks', async () => {
+    const grant = await P.issueGrant({
+      principal,
+      to: agent.public,
+      caveats: [{ total: { of: 'spend', max: 3000, scale: 2, unit: 'USD' } }],
+    });
+    const c = new P.Client(P.local(shop({ trust: [principal.public] })), {
+      key: agent.seed,
+      grants: [grant],
+    });
+    const order = () =>
+      c.intent(
+        'shop.order',
+        { items: [{ sku: 'm001', qty: 1 }], deliver },
+        { auto: true },
+      );
+
+    expect((await order()).kind).toBe('RECEIPT');
+    expect((await order()).kind).toBe('PROPOSALS');
   });
 });
 

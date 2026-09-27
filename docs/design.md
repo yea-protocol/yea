@@ -26,8 +26,8 @@ serverless platforms and passes through proxies, while the semantics stay YEA's.
 `COMMIT`. `ASK` is read-only by definition.
 
 **Why.** It's the minimal structure that makes an agent's mistakes cheap. The service,
-which knows its own domain, spells out the consequences: effects, cost, risk and undo
-window. The agent, or a human, commits to exactly that, and the proposal hash guarantees
+which knows its own domain, spells out the consequences: effects, what it uses, risk and
+undo window. The agent, or a human, commits to exactly that, and the proposal hash guarantees
 it. A side benefit is that services can offer *alternatives* ("standard or express") that
 CRUD can't express.
 
@@ -74,12 +74,12 @@ buys three things:
 
 1. **Compactness where it counts.** Uniform lists become tables that name their keys once
    (`items[60]{sku,name,usd,cal,protein}:`), strings are unquoted when safe, and effects
-   use one-character operators (`~ update`, `+ create`, `$ charge`). The 60-item menu
+   use one-character operators (`~ update`, `+ create`, `> send`). The 60-item menu
    costs 1,095 tokens in Lens against 1,919 minified and 3,019 pretty-printed.
 2. **Consistency across services.** A model that has read one YEA receipt can read all of them.
 3. **Budgets that mean something.** A budget constrains the rendering the model actually reads, not a JSON byte count.
 
-Shared proposal attributes (cost, risk, undo, expiry) are stated once in the header.
+Shared proposal attributes (uses, risk, undo, expiry) are stated once in the header.
 Receipts don't repeat effects the model has already seen, unless the service
 auto-committed. Both rules came out of the benchmark.
 
@@ -122,7 +122,7 @@ possession signed by the holder key.
 **Alternatives.**
 - *API keys / bearer tokens:* all-or-nothing, and a leak is total.
 - *OAuth 2 scopes / JWT:* identity-centric, and scopes are coarse strings. There's no
-  standard for spend caps or risk ceilings, and delegating to a sub-agent means another
+  standard for spending limits or risk ceilings, and delegating to a sub-agent means another
   round trip to an authorization server.
 - *Macaroons (HMAC):* the right attenuation model, but verification needs the root
   secret, so only the minting service can check them.
@@ -140,8 +140,9 @@ possession signed by the holder key.
 - **Fail-closed.** Unknown caveats *and malformed values* are hard failures, so an
   older service never over-authorizes a newer grant, and `{"svc": "a.example"}` (a
   string, not a list) doesn't sneak past through a substring match.
-- **Agent-shaped caveats:** `per` and `spend` (money), `risk` (a ceiling on what the
-  agent may do without asking), and `only` (consent bound to one proposal hash).
+- **Agent-shaped caveats:** `each` and `total` (limits on anything an action uses),
+  `risk` (a ceiling on what the agent may do without asking), and `only` (consent bound
+  to one proposal hash).
 - **Consent is just a grant.** A human approval is a root grant with
   `[{svc: [service]}, {verbs: ["COMMIT"]}, {can: [capability]}, {only: hash}, {exp: …}]`.
   No new machinery, and it's cryptographically bound to the exact effects the human
@@ -149,8 +150,34 @@ possession signed by the holder key.
   that grant would have authorized every other verb, including `UNDO` of unrelated
   orders, until it expired. The Python implementer found it by exploiting it, and
   the scoping caveats are now required by the spec.
-- **Soft vs hard failures.** If only `per`, `spend` or `risk` fail, the service replies
+- **Soft vs hard failures.** If only `each`, `total` or `risk` fail, the service replies
   `consent_required` rather than `forbidden`. That's the protocol-level "ask the human."
+
+## Measures, not money
+
+**Decision.** Proposals report what a commit would use up in `uses`, a map from a
+service-chosen measure name to an exact decimal quantity (`{"spend": {"amount": 2287,
+"scale": 2, "unit": "USD"}, "emails": {"amount": 1}}`). Grants limit any measure with
+`each` and `total`. The spec gives names and units no meaning, and money is a
+[convention](conventions.md), not part of the protocol.
+
+**Why.** Draft 1 had a `cost` field in currency minor units and `per`/`spend` caveats
+in a currency, so the only thing a person could limit was money, and Lens carried a
+table of zero-decimal currencies. Agents do plenty that isn't spending but still needs
+a ceiling: emails sent, records deleted, invitations. Changing it before the first
+release cost nothing on the wire.
+
+**Details that matter.**
+- **Names, not just units.** A limit names the measure (`of: "spend"`) as well as the
+  unit, so a `spend` in EUR fails a USD `spend` limit, and asks the person, instead of
+  slipping past as an unrelated unit. Nothing is converted.
+- **Exact decimals.** `amount` is an integer and `scale` places the point, so values
+  compare exactly across scales (`100` at scale 0 equals `10000` at scale 2) with no
+  floating point. Bounds (`amount` ≤ 2^53−1, `scale` ≤ 18) keep JavaScript and Python
+  in agreement.
+- **Only what's reported is bound.** A proposal that doesn't report a measure passes a
+  limit on it. Services are already trusted to describe their effects; this is the
+  same trust.
 
 ## Wire format
 
@@ -202,8 +229,8 @@ It confirmed 15 findings, and every one now has a regression test in
 `ts/test/security.test.ts` plus, where it's protocol-level, a SPEC change:
 
 - **High:** a malformed or aborted HTTP request crashed the bridge process. Concurrent
-  commits could exceed a `spend` cap, because spend was counted after execution; it's
-  now reserved atomically (§6.3). A malicious service could get the MCP bridge to ask
+  commits could exceed a `spend` cap (now a `total` limit), because spend was counted
+  after execution; it's now reserved atomically (§6.3). A malicious service could get the MCP bridge to ask
   the human to sign a consent for a *different* service's proposal behind a friendly
   summary. Consent is now built only from the proposal the bridge showed, and it's
   checked against the service's request (§6.6).
@@ -228,13 +255,15 @@ It confirmed 15 findings, and every one now has a regression test in
   explicit and binds commits to it, but a malicious service can still lie. Signed
   receipts (below) make lies attributable.
 - **No revocation.** Keep grants short-lived with `exp`.
-- **`per` alone doesn't bound a purchase.** A per-commit cap can be dodged by splitting.
-  In our [real Claude session](claude-code-session.md) the model pointed this out itself
-  and declined to do it. `spend` bounds *total* exposure, but splitting within it is
-  still possible, so size `spend` as the most you're willing to lose.
-- **`spend` accounting is per service.** A grant used at two services has two
-  independent totals. Scope money grants with `svc`.
-- **Lens is English-centric.** Its keywords (`cost`, `undo`, `risk`) are fixed tokens,
+- **`each` alone doesn't bound anything.** A per-commit limit can be dodged by
+  splitting. In our [real Claude session](claude-code-session.md) the model pointed this
+  out itself and declined to do it. `total` bounds *overall* exposure, but splitting
+  within it is still possible, so size `total` as the most you're willing to lose.
+- **`total` accounting is per service.** A grant used at two services has two
+  independent totals. Scope limited grants with `svc`.
+- **Limits bind only what services report.** A service that under-reports `uses` isn't
+  stopped by a limit, just as a service that lies about its effects isn't.
+- **Lens is English-centric.** Its keywords (`uses`, `undo`, `risk`) are fixed tokens,
   not UI strings.
 
 ## Roadmap

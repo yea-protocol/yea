@@ -15,7 +15,7 @@ editLink: false
 | `PUT`, `PATCH` | `INTENT`, effect `update` | The same, as an update |
 | `DELETE` | `INTENT`, effect `delete`, risk `medium` | The same, as a delete |
 
-Nothing is sent upstream until `COMMIT`. Wrapped writes are irreversible (`undo: never`), so they are never auto-committed, and grants, spend caps and consent apply unchanged. Upstream errors become YEA errors.
+Nothing is sent upstream until `COMMIT`. Wrapped writes are irreversible (`undo: never`), so they are never auto-committed, and grants, limits and consent apply unchanged. Upstream errors become YEA errors.
 
 ## Options
 
@@ -88,7 +88,7 @@ A merge is only a proposal until it's committed, and it shows exactly what would
 1 proposal:
 [p_J6IbkIA4] PUT /repos/octo/demo/pulls/42/merge
   ~ update api.github.com/repos/octo/demo/pulls/42/merge — body {}
-  cost: free · risk: high · undo: never · expires: 2026-09-24T14:10Z
+  risk: high · undo: never · expires: 2026-09-24T14:10Z
 ```
 
 Presets live in [`ts/src/presets.ts`](https://github.com/yea-protocol/yea/blob/main/ts/src/presets.ts). Contributions of new ones are welcome: each is a spec URL, an allow-list of operations with risks, response projections and the environment variables it reads.

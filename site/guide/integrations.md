@@ -15,14 +15,14 @@ By default, `install` creates **only the agent key** on this machine. Your princ
 
 ```sh
 # on the principal's device (another OS user, machine or phone)
-yea grant --to <agent key> --risk low --per 25USD --spend 100USD --exp 30d
+yea grant --to <agent key> --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d
 
 # on the agent's machine
 yea grant-import <pg1.… token>
 yea doctor        # "principal key is not on this machine (recommended)"
 ```
 
-Just trying it out? `yea install --with-principal` creates the principal key locally, with a warning, and signs a starter policy: low-risk actions, up to 25.00 USD each and 100.00 USD in total, for 30 days. Anything else asks you. The starter policy isn't scoped to particular services, and `spend` is counted per service, so the total applies at each service separately. Add `--svc` to your own grants to scope them.
+Just trying it out? `yea install --with-principal` creates the principal key locally, with a warning, and signs a starter policy: low-risk actions, up to 25.00 USD each and 100.00 USD in total, for 30 days. Anything else asks you. The starter policy isn't scoped to particular services, and `total` is counted per service, so the total applies at each service separately. Add `--svc` to your own grants to scope them.
 
 ## Configure by hand
 

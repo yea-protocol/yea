@@ -19,17 +19,16 @@
           "detail": "update notification"
         }
       ],
-      "cost": null,
       "risk": "low",
       "undo": {
         "window": 3600
       },
       "expires": 1790000600
     },
-    "hash": "3YBSE3lWje0kWnzf3PaGMr3CI3aoO1qdYRLxUkmOJVU"
+    "hash": "1tMtcVHOpIp-k0Sgl3VaS8sqxBuNn3nu30ZH5_E4D04"
   },
   {
-    "name": "with cost and data (data excluded)",
+    "name": "with uses and data (data excluded)",
     "proposal": {
       "id": "p_2",
       "capability": "calendar.reschedule",
@@ -48,19 +47,25 @@
           "detail": "update notification"
         }
       ],
-      "cost": {
-        "amount": 1250,
-        "currency": "USD"
-      },
       "risk": "medium",
       "undo": null,
       "expires": 1790000600,
+      "uses": {
+        "spend": {
+          "amount": 1250,
+          "scale": 2,
+          "unit": "USD"
+        },
+        "emails": {
+          "amount": 1
+        }
+      },
       "data": {
         "note": "not hashed",
         "n": 1.5
       }
     },
-    "hash": "PqsYTM44f4k6sArmFNbQ1vxLHgmkxlCyiYOcqKjy8Iw"
+    "hash": "zy57pzpgSY4w-J3XykzXkkrUsaQ5VCjF-IdjEba8HsE"
   },
   {
     "name": "hash field ignored",
@@ -82,7 +87,6 @@
           "detail": "update notification"
         }
       ],
-      "cost": null,
       "risk": "low",
       "undo": {
         "window": 3600
@@ -90,6 +94,6 @@
       "expires": 1790000600,
       "hash": "whatever"
     },
-    "hash": "3YBSE3lWje0kWnzf3PaGMr3CI3aoO1qdYRLxUkmOJVU"
+    "hash": "1tMtcVHOpIp-k0Sgl3VaS8sqxBuNn3nu30ZH5_E4D04"
   }
 ]

@@ -149,6 +149,7 @@ export default defineConfig({
 const PAGES: Record<string, string> = {
   'SPEC.md': '/reference/spec',
   'docs/design.md': '/reference/design',
+  'docs/conventions.md': '/reference/conventions',
   'bench/RESULTS.md': '/reference/benchmark',
   'bench/agent-eval/README.md': '/benchmark/live',
   'bench/agent-eval/RESULTS.md': '/benchmark/live#results',
@@ -246,6 +247,7 @@ function sidebar() {
       text: 'Reference',
       items: [
         { text: 'Specification', link: '/reference/spec' },
+        { text: 'Conventions for uses', link: '/reference/conventions' },
         { text: 'CLI', link: '/reference/cli' },
         { text: 'Verified releases', link: '/reference/verified-releases' },
         { text: 'Design decisions', link: '/reference/design' },

@@ -26,6 +26,7 @@ import {
   removeService,
 } from './setup.js';
 import type { ConsentRequest, Proposal, Risk, Verb } from './types.js';
+import { isLimit, isUses, type Limit } from './uses.js';
 
 const HELP = `yea — the protocol agents speak
 
@@ -64,7 +65,7 @@ bridges
   yea openapi <spec.json|url> [--base <url>] [--header "K: V"] [--port 7447] [--http 8080] [--preset github|petstore]
                                            serve any REST API as a YEA service (writes become proposals)
 
-caveats: --svc <id> --can <pattern> --verbs ASK,INTENT --exp 24h --per 50USD --spend 200USD --risk low|medium|high
+caveats: --svc <id> --can <pattern> --verbs ASK,INTENT --exp 24h --each spend=50.00USD --total emails=20 --risk low|medium|high
 options: --budget <tokens> --json`;
 
 const { values: o, positionals: args } = parseArgs({
@@ -74,8 +75,8 @@ const { values: o, positionals: args } = parseArgs({
     can: { type: 'string', multiple: true },
     verbs: { type: 'string' },
     exp: { type: 'string' },
-    per: { type: 'string' },
-    spend: { type: 'string' },
+    each: { type: 'string', multiple: true },
+    total: { type: 'string', multiple: true },
     risk: { type: 'string' },
     to: { type: 'string' },
     goal: { type: 'string' },
@@ -114,12 +115,21 @@ function duration(s: string): number {
   return Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's'];
 }
 
-function limit(s: string) {
+/** `spend=25.00USD` or `emails=20` → a limit on that measure (SPEC §6.3). */
+function limit(s: string): Limit {
   const m =
-    /^(\d+(?:\.\d{1,2})?)([A-Z]{3})$/.exec(s) ??
-    die(`bad amount ${s} (use e.g. 50USD)`);
+    /^([a-z][a-z0-9_.-]*)=(\d+)(?:\.(\d+))?\s*([A-Za-z%][A-Za-z0-9_./%-]*)?$/.exec(
+      s,
+    ) ?? die(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
+  const decimals = m[3] ?? '';
+  const l = {
+    of: m[1],
+    max: Number(m[2] + decimals),
+    ...(decimals ? { scale: decimals.length } : {}),
+    ...(m[4] ? { unit: m[4] } : {}),
+  };
 
-  return { max: Math.round(Number(m[1]) * 100), currency: m[2] };
+  return isLimit(l) ? l : die(`bad limit ${s} (amount or unit out of range)`);
 }
 
 function caveats(): Caveat[] {
@@ -143,12 +153,12 @@ function caveats(): Caveat[] {
     c.push({ exp: Math.floor(Date.now() / 1000) + duration(o.exp) });
   }
 
-  if (o.per) {
-    c.push({ per: limit(o.per) });
+  for (const l of o.each ?? []) {
+    c.push({ each: limit(l) });
   }
 
-  if (o.spend) {
-    c.push({ spend: limit(o.spend) });
+  for (const l of o.total ?? []) {
+    c.push({ total: limit(l) });
   }
 
   if (o.risk) {
@@ -308,7 +318,7 @@ async function cmdInit() {
     a = await agentKey(true);
 
   console.log(
-    `principal ${p.public}\nagent     ${a.public}\n\nnext: yea grant --exp 24h --spend 100USD --risk low`,
+    `principal ${p.public}\nagent     ${a.public}\n\nnext: yea grant --exp 24h --total spend=100.00USD --risk low`,
   );
 }
 
@@ -435,6 +445,7 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
     d.id !== consent.proposal ||
     d.hash !== consent.hash ||
     d.capability !== consent.capability ||
+    (d.uses !== undefined && !isUses(d.uses)) ||
     (await proposalHash(d)) !== consent.hash
   ) {
     die("✗ this consent code's proposal doesn't match its hash: refusing");
@@ -690,7 +701,7 @@ async function installPrincipal(a: KeyPair): Promise<KeyPair | null> {
 
   if (!create) {
     console.log(
-      `principal   not on this machine (recommended). On the device that holds it, run:\n              yea grant --to ${a.public} --risk low --per 25USD --spend 100USD --exp 30d\n            and save the token here with: yea grant-import <token>   (or re-run with --with-principal to try things quickly)`,
+      `principal   not on this machine (recommended). On the device that holds it, run:\n              yea grant --to ${a.public} --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d\n            and save the token here with: yea grant-import <token>   (or re-run with --with-principal to try things quickly)`,
     );
 
     return null;
@@ -709,8 +720,8 @@ async function installPrincipal(a: KeyPair): Promise<KeyPair | null> {
 async function installDefaultPolicy(p: KeyPair, a: KeyPair) {
   const caveats: Caveat[] = [
     { risk: 'low' },
-    { per: { max: 2500, currency: 'USD' } },
-    { spend: { max: 10000, currency: 'USD' } },
+    { each: { of: 'spend', max: 2500, scale: 2, unit: 'USD' } },
+    { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
     { exp: Math.floor(Date.now() / 1000) + 30 * 86400 },
   ];
   const token = await issueGrant({ principal: p, to: a.public, caveats });

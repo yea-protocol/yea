@@ -18,7 +18,7 @@ name: yea
 connector_slug: yea
 description: >-
   Act on the user's behalf with previews, consent and undo. YEA services answer
-  intents with proposals whose effects, cost, risk and undo window are shown before
+  intents with proposals whose effects, what they use, risk and undo window are shown before
   anything happens; the user's signed policy decides what can commit without asking.
 source: https://github.com/yea-protocol/yea
 
@@ -37,7 +37,7 @@ transport:
 **What it is.** [YEA](https://github.com/yea-protocol/yea) (Your Explicit Approval) is an open protocol (Apache-2.0) for agents acting on behalf of people. Its MCP bridge exposes YEA services to any MCP client as four tools: `yea_ask`, `yea_intent`, `yea_commit`, `yea_undo`.
 
 **Why it fits Hermes.**
-- **Previews before side effects.** `yea_intent` returns proposals listing every effect, the cost, the risk and the undo window. Nothing changes until `yea_commit`.
+- **Previews before side effects.** `yea_intent` returns proposals listing every effect, what it uses (money, emails), the risk and the undo window. Nothing changes until `yea_commit`.
 - **Human approval that means something.** When an action exceeds the user's signed policy (per-action cap, total spend, risk ceiling), the service returns `consent_required`. The bridge asks the human through MCP elicitation, which Hermes routes through its approval surface. The approval is a signature bound to that exact proposal and nothing else.
 - **Undo.** Reversible commits return a receipt with an undo window.
 - **Token budgets.** Replies fit the requested budget and leave `EXPAND` handles, and results come back as compact text (Lens), not raw JSON.
