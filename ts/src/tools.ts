@@ -40,7 +40,7 @@ export const TOOLS = [
   {
     name: 'yea_intent',
     description:
-      "Do something: the user's goal as params (names, days are fine). auto:true finishes now if their policy allows; else returns proposals (effects, cost, risk, undo) or a question.",
+      "Do something: the user's goal as params (names, days are fine). auto:true finishes now if their policy allows; else returns proposals (effects, uses, risk, undo) or a question.",
     inputSchema: obj(
       {
         service: str,

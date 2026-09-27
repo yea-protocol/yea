@@ -178,8 +178,8 @@ async function runOne(arm: 'rest' | 'yea', task: Task, port: number) {
       ? []
       : [
           { risk: 'low' as const },
-          { per: { max: 4000, currency: 'USD' } },
-          { spend: { max: 10000, currency: 'USD' } },
+          { each: { of: 'spend', max: 4000, scale: 2, unit: 'USD' } },
+          { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
         ];
 
   writeFileSync(

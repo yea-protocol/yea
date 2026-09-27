@@ -122,7 +122,7 @@ possession signed by the holder key.
 **Alternatives.**
 - *API keys / bearer tokens:* all-or-nothing, and a leak is total.
 - *OAuth 2 scopes / JWT:* identity-centric, and scopes are coarse strings. There's no
-  standard for spend caps or risk ceilings, and delegating to a sub-agent means another
+  standard for spending limits or risk ceilings, and delegating to a sub-agent means another
   round trip to an authorization server.
 - *Macaroons (HMAC):* the right attenuation model, but verification needs the root
   secret, so only the minting service can check them.

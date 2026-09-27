@@ -6,7 +6,7 @@ anything:
 
 ```sh
 npx @yea-protocol/cli init
-npx @yea-protocol/cli grant --risk low --per 40USD --spend 100USD --exp 24h
+npx @yea-protocol/cli grant --risk low --each spend=40.00USD --total spend=100.00USD --exp 24h
 claude mcp add yea-demo -- npx @yea-protocol/cli mcp https://yea-demo.<account>.workers.dev/calendar/yea https://yea-demo.<account>.workers.dev/shop/yea
 ```
 

@@ -40,7 +40,7 @@ const HOME = `YEA demo services
   calendar  /calendar/yea
   shop      /shop/yea
 Use from Claude Code:
-  npx @yea-protocol/cli init && npx @yea-protocol/cli grant --risk low --per 40USD --spend 100USD --exp 24h
+  npx @yea-protocol/cli init && npx @yea-protocol/cli grant --risk low --each spend=40.00USD --total spend=100.00USD --exp 24h
   claude mcp add yea-demo -- npx @yea-protocol/cli mcp <this-origin>/calendar/yea <this-origin>/shop/yea
 https://github.com/yea-protocol/yea
 `;
