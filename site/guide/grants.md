@@ -36,7 +36,7 @@ A proposal says what it would use up in its `uses` field: money, emails sent, re
 {"total": {"of": "emails", "max": 20}}
 ```
 
-The first allows up to 25.00 USD per commit. The second allows 20 emails in all through this grant. `max × 10^−scale` is the limit, and values compare exactly across scales, so `{"max": 25, "unit": "USD"}` means the same as the first. The protocol gives names and units no meaning; [conventions](https://github.com/yea-protocol/yea/blob/main/docs/conventions.md) say that money is `spend` with an ISO 4217 unit, and counts are plural nouns like `emails`.
+The first allows up to 25.00 USD per commit. The second allows 20 emails in all through this grant. `max × 10^−scale` is the limit, and values compare exactly across scales, so `{"max": 25, "unit": "USD"}` means the same as the first. The protocol gives names and units no meaning; [conventions](/reference/conventions) say that money is `spend` with an ISO 4217 unit, and counts are plural nouns like `emails`.
 
 - **A proposal that doesn't report the measure passes.** Limits bound what the service reports, and the service is trusted to report it truthfully.
 - **Units must match.** A 25 USD limit never admits a charge in EUR, and nothing is converted. A mismatch asks the human.
