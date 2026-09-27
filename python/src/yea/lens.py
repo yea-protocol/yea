@@ -199,7 +199,7 @@ def _brief(r: dict) -> list[str]:
 
 # Each renders a proposal's attribute, or None when it's omitted (only `uses` can be).
 _ATTRS = (
-    ("uses", lambda p: fmt_uses(p.get("uses"))),
+    ("uses", lambda p: fmt_uses(p["uses"]) if "uses" in p else None),
     ("risk", lambda p: str(p.get("risk", "-"))),
     ("undo", lambda p: fmt_duration(p["undo"]["window"]) if isinstance(p.get("undo"), dict) and "window" in p["undo"] else "never"),
     ("expires", lambda p: fmt_time(p.get("expires"))),

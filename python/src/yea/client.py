@@ -17,6 +17,7 @@ from .grants import Grant, decode_grant
 from .keys import KeyPair, sign_proof
 from .lens import lens as render_lens
 from .transport import DEFAULT_PORT, MAX_FRAME, TLS_PORT
+from .uses import is_uses
 OnEvent = Callable[["Reply"], Any]
 
 
@@ -58,6 +59,19 @@ class Reply:
 
     def __str__(self) -> str:
         return self.lens
+
+
+def _checked_reply(r: Reply) -> Reply:
+    """A proposal or receipt with a malformed ``uses`` makes the whole reply invalid (SPEC §5.1)."""
+    f = r.frame
+    items = f.get("proposals") if f.get("kind") == "PROPOSALS" else [f.get("receipt")] if f.get("kind") == "RECEIPT" else []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and "uses" in item and not is_uses(item["uses"]):
+            what = "proposal" if f["kind"] == "PROPOSALS" else "receipt"
+            err = {"yea": 1, "id": f.get("id", ""), "re": f.get("re", ""), "kind": "ERROR", "code": "bad_frame",
+                   "message": f"{what} {item.get('id', '?')} has a malformed uses"}
+            return Reply(err, r.events)
+    return r
 
 
 # ------------------------------------------------------------ transports
@@ -221,7 +235,7 @@ class Client:
 
     async def send(self, body: dict, on_event: OnEvent | None = None) -> Reply:
         """Send a request body (``yea`` and ``id`` are filled in)."""
-        return await self._t.request({"yea": 1, "id": _request_id(), **body}, on_event)
+        return _checked_reply(await self._t.request({"yea": 1, "id": _request_id(), **body}, on_event))
 
     async def audience(self) -> str:
         """The service's id (learned from HELLO), which proofs are bound to."""

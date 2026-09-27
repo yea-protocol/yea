@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -11,6 +12,7 @@ MAX_SCALE = 18
 _NAME = re.compile(r"[a-z][a-z0-9_.\-]{0,63}")
 _UNIT = re.compile(r"[A-Za-z0-9_./%\-]{1,32}")
 _DECIMAL = re.compile(r"([0-9]+)(?:\.([0-9]+))?")
+
 
 def is_name(v: Any) -> bool:
     """A measure name: 1–64 of ``a-z 0-9 _ . -``, starting with a letter."""
@@ -27,28 +29,26 @@ def _in_range(v: Any, top: int) -> bool:
 
 def is_quantity(q: Any) -> bool:
     """``{amount, scale?, unit?}`` with every field in range and nothing else."""
-    if not isinstance(q, dict) or not _in_range(q.get("amount"), MAX_AMOUNT):
+    if not isinstance(q, dict) or not set(q) <= {"amount", "scale", "unit"}:
         return False
-    if "scale" in q and not _in_range(q["scale"], MAX_SCALE):
-        return False
-    if "unit" in q and not is_unit(q["unit"]):
-        return False
-    return set(q) <= {"amount", "scale", "unit"}
+    return _in_range(q.get("amount"), MAX_AMOUNT) and _scale_unit_ok(q)
+
+
+def _scale_unit_ok(v: Mapping[str, Any]) -> bool:
+    return ("scale" not in v or _in_range(v["scale"], MAX_SCALE)) and ("unit" not in v or is_unit(v["unit"]))
 
 
 def is_uses(v: Any) -> bool:
-    """A well-formed ``uses`` map. Absent (None) counts as well formed."""
-    if v is None:
-        return True
+    """A well-formed ``uses`` object. ``None`` (JSON ``null``) is not one: callers treat an
+    absent key as "uses nothing" and a present one must pass this."""
     return isinstance(v, dict) and all(is_name(k) and is_quantity(q) for k, q in v.items())
 
 
 def is_limit(v: Any) -> bool:
     """An ``each``/``total`` argument: ``{of, max, scale?, unit?}``."""
-    if not isinstance(v, dict) or not is_name(v.get("of")):
+    if not isinstance(v, dict) or not set(v) <= {"of", "max", "scale", "unit"}:
         return False
-    q = {k: x for k, x in v.items() if k != "of"}
-    return "max" in q and is_quantity({"amount" if k == "max" else k: x for k, x in q.items()})
+    return is_name(v.get("of")) and _in_range(v.get("max"), MAX_AMOUNT) and _scale_unit_ok(v)
 
 
 def check_uses(v: Any) -> dict | None:
@@ -58,7 +58,7 @@ def check_uses(v: Any) -> dict | None:
         return None
     if not is_uses(v):
         raise ValueError(f"malformed uses {v!r}: names are a-z0-9_.- and quantities are {{amount, scale?, unit?}} in range")
-    return dict(v)
+    return copy.deepcopy(v)  # a plan mutating its dict later can't change what was hashed
 
 
 def value(q: Mapping[str, Any]) -> int:
@@ -98,7 +98,10 @@ def spend(amount: str, currency: str) -> dict:
 
 
 def fmt_quantity(q: Mapping[str, Any]) -> str:
-    """Lens (§9.2): exactly ``scale`` decimals, then the unit if any. ``22.90 USD``, ``0.005``, ``1``."""
+    """Lens (§9.2): exactly ``scale`` decimals, then the unit if any. ``22.90 USD``, ``0.005``, ``1``.
+    A malformed quantity renders as ``?``."""
+    if not is_quantity(q):
+        return "?"
     scale = q.get("scale", 0)
     digits = str(q["amount"]).rjust(scale + 1, "0")
     text = f"{digits[:-scale]}.{digits[-scale:]}" if scale else digits
@@ -106,7 +109,9 @@ def fmt_quantity(q: Mapping[str, Any]) -> str:
 
 
 def fmt_uses(uses: Any) -> str | None:
-    """``emails 1, spend 22.90 USD`` in canonical key order, or None when there's nothing."""
+    """``emails 1, spend 22.90 USD`` in canonical key order, None when empty, ``?`` when malformed."""
+    if not isinstance(uses, dict):
+        return "?"
     if not uses:
         return None
     return ", ".join(f"{name} {fmt_quantity(uses[name])}" for name in sorted(uses))

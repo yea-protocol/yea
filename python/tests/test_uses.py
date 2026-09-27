@@ -46,11 +46,15 @@ def test_fmt_quantity():
     assert fmt_quantity({"amount": 0, "scale": 2}) == "0.00"
     assert fmt_quantity({"amount": 1, "scale": 18}) == "0.000000000000000001"
     assert fmt_uses({"spend": spend("22.90", "USD"), "emails": quantity(1)}) == "emails 1, spend 22.90 USD"
-    assert fmt_uses({}) is None and fmt_uses(None) is None
+    assert fmt_uses({}) is None
+    # Malformed input renders as "?", never a crash or "0.-5".
+    assert fmt_uses(None) == "?" and fmt_uses([]) == "?"
+    assert fmt_quantity({"amount": -5, "scale": 1}) == "?" and fmt_quantity({"amount": 1, "scale": 99}) == "?"
+    assert fmt_uses({"spend": {"amount": "x"}}) == "spend ?"
 
 
 @pytest.mark.parametrize("uses,ok", [
-    (None, True), ({}, True), ({"constructor": {"amount": 1}}, True),
+    (None, False), ({}, True), ({"constructor": {"amount": 1}}, True),
     ({"Spend": {"amount": 1}}, False), ({"1x": {"amount": 1}}, False), ({"a" * 65: {"amount": 1}}, False),
     ({"x": {"amount": 1, "extra": 1}}, False), ({"x": {"amount": 1.0}}, False), ({"x": {"amount": True}}, False),
     ({"x": {"amount": 1, "scale": 19}}, False), ({"x": {"amount": 1, "unit": ""}}, False), ([], False),
@@ -65,6 +69,7 @@ def test_is_limit():
     assert not is_limit({"max": 25})
     assert not is_limit({"of": "spend", "max": 25, "scale": 19})
     assert not is_limit({"of": "spend", "max": MAX_AMOUNT + 1})
+    assert not is_limit({"of": "spend", "max": 100, "amount": 7})  # regression: an extra key used to pass
 
 
 def test_values_compare_exactly_across_scales():
@@ -114,6 +119,12 @@ def test_malformed_uses_is_hard():
     assert r.code == "forbidden" and "malformed uses on the proposal" in r.message
     # Even when the malformed entry isn't the one limited.
     assert check({"total": {"of": "spend", "max": 1}}, {"emails": {"amount": 1.5}}).code == "forbidden"
+    # null is not an absent uses: it's malformed, and hard.
+    g = issue_grant(ALICE, AGENT.public, [{"each": {"of": "spend", "max": 1}}], iat=NOW)
+    ctx = GrantContext("svc", "COMMIT", "shop.buy", NOW, {"hash": "H", "risk": "low", "uses": None})
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx).code == "forbidden"
+    # So is a limit with a key it doesn't define.
+    assert check({"each": {"of": "spend", "max": 100, "amount": 7}}, {"spend": quantity(1)}).code == "forbidden"
     # A malformed limit is hard too.
     assert check({"each": {"of": "spend", "max": 1, "scale": 19}}, {"spend": quantity(1)}).code == "forbidden"
 
@@ -185,5 +196,53 @@ def test_total_counts_emails_across_commits():
         for _ in range(2):
             assert (await c.commit((await c.intent("x.buy")).proposals[0])).kind == "RECEIPT"
         assert (await c.commit((await c.intent("x.buy")).proposals[0])).code == "consent_required"
+
+    asyncio.run(go())
+
+
+def test_plan_uses_is_copied_when_built():
+    async def go():
+        uses = {"emails": quantity(1)}
+        svc = _buy_service(uses)
+        c = _client(svc, {"total": {"of": "emails", "max": 1}})
+        p = (await c.intent("x.buy")).proposals[0]
+        uses["emails"]["amount"] = 0  # the author's dict changes after the proposal was hashed
+        assert svc._proposals[p["id"]].proposal["uses"] == {"emails": {"amount": 1}}
+
+    asyncio.run(go())
+
+
+class _Canned:
+    """A transport that answers every request with one fixed frame."""
+
+    def __init__(self, frame):
+        self.frame = frame
+
+    async def request(self, body, on_event=None):
+        from yea.client import Reply
+
+        return Reply({**self.frame, "re": body["id"]})
+
+    async def close(self):
+        pass
+
+
+@pytest.mark.parametrize("frame,what", [
+    ({"kind": "PROPOSALS", "proposals": [_proposal("p_1"), _proposal("p_2", {"spend": {"amount": -1}})]}, "proposal p_2"),
+    ({"kind": "PROPOSALS", "proposals": [{**_proposal("p_1"), "uses": None}]}, "proposal p_1"),
+    ({"kind": "RECEIPT", "receipt": {"id": "r_1", "summary": "s", "effects": [], "undo": None, "uses": "lots"}}, "receipt r_1"),
+])
+def test_client_rejects_malformed_uses(frame, what):
+    async def go():
+        r = await Client(_Canned({"yea": 1, "id": "s", **frame})).send({"verb": "INTENT"})
+        assert r.kind == "ERROR" and r.code == "bad_frame" and r.message == f"{what} has a malformed uses"
+
+    asyncio.run(go())
+
+
+def test_client_passes_well_formed_uses():
+    async def go():
+        frame = {"yea": 1, "id": "s", "kind": "PROPOSALS", "proposals": [_proposal("p_1", {"emails": quantity(1)}), _proposal("p_2")]}
+        assert (await Client(_Canned(frame)).send({"verb": "INTENT"})).kind == "PROPOSALS"
 
     asyncio.run(go())

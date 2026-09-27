@@ -232,22 +232,34 @@ def _matches(pattern: Any, name: str) -> bool:
     return pattern == name
 
 
-def limit_denial(name: str, limit: Mapping[str, Any], uses: Any, already: int = 0) -> str | None:
-    """Why an ``each`` or ``total`` limit fails for a proposal's ``uses``, or None if it holds.
-    ``already`` is the exact value committed or reserved under the block (``total`` only)."""
+@dataclass(frozen=True)
+class Denial:
+    """Why a caveat failed. ``hard`` means refuse (``forbidden``); otherwise ask (``consent_required``)."""
+
+    why: str
+    hard: bool
+
+
+def limit_denial(name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int = 0) -> Denial | None:
+    """Why an ``each`` or ``total`` limit fails for a proposal, or None if it holds. A present
+    but malformed ``uses`` (including null) is hard. ``already`` is the exact value committed
+    or reserved under the block (``total`` only)."""
+    if "uses" not in proposal:
+        return None
+    uses = proposal["uses"]
     if not is_uses(uses):
-        return "malformed uses on the proposal"
+        return Denial("malformed uses on the proposal", hard=True)
     of = limit["of"]
-    q = uses.get(of) if uses else None
+    q = uses.get(of)
     if q is None:
         return None  # limits bind only what is reported
     if not same_unit(q, limit):
-        return f"{of} is in {q.get('unit') or 'no unit'}, but the limit is in {limit.get('unit') or 'no unit'}"
+        return Denial(f"{of} is in {q.get('unit') or 'no unit'}, but the limit is in {limit.get('unit') or 'no unit'}", hard=False)
     shown = fmt_quantity({"amount": limit["max"], **{k: limit[k] for k in ("scale", "unit") if k in limit}})
     if name == "each" and value(q) > limit_value(limit):
-        return f"{of} over the per-commit limit of {shown}"
+        return Denial(f"{of} over the per-commit limit of {shown}", hard=False)
     if name == "total" and already + value(q) > limit_value(limit):
-        return f"{of} would pass the total limit of {shown}"
+        return Denial(f"{of} would pass the total limit of {shown}", hard=False)
     return None
 
 
@@ -282,17 +294,18 @@ def check_caveat(caveat: Any, bid: str, ctx: GrantContext) -> bool:
     return caveat_denial(caveat, bid, ctx) is None
 
 
-def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> str | None:
+def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> Denial | None:
     """Why one caveat fails, or None when it is satisfied."""
     if not well_formed(caveat):
-        return "unknown or malformed caveat"
+        return Denial(compact(caveat), hard=True)
     (name, arg), = caveat.items()
     if name in LIMITS:
         if ctx.verb != "COMMIT":
             return None
-        prop = ctx.proposal or {}
-        return limit_denial(name, arg, prop.get("uses"), int(ctx.used.get((bid, arg["of"]), 0)))
-    return None if _satisfied(name, arg, ctx) else "not satisfied"
+        return limit_denial(name, arg, ctx.proposal or {}, int(ctx.used.get((bid, arg["of"]), 0)))
+    if _satisfied(name, arg, ctx):
+        return None
+    return Denial(compact(caveat), hard=name not in CONSENT_CAVEATS)
 
 
 def _satisfied(name: str, arg: Any, ctx: GrantContext) -> bool:
@@ -349,27 +362,12 @@ def verify_grant(
     if g.holder != proof_key:
         return Verification(False, "unauthorized", "the proof key is not the grant's holder", g)
 
-    denials = [(c, why) for b in g.blocks for c in b["p"]["caveats"] if (why := caveat_denial(c, block_id(b), ctx))]
+    denials = [(c, d) for b in g.blocks for c in b["p"]["caveats"] if (d := caveat_denial(c, block_id(b), ctx))]
     if not denials:
         return Verification(True, grant=g)
-    failed = [c for c, _ in denials]
-    hard = [(c, why) for c, why in denials if _is_hard(c, why)]
+    hard = [(c, d) for c, d in denials if d.hard]
     if hard:
-        shown = ", ".join(_shown(c, why) for c, why in hard[:3])
+        shown = ", ".join(d.why for _, d in hard[:3])
         return Verification(False, "forbidden", f"the grant does not allow this request ({shown})", g, [c for c, _ in hard])
-    shown = ", ".join(_shown(c, why) for c, why in denials[:3])
-    return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g, failed)
-
-
-def _is_hard(caveat: Any, why: str) -> bool:
-    """Malformed caveats and malformed ``uses`` are hard; only well-formed limits and risk ask (§6.3)."""
-    return _caveat_name(caveat) not in CONSENT_CAVEATS or not well_formed(caveat) or why == "malformed uses on the proposal"
-
-
-def _shown(caveat: Any, why: str) -> str:
-    """A limit's own reason reads better than its JSON; other caveats show as JSON."""
-    return why if _caveat_name(caveat) in LIMITS else compact(caveat)
-
-
-def _caveat_name(c: Any) -> str | None:
-    return next(iter(c)) if isinstance(c, dict) and len(c) == 1 else None
+    shown = ", ".join(d.why for _, d in denials[:3])
+    return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g, [c for c, _ in denials])
