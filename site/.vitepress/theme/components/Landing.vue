@@ -18,7 +18,7 @@ const steps: { label: string; lines: Line[] }[] = [
       { kind: "lens", state: "amber", t: '[p_B8YnaADk] Move "1:1 with Ana" to 2026-09-27T09:30:00Z' },
       { kind: "lens", state: "amber", t: "  ~ update event/e2.start: 2026-09-25T14:00:00Z → 2026-09-27T09:30:00Z" },
       { kind: "lens", state: "amber", t: "  > send ana.ruiz@acme.co — updated invite" },
-      { kind: "lens", state: "amber", t: "  cost: free · risk: low · undo: 1d · expires: 2026-09-24T02:22Z" },
+      { kind: "lens", state: "amber", t: "  risk: low · undo: 1d · expires: 2026-09-24T02:22Z" },
     ],
   },
   {
@@ -70,26 +70,26 @@ const live = [
 const payload = [
   ["Reschedule a meeting (REST: search, free slots, update)", "3,807", "1,548", "59%"],
   ["Reschedule a meeting (REST: one outcome-level endpoint)", "1,609", "1,548", "4%"],
-  ["Find vegan meals under 700 kcal and order four", "3,176", "2,708", "15%"],
+  ["Find vegan meals under 700 kcal and order four", "3,176", "2,710", "15%"],
   ["Read the full 60-item menu", "3,452", "2,495", "28%"],
   ["Skim the first 30 items (REST limit=30, YEA budget=800)", "2,467", "1,961", "21%"],
 ];
 
 const changes: [string, string][] = [
   ["Agents want outcomes, but APIs expose CRUD.", "INTENT carries the goal. The service answers with concrete proposals."],
-  ["Agents make mistakes.", "Nothing happens until COMMIT. Every proposal lists its effects, cost, risk and undo window, and its hash binds the commit to exactly what was shown."],
-  ["Asking every time is slow; never asking is reckless.", "The human's signed policy decides. Low-risk, undoable changes inside it commit in one round trip. Anything costlier or irreversible stops for review."],
+  ["Agents make mistakes.", "Nothing happens until COMMIT. Every proposal lists its effects, what it uses, its risk and undo window, and its hash binds the commit to exactly what was shown."],
+  ["Asking every time is slow; never asking is reckless.", "The human's signed policy decides. Low-risk, undoable changes inside it commit in one round trip. Anything over a limit or irreversible stops for review."],
   ["Undo is an afterthought.", "Receipts carry an undo window, and UNDO is a verb."],
   ["Context windows are expensive.", "Every request carries a token budget. Replies fit it and leave EXPAND handles for the rest."],
-  ["API keys are coarse.", "Grants are Ed25519 capability chains with spend caps, expiry, scopes and risk ceilings, verified offline and narrowed for sub-agents."],
+  ["API keys are coarse.", "Grants are Ed25519 capability chains with limits on spend or anything else, expiry, scopes and risk ceilings, verified offline and narrowed for sub-agents."],
   ["Errors say what failed.", "Errors say how to fix it, with patches a model can apply. Ambiguity gets CLARIFY, not an error."],
 ];
 
 const compare = [
   ["Unit of interaction", "resource (CRUD)", "tool call, usually wrapping an endpoint", "intent → proposal → commit"],
-  ["Preview before side effects", "rare, per API (dry-run flags)", "annotations such as destructiveHint, as hints; no effect preview", "effects, cost, risk and undo on every proposal, bound by hash"],
+  ["Preview before side effects", "rare, per API (dry-run flags)", "annotations such as destructiveHint, as hints; no effect preview", "effects, uses, risk and undo on every proposal, bound by hash"],
   ["Undo", "per API, if at all", "not in the protocol", "a verb, with declared windows"],
-  ["Delegation", "API keys, OAuth scopes", "OAuth at the transport", "attenuable capability chains with spend caps and risk ceilings, verified offline"],
+  ["Delegation", "API keys, OAuth scopes", "OAuth at the transport", "attenuable capability chains with limits and risk ceilings, verified offline"],
   ["Human approval", "app-specific", "elicitation, not bound to an action", "a consent grant signed over the exact proposal hash"],
   ["Context budget", "pagination, field selection", "list pagination", "every reply fits the budget, with EXPAND for the rest"],
   ["Model-facing format", "JSON", "text or structured content, per server", "Lens: canonical and byte-identical across implementations"],
@@ -192,7 +192,7 @@ const compare = [
           <thead><tr><th>Task</th><th class="num">REST, minified</th><th class="num">YEA</th><th class="num">Smaller</th></tr></thead>
           <tbody>
             <tr v-for="r in payload" :key="r[0]"><td>{{ r[0] }}</td><td class="num">{{ r[1] }}</td><td class="num">{{ r[2] }}</td><td class="num">{{ r[3] }}</td></tr>
-            <tr class="total"><td>All tasks, CRUD reschedule</td><td class="num">12,902</td><td class="num">8,712</td><td class="num">32%</td></tr>
+            <tr class="total"><td>All tasks, CRUD reschedule</td><td class="num">12,902</td><td class="num">8,714</td><td class="num">32%</td></tr>
           </tbody>
         </table>
       </div>
@@ -230,7 +230,7 @@ const compare = [
       <div>
         <pre class="cmd"><code>yea init
 yea grant --svc cal.example.com --risk low \
-  --per 25USD --spend 100USD --exp 24h
+  --each spend=25.00USD --total spend=100.00USD --exp 24h
 claude mcp add yea -- npx @yea-protocol/cli mcp \
   yea://127.0.0.1:7447</code></pre>
         <p class="warn">

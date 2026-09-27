@@ -12,7 +12,7 @@ It runs the example calendar and shop in-process, gives the model the same four 
 
 - The model's tool calls and the Lens it reads, as they happen.
 - A throwaway policy: low-risk actions, up to 40.00 USD each and 100.00 USD in total, for one hour. The reschedule fits it, so it can commit in one round trip if the model uses `auto`.
-- The meal order exceeds the per-action limit, so the service replies `consent_required` and **you** are asked to approve it at the terminal, after seeing its effects and cost. Say no and nothing is charged.
+- The meal order exceeds the per-action limit, so the service replies `consent_required` and **you** are asked to approve it at the terminal, after seeing its effects and what it spends. Say no and nothing is charged.
 - The model's final report of what happened.
 
 ## Options

@@ -48,7 +48,7 @@ const form = reactive({
   budget: 600,
   target: "",
 });
-const policy = reactive({ calendar: true, shop: true, billing: true, risk: "low", per: "40", spend: "100", exp: "8h" });
+const policy = reactive({ calendar: true, shop: true, billing: true, risk: "low", each: "40", total: "100", exp: "8h" });
 
 const log = ref<Exchange[]>([]);
 const selected = ref<number | null>(null);
@@ -93,9 +93,9 @@ function caveats() {
   const svc = (Object.keys(SERVICES) as Svc[]).filter((s) => policy[s]).map((s) => SERVICES[s]);
   out.push({ svc });
   if (policy.risk) out.push({ risk: policy.risk });
-  const usd = (s: string) => Math.round(Number(s) * 100);
-  if (policy.per !== "" && Number(policy.per) >= 0) out.push({ per: { max: usd(policy.per), currency: "USD" } });
-  if (policy.spend !== "" && Number(policy.spend) >= 0) out.push({ spend: { max: usd(policy.spend), currency: "USD" } });
+  const usd = (s: string) => ({ of: "spend", max: Math.round(Number(s) * 100), scale: 2, unit: "USD" });
+  if (policy.each !== "" && Number(policy.each) >= 0) out.push({ each: usd(policy.each) });
+  if (policy.total !== "" && Number(policy.total) >= 0) out.push({ total: usd(policy.total) });
   const m = /^(\d+)([mhd])$/.exec(policy.exp);
   if (m) out.push({ exp: Math.floor(Date.now() / 1000) + Number(m[1]) * { m: 60, h: 3600, d: 86400 }[m[2] as "m"] });
   return out;
@@ -310,6 +310,21 @@ const reqSummary = (x: Exchange) => {
 };
 const replySummary = (r: Frame) => (r.kind === "ERROR" ? r.code : r.kind === "RECEIPT" ? (r.replay ? "RECEIPT (replay)" : r.auto ? "RECEIPT (auto)" : r.receipt.undoes ? "RECEIPT (undo)" : "RECEIPT") : r.kind);
 const pretty = (v: unknown) => JSON.stringify(v, null, 2);
+/** The consent card's facts: what the proposal uses (if anything), its risk and its undo window. */
+const consentMeta = computed(() => {
+  const p = consentProposal.value, c = core.value;
+  if (!p || !c) return "";
+  const uses: Record<string, Parameters<Core["fmtQuantity"]>[0]> = p.uses ?? {};
+  const used = Object.keys(uses).sort().map((n) => `${n} ${c.fmtQuantity(uses[n])}`);
+  const parts = [
+    ...(used.length ? [`uses ${used.join(", ")}`] : []),
+    `risk ${p.risk}`,
+    p.undo ? `undo for ${c.fmtDuration(p.undo.window)}` : "irreversible",
+  ];
+  const text = parts.join(", ");
+  return text[0].toUpperCase() + text.slice(1);
+});
+
 const shortGrant = computed(() => (grant.value ? grant.value.slice(0, 28) + "…" + grant.value.slice(-8) : ""));
 const copied = ref(false);
 async function copyLens() {
@@ -419,8 +434,8 @@ function onKey(e: KeyboardEvent) {
             <label class="field"><span>Risk up to</span>
               <select v-model="policy.risk"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
             </label>
-            <label class="field"><span>Per action, USD</span><input v-model="policy.per" inputmode="decimal" /></label>
-            <label class="field"><span>Total, USD</span><input v-model="policy.spend" inputmode="decimal" /></label>
+            <label class="field"><span>Per action, USD</span><input v-model="policy.each" inputmode="decimal" /></label>
+            <label class="field"><span>Total, USD</span><input v-model="policy.total" inputmode="decimal" /></label>
           </div>
           <label class="field"><span>Expires in</span>
             <select v-model="policy.exp"><option value="15m">15 minutes</option><option value="8h">8 hours</option><option value="7d">7 days</option></select>
@@ -472,7 +487,7 @@ function onKey(e: KeyboardEvent) {
               <ul>
                 <li v-for="(e, i) in consentProposal.effects" :key="i"><code>{{ core!.effectLine(e) }}</code></li>
               </ul>
-              <p class="meta">{{ core!.fmtMoney(consentProposal.cost) }}, risk {{ consentProposal.risk }}, {{ consentProposal.undo ? `undo for ${core!.fmtDuration(consentProposal.undo.window)}` : "irreversible" }}. Hash checked against the proposal the agent received.</p>
+              <p class="meta">{{ consentMeta }}. Hash checked against the proposal the agent received.</p>
               <div class="actions">
                 <button type="button" class="approve" @click="approve">Approve as human and commit</button>
               </div>

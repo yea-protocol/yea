@@ -8,13 +8,13 @@ Models read text. Lens is a canonical, deterministic, compact text rendering of 
 2 proposals — risk: low · undo: 2h · expires: 2026-09-24T02:22Z:
 [p_71KbTFLA] 4 meals for 2026-09-26 — 53.95 USD
   + create order/o1001 — 2× Tofu Pad Thai (light), 2× Chickpea Shawarma (light)
-  $ charge card ••4242 — 53.95 USD
-  cost: 53.95 USD
+  + create charge — 53.95 USD to card ••4242
+  uses: spend 53.95 USD
 [p_JU6-iYhB] 4 meals for 2026-09-26 (express, by noon) — 62.94 USD
   …
 ```
 
-- **Effect lines** use one-character operators: `+` create, `~` update, `-` delete, `>` send, `$` charge, `*` other.
+- **Effect lines** use one-character operators: `+` create, `~` update, `-` delete, `>` send, `*` other.
 - **Uniform lists become tables** that name their keys once: `items[60]{sku,name,usd,cal,protein}:` and then one row per item.
 - **Strings are bare** when that's unambiguous, and quoted otherwise.
 - **Shared attributes** of several proposals appear once, in the header.

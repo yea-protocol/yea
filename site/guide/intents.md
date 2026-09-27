@@ -4,7 +4,7 @@ REST gives an agent resources to create, read, update and delete. YEA gives it a
 
 ```
 agent ──INTENT "move my 1:1 with Ana to Thursday"──────▶ service
-      ◀─PROPOSALS [p1] ~ event/e2.start 14:00 → Thu 15:00 · undo 1d · free
+      ◀─PROPOSALS [p1] ~ event/e2.start 14:00 → Thu 15:00 · undo 1d
 agent ──COMMIT p1 + grant (signed by the human's key)──▶
       ◀─RECEIPT ✓ moved · undo until Fri 15:00
 agent ──UNDO r1──────────────────────────────────────────▶
@@ -26,8 +26,8 @@ agent ──UNDO r1────────────────────�
 
 A proposal is a concrete plan the service offers. It's inert until committed, and it declares everything a human would want to know:
 
-- **effects**: every change the commit will cause, as `create`, `update`, `delete`, `send`, `charge` or `other`
-- **cost**: `null`, or an amount in minor units with a currency
+- **effects**: every change the commit will cause, as `create`, `update`, `delete`, `send` or `other`
+- **uses**: optional, what the commit would use up, by name: `spend 22.87 USD`, `emails 1`. Grants can limit these ([limits](/guide/grants#limits-each-and-total))
 - **risk**: `low`, `medium` or `high`, as the service assesses it
 - **undo**: a window in seconds, or `null` if irreversible
 - **expires**: when it stops being committable
@@ -52,7 +52,7 @@ Commits are idempotent. Sending the same `COMMIT` again returns the original rec
 1. one of the agent's grants authorizes that commit outright, with no consent needed, and
 2. the proposal can be undone.
 
-Otherwise the reply is ordinary proposals. So the principal's signed policy, not the agent, decides what may skip the preview: low-risk, undoable changes take one round trip, and anything costlier, riskier or irreversible still stops for review ([SPEC §4.3.1](/reference/spec#431-policy-gated-auto-commit)).
+Otherwise the reply is ordinary proposals. So the principal's signed policy, not the agent, decides what may skip the preview: low-risk, undoable changes take one round trip, and anything over a limit, riskier or irreversible still stops for review ([SPEC §4.3.1](/reference/spec#431-policy-gated-auto-commit)).
 
 ## Undo
 

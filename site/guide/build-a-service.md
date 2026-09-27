@@ -36,8 +36,8 @@ shop.intent("shop.order", {
   risk: "low",
   plan: ({ params }) => ({
     summary: `4 meals for ${params.deliver} — 53.95 USD`,
-    effects: [create("order/o1001", "2× Tofu Pad Thai, 2× Shawarma"), charge("card ••4242", "53.95 USD")],
-    cost: money(5395),                       // minor units
+    effects: [create("order/o1001", "2× Tofu Pad Thai, 2× Shawarma"), create("charge", "53.95 USD to card ••4242")],
+    uses: { spend: spend("53.95", "USD") },  // what it uses up; grants can limit it
     undoWindow: 7200,
     data: { subtotal: 47.96, delivery: 5.99 }, // not hashed, may hold floats; must not describe effects
     apply: (ctx) => {                          // on COMMIT, at most once
@@ -76,4 +76,4 @@ export default { fetch: fetchHandler(shop) } // Cloudflare Workers, Bun, Deno
 
 ## What the library does for you
 
-Budgets and `EXPAND` handles, idempotent commits and replays, requester binding, grant and proof verification, spend reservation, consent requests, auto-commit, undo windows and Lens. See the [Python page](/guide/python) for the same in Python, and the [spec](/reference/spec) for the wire contract.
+Budgets and `EXPAND` handles, idempotent commits and replays, requester binding, grant and proof verification, reservations against `total` limits, consent requests, auto-commit, undo windows and Lens. See the [Python page](/guide/python) for the same in Python, and the [spec](/reference/spec) for the wire contract.

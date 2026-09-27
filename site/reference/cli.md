@@ -49,8 +49,8 @@ Checks your node version, the agent key, **whether the principal key is readable
 | `--can <pattern>` | `can`, repeatable | `--can "calendar.*"` |
 | `--verbs A,B` | `verbs` | `--verbs ASK,INTENT` |
 | `--exp <duration>` | `exp` | `--exp 24h` (`s`, `m`, `h`, `d`) |
-| `--per <amount>` | `per`, a per-action limit | `--per 40USD` |
-| `--spend <amount>` | `spend`, a total limit | `--spend 100USD` |
+| `--each <measure>=<max>` | `each`, a per-commit limit, repeatable | `--each spend=40.00USD` |
+| `--total <measure>=<max>` | `total`, a limit over all commits, repeatable | `--total emails=20` |
 | `--risk <level>` | `risk`, a ceiling | `--risk low` |
 | `--to <key>` | the holder, if not your agent key | `--to ed25519:…` |
 
