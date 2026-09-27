@@ -44,7 +44,7 @@ proposal to the MCP spec. Align with SEP-2793 first.
 - **An accept alone isn't trusted.** Approval forms require a typed confirmation, because some
   clients auto-accept empty forms.
 - **Policy is signed by the person.** It decides what runs without asking: which tools, up to
-  what risk, whether they must be undoable, and, for plans that cost money, per-action and
+  what risk (only undoable plans ever run without asking) and, for plans that cost money, per-action and
   total limits. Anything that loosens it is a grant signed with the principal key; unsigned
   local config can only tighten it.
 - **The protocol stays.** SPEC.md and the wire format don't change. The framework maps YEA's
