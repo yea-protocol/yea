@@ -2,6 +2,11 @@
 
 **Status:** Draft 1 · **Version on the wire:** `"yea": 1`
 
+Before its first release, Draft 1 replaced the money-specific `cost` field and `per`/`spend`
+caveats with the generic `uses` field (§5.1) and `each`/`total` caveats (§6.3), and dropped
+the `charge` effect op (a charge is a `create`). The wire
+version stays `1` on purpose: no implementation of the earlier shape was ever released.
+
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are to be read as in RFC 2119.
 
 ---
@@ -22,12 +27,12 @@ goals:
 | Goal | Mechanism |
 |---|---|
 | Outcomes, not CRUD | `INTENT` carries a goal; the service answers with **proposals** |
-| Agents make mistakes | Nothing changes until `COMMIT`; proposals declare **effects, cost, risk, undo window** |
+| Agents make mistakes | Nothing changes until `COMMIT`; proposals declare **effects, what they use, risk, undo window** |
 | Undo is not an afterthought | Receipts carry an undo window; `UNDO` is a verb |
 | Context is expensive | Every request carries a **token budget**; replies fit it and leave `EXPAND` handles |
 | Models read text, code reads JSON | Every message has a canonical compact rendering: **Lens** |
 | Errors should teach | Errors carry machine-appliable **fixes**; ambiguity is a first-class reply (`CLARIFY`) |
-| Agents act for someone | **Grants**: signed, attenuable, offline-verifiable delegation chains with spend caps, expiry, scopes and risk ceilings |
+| Agents act for someone | **Grants**: signed, attenuable, offline-verifiable delegation chains with scopes, expiry, risk ceilings and limits on anything an action uses |
 | Humans approve, not operate | **Consent** is a one-shot grant bound to a proposal hash |
 
 ---
@@ -183,10 +188,10 @@ The reply is then a `RECEIPT` with `"auto": true` on the reply frame. In every o
 case the service replies exactly as it would without `auto`.
 
 The principal's grant, not the agent, decides what may skip the preview. Low-risk,
-reversible actions inside the policy take one round trip. Anything costlier, riskier or
+reversible actions inside the policy take one round trip. Anything over a limit, riskier or
 irreversible still stops for review.
 
-The authorization and the spend reservation (§6.3) for an auto-commit happen atomically,
+The authorization and the `total` reservation (§6.3) for an auto-commit happen atomically,
 exactly as for `COMMIT`.
 
 For an auto `INTENT`, the proof target is `auto:{capability}:{frame id}` (§6.5), and the
@@ -217,7 +222,7 @@ Reply: `RECEIPT`, optionally preceded by `EVENT`s.
 
 **Idempotency:** `COMMIT` of an already-committed proposal MUST return the original
 receipt with `"replay": true` and MUST NOT execute again. A replay is authorized like a
-commit, by the same requester and principal, except that `per`, `spend` and `risk` are
+commit, by the same requester and principal, except that `each`, `total` and `risk` are
 not re-evaluated, because the commit already happened. So a retry after a lost response
 never turns into a consent prompt, and other principals can't read the receipt.
 
@@ -271,7 +276,6 @@ absent, clients render Lens locally (§9).
     {"op":"update","target":"event/e42","field":"start","from":"2026-09-22T14:00:00Z","to":"2026-09-24T15:00:00Z"},
     {"op":"send","target":"ana@example.com","detail":"update notification"}
   ],
-  "cost": null,
   "risk": "low",
   "undo": {"window": 3600},
   "expires": 1790000600,
@@ -280,13 +284,25 @@ absent, clients render Lens locally (§9).
 ```
 
 - `effects`: every principal-observable change the commit will cause. `op` is one of
-  `create`, `update`, `delete`, `send`, `charge`, `other`. `field`, `from`, `to` and
-  `detail` are optional; `from` and `to` MUST be scalars.
-- `cost`: `null` or `{"amount": int, "currency": "USD"}`. `amount` is in **minor units** (cents).
+  `create`, `update`, `delete`, `send`, `other`. `field`, `from`, `to` and `detail` are
+  optional; `from` and `to` MUST be scalars.
+- `uses`: OPTIONAL. What the commit would use up on the principal's behalf, as an object
+  that maps a **measure name** to a **quantity**. For example:
+  `{"spend": {"amount": 2287, "scale": 2, "unit": "USD"}, "emails": {"amount": 1}}`.
+  - A measure name is 1–64 characters of `a-z`, `0-9`, `_`, `.` and `-`, starting with a
+    letter. A quantity is `{"amount": int, "scale"?: int, "unit"?: string}`, whose value is
+    `amount × 10^−scale`. `amount` is in [0, 2^53−1]. `scale` defaults to `0` and is in
+    [0, 18]. `unit`, when present, is 1–32 characters of `A-Z`, `a-z`, `0-9`, `_`, `.`, `/`,
+    `%` and `-`.
+  - Names and units are chosen by the service. This spec gives them no meaning, and never
+    converts between units. Conventions for common measures, such as money, are in
+    [`docs/conventions.md`](docs/conventions.md) (non-normative).
+  - An absent or empty `uses` means the commit uses nothing the service measures. A service
+    MUST NOT send a malformed `uses`; limits treat one as a hard failure (§6.3).
 - `risk`: `low` | `medium` | `high`, as assessed by the service.
 - `undo`: `null` if irreversible, else `{"window": seconds}` counted from commit.
 - `expires`: unix seconds after which the proposal cannot be committed. Services SHOULD use whole minutes (the reference implementation rounds up: `ceil(t/60)*60`).
-- `hash`: `b64url(sha256(canonical(proposal without "hash" and "data")))` (§10). The hash binds everything a human is shown: summary, effects, cost, risk, undo and expiry. Numbers inside hashed fields MUST be integers.
+- `hash`: `b64url(sha256(canonical(proposal without "hash" and "data")))` (§10). The hash binds everything a human is shown: summary, effects, uses, risk, undo and expiry. Numbers inside hashed fields MUST be integers.
 - `data`: OPTIONAL extra structured detail. It is not covered by the hash and MUST NOT describe effects.
 
 A service MUST NOT perform effects beyond those declared in the committed proposal.
@@ -295,8 +311,10 @@ A service MUST NOT perform effects beyond those declared in the committed propos
 
 ```json
 {"id":"r_91","proposal":"p_7Hc2","capability":"calendar.reschedule","summary":"…",
- "at":1790000100,"effects":[…],"cost":null,"undo":{"until":1790003700},"result":{…}}
+ "at":1790000100,"effects":[…],"undo":{"until":1790003700},"result":{…}}
 ```
+
+A receipt carries the committed proposal's `uses` when it had one.
 
 `undo` is `null` when the action cannot be undone. An undo receipt has `"undoes"` set and `"undo": null`.
 
@@ -334,8 +352,9 @@ Each caveat is a single-key object. A request is authorized by a grant only if *
 caveat in every block** is satisfied. **Unknown caveats, and caveats whose value is
 malformed, MUST fail closed** as a hard (`forbidden`) failure. Well-formed values are:
 `svc`, `verbs` and `can` take arrays of strings; `exp` and `nbf` take integers;
-`per` and `spend` take `{max: int, currency: string}`; `risk` takes one of `low`,
-`medium` or `high`; `only` takes a string. For example, `{"svc": "a.example"}` (a string,
+`each` and `total` take a **limit** `{"of": name, "max": int, "scale"?: int, "unit"?: string}`,
+where `of` is a measure name and `max`, `scale` and `unit` follow the quantity rules of
+§5.1; `risk` takes one of `low`, `medium` or `high`; `only` takes a string. For example, `{"svc": "a.example"}` (a string,
 not a list) and `{"risk": "extreme"}` both fail.
 
 | Caveat | Satisfied when |
@@ -345,18 +364,33 @@ not a list) and `{"risk": "extreme"}` both fail.
 | `{"can": [pattern…]}` | the capability matches a pattern. A pattern is an exact name, or a prefix followed by `*` (`"calendar.*"`). `"*"` matches all. |
 | `{"exp": int}` | now < exp |
 | `{"nbf": int}` | now ≥ nbf |
-| `{"per": {"max": int, "currency": s}}` | `COMMIT` only: the proposal cost is null, or has the same currency and `amount ≤ max` |
-| `{"spend": {"max": int, "currency": s}}` | `COMMIT` only: cumulative committed spend attributed to *this block's id* plus this proposal's cost ≤ max (currency must match) |
+| `{"each": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and its value ≤ the limit's value |
+| `{"total": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and the values committed under *this block's id* for `of`, plus this one, ≤ the limit's value |
 | `{"risk": level}` | `COMMIT` only: the proposal risk ≤ level (`low` < `medium` < `high`) |
 | `{"only": proposalHash}` | `COMMIT` only: the proposal hash equals it |
 
-`per`, `spend`, `risk` and `only` are ignored (satisfied) for verbs other than `COMMIT`.
+`each`, `total`, `risk` and `only` are ignored (satisfied) for verbs other than `COMMIT`.
 For `UNDO`, `can` is checked against the capability of the receipt being undone.
 
-The service MUST **reserve** the cost against every `spend` block of the authorizing
-grant atomically with the check, before executing, so that concurrent or overlapping
-commits can't together exceed a cap. A reservation is released if execution fails. Totals
-are not reduced on `UNDO` in v1 (conservative).
+**Limits.** These rules apply to `each` and `total`:
+
+- **Units must match exactly.** A quantity and a limit match when both have the same `unit`
+  string or both have none. A unit on only one side is a mismatch. A mismatch fails the
+  caveat, and nothing is ever converted.
+- **Values are exact.** Values compare and add as exact decimals, whatever their scales:
+  `100` at scale 0 equals `10000` at scale 2. Implementations MUST NOT round or use
+  floating point. For example, they can scale both sides to the larger scale in
+  arbitrary-precision integers.
+- **Out of range is malformed.** A limit outside the ranges of §5.1 fails closed as a hard
+  failure. So does a malformed `uses` in the proposal being checked.
+- **Limits bind only what is reported.** A proposal that doesn't report `of` passes. The
+  service is trusted to report `uses` truthfully and completely, as it is for `effects`.
+
+The service MUST **reserve** the proposal's quantity against every `total` caveat of the
+authorizing grant, keyed by the block id and `of`, atomically with the check and before
+executing, so that concurrent or overlapping commits can't together exceed a limit. A
+reservation is released if execution fails. Totals are not reduced on `UNDO` in v1
+(conservative).
 
 ### 6.4 Verification
 
@@ -390,7 +424,7 @@ Services MUST reject proofs with `|now − ts| > 300`.
 A request MAY present several grants. It is authorized if **any single** presented
 grant authorizes it on its own.
 
-If a `COMMIT` would be authorized except for a `risk`, `per` or `spend` caveat, the
+If a `COMMIT` would be authorized except for a `risk`, `each` or `total` caveat, the
 service MUST reply `ERROR` `consent_required` with:
 
 ```json
@@ -402,7 +436,7 @@ The agent shows this to the principal, for example in a CLI prompt, a push
 notification or a page. The consent request comes from the service, so the agent's
 tooling MUST check that its `proposal`, `hash`, `service` and `capability` match the
 proposal the agent actually received from that service. It MUST show the human that
-proposal's effects, cost, risk and undo, not the service-written summary alone. A
+proposal's effects, uses, risk and undo, not the service-written summary alone. A
 mismatched consent request is never shown for signing. If the principal approves, they sign a **consent grant**:
 a root grant with `iss` = principal, `sub` = agent key and exactly these caveats:
 
@@ -525,9 +559,12 @@ A top-level object renders its entries at indent 0. A top-level array renders as
 - Durations render in the largest of `d`/`h`/`m`/`s` that divides them exactly.
 - Compact JSON (used in `fix`, `need` and non-scalar list items) is exactly ECMAScript
   `JSON.stringify(v)`: insertion order, no whitespace, numbers per `Number::toString`.
-- Money renders as `amount/100` with two decimals (negative amounts get a leading `-`) and the currency (`12.50 USD`). Zero-decimal currencies (JPY, KRW, VND, CLP, ISK, UGX, XAF, XOF) render without decimals.
+- A quantity (§5.1) renders as its value in plain decimal with exactly `scale` digits after
+  the point (none when `scale` is 0), then a space and the unit if it has one. There is no
+  sign and no digit grouping. `{amount: 2290, scale: 2, unit: "USD"}` renders `22.90 USD`,
+  `{amount: 5, scale: 3}` renders `0.005`, and `{amount: 1}` renders `1`.
 
-**Effect line:** `SYM op target[.field][: from → to][ — detail]`, where SYM is `+` create, `~` update, `-` delete, `>` send, `$` charge, `*` other. `from → to` appears when either is present. A missing side renders as `-`.
+**Effect line:** `SYM op target[.field][: from → to][ — detail]`, where SYM is `+` create, `~` update, `-` delete, `>` send, `*` other. `from → to` appears when either is present. A missing side renders as `-`.
 
 **BRIEF**
 ```
@@ -547,14 +584,17 @@ Nested param objects render recursively as `{k: type, …}`.
   {effect line}…
   {own attributes}
 ```
-The attributes, in this fixed order, are `cost: {money|free}`, `risk: {risk}`,
-`undo: {duration|never}` and `expires: {time}`, joined with ` · `. When N ≥ 2, every
-attribute whose rendered value is identical across all proposals is **shared**. Shared
-attributes appear once on the header after ` — `, and the rest appear on each proposal's
-attribute line. The attribute line is omitted when it would be empty. When N = 1 the
+The attributes, in this fixed order, are `uses: {name quantity, …}`, `risk: {risk}`,
+`undo: {duration|never}` and `expires: {time}`, joined with ` · `. `uses` lists each
+measure as its name, a space and its quantity, in canonical key order (§10), joined with
+`, ` (`uses: emails 1, spend 22.90 USD`). It is omitted when `uses` is absent or empty.
+When N ≥ 2, every attribute whose rendered value is identical across all proposals is
+**shared**. An omitted `uses` differs from every rendered one, so `uses` is shared only
+when all proposals render it the same way. Shared attributes appear once on the header
+after ` — `, and the rest appear on each proposal's attribute line. The attribute line is omitted when it would be empty. When N = 1 the
 header is `1 proposal:` and all attributes are the proposal's own. When nothing is
 shared, the header is `{N} proposals:`.
-If a proposal has `data`, it renders after the cost line under `  data:` in lean notation at indent 2.
+If a proposal has `data`, it renders after the attribute line under `  data:` in lean notation at indent 2.
 
 **CLARIFY**
 ```
@@ -609,6 +649,8 @@ them in the proposal. For an undo receipt, the first line is
 - Attenuation is monotonic: a delegation can only add caveats.
 - Unknown caveats fail closed, so older services never over-authorize newer grants.
 - Proposal hashes bind consent to exact effects; a service cannot swap in different effects after approval.
+- `each` and `total` limit only what a service reports in `uses`. They bound an honest
+  service's usage; they don't protect against a service that under-reports.
 - `ASK` and `INTENT` are side-effect free, so agents can explore freely and safely.
 - Replay protection: proofs are time-bound and `COMMIT` is idempotent.
 - `auto` proofs bind the frame id, not the params (floats have no canonical form), so an
