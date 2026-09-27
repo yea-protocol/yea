@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ._json import compact, js_number, quote
+from .uses import fmt_uses
 
 _BARE = re.compile(r"[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+")
 _JSON_NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
 _RESERVED = frozenset({"-", "true", "false", "null"})
-_ZERO_DECIMAL = frozenset({"JPY", "KRW", "VND", "CLP", "ISK", "UGX", "XAF", "XOF"})
-_EFFECT_SYM = {"create": "+", "update": "~", "delete": "-", "send": ">", "charge": "$", "other": "*"}
+_EFFECT_SYM = {"create": "+", "update": "~", "delete": "-", "send": ">", "other": "*"}
 _DURATION_UNITS = ((86400, "d"), (3600, "h"), (60, "m"))
 
 
@@ -155,17 +155,6 @@ def fmt_duration(secs: Any) -> str:
     return f"{secs}s"
 
 
-def fmt_money(cost: Any) -> str:
-    if cost is None:
-        return "free"
-    amount, currency = cost.get("amount"), cost.get("currency")
-    if currency in _ZERO_DECIMAL:
-        return f"{amount} {currency}"
-    sign = "-" if amount < 0 else ""
-    a = abs(amount)
-    return f"{sign}{a // 100}.{a % 100:02d} {currency}"
-
-
 def effect_line(e: dict) -> str:
     op = e.get("op", "other")
     line = f"{_EFFECT_SYM.get(op, '*')} {op} {e.get('target', '')}"
@@ -208,8 +197,9 @@ def _brief(r: dict) -> list[str]:
     return lines
 
 
+# Each renders a proposal's attribute, or None when it's omitted (only `uses` can be).
 _ATTRS = (
-    ("cost", lambda p: fmt_money(p.get("cost"))),
+    ("uses", lambda p: fmt_uses(p.get("uses"))),
     ("risk", lambda p: str(p.get("risk", "-"))),
     ("undo", lambda p: fmt_duration(p["undo"]["window"]) if isinstance(p.get("undo"), dict) and "window" in p["undo"] else "never"),
     ("expires", lambda p: fmt_time(p.get("expires"))),
@@ -222,17 +212,22 @@ def _proposals(r: dict) -> list[str]:
     shared = [a for a in _ATTRS if len(ps) >= 2 and all(a[1](p) == a[1](ps[0]) for p in ps)]
     own = [a for a in _ATTRS if a not in shared]
     head = f"{len(ps)} proposal{'' if len(ps) == 1 else 's'}"
-    if shared:
-        head += " — " + " · ".join(f"{k}: {f(ps[0])}" for k, f in shared)
+    if head_attrs := _attr_line(shared, ps[0] if ps else {}):
+        head += " — " + head_attrs
     lines = [head + ":"]
     for p in ps:
         lines.append(f"[{p.get('id', '')}] {p.get('summary', '')}")
         lines.extend("  " + effect_line(e) for e in p.get("effects") or [])
-        if own:
-            lines.append("  " + " · ".join(f"{k}: {f(p)}" for k, f in own))
+        if attrs := _attr_line(own, p):
+            lines.append("  " + attrs)
         if "data" in p:
             lines.extend(_entry_lines("data", p["data"], 1))
     return lines
+
+
+def _attr_line(attrs: list, p: dict) -> str:
+    """``k: v · k: v`` for the attributes ``p`` renders; omitted ones are skipped."""
+    return " · ".join(f"{k}: {v}" for k, f in attrs if (v := f(p)) is not None)
 
 
 def _clarify(r: dict) -> list[str]:

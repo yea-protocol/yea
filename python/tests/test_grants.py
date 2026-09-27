@@ -1,9 +1,10 @@
 import pytest
 
 from yea import (
-    GrantContext, consent_code, consent_grant, decode_consent_code, decode_grant, issue_grant, key_from_seed, sign_proof, verify_grant, verify_proof,
+    GrantContext, consent_code, quantity, consent_grant, decode_consent_code, decode_grant, issue_grant, key_from_seed, sign_proof, verify_grant, verify_proof,
 )
 from yea.keys import KeyPair
+from yea.uses import value
 
 ALICE = key_from_seed(bytes(32))
 AGENT = key_from_seed(bytes([1]) * 32)
@@ -13,9 +14,14 @@ NOW = 1_790_000_000
 
 def ctx(**kw):
     base = dict(service="svc", verb="COMMIT", capability="calendar.move", now=NOW,
-                proposal={"hash": "H", "cost": {"amount": 500, "currency": "USD"}, "risk": "low"})
+                proposal={"hash": "H", "uses": {"spend": {"amount": 500, "scale": 2, "unit": "USD"}}, "risk": "low"})
     base.update(kw)
     return GrantContext(**base)
+
+
+def cents(n):
+    """An exact spent value (scale 18) for ``n`` cents."""
+    return value(quantity(n, scale=2, unit="USD"))
 
 
 def test_key_from_seed_known_vector():
@@ -70,11 +76,11 @@ def test_tampering_and_trust():
         ({"can": ["calendar.move"]}, {}, None),
         ({"can": ["calendar.mo"]}, {}, "forbidden"),
         ({"can": ["mail.*"]}, {}, "forbidden"),
-        ({"per": {"max": 500, "currency": "USD"}}, {}, None),
-        ({"per": {"max": 499, "currency": "USD"}}, {}, "consent_required"),
-        ({"per": {"max": 5000, "currency": "EUR"}}, {}, "consent_required"),
+        ({"each": {"of": "spend", "max": 500, "scale": 2, "unit": "USD"}}, {}, None),
+        ({"each": {"of": "spend", "max": 499, "scale": 2, "unit": "USD"}}, {}, "consent_required"),
+        ({"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "EUR"}}, {}, "consent_required"),
         ({"risk": "low"}, {}, None),
-        ({"risk": "low"}, {"proposal": {"hash": "H", "cost": None, "risk": "high"}}, "consent_required"),
+        ({"risk": "low"}, {"proposal": {"hash": "H", "risk": "high"}}, "consent_required"),
         ({"risk": "extreme"}, {}, "forbidden"),  # malformed values fail closed, hard
         ({"svc": "svc"}, {}, "forbidden"),
         ({"exp": "tomorrow"}, {}, "forbidden"),
@@ -83,7 +89,7 @@ def test_tampering_and_trust():
         ({"only": "H"}, {}, None),
         ({"only": "X"}, {}, "forbidden"),
         ({"only": "X"}, {"verb": "ASK", "proposal": None}, None),
-        ({"per": {"max": 1, "currency": "USD"}}, {"verb": "INTENT"}, None),
+        ({"each": {"of": "spend", "max": 1, "scale": 2, "unit": "USD"}}, {"verb": "INTENT"}, None),
         ({"brand_new": 1}, {}, "forbidden"),
         ({"exp": NOW + 5, "nbf": 0}, {}, "forbidden"),
     ],
@@ -95,16 +101,17 @@ def test_caveats(caveat, kw, code):
 
 
 def test_spend_is_per_block():
-    g = issue_grant(ALICE, AGENT.public, [{"spend": {"max": 1000, "currency": "USD"}}], iat=NOW)
+    g = issue_grant(ALICE, AGENT.public, [{"total": {"of": "spend", "max": 1000, "scale": 2, "unit": "USD"}}], iat=NOW)
     bid = g.block_ids[0]
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={bid: 500})).ok
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={bid: 501})).code == "consent_required"
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={"other": 10_000})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={(bid, "spend"): cents(500)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={(bid, "spend"): cents(501)})).code == "consent_required"
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={("other", "spend"): cents(10_000)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={(bid, "emails"): cents(10_000)})).ok
 
 
 def test_mixed_consent_and_forbidden_is_forbidden():
     g = issue_grant(ALICE, AGENT.public, [{"risk": "low"}, {"svc": ["nope"]}], iat=NOW)
-    r = verify_grant(g, [ALICE.public], AGENT.public, ctx(proposal={"hash": "H", "cost": None, "risk": "high"}))
+    r = verify_grant(g, [ALICE.public], AGENT.public, ctx(proposal={"hash": "H", "risk": "high"}))
     assert r.code == "forbidden"
 
 
@@ -119,7 +126,7 @@ def test_consent_grant_is_scoped_to_one_commit():
     ]
     assert verify_grant(g, [ALICE.public], AGENT.public, ctx()).ok
     for bad in [
-        ctx(proposal={"hash": "Z", "cost": None, "risk": "low"}),  # another proposal
+        ctx(proposal={"hash": "Z", "risk": "low"}),  # another proposal
         ctx(verb="UNDO", proposal=None),
         ctx(verb="ASK", proposal=None),
         ctx(service="other"),
@@ -155,8 +162,8 @@ def test_generate_is_random():
 def test_consent_code_detail_and_approver_checks():
     from yea import check_consent, proposal_hash
 
-    p = {"id": "p1", "capability": "calendar.move", "summary": "s", "effects": [{"op": "charge", "target": "card"}],
-         "cost": {"amount": 500, "currency": "USD"}, "risk": "low", "undo": None, "expires": NOW + 60, "data": {"x": 1.5}}
+    p = {"id": "p1", "capability": "calendar.move", "summary": "s", "effects": [{"op": "create", "target": "charge/card"}],
+         "uses": {"spend": {"amount": 500, "scale": 2, "unit": "USD"}}, "risk": "low", "undo": None, "expires": NOW + 60, "data": {"x": 1.5}}
     p["hash"] = proposal_hash(p)
     consent = {**CONSENT, "hash": p["hash"]}
     decoded = decode_consent_code(consent_code(consent, p))

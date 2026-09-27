@@ -37,7 +37,7 @@ def move(ctx):
 from yea import connect, consent_grant, generate_key, issue_grant
 
 principal, agent = generate_key(), generate_key()   # normally: the human's key, and the agent's
-g = issue_grant(principal, agent.public, [{"svc": ["cal.example"]}, {"per": {"max": 5000, "currency": "USD"}}])
+g = issue_grant(principal, agent.public, [{"svc": ["cal.example"]}, {"each": {"of": "spend", "max": 50, "unit": "USD"}}])
 async with await connect("yea://127.0.0.1:7447", key=agent, grants=[g]) as c:
     props = await c.intent("calendar.move", {"event": "e2", "to": "2026-09-24T15:00:00Z"})
     print(props.lens)                          # what the model reads

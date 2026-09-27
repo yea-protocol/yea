@@ -142,7 +142,7 @@ def test_calendar_flow(ts_servers, transport):
 
 def test_shop_consent_flow(ts_servers):
     tcp, _ = PORTS["shop"]
-    g = issue_grant(PRINCIPAL, AGENT.public, [{"svc": ["shop.example"]}, {"per": {"max": 5000, "currency": "USD"}}])
+    g = issue_grant(PRINCIPAL, AGENT.public, [{"svc": ["shop.example"]}, {"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "USD"}}])
     deliver = (date.today() + timedelta(days=2)).isoformat()
 
     async def go():
@@ -150,7 +150,7 @@ def test_shop_consent_flow(ts_servers):
             props = await c.intent("shop.order", {"items": [{"sku": "m002", "qty": 4}], "deliver": deliver})
             assert props.kind == "PROPOSALS", props.lens
             p = props.proposals[0]
-            assert p["cost"]["amount"] > 5000
+            assert p["uses"]["spend"]["amount"] > 5000
             need = await c.commit(p)
             assert need.code == "consent_required" and need.consent["hash"] == p["hash"]
             assert need.consent["principal"] == PRINCIPAL.public

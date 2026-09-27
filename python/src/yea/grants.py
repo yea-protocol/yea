@@ -10,12 +10,14 @@ from typing import Any
 
 from ._json import CanonicalError, b64url_decode, b64url_encode, canonical_bytes, compact, loads, proposal_hash, sha256_b64url
 from .keys import KeyPair, parse_public_key, verify
+from .uses import fmt_quantity, is_limit, is_uses, limit_value, same_unit, value
 
 TOKEN_PREFIX = "pg1."
 RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
 # Caveats that, when they are the only ones failing a COMMIT, mean "ask the human" (§6.6).
-CONSENT_CAVEATS = frozenset({"risk", "per", "spend"})
-COMMIT_ONLY = frozenset({"per", "spend", "risk", "only"})
+CONSENT_CAVEATS = frozenset({"risk", "each", "total"})
+LIMITS = frozenset({"each", "total"})
+COMMIT_ONLY = frozenset({"each", "total", "risk", "only"})
 
 Trusted = Iterable[str] | Callable[[str], bool]
 
@@ -178,12 +180,20 @@ class GrantContext:
     verb: str
     capability: str | None
     now: int
-    proposal: Mapping[str, Any] | None = None  # {hash, cost, risk}; COMMIT only
-    spent: Mapping[str, int] = field(default_factory=dict)  # block id -> committed spend
+    proposal: Mapping[str, Any] | None = None  # {hash, uses?, risk}; COMMIT only
+    # (block id, measure name) -> value committed or reserved, as an integer at scale 18
+    spent: Mapping[tuple[str, str], int] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> GrantContext:
-        return cls(d["service"], d["verb"], d.get("capability"), d["now"], d.get("proposal"), d.get("spent") or {})
+        return cls(d["service"], d["verb"], d.get("capability"), d["now"], d.get("proposal"), _spent(d.get("spent")))
+
+
+def _spent(d: Any) -> dict[tuple[str, str], int]:
+    """``{block id: {measure: quantity}}`` (the JSON form) as exact values keyed by (block id, measure)."""
+    if not isinstance(d, dict):
+        return {}
+    return {(bid, of): value(q) for bid, per in d.items() if isinstance(per, dict) for of, q in per.items()}
 
 
 @dataclass
@@ -203,14 +213,14 @@ class Verification:
     def principal(self) -> str | None:
         return self.grant.principal if self.grant else None
 
-    def spend_blocks(self) -> list[tuple[str, dict]]:
-        """(block id, spend caveat) for every block carrying a ``spend`` caveat."""
+    def total_limits(self) -> list[tuple[str, dict]]:
+        """(block id, limit) for every ``total`` caveat in the grant."""
         out = []
         if self.grant:
             for b in self.grant.blocks:
                 for c in b["p"]["caveats"]:
-                    if isinstance(c, dict) and "spend" in c:
-                        out.append((block_id(b), c["spend"]))
+                    if isinstance(c, dict) and "total" in c:
+                        out.append((block_id(b), c["total"]))
         return out
 
 
@@ -222,14 +232,23 @@ def _matches(pattern: Any, name: str) -> bool:
     return pattern == name
 
 
-def _money_ok(limit: Any, cost: Any, already: int = 0) -> bool:
-    if not isinstance(limit, dict) or not _is_int(limit.get("max")) or not isinstance(limit.get("currency"), str):
-        return False
-    if cost is None:
-        return True
-    if not isinstance(cost, dict) or not _is_int(cost.get("amount")) or cost.get("currency") != limit["currency"]:
-        return False
-    return already + cost["amount"] <= limit["max"]
+def limit_denial(name: str, limit: Mapping[str, Any], uses: Any, already: int = 0) -> str | None:
+    """Why an ``each`` or ``total`` limit fails for a proposal's ``uses``, or None if it holds.
+    ``already`` is the exact value committed or reserved under the block (``total`` only)."""
+    if not is_uses(uses):
+        return "malformed uses on the proposal"
+    of = limit["of"]
+    q = uses.get(of) if uses else None
+    if q is None:
+        return None  # limits bind only what is reported
+    if not same_unit(q, limit):
+        return f"{of} is in {q.get('unit') or 'no unit'}, but the limit is in {limit.get('unit') or 'no unit'}"
+    shown = fmt_quantity({"amount": limit["max"], **{k: limit[k] for k in ("scale", "unit") if k in limit}})
+    if name == "each" and value(q) > limit_value(limit):
+        return f"{of} over the per-commit limit of {shown}"
+    if name == "total" and already + value(q) > limit_value(limit):
+        return f"{of} would pass the total limit of {shown}"
+    return None
 
 
 def _safe_int(v: Any) -> bool:
@@ -240,14 +259,10 @@ def _str_list(v: Any) -> bool:
     return isinstance(v, list) and all(isinstance(x, str) for x in v)
 
 
-def _limit(v: Any) -> bool:
-    return isinstance(v, dict) and _safe_int(v.get("max")) and isinstance(v.get("currency"), str)
-
-
 _WELL_FORMED = {
     "svc": _str_list, "verbs": _str_list, "can": _str_list,
     "exp": _safe_int, "nbf": _safe_int,
-    "per": _limit, "spend": _limit,
+    "each": is_limit, "total": is_limit,
     "risk": lambda v: isinstance(v, str) and v in RISK_ORDER,
     "only": lambda v: isinstance(v, str),
 }
@@ -264,9 +279,23 @@ def well_formed(caveat: Any) -> bool:
 
 def check_caveat(caveat: Any, bid: str, ctx: GrantContext) -> bool:
     """True iff one caveat is satisfied. Unknown or malformed caveats fail closed."""
+    return caveat_denial(caveat, bid, ctx) is None
+
+
+def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> str | None:
+    """Why one caveat fails, or None when it is satisfied."""
     if not well_formed(caveat):
-        return False
+        return "unknown or malformed caveat"
     (name, arg), = caveat.items()
+    if name in LIMITS:
+        if ctx.verb != "COMMIT":
+            return None
+        prop = ctx.proposal or {}
+        return limit_denial(name, arg, prop.get("uses"), int(ctx.spent.get((bid, arg["of"]), 0)))
+    return None if _satisfied(name, arg, ctx) else "not satisfied"
+
+
+def _satisfied(name: str, arg: Any, ctx: GrantContext) -> bool:
     if name in COMMIT_ONLY and ctx.verb != "COMMIT":
         return True  # known, and ignored outside COMMIT (§6.3)
     if name == "svc":
@@ -280,10 +309,6 @@ def check_caveat(caveat: Any, bid: str, ctx: GrantContext) -> bool:
     if name == "nbf":
         return _is_int(arg) and ctx.now >= arg
     prop = ctx.proposal or {}
-    if name == "per":
-        return _money_ok(arg, prop.get("cost"))
-    if name == "spend":
-        return _money_ok(arg, prop.get("cost"), int(ctx.spent.get(bid, 0)))
     if name == "risk":
         return arg in RISK_ORDER and prop.get("risk") in RISK_ORDER and RISK_ORDER[prop["risk"]] <= RISK_ORDER[arg]
     if name == "only":
@@ -324,15 +349,26 @@ def verify_grant(
     if g.holder != proof_key:
         return Verification(False, "unauthorized", "the proof key is not the grant's holder", g)
 
-    failed = [c for b in g.blocks for c in b["p"]["caveats"] if not check_caveat(c, block_id(b), ctx)]
-    if not failed:
+    denials = [(c, why) for b in g.blocks for c in b["p"]["caveats"] if (why := caveat_denial(c, block_id(b), ctx))]
+    if not denials:
         return Verification(True, grant=g)
-    hard = [c for c in failed if _caveat_name(c) not in CONSENT_CAVEATS or not well_formed(c)]
+    failed = [c for c, _ in denials]
+    hard = [(c, why) for c, why in denials if _is_hard(c, why)]
     if hard:
-        shown = ", ".join(compact(c) for c in hard[:3])
-        return Verification(False, "forbidden", f"the grant does not allow this request ({shown})", g, hard)
-    shown = ", ".join(compact(c) for c in failed[:3])
+        shown = ", ".join(_shown(c, why) for c, why in hard[:3])
+        return Verification(False, "forbidden", f"the grant does not allow this request ({shown})", g, [c for c, _ in hard])
+    shown = ", ".join(_shown(c, why) for c, why in denials[:3])
     return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g, failed)
+
+
+def _is_hard(caveat: Any, why: str) -> bool:
+    """Malformed caveats and malformed ``uses`` are hard; only well-formed limits and risk ask (§6.3)."""
+    return _caveat_name(caveat) not in CONSENT_CAVEATS or not well_formed(caveat) or why == "malformed uses on the proposal"
+
+
+def _shown(caveat: Any, why: str) -> str:
+    """A limit's own reason reads better than its JSON; other caveats show as JSON."""
+    return why if _caveat_name(caveat) in LIMITS else compact(caveat)
 
 
 def _caveat_name(c: Any) -> str | None:
