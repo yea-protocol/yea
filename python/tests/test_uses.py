@@ -12,11 +12,11 @@ AGENT = key_from_seed(bytes([1]) * 32)
 NOW = 1_790_000_000
 
 
-def check(caveat, uses=None, spent=None):
+def check(caveat, uses=None, used=None):
     """Verify a one-caveat grant for a COMMIT of a proposal with ``uses``."""
     g = issue_grant(ALICE, AGENT.public, [caveat], iat=NOW)
     proposal = {"hash": "H", "risk": "low", **({"uses": uses} if uses is not None else {})}
-    ctx = GrantContext("svc", "COMMIT", "shop.buy", NOW, proposal, spent or {})
+    ctx = GrantContext("svc", "COMMIT", "shop.buy", NOW, proposal, used or {})
     return verify_grant(g, [ALICE.public], AGENT.public, ctx)
 
 

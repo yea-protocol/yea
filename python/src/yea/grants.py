@@ -182,14 +182,14 @@ class GrantContext:
     now: int
     proposal: Mapping[str, Any] | None = None  # {hash, uses?, risk}; COMMIT only
     # (block id, measure name) -> value committed or reserved, as an integer at scale 18
-    spent: Mapping[tuple[str, str], int] = field(default_factory=dict)
+    used: Mapping[tuple[str, str], int] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> GrantContext:
-        return cls(d["service"], d["verb"], d.get("capability"), d["now"], d.get("proposal"), _spent(d.get("spent")))
+        return cls(d["service"], d["verb"], d.get("capability"), d["now"], d.get("proposal"), _used(d.get("used")))
 
 
-def _spent(d: Any) -> dict[tuple[str, str], int]:
+def _used(d: Any) -> dict[tuple[str, str], int]:
     """``{block id: {measure: quantity}}`` (the JSON form) as exact values keyed by (block id, measure)."""
     if not isinstance(d, dict):
         return {}
@@ -291,7 +291,7 @@ def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> str | None:
         if ctx.verb != "COMMIT":
             return None
         prop = ctx.proposal or {}
-        return limit_denial(name, arg, prop.get("uses"), int(ctx.spent.get((bid, arg["of"]), 0)))
+        return limit_denial(name, arg, prop.get("uses"), int(ctx.used.get((bid, arg["of"]), 0)))
     return None if _satisfied(name, arg, ctx) else "not satisfied"
 
 

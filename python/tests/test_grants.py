@@ -103,10 +103,10 @@ def test_caveats(caveat, kw, code):
 def test_spend_is_per_block():
     g = issue_grant(ALICE, AGENT.public, [{"total": {"of": "spend", "max": 1000, "scale": 2, "unit": "USD"}}], iat=NOW)
     bid = g.block_ids[0]
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={(bid, "spend"): cents(500)})).ok
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={(bid, "spend"): cents(501)})).code == "consent_required"
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={("other", "spend"): cents(10_000)})).ok
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(spent={(bid, "emails"): cents(10_000)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={(bid, "spend"): cents(500)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={(bid, "spend"): cents(501)})).code == "consent_required"
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={("other", "spend"): cents(10_000)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={(bid, "emails"): cents(10_000)})).ok
 
 
 def test_mixed_consent_and_forbidden_is_forbidden():
