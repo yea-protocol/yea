@@ -6,20 +6,17 @@
 import { b64u, fromUtf8, unb64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import { type KeyPair, keyPair, sha256, sign, verify } from './crypto.js';
-import { fmtMoney } from './lens.js';
-import type {
-  ConsentRequest,
-  Money,
-  Proof,
-  Proposal,
-  Risk,
-  Verb,
-} from './types.js';
-
-export interface Limit {
-  max: number;
-  currency: string;
-}
+import type { ConsentRequest, Proof, Proposal, Risk, Verb } from './types.js';
+import {
+  exact,
+  fmtQuantity,
+  isLimit,
+  isUses,
+  type Limit,
+  limitQuantity,
+  sameUnit,
+  type Uses,
+} from './uses.js';
 
 export type Caveat =
   | { svc: string[] }
@@ -27,8 +24,8 @@ export type Caveat =
   | { can: string[] }
   | { exp: number }
   | { nbf: number }
-  | { per: Limit }
-  | { spend: Limit }
+  | { each: Limit }
+  | { total: Limit }
   | { risk: Risk }
   | { only: string };
 
@@ -224,13 +221,13 @@ export interface CheckContext {
   capability: string;
   now?: number;
   /** For COMMIT: the proposal being committed. */
-  proposal?: { hash: string; cost: Money | null; risk: Risk };
+  proposal?: { hash: string; uses?: Uses; risk: Risk };
   /** Principals the service trusts. */
   trusted: string[] | ((iss: string) => boolean);
   /** The key that signed the request proof; must equal the grant holder. */
   proofKey: string;
-  /** Spend already attributed to a block id (for `spend` caveats). */
-  spent?: (blockId: string) => number;
+  /** The exact amount of measure `of` already committed or reserved under a block id (for `total`). */
+  used?: (blockId: string, of: string) => bigint;
 }
 
 export type GrantCheck =
@@ -239,7 +236,7 @@ export type GrantCheck =
       id: string;
       iss: string;
       holder: string;
-      spendBlocks: { id: string; max: number }[];
+      totals: TotalLimit[];
     }
   | {
       ok: false;
@@ -249,15 +246,17 @@ export type GrantCheck =
       need?: Caveat[];
     };
 
-const CONSENTABLE = new Set(['per', 'spend', 'risk']);
+/** A `total` caveat a COMMIT counts against: its block, measure and exact ceiling. */
+export interface TotalLimit {
+  id: string;
+  of: string;
+  max: bigint;
+}
+
+const CONSENTABLE = new Set(['each', 'total', 'risk']);
 
 const strList = (v: unknown) =>
   Array.isArray(v) && v.every((x) => typeof x === 'string');
-const isLimit = (v: unknown) =>
-  !!v &&
-  typeof v === 'object' &&
-  Number.isSafeInteger((v as Partial<Limit>).max) &&
-  typeof (v as Partial<Limit>).currency === 'string';
 
 /** Shape validators for each known caveat's value. */
 const VALID_CAVEAT: Record<string, (v: unknown) => boolean> = {
@@ -266,8 +265,8 @@ const VALID_CAVEAT: Record<string, (v: unknown) => boolean> = {
   can: strList,
   exp: Number.isSafeInteger,
   nbf: Number.isSafeInteger,
-  per: isLimit,
-  spend: isLimit,
+  each: isLimit,
+  total: isLimit,
   risk: (v) => typeof v === 'string' && Object.hasOwn(RISK_ORDER, v),
   only: (v) => typeof v === 'string',
 };
@@ -366,26 +365,17 @@ const CAVEAT_CHECKS: Record<
       : `does not cover ${ctx.capability}`,
   exp: (v, { t }) => (t < (v as number) ? null : 'grant has expired'),
   nbf: (v, { t }) => (t >= (v as number) ? null : 'grant is not valid yet'),
-  per: (v, { p }) => {
-    const limit = v as Limit;
+  each: (v, { p }) =>
+    overLimit(p, v as Limit, 0n, 'over the per-commit limit of'),
+  total: (v, { ctx, p, blockId }) => {
+    const l = v as Limit;
 
-    return p?.cost &&
-      (p.cost.currency !== limit.currency || p.cost.amount > limit.max)
-      ? `cost exceeds the per-commit limit of ${fmtMoney({ amount: limit.max, currency: limit.currency })}`
-      : null;
-  },
-  spend: (v, { ctx, p, blockId }) => {
-    const limit = v as Limit;
-
-    if (!p?.cost) {
-      return null;
-    }
-
-    const total = (ctx.spent?.(blockId) ?? 0) + p.cost.amount;
-
-    return p.cost.currency !== limit.currency || total > limit.max
-      ? `would exceed the spend limit of ${fmtMoney({ amount: limit.max, currency: limit.currency })}`
-      : null;
+    return overLimit(
+      p,
+      l,
+      ctx.used?.(blockId, l.of) ?? 0n,
+      'would pass the total limit of',
+    );
   },
   risk: (v, { p }) =>
     p && RISK_ORDER[p.risk] > RISK_ORDER[v as Risk]
@@ -396,6 +386,44 @@ const CAVEAT_CHECKS: Record<
       ? 'grant is bound to a different proposal'
       : null,
 };
+
+/** The proposal's quantity of measure `of`, if it reports one. */
+export function usedOf(uses: Uses | undefined, of: string) {
+  return uses && Object.hasOwn(uses, of) ? uses[of] : undefined;
+}
+
+/**
+ * Why the proposal's use of `l.of`, on top of `already`, breaks the limit `l` (SPEC §6.3);
+ * null if it doesn't. A proposal that doesn't report the measure passes.
+ */
+function overLimit(
+  p: CheckContext['proposal'],
+  l: Limit,
+  already: bigint,
+  breaks: string,
+): string | null {
+  if (!p) {
+    return null;
+  }
+
+  if (p.uses !== undefined && !isUses(p.uses)) {
+    return 'malformed uses on the proposal';
+  }
+
+  const q = usedOf(p.uses, l.of);
+
+  if (!q) {
+    return null;
+  }
+
+  if (!sameUnit(q, l)) {
+    return `${l.of} is in ${q.unit ?? 'no unit'}, but the limit is in ${l.unit ?? 'no unit'}`;
+  }
+
+  return already + exact(q) > exact({ amount: l.max, scale: l.scale })
+    ? `${l.of} ${breaks} ${fmtQuantity(limitQuantity(l))}`
+    : null;
+}
 
 /** Why the single-key caveat `c` = `{k: v}` denies the request; unknown caveats always do. */
 function caveatDenial(
@@ -421,11 +449,11 @@ interface CaveatResults {
   hard: CaveatFailure[];
   /** Denials a principal may approve (limits and risk ceilings). */
   soft: CaveatFailure[];
-  /** `spend` blocks this COMMIT counts against. */
-  spendBlocks: { id: string; max: number }[];
+  /** `total` limits this COMMIT counts against. */
+  totals: TotalLimit[];
 }
 
-/** Check one caveat, recording a denial (hard or soft) or the spend block it charges. */
+/** Check one caveat, recording a denial (hard or soft) or the total it counts against. */
 function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) {
     out.hard.push({
@@ -446,8 +474,14 @@ function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
       ? out.soft
       : out.hard
     ).push({ c: c as Caveat, why });
-  } else if (k === 'spend' && env.ctx.verb === 'COMMIT') {
-    out.spendBlocks.push({ id: env.blockId, max: (v as Limit).max });
+  } else if (k === 'total' && env.ctx.verb === 'COMMIT') {
+    const l = v as Limit;
+
+    out.totals.push({
+      id: env.blockId,
+      of: l.of,
+      max: exact({ amount: l.max, scale: l.scale }),
+    });
   }
 }
 
@@ -458,7 +492,7 @@ async function evaluateCaveats(
 ): Promise<CaveatResults> {
   const t = ctx.now ?? now();
   const p = ctx.verb === 'COMMIT' ? ctx.proposal : undefined;
-  const out: CaveatResults = { hard: [], soft: [], spendBlocks: [] };
+  const out: CaveatResults = { hard: [], soft: [], totals: [] };
 
   for (const b of blocks) {
     const env = { ctx, t, p, blockId: await sha256(b.s) };
@@ -512,7 +546,7 @@ async function checkGrantUnsafe(
     return unauthorized('proof key is not the grant holder', iss);
   }
 
-  const { hard, soft, spendBlocks } = await evaluateCaveats(blocks, ctx);
+  const { hard, soft, totals } = await evaluateCaveats(blocks, ctx);
 
   if (hard.length) {
     return {
@@ -538,7 +572,7 @@ async function checkGrantUnsafe(
     id: await sha256(blocks[0].s),
     iss,
     holder: chain.holder,
-    spendBlocks,
+    totals,
   };
 }
 

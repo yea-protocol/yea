@@ -10,6 +10,7 @@ import {
   checkGrant,
   checkProof,
   type GrantCheck,
+  usedOf,
 } from './grants.js';
 import type {
   Brief,
@@ -20,7 +21,6 @@ import type {
   Event,
   FinalReply,
   Intent,
-  Money,
   ParamSchema,
   Proof,
   Proposal,
@@ -30,6 +30,7 @@ import type {
   Risk,
   Verb,
 } from './types.js';
+import { exact, isUses, type Uses } from './uses.js';
 import { closest, validateParams } from './validate.js';
 
 export interface ServiceOptions {
@@ -69,7 +70,8 @@ export interface CommitCtx {
 export interface Plan<R = unknown> {
   summary: string;
   effects: Effect[];
-  cost?: Money | null;
+  /** What committing uses up (SPEC §5.1), e.g. `{ spend: spend('22.87', 'USD') }`. */
+  uses?: Uses;
   risk?: Risk;
   /** Seconds this proposal can be committed for (default: service proposalTtl). */
   expiresIn?: number;
@@ -156,7 +158,8 @@ export class Service {
   private proposals = new Map<string, StoredProposal>();
   private commits = new Map<string, Promise<ReceiptReply | ErrorReply>>();
   private receipts = new Map<string, StoredReceipt>();
-  private spent = new Map<string, number>();
+  /** Exact amounts committed or reserved per `total` (block id and measure). */
+  private used = new Map<string, bigint>();
   private autoSeen = new Map<
     string,
     { reply: Promise<FinalReply>; exp: number }
@@ -420,7 +423,7 @@ export class Service {
             id: '',
             iss: c.iss,
             holder: proof.key,
-            spendBlocks: [],
+            totals: [],
           },
           failed,
         };
@@ -472,10 +475,10 @@ export class Service {
       proofKey,
       proposal: proposal && {
         hash: proposal.hash,
-        cost: proposal.cost,
+        uses: proposal.uses,
         risk: proposal.risk,
       },
-      spent: (id) => this.spent.get(id) ?? 0,
+      used: (id, of) => this.used.get(ledgerKey(id, of)) ?? 0n,
     };
   }
 
@@ -685,7 +688,7 @@ export class Service {
       capability,
       summary: plan.summary,
       effects: plan.effects,
-      cost: plan.cost ?? null,
+      ...usesOf(plan),
       risk: plan.risk ?? def.risk ?? 'low',
       undo: window === null ? null : { window },
       expires:
@@ -854,26 +857,29 @@ export class Service {
     emit: (e: Event) => void,
   ): Promise<ReceiptReply | ErrorReply> {
     const { proposal } = stored;
-    // Reserve spend synchronously, before any await, so concurrent commits can't overshoot a cap.
-    const cost = proposal.cost?.amount ?? 0;
-    const over = auth.spendBlocks.find(
-      (b) => (this.spent.get(b.id) ?? 0) + cost > b.max,
-    );
+    // Reserve totals synchronously, before any await, so concurrent commits can't overshoot a limit.
+    const over = auth.totals.find((t) => {
+      const q = usedOf(proposal.uses, t.of);
 
-    if (cost && over) {
+      return (
+        q && (this.used.get(ledgerKey(t.id, t.of)) ?? 0n) + exact(q) > t.max
+      );
+    });
+
+    if (over) {
       return Promise.resolve(
         this.errorReply(
           reqId,
           new YeaError(
             'consent_required',
-            'would exceed the spend limit (other commits are in flight); your principal must approve this exact proposal',
+            `${over.of} would pass a total limit (other commits are in flight); your principal must approve this exact proposal`,
             { consent: consentRequest(proposal, this.id, auth.iss) },
           ),
         ),
       );
     }
 
-    this.addSpend(auth, cost);
+    this.reserve(auth, proposal, 1n);
 
     const run = this.apply(stored, auth, reqId, emit);
 
@@ -882,11 +888,20 @@ export class Service {
     return run;
   }
 
-  /** Count `amount` (negative to release it) against every spend block the grant draws on. */
-  private addSpend(auth: Authorized, amount: number) {
-    if (amount) {
-      for (const b of auth.spendBlocks) {
-        this.spent.set(b.id, (this.spent.get(b.id) ?? 0) + amount);
+  /**
+   * Count the proposal's uses against every `total` the grant draws on, once per block and
+   * measure even when a block repeats a limit; `sign` -1n releases them.
+   */
+  private reserve(auth: Authorized, proposal: Proposal, sign: 1n | -1n) {
+    const totals = new Map(
+      auth.totals.map((t) => [ledgerKey(t.id, t.of), t.of]),
+    );
+
+    for (const [key, of] of totals) {
+      const q = usedOf(proposal.uses, of);
+
+      if (q) {
+        this.used.set(key, (this.used.get(key) ?? 0n) + sign * exact(q));
       }
     }
   }
@@ -925,7 +940,7 @@ export class Service {
       };
     } catch (e) {
       this.commits.delete(proposal.id); // failed commits may be retried
-      this.addSpend(auth, -(proposal.cost?.amount ?? 0));
+      this.reserve(auth, proposal, -1n);
 
       return this.errorReply(reqId, e);
     }
@@ -1009,7 +1024,6 @@ export class Service {
         summary: receipt.summary,
         at: this.now(),
         effects: receipt.effects.map(invertEffect),
-        cost: null,
         undo: null,
         undoes: receipt.id,
       };
@@ -1190,6 +1204,22 @@ const eventFrame = (
   ...(data !== undefined ? { data } : {}),
 });
 
+/** The ledger key of a `total`: its block and measure. */
+const ledgerKey = (blockId: string, of: string) => `${blockId} ${of}`;
+
+/** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */
+function usesOf(plan: Plan): { uses?: Uses } {
+  if (plan.uses === undefined) {
+    return {};
+  }
+
+  if (!isUses(plan.uses)) {
+    throw new Error(`plan has a malformed uses: ${JSON.stringify(plan.uses)}`);
+  }
+
+  return Object.keys(plan.uses).length ? { uses: plan.uses } : {};
+}
+
 function receiptFor(proposal: Proposal, result: unknown, at: number): Receipt {
   return {
     id: randomId('r', 6),
@@ -1198,7 +1228,7 @@ function receiptFor(proposal: Proposal, result: unknown, at: number): Receipt {
     summary: proposal.summary,
     at,
     effects: proposal.effects,
-    cost: proposal.cost,
+    ...(proposal.uses ? { uses: proposal.uses } : {}),
     undo: proposal.undo ? { until: at + proposal.undo.window } : null,
     ...(result !== undefined ? { result } : {}),
   };
@@ -1209,7 +1239,6 @@ const INVERSE_OP: Record<Effect['op'], Effect['op']> = {
   delete: 'create',
   update: 'update',
   send: 'other',
-  charge: 'other',
   other: 'other',
 };
 
@@ -1218,8 +1247,6 @@ function invertEffect(e: Effect): Effect {
   switch (e.op) {
     case 'update':
       return { ...e, from: e.to, to: e.from };
-    case 'charge':
-      return { op: 'other', target: e.target, detail: 'refund' };
     case 'send':
       return {
         op: 'other',
@@ -1264,15 +1291,4 @@ export const send = (target: string, detail?: string): Effect => ({
   op: 'send',
   target,
   ...(detail ? { detail } : {}),
-});
-
-export const charge = (target: string, detail?: string): Effect => ({
-  op: 'charge',
-  target,
-  ...(detail ? { detail } : {}),
-});
-
-export const money = (amount: number, currency = 'USD'): Money => ({
-  amount,
-  currency,
 });

@@ -241,7 +241,6 @@
               "detail": "update notification"
             }
           ],
-          "cost": null,
           "risk": "low",
           "undo": {
             "window": 3600
@@ -259,9 +258,9 @@
               "target": "order"
             },
             {
-              "op": "charge",
-              "target": "card ••42",
-              "detail": "12.50 USD"
+              "op": "create",
+              "target": "charge",
+              "detail": "12.50 USD to card ••42"
             },
             {
               "op": "delete",
@@ -273,9 +272,15 @@
               "to": 5
             }
           ],
-          "cost": {
-            "amount": 1250,
-            "currency": "USD"
+          "uses": {
+            "spend": {
+              "amount": 1250,
+              "scale": 2,
+              "unit": "USD"
+            },
+            "emails": {
+              "amount": 2
+            }
           },
           "risk": "medium",
           "undo": null,
@@ -300,9 +305,11 @@
           "capability": "shop.order",
           "summary": "Yen",
           "effects": [],
-          "cost": {
-            "amount": 500,
-            "currency": "JPY"
+          "uses": {
+            "spend": {
+              "amount": 500,
+              "unit": "JPY"
+            }
           },
           "risk": "high",
           "undo": {
@@ -314,11 +321,18 @@
         {
           "id": "p_4",
           "capability": "shop.order",
-          "summary": "Refund",
+          "summary": "Tiny",
           "effects": [],
-          "cost": {
-            "amount": -5,
-            "currency": "EUR"
+          "uses": {
+            "zero": {
+              "amount": 0,
+              "scale": 2
+            },
+            "fine": {
+              "amount": 5,
+              "scale": 18,
+              "unit": "ETH"
+            }
           },
           "risk": "low",
           "undo": {
@@ -337,7 +351,7 @@
         }
       ]
     },
-    "lens": "4 proposals:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  cost: free · risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z\n[p_2] Order 2 items\n  + create order\n  $ charge card ••42 — 12.50 USD\n  - delete cart/1\n  * other x: - → 5\n  cost: 12.50 USD · risk: medium · undo: never · expires: 2026-09-21T14:23:25Z\n  data:\n    eta: 2026-09-25\n    items[2]{sku,qty}:\n      a,1\n      b,2\n[p_3] Yen\n  cost: 500 JPY · risk: high · undo: 90s · expires: 2026-09-21T14:13:20Z\n[p_4] Refund\n  cost: -0.05 EUR · risk: low · undo: 2d · expires: 2026-09-21T14:13:20Z\n… 3 more at proposals — EXPAND h_abc (~210 tokens)"
+    "lens": "4 proposals:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z\n[p_2] Order 2 items\n  + create order\n  + create charge — 12.50 USD to card ••42\n  - delete cart/1\n  * other x: - → 5\n  uses: emails 2, spend 12.50 USD · risk: medium · undo: never · expires: 2026-09-21T14:23:25Z\n  data:\n    eta: 2026-09-25\n    items[2]{sku,qty}:\n      a,1\n      b,2\n[p_3] Yen\n  uses: spend 500 JPY · risk: high · undo: 90s · expires: 2026-09-21T14:13:20Z\n[p_4] Tiny\n  uses: fine 0.000000000000000005 ETH, zero 0.00 · risk: low · undo: 2d · expires: 2026-09-21T14:13:20Z\n… 3 more at proposals — EXPAND h_abc (~210 tokens)"
   },
   {
     "name": "proposals: all attributes shared",
@@ -366,7 +380,6 @@
               "detail": "update notification"
             }
           ],
-          "cost": null,
           "risk": "low",
           "undo": {
             "window": 3600
@@ -392,7 +405,6 @@
               "detail": "update notification"
             }
           ],
-          "cost": null,
           "risk": "low",
           "undo": {
             "window": 3600
@@ -402,7 +414,7 @@
         }
       ]
     },
-    "lens": "2 proposals — cost: free · risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n[p_9] Move to Fri\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification"
+    "lens": "2 proposals — risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n[p_9] Move to Fri\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification"
   },
   {
     "name": "proposals: some attributes shared",
@@ -431,16 +443,19 @@
               "detail": "update notification"
             }
           ],
-          "cost": {
-            "amount": 100,
-            "currency": "USD"
-          },
           "risk": "low",
           "undo": {
             "window": 3600
           },
           "expires": 1790000600,
-          "hash": "h1"
+          "hash": "h1",
+          "uses": {
+            "spend": {
+              "amount": 100,
+              "scale": 2,
+              "unit": "USD"
+            }
+          }
         },
         {
           "id": "p_9",
@@ -460,15 +475,18 @@
               "detail": "update notification"
             }
           ],
-          "cost": {
-            "amount": 900,
-            "currency": "USD"
-          },
           "risk": "medium",
           "undo": {
             "window": 3600
           },
           "expires": 1790000600,
+          "uses": {
+            "spend": {
+              "amount": 900,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
           "hash": "h9",
           "data": {
             "eta": "noon"
@@ -476,7 +494,7 @@
         }
       ]
     },
-    "lens": "2 proposals — undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  cost: 1.00 USD · risk: low\n[p_9] Faster\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  cost: 9.00 USD · risk: medium\n  data:\n    eta: noon"
+    "lens": "2 proposals — undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  uses: spend 1.00 USD · risk: low\n[p_9] Faster\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  uses: spend 9.00 USD · risk: medium\n  data:\n    eta: noon"
   },
   {
     "name": "auto receipt shows effects",
@@ -507,7 +525,6 @@
             "detail": "update notification"
           }
         ],
-        "cost": null,
         "undo": {
           "until": 1790003700
         }
@@ -563,7 +580,6 @@
               "detail": "update notification"
             }
           ],
-          "cost": null,
           "risk": "low",
           "undo": {
             "window": 45
@@ -573,7 +589,7 @@
         }
       ]
     },
-    "lens": "1 proposal:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  cost: free · risk: low · undo: 45s · expires: 2026-09-21T14:23:20Z"
+    "lens": "1 proposal:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: low · undo: 45s · expires: 2026-09-21T14:23:20Z"
   },
   {
     "name": "clarify",
@@ -629,7 +645,6 @@
             "detail": "update notification"
           }
         ],
-        "cost": null,
         "undo": {
           "until": 1790003700
         },
@@ -656,7 +671,6 @@
         "summary": "Ordered",
         "at": 1790000100,
         "effects": [],
-        "cost": null,
         "undo": null
       }
     },
@@ -685,7 +699,6 @@
             "to": "2026-09-22T14:00:00Z"
           }
         ],
-        "cost": null,
         "undo": null,
         "undoes": "r_1"
       }
@@ -760,7 +773,7 @@
       "re": "c1",
       "kind": "ERROR",
       "code": "consent_required",
-      "message": "cost exceeds per-commit limit",
+      "message": "spend over the per-commit limit of 25.00 USD",
       "consent": {
         "proposal": "p_2",
         "hash": "h2",
@@ -771,7 +784,148 @@
         "expires": 1790000605
       }
     },
-    "lens": "✗ consent_required: cost exceeds per-commit limit\n  consent: principal must approve h2 (Order 2 items)"
+    "lens": "✗ consent_required: spend over the per-commit limit of 25.00 USD\n  consent: principal must approve h2 (Order 2 items)"
+  },
+  {
+    "name": "proposals: uses shared when identical",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600,
+          "hash": "h1",
+          "uses": {
+            "emails": {
+              "amount": 1
+            }
+          }
+        },
+        {
+          "id": "p_9",
+          "capability": "calendar.reschedule",
+          "summary": "Also",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600,
+          "uses": {
+            "emails": {
+              "amount": 1
+            }
+          },
+          "hash": "h9"
+        }
+      ]
+    },
+    "lens": "2 proposals — uses: emails 1 · risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n[p_9] Also\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification"
+  },
+  {
+    "name": "proposals: uses on one proposal only",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600,
+          "hash": "h1"
+        },
+        {
+          "id": "p_9",
+          "capability": "calendar.reschedule",
+          "summary": "Notify too",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600,
+          "uses": {
+            "emails": {
+              "amount": 3
+            }
+          },
+          "hash": "h9"
+        }
+      ]
+    },
+    "lens": "2 proposals — risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n[p_9] Notify too\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  uses: emails 3"
   },
   {
     "name": "event",

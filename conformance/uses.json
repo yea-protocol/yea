@@ -1,0 +1,249 @@
+{
+  "quantities": [
+    {
+      "quantity": {
+        "amount": 2290,
+        "scale": 2,
+        "unit": "USD"
+      },
+      "lens": "22.90 USD"
+    },
+    {
+      "quantity": {
+        "amount": 0,
+        "scale": 2
+      },
+      "lens": "0.00"
+    },
+    {
+      "quantity": {
+        "amount": 5,
+        "scale": 3
+      },
+      "lens": "0.005"
+    },
+    {
+      "quantity": {
+        "amount": 1
+      },
+      "lens": "1"
+    },
+    {
+      "quantity": {
+        "amount": 500,
+        "unit": "JPY"
+      },
+      "lens": "500 JPY"
+    },
+    {
+      "quantity": {
+        "amount": 1,
+        "scale": 18
+      },
+      "lens": "0.000000000000000001"
+    },
+    {
+      "quantity": {
+        "amount": 9007199254740991,
+        "scale": 18,
+        "unit": "ETH"
+      },
+      "lens": "0.009007199254740991 ETH"
+    },
+    {
+      "quantity": {
+        "amount": 12,
+        "unit": "GB"
+      },
+      "lens": "12 GB"
+    }
+  ],
+  "wellFormed": [
+    {
+      "name": "plain",
+      "uses": {
+        "emails": {
+          "amount": 1
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "empty",
+      "uses": {},
+      "valid": true
+    },
+    {
+      "name": "money",
+      "uses": {
+        "spend": {
+          "amount": 2287,
+          "scale": 2,
+          "unit": "USD"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "name with separators",
+      "uses": {
+        "api_calls.v2-x": {
+          "amount": 3
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "unit symbols",
+      "uses": {
+        "storage": {
+          "amount": 1,
+          "unit": "GB/mo"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "max amount and scale",
+      "uses": {
+        "big": {
+          "amount": 9007199254740991,
+          "scale": 18
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "negative amount",
+      "uses": {
+        "spend": {
+          "amount": -1
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "float amount",
+      "uses": {
+        "spend": {
+          "amount": 1.5
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "amount past 2^53-1",
+      "uses": {
+        "spend": {
+          "amount": 9007199254740992
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "scale 19",
+      "uses": {
+        "spend": {
+          "amount": 1,
+          "scale": 19
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "negative scale",
+      "uses": {
+        "spend": {
+          "amount": 1,
+          "scale": -1
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "empty unit",
+      "uses": {
+        "spend": {
+          "amount": 1,
+          "unit": ""
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "unit with a space",
+      "uses": {
+        "spend": {
+          "amount": 1,
+          "unit": "US D"
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "unit of 33 characters",
+      "uses": {
+        "spend": {
+          "amount": 1,
+          "unit": "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU"
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "extra key",
+      "uses": {
+        "spend": {
+          "amount": 1,
+          "currency": "USD"
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "missing amount",
+      "uses": {
+        "spend": {
+          "scale": 2
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "uppercase name",
+      "uses": {
+        "Spend": {
+          "amount": 1
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "name starting with a digit",
+      "uses": {
+        "1st": {
+          "amount": 1
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "name of 65 characters",
+      "uses": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+          "amount": 1
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "not an object",
+      "uses": [
+        {
+          "amount": 1
+        }
+      ],
+      "valid": false
+    }
+  ]
+}

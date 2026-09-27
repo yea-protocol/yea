@@ -33,11 +33,16 @@ function payService(opts: { slow?: number; failRevert?: boolean } = {}) {
     trust: [principal.public, other.public],
   }).intent('pay.send', {
     summary: 'send money',
-    params: { to: 'string', amt: 'int' },
+    params: { to: 'string', amt: 'int', 'cur?': 'string' },
     plan: ({ params }) => ({
       summary: `pay ${params.to} ${params.amt}`,
-      effects: [P.charge(`acct/${params.to}`)],
-      cost: P.money(params.amt),
+      effects: [P.create(`payment/${params.to}`)],
+      uses: {
+        spend: P.quantity(params.amt, {
+          scale: 2,
+          unit: params.cur ?? 'USD',
+        }),
+      },
       apply: async () => {
         if (opts.slow) {
           await sleep(opts.slow);
@@ -126,7 +131,7 @@ describe('security regressions', () => {
   it("[H2] concurrent commits can't overshoot a spend cap", async () => {
     const svc = payService({ slow: 30 });
     const c = await client(svc, agent, principal, [
-      { spend: { max: 100, currency: 'USD' } },
+      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
     ]);
     const [p1, p2] = [
       await intent(c, { to: 'a', amt: 60 }),
@@ -172,7 +177,7 @@ describe('security regressions', () => {
         await P.issueGrant({
           principal,
           to: agent.public,
-          caveats: [{ per: { max: 10, currency: 'USD' } }],
+          caveats: [{ each: { of: 'spend', max: 10, scale: 2, unit: 'USD' } }],
         }),
       ],
     });
@@ -283,7 +288,7 @@ describe('security regressions', () => {
 
   it('[M6] replaying a commit returns the receipt even when its spend used up the cap', async () => {
     const c = await client(payService(), agent, principal, [
-      { spend: { max: 100, currency: 'USD' } },
+      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
     ]);
     const p = await intent(c, { to: 'a', amt: 60 });
 
@@ -343,7 +348,7 @@ describe('security regressions', () => {
         capability: 'x',
         trusted: [principal.public],
         proofKey: agent.public,
-        proposal: { hash: 'h', cost: null, risk: 'high' },
+        proposal: { hash: 'h', risk: 'high' },
       });
 
       expect(r.ok ? 'ok' : r.code).toBe('forbidden');
@@ -398,5 +403,66 @@ describe('security regressions', () => {
     s.destroy();
     expect(out).toContain('frame exceeds 1 MiB');
     expect(out).toContain('"re":"ok"');
+  });
+
+  it('[U1] a spend in another currency never passes a limit; it asks instead of converting', async () => {
+    const c = await client(payService(), agent, principal, [
+      { each: { of: 'spend', max: 100000, scale: 2, unit: 'USD' } },
+    ]);
+    const r = await c.commit(await intent(c, { to: 'a', amt: 1, cur: 'EUR' }));
+
+    expect(r.kind === 'ERROR' && r.code).toBe('consent_required');
+  });
+
+  it('[U2] a plan with a malformed uses never becomes a proposal', async () => {
+    const svc = P.service({
+      id: 'bad',
+      name: 'Bad',
+      summary: 'bad',
+      trust: [principal.public],
+    }).intent('bad.do', {
+      summary: 'do',
+      plan: () => ({
+        summary: 'do it',
+        effects: [],
+        uses: { spend: { amount: -1, unit: 'USD' } },
+        apply: () => null,
+      }),
+    });
+    const c = await client(svc, agent, principal);
+    const r = await c.intent('bad.do', {});
+
+    expect(r.kind === 'ERROR' && r.code).toBe('internal');
+  });
+
+  it('[U3] malformed each and total limits fail closed', async () => {
+    for (const bad of [
+      { each: { of: 'spend', max: 1, scale: 19, unit: 'USD' } },
+      { total: { of: 'spend', max: -1 } },
+      { each: { of: 'spend', max: 1, currency: 'USD' } },
+      { per: { max: 1, currency: 'USD' } },
+    ]) {
+      const c = await client(payService(), agent, principal, [bad as P.Caveat]);
+      const r = await c.commit(await intent(c, { to: 'a', amt: 1 }));
+
+      expect(r.kind === 'ERROR' && r.code, JSON.stringify(bad)).toBe(
+        'forbidden',
+      );
+    }
+  });
+
+  it('[U4] a block that repeats a total counts each commit once', async () => {
+    const limit = { of: 'spend', max: 100, scale: 2, unit: 'USD' };
+    const c = await client(payService(), agent, principal, [
+      { total: limit },
+      { total: limit },
+    ]);
+
+    expect((await c.commit(await intent(c, { to: 'a', amt: 60 }))).kind).toBe(
+      'RECEIPT',
+    );
+    expect((await c.commit(await intent(c, { to: 'b', amt: 30 }))).kind).toBe(
+      'RECEIPT',
+    );
   });
 });

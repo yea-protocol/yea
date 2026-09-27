@@ -3,12 +3,12 @@
 // a payments API such as Stripe's: look a customer up, refund, change plan, cancel. Here
 // they're designed as outcomes instead of resources. The data is made up.
 import {
-  charge,
   clarify,
+  create,
   fail,
   fix,
-  money,
   type Plan,
+  quantity,
   send,
   service,
   update,
@@ -366,7 +366,7 @@ function refunder(c: Customer, pay: Payment) {
         `refund receipt, ${usd(amount)} back to ${c.card} in 5–10 days`,
       ),
     ],
-    cost: money(amount),
+    uses: spent(amount),
     apply: () => {
       pay.refunded += amount;
 
@@ -375,6 +375,11 @@ function refunder(c: Customer, pay: Payment) {
     // No revert: money that has left can't be pulled back, so the proposal says undo: none.
   });
 }
+
+/** Cents charged or refunded, reported under the `spend` convention (docs/conventions.md). */
+const spent = (cents: number) => ({
+  spend: quantity(cents, { scale: 2, unit: 'USD' }),
+});
 
 function changePlans(c: Customer, to: PlanId, now: number): Plan[] {
   const from = c.plan;
@@ -394,11 +399,11 @@ function changePlans(c: Customer, to: PlanId, now: number): Plan[] {
     effects: [
       update(sub, 'plan', from, to),
       diff > 0
-        ? charge(c.card, `${usd(diff)} prorated`)
+        ? create('charge', `${usd(diff)} prorated to ${c.card}`)
         : update(`customer/${c.id}`, 'credit', '0.00 USD', usd(-diff)),
       send(c.email, 'plan change receipt'),
     ],
-    cost: diff > 0 ? money(diff) : null,
+    ...(diff > 0 ? { uses: spent(diff) } : {}),
     undoWindow: 86400,
     apply: () => {
       c.plan = to;
