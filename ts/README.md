@@ -181,10 +181,10 @@ The same tasks as a scripted token count (o200k), isolating what each protocol s
 |---|---|---|---|---|---|---|
 | Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 1,548 | **59%** | 61% |
 | Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 1,548 | **4%** | 5% |
-| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 2,708 | **15%** | 26% |
+| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 2,710 | **15%** | 26% |
 | Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 2,495 | **28%** | 45% |
 | Skim the menu (first 30 items: REST limit=30, YEA budget=800) | 1 → 1 | 2,467 | 3,027 | 1,961 | **21%** | 35% |
-| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 8,712 | **32%** | 43% |
+| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 8,714 | **32%** | 43% |
 
 - Minified JSON is the fair baseline. Pretty-printed JSON is shown because many servers return it.
 - Most of the scripted reschedule win is API design (an outcome-level intent). Against a REST server with an equivalent endpoint it's only ~4%.

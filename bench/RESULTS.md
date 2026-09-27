@@ -10,12 +10,12 @@ Tool definitions in context every turn: REST MCP **761** tokens (11 tools) vs YE
 |---|---|---|---|---|---|---|
 | Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 1,548 | **59%** | 61% |
 | Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 1,548 | **4%** | 5% |
-| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 2,708 | **15%** | 26% |
+| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 2,710 | **15%** | 26% |
 | Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 2,495 | **28%** | 45% |
 | Skim the menu (first 30 items: REST limit=30, YEA budget=800) | 1 → 1 | 2,467 | 3,027 | 1,961 | **21%** | 35% |
-| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 8,712 | **32%** | 43% |
+| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 8,714 | **32%** | 43% |
 
-Result tokens read, per task (minified REST → YEA): 316 → 129 · 62 → 129 · 462 → 308 · 1919 → 1095 · 932 → 558
+Result tokens read, per task (minified REST → YEA): 316 → 129 · 62 → 129 · 462 → 310 · 1919 → 1095 · 932 → 558
 
 ## What the model actually reads
 
@@ -26,8 +26,8 @@ Result tokens read, per task (minified REST → YEA): 316 → 129 · 62 → 129 
   {
     "id": "e2",
     "title": "1:1 with Ana",
-    "start": "2026-09-27T14:00:00Z",
-    "end": "2026-09-27T14:30:00Z",
+    "start": "2026-09-28T14:00:00Z",
+    "end": "2026-09-28T14:30:00Z",
     "attendees": [
       "ana.ruiz@acme.co"
     ]
@@ -35,29 +35,29 @@ Result tokens read, per task (minified REST → YEA): 316 → 129 · 62 → 129 
 ]
 
 {
-  "day": "2026-09-29",
+  "day": "2026-09-30",
   "slots": [
-    "2026-09-29T09:30:00Z",
-    "2026-09-29T10:00:00Z",
-    "2026-09-29T10:30:00Z",
-    "2026-09-29T11:00:00Z",
-    "2026-09-29T11:30:00Z",
-    "2026-09-29T12:00:00Z",
-    "2026-09-29T12:30:00Z",
-    "2026-09-29T15:00:00Z",
-    "2026-09-29T15:30:00Z",
-    "2026-09-29T16:00:00Z",
-    "2026-09-29T16:30:00Z",
-    "2026-09-29T17:00:00Z",
-    "2026-09-29T17:30:00Z"
+    "2026-09-30T09:30:00Z",
+    "2026-09-30T10:00:00Z",
+    "2026-09-30T10:30:00Z",
+    "2026-09-30T11:00:00Z",
+    "2026-09-30T11:30:00Z",
+    "2026-09-30T12:00:00Z",
+    "2026-09-30T12:30:00Z",
+    "2026-09-30T15:00:00Z",
+    "2026-09-30T15:30:00Z",
+    "2026-09-30T16:00:00Z",
+    "2026-09-30T16:30:00Z",
+    "2026-09-30T17:00:00Z",
+    "2026-09-30T17:30:00Z"
   ]
 }
 
 {
   "id": "e2",
   "title": "1:1 with Ana",
-  "start": "2026-09-29T09:30:00Z",
-  "end": "2026-09-29T10:00:00Z",
+  "start": "2026-09-30T09:30:00Z",
+  "end": "2026-09-30T10:00:00Z",
   "attendees": [
     "ana.ruiz@acme.co"
   ],
@@ -68,12 +68,12 @@ Result tokens read, per task (minified REST → YEA): 316 → 129 · 62 → 129 
 ### Reschedule, YEA (1 call, auto-commit)
 
 ```
-✓ Move "1:1 with Ana" to 2026-09-29T09:30:00Z (receipt r_Fgb6EIWi) · undo until 2026-09-27T15:53:09Z
-  ~ update event/e2.start: 2026-09-27T14:00:00Z → 2026-09-29T09:30:00Z
+✓ Move "1:1 with Ana" to 2026-09-30T09:30:00Z (receipt r_Fgb6EIWi) · undo until 2026-09-28T20:36:29Z
+  ~ update event/e2.start: 2026-09-28T14:00:00Z → 2026-09-30T09:30:00Z
   > send ana.ruiz@acme.co — updated invite
   result:
     event: e2
-    start: 2026-09-29T09:30:00Z
+    start: 2026-09-30T09:30:00Z
 ```
 
 What the tokens don't show: the YEA agent acted only because the principal's grant allows low-risk, undoable changes, and it got back exactly what happened with a 24h undo window. In the auto-commit case the *service* chose the slot (the first free one), just like the REST outcome endpoint. An agent that wants to choose omits `auto` and gets three proposals instead.
