@@ -31,9 +31,9 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.13",
+    "@biomejs/biome": "2.5.14",
     "@stylistic/eslint-plugin": "5.10.0",
-    "lefthook": "2.1.8",
-    "oxlint": "1.77.0"
+    "lefthook": "2.1.14",
+    "oxlint": "1.85.0"
   }
 }

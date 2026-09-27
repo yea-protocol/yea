@@ -69,8 +69,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "@types/node": "^22",
-    "typescript": "^5.9",
+    "@types/node": "^26",
+    "typescript": "^7.0",
     "vitest": "^5.0.1"
   },
   "author": "James Solomon",
