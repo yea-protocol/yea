@@ -162,6 +162,41 @@ mcp_servers:
 
 When a commit needs the human's approval, the tool returns a consent code for `yea approve`, and the agent hands the signed consent back through `yea_consent`. If you restrict which tools a server exposes (`tools.include`), keep `yea_consent`, `yea_undo` and `yea_expand` alongside the capability tools you want.
 
+## Servers built with the framework
+
+A server built with [`@yea-protocol/mcp`](/guide/mcp-typescript) or [`yea-mcp`](/guide/mcp-python) doesn't go through the bridge: it's an ordinary MCP server, and you register it with each client the way you register any other. What YEA adds is in its environment and in the client's support for forms.
+
+- **Its environment:** `YEA_PRINCIPAL_PUB`, the pinned principal public key (a file the server's user can't change), and `YEA_POLICY`, the signed policy (a `pg1.` token, or the absolute path of a file holding one). Without them every job asks. Client config files don't expand `~`, so use full paths.
+- **Approval in the client:** a client with MCP form elicitation shows the plan and a field to type the phrase. A client without it gets a consent code, and the person runs `yea approve <code>`. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run.
+
+For example, in **Claude Code**:
+
+```sh
+claude mcp add files \
+  -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
+  -e YEA_POLICY=/Users/me/.config/yea/files.policy \
+  -- uv run python server.py                          # or: npx tsx server.ts
+```
+
+In **Cursor** (`.cursor/mcp.json`) and other clients that use an `mcpServers` object, put the same variables in the server's `env`:
+
+```json
+{
+  "mcpServers": {
+    "files": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/project", "python", "server.py"],
+      "env": {
+        "YEA_PRINCIPAL_PUB": "/etc/yea/principal.pub",
+        "YEA_POLICY": "/Users/me/.config/yea/files.policy"
+      }
+    }
+  }
+}
+```
+
+VS Code (`.vscode/mcp.json`) uses a top-level `servers` key with the same fields, plus `"type": "stdio"`. The server prints its id on stderr at start-up (`yea: service id ed25519:… (name files)`), which is what `yea grant --to` needs. Each guide's step 5 walks through the whole setup.
+
 ## MCP registry
 
 YEA's MCP registry entry is `io.github.yea-protocol/yea` ([`server.json`](https://github.com/yea-protocol/yea/blob/main/server.json): npm package `@yea-protocol/cli`, stdio transport, argument `mcp`). It's published with the first release; then clients that browse the registry can install it from there.
