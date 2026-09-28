@@ -3,6 +3,9 @@
 /** Seconds since the Unix epoch, the clock of every YEA timestamp. */
 export const unixNow = () => Math.floor(Date.now() / 1000);
 
+/** One day in seconds. */
+export const DAY = 86400;
+
 /** An array of strings. */
 export const isStringList = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === 'string');
