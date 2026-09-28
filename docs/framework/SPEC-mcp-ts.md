@@ -66,8 +66,8 @@ while keys, store and codec live in the one `yea()` context.
 |---|---|---|
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file and appears in consent codes. |
 | `transport` | required | `'stdio'` or `'http'`. Picks the defaults below. |
-| `store` | `FileStore` for stdio; for HTTP, `MemoryStore` with `singleProcess: true` | The `ApprovalStore` (SPEC-approval §8). |
-| `singleProcess` | `false` | HTTP only: a promise that one process serves every request. |
+| `store` | `FileStore` for stdio, `MemoryStore` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
+| `singleProcess` | `false` | HTTP only: a promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
 | `serverKey` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run with `O_EXCL`, mode `0600`, in a `0700` directory. A key file that is a symlink, or readable by others, is refused. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `readPinnedKey()` (`YEA_PRINCIPAL_PUB`) | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call, so a new grant applies without a restart. |
@@ -107,7 +107,7 @@ Registers a job tool. `config`:
 | Field | Meaning |
 |---|---|
 | `title`, `description`, `annotations` | As in `registerTool`. Annotation defaults are under Results. |
-| `inputSchema` | A Standard Schema with JSON Schema (zod 4, ArkType, Valibot, or `fromJsonSchema`). Its root must be a plain object without a `preview` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
+| `inputSchema` | A Standard Schema that exposes JSON Schema (`~standard.jsonSchema`): zod ≥ 4.2, ArkType, Valibot, or `fromJsonSchema`. Its root must be a plain object without a `preview` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
 | `revert({ input, planHash, result }, ctx)` | Optional. With it, plans that set `undoWindow` are undoable. |
@@ -122,10 +122,14 @@ registered schema before the callback runs, and passes on the parsed value, so a
 Schema:
 
 - its JSON Schema is the author's, with `preview: { type: 'boolean' }` added to `properties`;
-- its `validate` takes `preview` off, validates the rest with the author's schema, and returns
-  `{ ...validated, [PREVIEW]: true }` under a symbol key that can't come from JSON.
+- its `validate` takes `preview` off (anything but a boolean is an issue), validates the rest
+  with the author's schema, and returns `{ ...validated, [PREVIEW]: true }` under a symbol key
+  that can't come from JSON.
 
-The callback reads and removes that symbol.
+The callback reads and removes that symbol. The SDK passes the validated value straight to
+the callback, so the symbol survives, and canonical JSON ignores symbol keys. `job()` and
+`guard` call the wrapper's `jsonSchema.input` once when registering, because the SDK only
+converts it later, when it lists tools; a schema that can't convert fails registration.
 
 ### `approvals.guard(tool, config)`
 
@@ -136,10 +140,12 @@ Turns a tool that's already registered into a job, without rewriting it. `tool` 
 The SDK has no tool-call middleware (typescript-sdk PR #2820 is still a draft), so `guard`
 replaces the handler:
 
-1. `tool.disable()`, so the original handler can't run in between;
+1. note whether the tool was enabled, then `tool.disable()`, so the original handler can't
+   run in between;
 2. `tool.update({ callback, paramsSchema })` with the guarded callback and the wrapper schema
    (a tool registered without a schema keeps the `cb(ctx)` form, and gets no `preview`);
-3. `tool.enable()`, only if the update succeeded. If anything throws, the tool stays disabled.
+3. if it was enabled, `tool.enable()`, only once the update succeeded. If anything throws,
+   the tool stays disabled.
 
 The original callback becomes the plan's `apply`. Its result is returned unchanged, so an
 `outputSchema` still holds. The receipt goes in `_meta['dev.yea/receipt']`. If the original
@@ -164,15 +170,16 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
 1. **Validate.** The wrapper schema has already validated the input and taken `preview` off.
    Refuse non-integer numbers.
 2. **Deny.** If the tool is in `deny`, return `isError` now, before `plan()` runs, before
-   consents are read, and before a preview.
+   consents are read, and before a preview (a denied tool shows nothing).
 3. **Plan.** Call `plan(input, ctx)`, then `hashPlans`. A clarification is returned as text.
    No plans means an `isError` result.
 4. **Preview.** If `preview` was set, return the plans as Lens text
    (`structuredContent: { plans }`). Nothing is stored.
 5. **Retry?** Read `ctx.mcpReq.requestState()`:
+   - `undefined`: carry on;
    - an object with our `yea` key: step 10;
-   - a **string**: the codec isn't installed, so refuse the call (fail closed);
-   - `undefined`: carry on.
+   - anything else refuses the call. A string means the codec isn't installed; an object
+     without `yea` is another tool's state (possible with `yea({ codec })`).
 6. **Consents.** For each plan, in order:
    - look up `store.getConsent(planHash)`, and check it with `checkJobConsent`;
    - `consumeOnce(<grant id>, <the consent grant's exp caveat>)`;
@@ -202,7 +209,8 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
       `consumeOnce(state.yea.nonce, state.yea.exp)`. Any failure refuses, with one message.
     - Read the answer with `inputResponse(ctx.mcpReq.inputResponses, 'yea')`. `missing` counts
       as not approved.
-    - Recompute the plans (steps 3 and 2), then `judgeAnswer`:
+    - Use the plans step 3 computed on this call (recomputed, since the handler re-ran), then
+      `judgeAnswer`:
       - `run`: step 11;
       - `ask-again`: step 8 with the verdict's round;
       - `out-of-band`: step 9 for that plan;
@@ -222,12 +230,13 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
     - **If `settle` or `putReceipt` fails after `apply()` succeeded:** say the action
       happened and that undo isn't available.
 
-**Can the client ask?**
-- On a request carrying the 2026-07-28 envelope, the capabilities are
-  `ctx.mcpReq.envelope['io.modelcontextprotocol/clientCapabilities']`, read through a narrow
-  cast because 2.1.0 types the envelope as `{}`.
-- Otherwise, use `server.server.getClientCapabilities()`. It's deprecated but backfilled per
-  request, so it works on both eras. The envelope wins when both exist.
+**Can the client ask?** This follows the SDK's own check, so we never return an
+`inputRequired` the SDK would then refuse with a `-32021` error:
+- If `ctx.mcpReq.envelope` is present (a 2026-07-28 request), use only its
+  `['io.modelcontextprotocol/clientCapabilities']`, read through a narrow cast because 2.1.0
+  types the envelope as `{}`. A missing key means no.
+- Otherwise (2025 era), use `server.server.getClientCapabilities()`, the capabilities from
+  `initialize`. It's deprecated, but it's the SDK's own source for that era.
 - `elicitation.form`, or a bare `elicitation: {}`, means yes.
 - No capabilities at all (a legacy stateless HTTP request, which never saw `initialize`)
   means no.
@@ -311,7 +320,9 @@ can't elicit. For each:
 - the start-up and per-call refusals listed under `yea()`;
 - a legacy stateless HTTP request takes the consent-code path.
 
-Security cases in `mcp/test/security.test.ts`, the approval core's list from the MCP side:
+Security cases in `mcp/test/security.test.ts`, the approval core's list from the MCP side.
+Any fix that lands in the SDK core also gets its regression test in `ts/test/security.test.ts`
+(repo rule 3):
 
 - a denied tool never runs, even with a stored consent;
 - a `high` plan is never offered in the form;
