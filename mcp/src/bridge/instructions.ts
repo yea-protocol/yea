@@ -17,7 +17,6 @@ const HEADER = `YEA acts for the user under a policy they signed. Each capabilit
 const NONE =
   'No YEA services are configured. Tell the user to run `npx @yea-protocol/cli add <url>` and restart.';
 
-/** A service's part of the instructions; a generic one lists its capabilities (fitted). */
 /**
  * A generic service's capabilities as its BRIEF's Lens, from the BRIEF kept at start-up: as
  * many full lines as fit `budget`, then the rest by name only.
@@ -53,6 +52,7 @@ function capabilityList(svc: Service, budget: number): string {
     : kept.join('\n');
 }
 
+/** A service's part of the instructions; a generic one lists its capabilities (fitted). */
 function serviceNote(
   svc: Service,
   o: { generic: boolean; tools: string[]; budget: number },
