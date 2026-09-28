@@ -1,98 +1,20 @@
 /**
- * What a job server trusts, and where it comes from (SPEC-mcp-ts `yea()`, SPEC-approval §2): the
- * server's own key, the pinned principal key, the signed policy grant, and the unsigned
- * tightening. The policy and tightening are read on every call, so a new grant applies without
- * a restart; the keys are read once.
+ * What a job server trusts on each call (SPEC-mcp-ts `yea()`, SPEC-approval §2): the pinned
+ * principal key, the signed policy grant, and the unsigned tightening. The policy and tightening
+ * are read on every call, so a new grant applies without a restart; the principal is read once.
  */
-import {
-  existsSync,
-  linkSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   atLeast,
-  b64u,
   isPublicKey,
   isRisk,
   type Risk,
   readTightening,
   type Tightening,
 } from '@yea-protocol/sdk';
-import {
-  checkServerKeyDir,
-  home,
-  readPinnedKey,
-  readServerSeed,
-  SERVER_NAME,
-} from '@yea-protocol/sdk/node';
-import { errorMessage, warnOnce } from './util.js';
-
-/** Server names name a key file and appear in consent codes. */
-export function checkName(name: unknown): string {
-  if (typeof name !== 'string' || !SERVER_NAME.test(name)) {
-    throw new TypeError(
-      `yea(): name must match [a-z0-9._-]{1,64}, got ${JSON.stringify(name)}`,
-    );
-  }
-
-  return name;
-}
-
-const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
-
-/**
- * Create the key file only if it doesn't exist, private to this user. The seed is written to a
- * temp file first and linked into place (which fails if the key exists, like O_EXCL), so a
- * concurrent reader never sees an empty key.
- */
-function createKey(path: string) {
-  const seed = b64u(globalThis.crypto.getRandomValues(new Uint8Array(32)));
-  const tmp = `${path}.${b64u(globalThis.crypto.getRandomValues(new Uint8Array(9)))}.tmp`;
-
-  writeFileSync(tmp, `${seed}\n`, { flag: 'wx', mode: 0o600 });
-
-  try {
-    linkSync(tmp, path);
-  } catch (e) {
-    if (errno(e) !== 'EEXIST') {
-      throw e;
-    }
-  } finally {
-    rmSync(tmp, { force: true });
-  }
-}
-
-/**
- * The server's Ed25519 seed: created on first run, mode 0600, in a 0700 directory. A key file
- * that is a symlink, someone else's, readable by others, or not a seed is refused, and so is a
- * key directory others can write.
- */
-export function loadServerSeed(path: string): string {
-  const dir = dirname(path);
-
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-
-  const why = checkServerKeyDir(dir);
-
-  if (why) {
-    throw new Error(`yea(): refusing the server key: ${why}`);
-  }
-
-  // A dangling symlink doesn't exist either: linking fails on it, and reading refuses it.
-  if (!existsSync(path)) {
-    createKey(path);
-  }
-
-  try {
-    return readServerSeed(path);
-  } catch (e) {
-    throw new Error(`yea(): ${errorMessage(e)}`, { cause: e });
-  }
-}
+import { home, readPinnedKey } from '@yea-protocol/sdk/node';
+import { errno, errorMessage, warnOnce } from './util.js';
 
 export type Pinned = { key: string } | { why: string };
 

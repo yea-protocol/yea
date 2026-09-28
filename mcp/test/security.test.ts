@@ -10,7 +10,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { atLeast, MemoryStore, quantity, type Risk } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
-import { stricter } from '../src/keys.js';
+import { stricter } from '../src/policy.js';
 import {
   approve,
   connect,

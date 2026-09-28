@@ -1,4 +1,5 @@
 /** Small helpers the job plugin and the bridge share. Internal: not part of the package's API. */
+import type { McpServer } from '@modelcontextprotocol/server';
 
 export type Obj = Record<string, unknown>;
 
@@ -18,4 +19,20 @@ export function warnOnce(message: string) {
     warned.add(message);
     console.error(`yea: ${message}`);
   }
+}
+
+/** A Node error's `code`, such as `ENOENT`. */
+export const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
+
+/**
+ * The server's tool registry. SDK seam: `RegisteredTool` doesn't carry its name and the registry
+ * is private, so this reads it through a narrow cast; an empty object if it isn't there.
+ */
+export function registryOf(server: McpServer): Record<string, unknown> {
+  const registry = (server as unknown as { _registeredTools?: unknown })
+    ._registeredTools;
+
+  return registry && typeof registry === 'object'
+    ? (registry as Record<string, unknown>)
+    : {};
 }

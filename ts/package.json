@@ -57,7 +57,7 @@
     "tool-use"
   ],
   "scripts": {
-    "build": "tsc -p .",
+    "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p .",
     "test": "vitest run",
     "typecheck": "tsc -p . --noEmit",
     "vectors": "node --experimental-strip-types scripts/vectors.ts",

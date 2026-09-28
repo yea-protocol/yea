@@ -357,15 +357,21 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
 ## Code layout
 
 ```
-mcp/src/index.ts       yea(), job(), guard(), the undo tool
-mcp/src/call.ts        the guarded callback: steps 1–11
-mcp/src/schema.ts      the wrapper Standard Schema that carries `preview`
-mcp/src/client.ts      can the client ask, per era
-mcp/src/keys.ts        server key, pinned principal, policy and tightening loading
-mcp/src/render.ts      Lens text and structuredContent for plans, receipts and codes
-mcp/src/result.ts      tool results, refusals and annotations, shared with the bridge
-mcp/src/util.ts        small internal helpers (isObject, errorMessage, warnOnce)
-mcp/test/*.test.ts     in-memory client tests; security cases in mcp/test/security.test.ts
+mcp/src/index.ts           yea(), job(), and the public exports
+mcp/src/guard.ts           guard(): wrapping a registered tool
+mcp/src/undo.ts            the undo tool
+mcp/src/call.ts            the guarded callback: steps 1–11, in order
+mcp/src/call/context.ts    the approval context, the job as run, and step 1: caller, policy, phrase
+mcp/src/call/approve.ts    steps 6–10: consents, the form and its rounds, consent codes
+mcp/src/call/apply.ts      step 11: apply once, settle, and record the receipt
+mcp/src/schema.ts          the wrapper Standard Schema that carries `preview`
+mcp/src/client.ts          can the client ask, per era
+mcp/src/serverkey.ts       the server's name and key
+mcp/src/policy.ts          pinned principal, policy and tightening loading
+mcp/src/render.ts          Lens text and structuredContent for plans, receipts and codes
+mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk metadata
+mcp/src/util.ts            small internal helpers (isObject, errorMessage, warnOnce, errno, registryOf)
+mcp/test/*.test.ts         in-memory client tests; security cases in mcp/test/security.test.ts
 ```
 
 ## Testing
