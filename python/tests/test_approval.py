@@ -617,6 +617,9 @@ def test_consents_that_dont_count(store):
             _consent(h, exp=None),  # no expiry
             _consent(h, svc="elsewhere"),
             issue_grant(PRINCIPAL, SERVER.public, [{"can": ["*"]}], iat=NOW).encode(),  # the policy grant itself
+            # the server key delegating the policy grant to itself with an only and an exp
+            issue_grant(PRINCIPAL, SERVER.public, [{"can": ["*"]}], iat=NOW)
+            .delegate(SERVER, SERVER.public, [{"only": h.plan_hash}, {"exp": NOW + 600}], iat=NOW).encode(),
             "not a grant",
         ]
         for token in cases:

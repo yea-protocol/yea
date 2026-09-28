@@ -583,9 +583,11 @@ def check_job_consent(token: Any, p: HashedPlan, policy: Policy, now: int) -> Co
         g = None
     if g is None:
         return ConsentCheck(False, why=_NOT_A_CONSENT)
-    caveats = [c for b in g.blocks for c in b["p"]["caveats"]]
+    # One root block that itself binds the plan. A chain would let the server key delegate the
+    # policy grant to itself with an `only` and an `exp`, and approve a plan with no person.
+    caveats = g.blocks[0]["p"]["caveats"]
     exp = _expiry(g)
-    if {"only": p.plan_hash} not in caveats or exp is None:
+    if len(g.blocks) != 1 or {"only": p.plan_hash} not in caveats or exp is None:
         return ConsentCheck(False, why=_NOT_A_CONSENT)
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": p.plan_hash, "risk": p.risk, **({"uses": uses} if uses is not None else {})}

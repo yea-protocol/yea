@@ -242,10 +242,10 @@ class FileStore:
         if (undo / f"{_receipt_id(id)}.done").exists():
             return False
         claim = undo / f"{id}.claim"
-        if _create_excl(claim):
+        if _create_excl(claim, _token()):
             return True
         _break_if_stale(claim, CLAIM_STALE)  # a revert that crashed mid-way can be tried again
-        return not (undo / f"{id}.done").exists() and _create_excl(claim)
+        return not (undo / f"{id}.done").exists() and _create_excl(claim, _token())
 
     async def release_undo(self, id: str) -> None:
         (self.root / "undo" / f"{_receipt_id(id)}.claim").unlink(missing_ok=True)
@@ -272,6 +272,7 @@ class FileStore:
                     {"settled": str(led.settled), "reserved": {r: str(a) for r, a in led.reserved.items()}},
                     separators=(",", ":"),
                 ))
+                _still_held(lock, token)  # and if it was broken during the write, say so
             return out
         finally:
             _release(lock, token)
@@ -314,7 +315,7 @@ class FileStore:
 async def _acquire(lock: Path) -> str:
     """Take a lock file with O_EXCL, retrying for ``LOCK_WAIT``. It holds a random token, so only
     its holder releases it. A lock older than ``LOCK_STALE`` was left by a crashed process."""
-    token = f"{os.getpid()}:{secrets.token_hex(8)}"
+    token = _token()
     deadline = time.monotonic() + LOCK_WAIT
     while not _create_excl(lock, token):
         _break_if_stale(lock)
@@ -324,25 +325,27 @@ async def _acquire(lock: Path) -> str:
     return token
 
 
+def _token() -> str:
+    return f"{os.getpid()}:{secrets.token_hex(8)}"
+
+
 def _break_if_stale(lock: Path, stale: float | None = None) -> None:
-    """Remove a stale lock without removing a fresh one someone just took: move it aside under a
-    unique name, then delete it only if it's the same file we found stale; else put it back."""
+    """Remove a stale lock (or undo claim) without removing a fresh one someone just took: read
+    its token, move it aside under a unique name, and delete it only if the moved file still
+    holds that token; otherwise put it back. Inodes aren't compared, since they get reused."""
     try:
-        st = lock.stat()
-        if time.time() - st.st_mtime <= (LOCK_STALE if stale is None else stale):
+        if time.time() - lock.stat().st_mtime <= (LOCK_STALE if stale is None else stale):
             return
+        token = lock.read_text(encoding="utf-8")
         aside = lock.with_name(f"{lock.name}.{secrets.token_hex(6)}.stale")
         os.rename(lock, aside)
     except FileNotFoundError:
         return
-    moved = aside.stat()
-    if (moved.st_ino, moved.st_dev) == (st.st_ino, st.st_dev):
-        aside.unlink(missing_ok=True)
-        return
-    try:
-        os.link(aside, lock)  # someone's fresh lock: restore it unless a third holder took the name
-    except FileExistsError:
-        pass
+    if _read(aside) != token:
+        try:
+            os.link(aside, lock)  # someone's fresh one: restore it unless a third holder took the name
+        except FileExistsError:
+            pass
     aside.unlink(missing_ok=True)
 
 

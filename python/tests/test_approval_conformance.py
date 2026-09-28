@@ -138,7 +138,8 @@ def test_file_store(tmp_path):
         await s.mark_undone("r_AAAAAAAAAAAA")
 
     asyncio.run(go())
-    files = {p.relative_to(tmp_path).as_posix(): p.read_text(encoding="utf-8") for p in tmp_path.rglob("*") if p.is_file()}
+    files = {p.relative_to(tmp_path).as_posix(): "*" if p.suffix == ".claim" else p.read_text(encoding="utf-8")
+             for p in tmp_path.rglob("*") if p.is_file()}
     assert files == DATA["fileStore"]["files"]
 
 
