@@ -160,7 +160,8 @@ def test_undo(case):
         return await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
 
     got = asyncio.run(go())
-    assert ({"kind": "undone"} if got.kind == "undone" else {"kind": got.kind, "why": got.why}) == case["expect"]
+    whole = {"kind": got.kind} if got.kind == "undone" else {"kind": got.kind, "why": got.why, "receipt": got.receipt}
+    assert {k: x for k, x in whole.items() if x is not None} == case["expect"]  # as TS's toEqual
 
 
 @pytest.mark.parametrize("c", cases("phraseChecks"))  # each case has a name, used as its id
