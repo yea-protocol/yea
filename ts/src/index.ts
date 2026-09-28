@@ -73,6 +73,13 @@ export {
 } from './client.js';
 
 export {
+  consentCode,
+  consentGrant,
+  consentRecipient,
+  decodeConsentCode,
+} from './consent.js';
+
+export {
   type KeyPair,
   keyPair,
   proposalHash,
@@ -87,11 +94,6 @@ export {
   type Caveat,
   type CheckContext,
   checkGrant,
-  checkProof,
-  consentCode,
-  consentGrant,
-  consentRecipient,
-  decodeConsentCode,
   decodeGrant,
   delegateGrant,
   encodeGrant,
@@ -100,7 +102,6 @@ export {
   inspectGrant,
   isPublicKey,
   issueGrant,
-  makeProof,
 } from './grants.js';
 
 export { fetchHandler } from './http.js';
@@ -116,8 +117,6 @@ export {
   untrustedLens,
 } from './lens.js';
 
-export { atLeast, exceeds, isRisk } from './risk.js';
-
 export {
   type Clarification,
   type CommitCtx,
@@ -126,12 +125,16 @@ export {
   create,
   type Plan,
   remove,
-  Service,
   type ServiceOptions,
   send,
-  service,
   update,
-} from './service.js';
+} from './plan.js';
+
+export { checkProof, makeProof } from './proof.js';
+
+export { atLeast, exceeds, isRisk } from './risk.js';
+
+export { Service, service } from './service.js';
 
 export {
   type ApprovalStore,

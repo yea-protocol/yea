@@ -1,7 +1,8 @@
 /** YEA client: what an agent (or its harness) uses to talk to a service. */
 import { randomId } from './crypto.js';
-import { type Caveat, decodeGrant, makeProof } from './grants.js';
+import { type Caveat, decodeGrant } from './grants.js';
 import { lens } from './lens.js';
+import { makeProof } from './proof.js';
 import { isRisk } from './risk.js';
 import type { Service } from './service.js';
 import type {

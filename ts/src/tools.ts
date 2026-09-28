@@ -6,8 +6,8 @@
 
 import { consentFrom, consentLines } from './approve.js';
 import type { Client } from './client.js';
+import { consentCode, consentGrant } from './consent.js';
 import { keyPair } from './crypto.js';
-import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
 import { printable } from './text.js';
 import { INSTRUCTIONS } from './tooldefs.js';

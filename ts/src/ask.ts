@@ -10,12 +10,12 @@ import {
   planPreimage,
 } from './approval.js';
 import { canonical } from './canonical.js';
-import { type KeyPair, randomId, sha256 } from './crypto.js';
 import {
   consentGrant,
   decodeConsentCode,
   encodeConsentCode,
-} from './grants.js';
+} from './consent.js';
+import { type KeyPair, randomId, sha256 } from './crypto.js';
 import { effectLine, fmtDuration } from './lens.js';
 import { atLeast, isRisk } from './risk.js';
 import type { ConsentRequest, Effect } from './types.js';

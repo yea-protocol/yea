@@ -11,12 +11,11 @@ import {
   signJobConsent,
 } from './ask.js';
 import type { Client } from './client.js';
+import { consentGrant, decodeConsentCode } from './consent.js';
 import { type KeyPair, keyPair } from './crypto.js';
 import { defaultFileStore } from './filestore.js';
 import {
   type Caveat,
-  consentGrant,
-  decodeConsentCode,
   delegateGrant,
   type GrantInfo,
   inspectGrant,
