@@ -656,3 +656,69 @@ def test_oversized_frames_and_inflight_cap_over_tcp():
             srv.close()
 
     run(go())
+
+
+def test_a_reply_that_cant_be_serialized_still_gets_a_final_reply():
+    """§2.2: exactly one final reply. NaN can't be written as JSON, so the reply becomes an ERROR
+    rather than a hung stream or a cut-off HTTP body (#146, as ts/src/node.ts and http.ts do)."""
+    svc = Service("odd.example", "Odd")
+
+    @svc.ask("odd.nan")
+    def nan(ctx):
+        return float("nan")
+
+    @svc.ask("odd.ok")
+    def ok(ctx):
+        return 1
+
+    async def go():
+        tcp = await serve_tcp(svc, "127.0.0.1", 0)
+        http = await serve_http(svc, "127.0.0.1", 0)
+        try:
+            for url in (f"yea://127.0.0.1:{tcp.sockets[0].getsockname()[1]}",
+                        f"http://127.0.0.1:{http.sockets[0].getsockname()[1]}/yea"):
+                async with await connect(url, key=AGENT.seed) as c:
+                    r = await asyncio.wait_for(c.ask("odd.nan"), 5)
+                    assert (r.kind, r.code, r.message, r.frame["id"]) == (
+                        "ERROR", "internal", "reply could not be serialized", "s_err"), url
+                    assert r.frame["re"] and "retry" not in r.frame  # as TS's errorLine
+                    assert (await c.ask("odd.ok")).data == 1  # the connection still works
+        finally:
+            tcp.close()
+            http.close()
+
+    run(go())
+
+
+def test_an_event_that_cant_be_serialized_is_dropped_and_apply_runs_once():
+    """A progress EVENT with NaN used to raise inside apply(); the commit then counted as failed and
+    a retry ran apply() again. The EVENT is dropped instead, and the commit succeeds once (#146)."""
+    svc = Service("odd.example", "Odd", trust=[PRINCIPAL.public])
+    ran = []
+
+    def apply(ctx):
+        ctx.progress("half way", 0.5, float("nan"))
+        ran.append(1)
+        return {"ok": True}
+
+    @svc.intent("odd.do")
+    def do(ctx):
+        return Plan("Do it", [create("thing")], apply=apply)
+
+    async def go():
+        tcp = await serve_tcp(svc, "127.0.0.1", 0)
+        http = await serve_http(svc, "127.0.0.1", 0)
+        try:
+            for url in (f"yea://127.0.0.1:{tcp.sockets[0].getsockname()[1]}",
+                        f"http://127.0.0.1:{http.sockets[0].getsockname()[1]}/yea"):
+                g = grant({"svc": ["odd.example"]}, {"can": ["odd.*"]})
+                async with await connect(url, key=AGENT.seed, grants=[g]) as c:
+                    props = await c.intent("odd.do")
+                    rc = await asyncio.wait_for(c.commit(props.proposals[0]), 5)
+                    assert rc.kind == "RECEIPT", (url, rc.lens)
+        finally:
+            tcp.close()
+            http.close()
+
+    run(go())
+    assert ran == [1, 1]  # once per transport, never re-run
