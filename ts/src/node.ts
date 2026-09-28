@@ -12,7 +12,7 @@ import {
 } from './client.js';
 import { errorLine, frameId } from './frames.js';
 import { fetchHandler } from './http.js';
-import { serveCapped } from './servefetch.js';
+import { serveCapped } from './serve-fetch.js';
 import type { Service } from './service.js';
 
 export const DEFAULT_PORT = 7447;
@@ -267,7 +267,7 @@ export {
   defaultFileStore,
   FileStore,
   readPinnedKey,
-} from './filestore.js';
+} from './file-store.js';
 
 export {
   agentKey,
@@ -294,6 +294,6 @@ export {
   MAX_REQUEST_BODY,
   type ServeFetchOptions,
   serveFetch,
-} from './servefetch.js';
+} from './serve-fetch.js';
 
 export { listServices } from './setup.js';
