@@ -8,7 +8,7 @@ from conftest import CONFORMANCE
 
 from yea import Plan
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_job_consent, undo_receipt, check_state, decide, job_consent_code, judge_answer,
+    HashedPlan, Policy, Tightening, build_form, check_job_consent, checked_phrase, undo_receipt, check_state, decide, job_consent_code, judge_answer,
     load_policy,
     phrase_matches, plan_hash, read_tightening,
 )
@@ -171,3 +171,14 @@ def test_undo(case):
     assert got.kind == want["kind"]
     if "why" in want:
         assert got.why == want["why"]
+
+
+@pytest.mark.parametrize("c", cases("phraseChecks"))
+def test_phrase_checks(c):
+    if c is None:
+        pytest.skip("no phraseChecks section")
+    if c["expect"] is None:
+        with pytest.raises(TypeError):
+            checked_phrase(c["phrase"])
+    else:
+        assert checked_phrase(c["phrase"]) == c["expect"]

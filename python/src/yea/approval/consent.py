@@ -8,7 +8,7 @@ from typing import Any
 from ..grants import Grant, GrantContext, consent_code, decode_grant, verify_grant
 from ..store import ApprovalStore
 from ..uses import check_uses
-from .phrase import phrase_of
+from .phrase import checked_phrase
 from .plan import HashedPlan, plan_preimage
 from .policy import Policy
 
@@ -22,7 +22,7 @@ def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan,
     consent = {"proposal": p.plan_hash, "hash": p.plan_hash, "service": server_key, "capability": p.tool,
                "principal": principal, "summary": p.plan.summary, "expires": now + CONSENT_TTL}
     job = plan_preimage(p.tool, input, p.plan, p.risk)
-    return consent_code(consent, {"job": job, "phrase": phrase_of(p, lambda _: phrase)})
+    return consent_code(consent, {"job": job, "phrase": checked_phrase(phrase)})
 
 
 async def consent_for(plans: list[HashedPlan], store: ApprovalStore, policy: Policy, now: int) -> HashedPlan | None:

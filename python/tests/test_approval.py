@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ import pytest
 from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed, quantity, spend
 from yea.approval import (
     HashedPlan, Policy, Tightening, build_form, check_key_file, check_state, choose_store, consent_for, decide,
-    input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
+    checked_phrase, input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
     normalize_phrase, phrase_matches, plan_hash, plan_preimage, read_tightening, reserve_all, undo_receipt,
 )
 from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id
@@ -729,3 +730,17 @@ def test_another_servers_receipt_is_no_such_receipt(store):
 def test_a_malformed_uses_fails_the_plan_hash():
     with pytest.raises(ValueError, match="malformed uses"):
         plan_hash("t", {}, plan(uses=[]), "low")
+
+
+def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
+    """[A17] Shown escaped, ``go\\u{202e}`` can never be typed: the developer's error, not a phrase (#130)."""
+    with pytest.raises(TypeError, match=re.escape(
+            'the approval phrase has unprintable characters, so no one could type it: "go\\u{202e}"')):
+        checked_phrase("go‮")
+    with pytest.raises(TypeError):  # checked as the tool names it: no fallback, though it normalizes to ""
+        checked_phrase("﻿")
+    assert checked_phrase("old\tnav") == "old\tnav"
+    assert checked_phrase(" ") == "approve"
+    with pytest.raises(TypeError, match="unprintable characters"):
+        job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "approve\n", NOW)
+    assert decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", NOW))["detail"]["phrase"] == "approve"

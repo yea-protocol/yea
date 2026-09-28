@@ -114,7 +114,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
-| `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. |
+| `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be printable text (SPEC-approval §3), or the call fails as a tool error. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,
 `data`). For a job, `apply` takes no arguments and may be async; it runs at most once per

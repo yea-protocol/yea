@@ -12,6 +12,7 @@ from yea.approval import (
     HashedPlan,
     build_form,
     check_state,
+    checked_phrase,
     consent_for,
     decide,
     input_hash,
@@ -149,9 +150,12 @@ async def _answer(call: Call, raw: Any, answer: dict) -> Result:
 
 
 def _phrase_for(call: Call) -> Callable[[HashedPlan], str]:
+    """The phrase the person types for a plan: the tool's, or ``approve``. One that isn't a string,
+    or isn't printable text (SPEC-approval §3), is the developer's error: the call is refused before
+    anyone is asked."""
     def phrase(hp: HashedPlan) -> str:
         p = call.job.confirm_with(hp, call.input) if call.job.confirm_with else ""
         if not isinstance(p, str):
             raise TypeError("confirm_with() must return a string")
-        return p
+        return checked_phrase(p, "the phrase from confirm_with()")
     return phrase
