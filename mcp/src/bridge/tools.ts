@@ -13,12 +13,13 @@ import type { Service } from './greet.js';
 import { type Bridge, type JobCall, runJobCall } from './job.js';
 import { assignNames, genericBase, sanitize, type ToNames } from './names.js';
 import {
+  badParamNames,
   genericSchema,
   objectSchema,
   reservedParams,
   withJobFields,
 } from './params.js';
-import { errorResult } from './render.js';
+import { clip, errorResult } from './render.js';
 import { readCall } from './utility.js';
 
 type Obj = Record<string, unknown>;
@@ -132,19 +133,47 @@ function jobHandler(
 
 /** The description a model sees: the service's summary, one line, and where it runs. */
 const describe = (svc: Service, cap: CapabilityInfo) =>
-  `${printable(cap.summary || cap.name)} (${printable(cap.name)} at ${printable(svc.id)})`;
+  `${clip(cap.summary || cap.name)} (${clip(cap.name, 100)} at ${clip(svc.id, 100)})`;
+
+/** In per-capability mode a service gets at most this many tools. */
+export const MAX_TOOLS_PER_SERVICE = 200;
+
+/** Why a capability's tool can't be built from its params, or null. */
+function paramProblem(cap: CapabilityInfo): string | null {
+  const bad = badParamNames(cap.params);
+
+  if (bad.length) {
+    return `its param name ${clip(bad.join(', '), 100)} isn't [a-zA-Z0-9_.-]{1,64}, which some model APIs require`;
+  }
+
+  const reserved = cap.kind === 'intent' ? reservedParams(cap.params) : [];
+
+  return reserved.length
+    ? `its param ${reserved.join(', ')} would shadow the bridge's own field`
+    : null;
+}
 
 const meta = (svc: Service, capability?: string) => ({
   'dev.yea/service': svc.id,
   ...(capability === undefined ? {} : { 'dev.yea/capability': capability }),
 });
 
-/** One capability's tool, or null (said on stderr) when a param would shadow a job field. */
+/** One capability's tool, or null (said on stderr) when its params can't be served. */
 function capabilityTool(
   b: Bridge,
   svc: Service,
   cap: CapabilityInfo,
 ): ((name: string) => Unnamed) | null {
+  const problem = paramProblem(cap);
+
+  if (problem) {
+    warnOnce(
+      `not serving ${clip(svc.id, 100)}/${clip(cap.name, 100)}: ${problem}`,
+    );
+
+    return null;
+  }
+
   const schema = objectSchema(cap.params);
 
   if (cap.kind === 'ask') {
@@ -156,16 +185,6 @@ function capabilityTool(
       run: (args) =>
         readCall(svc, { capability: cap.name, params: args, budget: b.budget }),
     });
-  }
-
-  const reserved = reservedParams(cap.params);
-
-  if (reserved.length) {
-    warnOnce(
-      `not serving ${printable(svc.id)}/${printable(cap.name)}: its param ${reserved.join(', ')} would shadow the bridge's own field`,
-    );
-
-    return null;
   }
 
   return (name) => ({
@@ -192,7 +211,7 @@ function genericPick(svc: Service, kind: 'ask' | 'intent') {
 
     if (typeof capability !== 'string' || !known) {
       return {
-        why: `${printable(String(capability))} is not one of ${printable(svc.id)}'s ${kind} capabilities`,
+        why: `${clip(String(capability), 100)} is not one of ${clip(svc.id, 100)}'s ${kind} capabilities`,
       };
     }
 
@@ -207,7 +226,7 @@ function genericPick(svc: Service, kind: 'ask' | 'intent') {
 /** `<service>_ask` or `<service>_intent`, taking `{ capability, params, … }`. */
 function genericTool(b: Bridge, svc: Service, kind: 'ask' | 'intent') {
   const pick = genericPick(svc, kind);
-  const description = `${kind === 'ask' ? 'Read from' : 'Do something at'} ${printable(svc.name)} (${printable(svc.id)}): pass one of its ${kind} capabilities (listed in the instructions) and its params.`;
+  const description = `${kind === 'ask' ? 'Read from' : 'Do something at'} ${clip(svc.name, 100)} (${clip(svc.id, 100)}): pass one of its ${kind} capabilities (listed in the instructions) and its params.`;
 
   if (kind === 'ask') {
     return (): Unnamed => ({
@@ -253,7 +272,13 @@ function serviceTools(
       }));
   }
 
-  return svc.capabilities.flatMap((cap) => {
+  if (svc.capabilities.length > MAX_TOOLS_PER_SERVICE) {
+    warnOnce(
+      `${clip(svc.id, 100)}: serving its first ${MAX_TOOLS_PER_SERVICE} of ${svc.capabilities.length} capabilities as tools; use --tools generic for all of them`,
+    );
+  }
+
+  return svc.capabilities.slice(0, MAX_TOOLS_PER_SERVICE).flatMap((cap) => {
     const build = capabilityTool(b, svc, cap);
 
     return build

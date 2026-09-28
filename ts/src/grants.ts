@@ -182,9 +182,10 @@ export const isPublicKey = (v: unknown): v is string =>
   typeof v === 'string' && /^ed25519:[A-Za-z0-9_-]{43}$/.test(v);
 
 /**
- * Who `yea approve` issues a protocol consent to: `--to` if given, else this machine's agent
- * key, else the code's `agent`. A code naming another agent than the local key needs `--to`,
- * because the code is unsigned. Returns the key, or why there is none.
+ * Who `yea approve` issues a protocol consent to: `--to` if given, else this machine's agent key
+ * when the code names it or no one. The code's `agent` is unsigned, so it's never used on its
+ * own: a code naming another key, or one on a machine without an agent key, needs `--to`.
+ * Returns the key, or why there is none.
  */
 export function consentRecipient(o: {
   code: unknown;
@@ -203,15 +204,17 @@ export function consentRecipient(o: {
       : { why: '--to is not an ed25519 public key' };
   }
 
-  if (o.local && named !== undefined && named !== o.local) {
+  if (!o.local) {
     return {
-      why: `the code asks for a consent to agent ${named}, but this machine's agent key is ${o.local}; pass --to <key> to say which`,
+      why: 'no agent key on this machine: pass --to <key> to say which agent the consent is for',
     };
   }
 
-  const key = o.local ?? named;
-
-  return key ? { key } : { why: 'no agent key here and none in the code' };
+  return named === undefined || named === o.local
+    ? { key: o.local }
+    : {
+        why: `the code asks for a consent to agent ${named}, but this machine's agent key is ${o.local}; pass --to <key> to say which`,
+      };
 }
 
 export function decodeConsentCode(

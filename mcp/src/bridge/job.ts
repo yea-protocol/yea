@@ -12,6 +12,7 @@ import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Client,
   consentCode,
+  decodeConsentCode,
   decodeGrant,
   isUses,
   type Proposal,
@@ -70,17 +71,26 @@ const STALE = new Set(['not_found', 'expired', 'conflict']);
 const AUTO_ONLY =
   "the service commits at once only the first proposal, and only if it's undoable and within the user's grant";
 
-const HOW_TO_APPROVE =
-  'Ask the user to run `yea approve <code>` where their principal key is, then paste the printed consent back to you and call `yea_consent` with it, then call this tool again with the same arguments.';
+/** How the person approves a code; on another machine they pass this agent's key with `--to`. */
+const howToApprove = (agent: unknown) =>
+  `Ask the user to run \`yea approve <code>\` where their principal key is (on a machine without this agent's key, add \`--to ${typeof agent === 'string' ? agent : '<agent key>'}\`), then paste the printed consent back to you and call \`yea_consent\` with it, then call this tool again with the same arguments.`;
 
-/** Step 1: the person's `deny`, matched on the capability or `service/capability`, never the tool name. */
-function denied(b: Bridge, call: JobCall): boolean {
-  const { deny } = readTighteningFor(b.tighten);
+/**
+ * Step 1: why the person's unsigned policy refuses this call, or null. `deny` matches the
+ * capability or `service/capability`, never the tool name; a policy file that can't be read
+ * refuses every job call, since its `deny` can't be known.
+ */
+function denied(b: Bridge, call: JobCall): string | null {
+  const { deny, broken } = readTighteningFor(b.tighten);
 
-  return (
-    deny.includes(call.capability) ||
+  if (broken) {
+    return `your unsigned policy can't be used (${broken}), so no job runs until it's fixed`;
+  }
+
+  return deny.includes(call.capability) ||
     deny.includes(`${call.svc.id}/${call.capability}`)
-  );
+    ? `your policy never allows ${printable(call.capability)} at ${printable(call.svc.id)}`
+    : null;
 }
 
 /** Run a job tool call (SPEC-bridge steps 1–6). */
@@ -88,10 +98,10 @@ export async function runJobCall(
   b: Bridge,
   call: JobCall,
 ): Promise<CallToolResult> {
-  if (denied(b, call)) {
-    return errorResult([
-      `✗ your policy never allows ${printable(call.capability)} at ${printable(call.svc.id)}; ${NOTHING_RAN}`,
-    ]);
+  const refusal = denied(b, call);
+
+  if (refusal) {
+    return errorResult([`✗ ${refusal}; ${NOTHING_RAN}`]);
   }
 
   if (call.preview) {
@@ -202,70 +212,83 @@ const receiptResult = (r: ReceiptReply, events: string[] = []) => ({
 });
 
 /**
- * Step 3, with pending proposals: commit one the person consented to, or one the call names,
- * or show the same proposals and codes again. Null means the entry went stale: go on to step 4.
+ * Step 3, with pending proposals. A call naming `proposal` acts on that proposal only: it commits
+ * with the agent's grants, plus that proposal's own consent if one is saved. Otherwise a saved
+ * consent commits its proposal, or the same proposals and codes come back. Null means the entry
+ * went stale: go on to step 4.
  */
 async function pendingCall(
   b: Bridge,
   call: JobCall,
   entry: Pending,
 ): Promise<CallToolResult | null> {
-  const consented = await consentedProposal(b, call, entry);
+  if (call.proposal !== undefined) {
+    const p = entry.proposals.find((x) => x.id === call.proposal);
 
-  if (consented) {
-    return commitPending(b, call, {
-      entry,
-      p: consented.proposal,
-      extra: [consented.token],
-    });
-  }
-
-  if (call.proposal === undefined) {
-    return proposalsResult(entry, 'still waiting for approval', []);
-  }
-
-  const p = entry.proposals.find((x) => x.id === call.proposal);
-
-  return p
-    ? commitPending(b, call, { entry, p, extra: [] })
-    : errorResult([
-        `✗ ${printable(call.proposal)} is not one of this call's proposals (${entry.proposals.map((x) => printable(x.id)).join(', ')}); ${NOTHING_RAN}`,
-      ]);
-}
-
-/** A saved consent (from `yea_consent` or `yea approve`) for one of the entry's proposals. */
-async function consentedProposal(b: Bridge, call: JobCall, entry: Pending) {
-  const agent = call.svc.agent;
-
-  if (!agent) {
-    return null;
+    return p
+      ? commitPending(b, call, {
+          entry,
+          p,
+          consent: await usableConsent(b, call, { entry, p }),
+        })
+      : errorResult([
+          `✗ ${printable(call.proposal)} is not one of this call's proposals (${entry.proposals.map((x) => printable(x.id)).join(', ')}); ${NOTHING_RAN}`,
+        ]);
   }
 
   for (const p of entry.proposals) {
-    const token = b.consents.get(p.hash);
-    const check = token
-      ? await checkConsent(token, { entry, agent, now: b.now() })
-      : null;
+    const consent = await usableConsent(b, call, { entry, p });
 
-    if (token && check?.ok && check.proposal.hash === p.hash) {
-      return { proposal: p, token };
+    if (consent) {
+      return commitPending(b, call, { entry, p, consent });
     }
   }
 
-  return null;
+  return proposalsResult(entry, 'still waiting for approval', []);
 }
 
 /**
- * Commit a pending proposal with the agent's grants (plus a consent, if any). A receipt drops the
- * entry; a stale proposal drops it and returns null; `consent_required` gives that proposal's code.
+ * The saved consent (from `yea_consent` or `yea approve`) for `p`, if it passes every
+ * `yea_consent` check and no COMMIT of this entry has failed with it.
+ */
+async function usableConsent(
+  b: Bridge,
+  call: JobCall,
+  o: { entry: Pending; p: Proposal },
+): Promise<string | null> {
+  const agent = call.svc.agent;
+  const token = b.consents.get(o.p.hash);
+
+  if (!agent || !token || o.entry.refused.has(token)) {
+    return null;
+  }
+
+  const check = await checkConsent(token, {
+    entry: o.entry,
+    agent,
+    now: b.now(),
+  });
+
+  return check.ok && check.proposal.hash === o.p.hash ? token : null;
+}
+
+/**
+ * Commit a pending proposal with the agent's grants, plus its consent if any. A receipt drops the
+ * entry; a stale proposal drops it and returns null. A consent the service refused is never
+ * used again for this entry, so the call can't wedge on it; `consent_required` without a consent
+ * gives that proposal's code.
  */
 async function commitPending(
   b: Bridge,
   call: JobCall,
-  commit: { entry: Pending; p: Proposal; extra: string[] },
+  commit: { entry: Pending; p: Proposal; consent: string | null },
 ): Promise<CallToolResult | null> {
-  const { entry, p, extra } = commit;
-  const { r, events } = await commitOnce(call.svc.client, p, extra);
+  const { entry, p, consent } = commit;
+  const { r, events } = await commitOnce(
+    call.svc.client,
+    p,
+    consent ? [consent] : [],
+  );
 
   if (r.kind === 'RECEIPT') {
     b.pending.drop(entry.key);
@@ -279,7 +302,15 @@ async function commitPending(
     return null;
   }
 
-  if (r.code === 'consent_required' && !extra.length) {
+  if (consent) {
+    entry.refused.add(consent);
+
+    return replyResult(r, undefined, [
+      `The saved consent for [${printable(p.id)}] didn't commit it, so this call won't use it again; ${NOTHING_RAN}. The user can approve its code again, or you can call again later for fresh proposals.`,
+    ]);
+  }
+
+  if (r.code === 'consent_required') {
     return proposalsResult(
       { ...entry, proposals: [p] },
       `${printable(r.message)}: this needs the user's approval`,
@@ -320,16 +351,32 @@ async function principalsOf(c: Client): Promise<string[]> {
   return [...new Set(iss.filter((x): x is string => typeof x === 'string'))];
 }
 
-/** Steps 5–6: check the proposals, keep them pending, and hand out a consent code for each. */
+/** A line for proposals that arrived too close to expiry to be offered. */
+const expiringNote = (n: number) =>
+  n
+    ? [
+        `✗ ${n} proposal${n === 1 ? '' : 's'} from the service expire${n === 1 ? 's' : ''} in under 2 minutes, so ${n === 1 ? "it isn't" : "they aren't"} offered; call again later for fresh ones`,
+      ]
+    : [];
+
+/**
+ * Steps 5–6: check the proposals, keep the ones with at least 2 minutes left pending, and hand
+ * out a consent code for each of those, and only those.
+ */
 async function proposalsFound(
   b: Bridge,
   call: JobCall,
   key: string,
   r: Proposals,
 ): Promise<CallToolResult> {
-  const { kept, dropped } = await checkProposals(r, call.capability);
+  const checked = await checkProposals(r, call.capability);
+  const live = checked.kept.filter((p) => fresh(p, b.now()));
+  const dropped = [
+    ...checked.dropped,
+    ...expiringNote(checked.kept.length - live.length),
+  ];
 
-  if (!kept.length) {
+  if (!live.length) {
     return errorResult([`✗ no usable proposals; ${NOTHING_RAN}`, ...dropped]);
   }
 
@@ -340,27 +387,25 @@ async function proposalsFound(
     service: call.svc.id,
     capability: call.capability,
     principal: principals.length === 1 ? principals[0] : null,
-    proposals: kept,
+    proposals: live,
     codes: [],
+    refused: new Set(),
   };
 
   if (!principals.length) {
     return noGrants(call, entry, dropped);
   }
 
-  entry.codes = entry.principal ? codesFor(b, call, entry) : [];
-
-  if (fresh(kept, b.now())) {
-    b.pending.set(entry);
-  }
+  entry.codes = codesFor(call, entry);
+  b.pending.set(entry);
 
   return principals.length > 1
     ? manyPrincipals(entry, principals, dropped)
     : proposalsResult(entry, AUTO_ONLY, dropped);
 }
 
-/** A consent code per proposal with time left: `yea approve` elsewhere signs to `agent`. */
-function codesFor(b: Bridge, call: JobCall, entry: Pending) {
+/** A consent code per kept proposal: `yea approve` elsewhere signs to `agent`. */
+function codesFor(call: JobCall, entry: Pending) {
   const principal = entry.principal;
   const agent = call.svc.agent;
 
@@ -368,24 +413,22 @@ function codesFor(b: Bridge, call: JobCall, entry: Pending) {
     return [];
   }
 
-  return entry.proposals
-    .filter((p) => fresh([p], b.now()))
-    .map((p) => ({
-      proposal: p.id,
-      code: consentCode(
-        {
-          proposal: p.id,
-          hash: p.hash,
-          service: entry.service,
-          capability: p.capability,
-          principal,
-          summary: p.summary,
-          expires: p.expires,
-        },
-        p,
-        { agent },
-      ),
-    }));
+  return entry.proposals.map((p) => ({
+    proposal: p.id,
+    code: consentCode(
+      {
+        proposal: p.id,
+        hash: p.hash,
+        service: entry.service,
+        capability: p.capability,
+        principal,
+        summary: p.summary,
+        expires: p.expires,
+      },
+      p,
+      { agent },
+    ),
+  }));
 }
 
 /** SPEC.md §4.4: without grants, nothing from this INTENT can ever be committed. */
@@ -428,11 +471,11 @@ function proposalsResult(
   );
   const tail = codes.length
     ? [
-        HOW_TO_APPROVE,
+        howToApprove(decodeConsentCode(codes[0].code).agent),
         ...codes.map((c) => `  code for [${printable(c.proposal)}]: ${c.code}`),
       ]
     : [
-        'No consent code can be offered for these (they expire too soon, or there is no agent key); call again later for fresh ones.',
+        'No consent code can be offered for these (there is no agent key: run `yea install`).',
       ];
 
   return {

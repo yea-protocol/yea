@@ -21,6 +21,14 @@ export {
 } from './approval.js';
 
 export {
+  type ApproveIO,
+  type ApproveOutcome,
+  approveConsentCode,
+  consentLines,
+  keyFingerprint,
+} from './approve.js';
+
+export {
   type ApprovalAnswer,
   type ApprovalForm,
   type ApprovalState,

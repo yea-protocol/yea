@@ -137,7 +137,14 @@ async function keepConsent(
 ): Promise<CallToolResult> {
   const kept = c.consents.get(o.proposal.hash);
 
-  if (kept && kept !== token && (await checkConsent(kept, o)).ok) {
+  // One that already failed to commit this entry's proposal doesn't block a new approval.
+  const blocking =
+    kept !== null &&
+    kept !== token &&
+    !o.entry.refused.has(kept) &&
+    (await checkConsent(kept, o)).ok;
+
+  if (blocking) {
     return refused(
       'a different valid consent for this proposal is already saved',
     );

@@ -27,6 +27,8 @@ export interface Service {
   /** The agent's public key, or null when the bridge has none (it can then only read). */
   agent: string | null;
   capabilities: CapabilityInfo[];
+  /** The BRIEF the service answered HELLO with (its capabilities are in `capabilities`). */
+  brief: Brief;
 }
 
 type Obj = Record<string, unknown>;
@@ -120,6 +122,7 @@ async function greetOne(
     client: c,
     agent: c.key ? (await keyPair(c.key)).public : null,
     capabilities: usable(await allEntries(c, b), problems, id),
+    brief: b,
   };
 }
 

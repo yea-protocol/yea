@@ -11,7 +11,7 @@ import {
 } from '@yea-protocol/sdk/node';
 
 const USAGE =
-  'usage: yea mcp [<url> …] [--tools generic|per-capability] [--budget <tokens>]';
+  'usage: yea mcp [<url> …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]';
 
 const MODES = ['generic', 'per-capability'];
 

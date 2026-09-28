@@ -14,7 +14,7 @@ Guidance for AI coding agents (and humans) working in this repo.
 ## Rules
 1. **Spec first.** Anything that changes bytes on the wire or Lens output needs a SPEC.md edit, regenerated vectors (`cd ts && npm run build && node scripts/vectors.mjs`), and passing TS and Python suites. CI fails if the vectors drift.
 2. **Parity.** A protocol change lands in both `ts/` and `python/`. The interop tests (`ts/test/interop-python.test.ts`, `python/tests/test_interop.py`) must pass in both directions.
-3. **Security.** Unknown or malformed caveats fail closed. Never add a path that signs with the principal key on an agent's behalf. Every security fix gets a regression test in `ts/test/security.test.ts`.
+3. **Security.** Unknown or malformed caveats fail closed. Never add a path that signs with the principal key on an agent's behalf. Every security fix gets a regression test: in `ts/test/security.test.ts` for the SDK, and in `mcp/test/bridge-security.test.ts` for the bridge.
 4. **Zero dependencies** in `ts/` at runtime. Dev dependencies are fine. `@anthropic-ai/sdk` is an optional peer used only by `yea test-drive`.
 5. **Readable code.** `npm run lint` and `npm run lint:style` must pass. Split long or complex functions into named helpers; no `any` and no `!` assertions. See [CONTRIBUTING.md](CONTRIBUTING.md#code-style).
 6. **Honest numbers.** Benchmarks are reproducible (`npm run bench`) and published with caveats. Don't cherry-pick.

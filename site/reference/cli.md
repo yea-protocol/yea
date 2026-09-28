@@ -56,7 +56,7 @@ Checks your node version, the agent key, **whether the principal key is readable
 
 `yea grant-import <pg1.token>` saves a grant that was issued to this machine's agent key on another device, so the principal key never touches the agent's machine.
 
-`yea delegate <token> --to <key> [caveats]` narrows a grant for a sub-agent. `yea approve <pc1.code> [--to <key>]` shows a proposal's real effects, re-checks its hash, asks for confirmation, and signs a one-time consent for it, printing it to paste back to the agent. A code from `yea mcp` names the agent key the consent is for: on a machine without an agent key that one is used, and where there's a different agent key, `--to` says which.
+`yea delegate <token> --to <key> [caveats]` narrows a grant for a sub-agent. `yea approve <pc1.code> [--to <key>]` shows a proposal's real effects, re-checks its hash, asks for confirmation, and signs a one-time consent for it, printing it to paste back to the agent. A code from `yea mcp` suggests the agent key the consent is for. It's unsigned, so unless it's this machine's own agent key, pass it with `--to` after checking its fingerprint with the agent.
 
 ## Environment
 

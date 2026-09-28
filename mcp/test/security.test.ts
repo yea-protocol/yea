@@ -360,3 +360,19 @@ describe('requestState that isn’t this call’s', () => {
     expect(w.applied).toEqual([]);
   });
 });
+
+describe('a policy file that can not be read', () => {
+  it('refuses job calls instead of treating deny as empty', async () => {
+    const w = await world();
+
+    await grantPolicy(w);
+    writeFileSync(join(w.home, 'policy.json'), 'not json');
+
+    const conn = await connect('2026', refundServer(w));
+    const r = await conn.call(ch1);
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/policy.json is not valid JSON/);
+    expect(w.applied).toEqual([]);
+  });
+});

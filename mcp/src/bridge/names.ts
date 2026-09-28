@@ -10,8 +10,8 @@ const CUT = 57;
 /** A service id is cut here for its generic tools, so `_ask` and `_intent` never truncate. */
 const SERVICE_CUT = 40;
 
-/** Our own utilities' prefix: a capability can't take it without a suffix. */
-const RESERVED = 'yea_';
+/** Our own utilities' space (`yea_`, `yea-`, any case): a capability can't take it without a suffix. */
+const RESERVED = /^yea[_-]/i;
 
 /** The bridge's own tools, which no remote tool may be named. */
 export const UTILITY_TOOLS = ['yea_consent', 'yea_expand', 'yea_undo'];
@@ -60,7 +60,7 @@ export async function assignNames(
   const bases = countOf(tools.map((t) => t.base));
   const named = await Promise.all(
     tools.map((t) =>
-      (bases.get(t.base) ?? 0) > 1 || !t.base || t.base.startsWith(RESERVED)
+      (bases.get(t.base) ?? 0) > 1 || !t.base || RESERVED.test(t.base)
         ? withSuffix(t)
         : t.base,
     ),

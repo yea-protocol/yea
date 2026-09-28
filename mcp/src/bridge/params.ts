@@ -4,7 +4,7 @@
  * unchanged, because the service validates them itself.
  */
 import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server';
-import { printable } from '@yea-protocol/sdk';
+import { clip } from './render.js';
 
 type Obj = Record<string, unknown>;
 
@@ -40,7 +40,7 @@ function baseSchema(base: string): Obj {
 export function typeSchema(type: string): Obj {
   const cut = type.indexOf(' — ');
   const t = (cut < 0 ? type : type.slice(0, cut)).trim();
-  const description = cut < 0 ? '' : printable(type.slice(cut + 3).trim());
+  const description = cut < 0 ? '' : clip(type.slice(cut + 3).trim());
   const array = t.endsWith('[]');
   const base = baseSchema(array ? t.slice(0, -2).trim() : t);
   const schema = array ? { type: 'array', items: base } : base;
@@ -86,6 +86,25 @@ export function objectSchema(params: unknown, depth = 0): Obj {
     properties: Object.fromEntries(entries.map((e) => [e.name, e.schema])),
     ...(required.length ? { required } : {}),
   };
+}
+
+/** Param names every model API accepts in a tool's JSON Schema. */
+const PARAM_NAME = /^[a-zA-Z0-9_.-]{1,64}$/;
+
+const nameOf = (k: string) => (k.endsWith('?') ? k.slice(0, -1) : k);
+
+/** Param names, at any depth, that some model APIs would reject (and with them every tool). */
+export function badParamNames(params: unknown, depth = 0): string[] {
+  if (!isObject(params) || depth > MAX_DEPTH) {
+    return [];
+  }
+
+  return Object.entries(params).flatMap(([k, v]) => {
+    const inner = Array.isArray(v) && v.length === 1 ? v[0] : v;
+    const here = PARAM_NAME.test(nameOf(k)) ? [] : [nameOf(k)];
+
+    return [...here, ...badParamNames(inner, depth + 1)];
+  });
 }
 
 /** The params a capability declares that a job tool reserves for itself. */

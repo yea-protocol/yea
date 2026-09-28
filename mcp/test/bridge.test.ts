@@ -224,10 +224,12 @@ describe('a job tool call', () => {
     // Proposals live 10 minutes; with under 2 left, the entry is dropped.
     now = first.proposals[0].expires - 119;
 
-    const again = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const again = await conn.call(BIG_ORDER, 'shop_order');
 
+    // A fresh INTENT, whose proposals (on the moved clock) arrive too close to expiry to offer.
     expect(shop.verbs('INTENT')).toHaveLength(2);
-    expect(again.proposals[0].id).not.toBe(first.proposals[0].id);
+    expect(textOf(again)).toMatch(/expire in under 2 minutes/);
+    expect(textOf(again)).not.toContain('pc1.');
   });
 
   it('a pending proposal the service discarded (expired) falls back to a fresh INTENT', async () => {

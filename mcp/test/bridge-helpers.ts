@@ -7,10 +7,9 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  approveConsentCode,
   type Caveat,
   Client,
-  consentGrant,
-  consentRecipient,
   decodeConsentCode,
   type FinalReply,
   issueGrant,
@@ -129,22 +128,25 @@ export async function bridged(
 }
 
 /**
- * What `yea approve <code>` does for a protocol code on a machine with the principal key and no
- * agent key: check the code's `agent`, then sign a one-time consent to it.
+ * `yea approve <code> --to <agent>` on a machine with the principal key and no agent key: the
+ * person passes the agent the code suggests, and says yes. The SDK's own logic, not a copy.
  */
 export async function approveCode(principal: KeyPair, code: string) {
-  const c = decodeConsentCode(code);
-  const to = consentRecipient({ code: c.agent, local: null });
+  const to = decodeConsentCode(code).agent;
+  const r = await approveConsentCode({
+    principal,
+    code,
+    localAgent: null,
+    to: typeof to === 'string' ? to : undefined,
+    io: { print: () => undefined, confirm: async () => true },
+    save: () => undefined,
+  });
 
-  if ('why' in to) {
-    throw new Error(to.why);
+  if (!r.ok) {
+    throw new Error(r.why);
   }
 
-  if (c.principal !== principal.public) {
-    throw new Error('this code is for another principal');
-  }
-
-  return consentGrant({ principal, agent: to.key, consent: c });
+  return r.token;
 }
 
 /** The structured proposals and codes of a job result. */

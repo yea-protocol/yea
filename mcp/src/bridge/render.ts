@@ -33,6 +33,16 @@ function oneLine(v: unknown): unknown {
   );
 }
 
+/** Service-written text shown outside a result (summaries, descriptions) is cut to this. */
+export const MAX_TEXT = 300;
+
+/** Untrusted text as one line, cut to `max` characters. */
+export function clip(s: string, max = MAX_TEXT): string {
+  const t = printable(s);
+
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
 /** Lens renders line separators inside quoted values literally; nothing but `\n` breaks a line. */
 const noSeparators = (s: string) =>
   s.replace(/[\u2028\u2029]/g, (c) => printable(c));

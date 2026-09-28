@@ -2,6 +2,7 @@
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
+import { approveConsentCode } from './approve.js';
 import {
   type JobConsent,
   phraseMatches,
@@ -10,12 +11,10 @@ import {
 } from './ask.js';
 import type { Client } from './client.js';
 import type { KeyPair } from './crypto.js';
-import { proposalHash } from './crypto.js';
 import { FileStore } from './filestore.js';
 import {
   type Caveat,
   consentGrant,
-  consentRecipient,
   decodeConsentCode,
   delegateGrant,
   type GrantInfo,
@@ -23,7 +22,7 @@ import {
   issueGrant,
 } from './grants.js';
 import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
-import { effectLine, fmtDuration, fmtTime, lean, lens } from './lens.js';
+import { effectLine, fmtDuration, fmtTime, lean } from './lens.js';
 import { connect } from './node.js';
 import {
   addService,
@@ -313,13 +312,6 @@ async function trustedPrincipals(): Promise<string[]> {
   return trust;
 }
 
-/** A proposal's Lens without the header line. */
-const proposalLens = (d: Proposal) =>
-  lens({ yea: 1, id: '-', re: '-', kind: 'PROPOSALS', proposals: [d] })
-    .split('\n')
-    .slice(1)
-    .join('\n');
-
 // ---- identity ----
 
 async function cmdInit() {
@@ -418,51 +410,34 @@ async function cmdApprove(rest: string[]) {
     return approveJob(p, code);
   }
 
-  const agent = await recipient(consent.agent);
-
-  await showConsent(consent);
-  console.log(`  consent issued to agent: ${agent}`);
-  console.log(`  approval expires: ${fmtTime(consent.expires)}`);
-
-  if (!process.stdin.isTTY) {
-    die('✗ approval needs an interactive terminal: a human has to confirm');
-  }
-
-  if (!(await confirm('\napprove this exact action? [y/N] › '))) {
-    die('not approved');
-  }
-
-  await saveConsent(await consentGrant({ principal: p, agent, consent }), {
-    agent,
-    hash: consent.hash,
-  });
-}
-
-/** The agent key a protocol consent is issued to (SPEC-bridge, `yea approve`), or die why not. */
-async function recipient(named: unknown): Promise<string> {
-  const r = consentRecipient({
-    code: named,
-    local: (await agentKey())?.public ?? null,
+  const r = await approveConsentCode({
+    principal: p,
+    code,
+    localAgent: (await agentKey())?.public ?? null,
     to: o.to,
+    io: {
+      print: (line) => console.log(line),
+      confirm: async (question) => {
+        if (!process.stdin.isTTY) {
+          die(
+            '✗ approval needs an interactive terminal: a human has to confirm',
+          );
+        }
+
+        return confirm(question);
+      },
+    },
+    save: (token, hash) => saveGrant(token, 'consents', hash),
   });
 
-  return 'key' in r ? r.key : die(`✗ ${r.why}`);
-}
-
-/**
- * Print the signed consent, so it can be pasted back to an agent elsewhere (its bridge takes it
- * through `yea_consent`), and save it when this machine's agent is the one it is for.
- */
-async function saveConsent(token: string, c: { agent: string; hash: string }) {
-  const local = await agentKey();
-
-  if (local?.public === c.agent) {
-    saveGrant(token, 'consents', c.hash);
+  if (!r.ok) {
+    die(r.why === 'not approved' ? r.why : `✗ ${r.why}: refusing`);
   }
 
-  console.log(token);
+  // Printed to paste back to the agent: its bridge takes it through yea_consent.
+  console.log(r.token);
   console.error(
-    '\n✓ approved: a one-time consent for this proposal only. Paste the consent above back to the agent (it passes it to yea_consent), then it can commit.',
+    `\n✓ approved: a one-time consent for this proposal only${r.saved ? ", saved for this machine's agent" : ''}. Paste the consent above back to the agent (it passes it to yea_consent), then it can commit.`,
   );
 }
 
@@ -539,42 +514,6 @@ function jobLines(job: JobConsent['job']): string[] {
     `  ${uses}risk: ${String(job.risk)} · undo: ${undo}`,
     `  input: ${JSON.stringify(job.input)}`,
   ];
-}
-
-/** Print what a consent code asks for, refusing if its proposal details don't match its hash. */
-async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
-  const d = consent.detail;
-
-  if (!d) {
-    console.log(
-      [
-        "⚠ no proposal details in this code; only the service's summary:",
-        printable(consent.summary),
-        printable(
-          `  service: ${consent.service} · ${consent.capability} · proposal ${consent.proposal}`,
-        ),
-      ].join('\n'),
-    );
-
-    return;
-  }
-
-  if (
-    d.id !== consent.proposal ||
-    d.hash !== consent.hash ||
-    d.capability !== consent.capability ||
-    (d.uses !== undefined && !isUses(d.uses)) ||
-    (await proposalHash(d)) !== consent.hash
-  ) {
-    die("✗ this consent code's proposal doesn't match its hash: refusing");
-  }
-
-  console.log(
-    [
-      `at ${printable(consent.service)}:`,
-      ...proposalLens(d).split('\n').map(printable),
-    ].join('\n'),
-  );
 }
 
 // ---- try it ----

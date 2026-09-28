@@ -8,7 +8,7 @@ import { type Proposal, sha256 } from '@yea-protocol/sdk';
 /** At most this many entries; the oldest is dropped first. */
 export const MAX_PENDING = 256;
 
-/** An entry is dropped once its proposals have less than this many seconds left. */
+/** A proposal is dropped once it has less than this many seconds left; an entry, once it has none. */
 export const MIN_LEFT = 120;
 
 /** One call's proposals, the principal they need consent from, and their consent codes. */
@@ -22,6 +22,8 @@ export interface Pending {
   proposals: Proposal[];
   /** A code per proposal that can be approved (`yea approve`). */
   codes: { proposal: string; code: string }[];
+  /** Consents a COMMIT failed with: never tried again for this entry. */
+  refused: Set<string>;
 }
 
 /** JSON with every object's keys sorted. Unlike `canonical`, it takes floats: `number` params. */
@@ -46,29 +48,48 @@ export async function pendingKey(
   return `${tool}\0${capability}\0${await sha256(sortedJson(params))}`;
 }
 
-/** Seconds until the first of `proposals` expires. */
-const leftOf = (proposals: Proposal[], now: number) =>
-  Math.min(...proposals.map((p) => p.expires)) - now;
+/** Whether a proposal still has enough time left to be approved and committed. */
+export const fresh = (p: Proposal, now: number) => p.expires - now >= MIN_LEFT;
 
-/** Whether proposals still have enough time left to be approved and committed. */
-export const fresh = (proposals: Proposal[], now: number) =>
-  proposals.length > 0 && leftOf(proposals, now) >= MIN_LEFT;
+/** `e` with only its fresh proposals, and codes only for those. */
+function freshOnly(e: Pending, now: number): Pending {
+  const proposals = e.proposals.filter((p) => fresh(p, now));
+
+  if (proposals.length === e.proposals.length) {
+    return e;
+  }
+
+  const ids = new Set(proposals.map((p) => p.id));
+
+  e.proposals = proposals;
+  e.codes = e.codes.filter((c) => ids.has(c.proposal));
+
+  return e;
+}
 
 /** The bounded, expiring map of pending entries. */
 export class PendingProposals {
   private entries = new Map<string, Pending>();
 
-  /** The live entry for `key`, dropping it if it's too close to expiry. */
+  /**
+   * The live entry for `key`. Proposals near expiry are dropped one by one, with their codes,
+   * and the entry once none are left.
+   */
   get(key: string, now: number): Pending | undefined {
     const e = this.entries.get(key);
 
-    if (e && !fresh(e.proposals, now)) {
+    if (e && !freshOnly(e, now).proposals.length) {
       this.entries.delete(key);
 
       return undefined;
     }
 
     return e;
+  }
+
+  /** How many entries are kept. */
+  get size() {
+    return this.entries.size;
   }
 
   /** Keep `e` (replacing any entry for its key), dropping the oldest past the bound. */
