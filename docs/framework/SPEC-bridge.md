@@ -41,14 +41,14 @@ On start, the bridge sends `HELLO` to each service with a large budget. It `EXPA
 | Remote capability | MCP tool | Input schema |
 |---|---|---|
 | `kind: ask` | read tool, `readOnlyHint: true` | from the capability's compact `params` (SPEC.md §4.1.1) |
-| `kind: intent` | job tool, `destructiveHint: true` | the same, plus optional `goal` and `preview` |
+| `kind: intent` | job tool, `destructiveHint: true` | the same, plus optional `goal`, `preview` and `proposal` |
 | — | `yea_expand({ service, handle })` | fetches an elided part of any result (`EXPAND`) |
 | — | `yea_undo({ service, receipt })` | undoes a receipt within its window (`UNDO`) |
 | — | `yea_consent({ token })` | hands a consent signed with `yea approve` back to the bridge |
 
 - **Tool names are deterministic and safe everywhere.** Many clients, and model APIs behind
   them, accept only `[A-Za-z0-9_-]{1,64}`. So the name is the capability name with every
-  other character replaced by `_`, cut to 64 characters.
+  other character replaced by `_`, cut to 57 characters so a suffix still fits in 64.
   - Two tools that would get the same name (two services sharing a capability, or `a.b`
     and `a_b`) both get a suffix: `_` and the first 6 b64url characters of
     `sha256(service id + "/" + capability)`.
@@ -67,21 +67,29 @@ On start, the bridge sends `HELLO` to each service with a large budget. It `EXPA
   - the text after ` — ` becomes the `description`.
 
   The service validates params itself, so the tool's Standard Schema passes values through
-  unchanged. A capability param named `goal` or `preview` makes that tool refuse to be built
-  (named on stderr), rather than shadow the bridge's own fields.
+  unchanged. A capability param named `goal`, `preview` or `proposal` makes that tool refuse to
+  be built (named on stderr), rather than shadow the bridge's own fields.
 - **Too many tools, per service.** A service with more than 25 capabilities (the OpenAPI
   adapter can expose hundreds) gets two generic tools instead: `<service>_ask` and
-  `<service>_intent`, taking `{ capability, params, goal? }`. Other services keep their
-  per-capability tools. `--tools generic|per-capability` forces one mode for every service.
-  A generic intent call runs the same steps as a per-capability one.
+  `<service>_intent`, taking `{ capability, params, goal?, preview?, proposal? }`.
+  - `<service>` is the service id, sanitized and cut to 40 characters, so the two names never
+    truncate into each other. They go through the same collision and `yea_` rules.
+  - Other services keep their per-capability tools.
+  - `--tools generic|per-capability` forces one mode for every service.
+  - A generic intent call runs the same steps as a per-capability one.
 - **Refreshing.** Capabilities are read at start; a `--watch` that re-reads them comes later.
 
 ## How a job tool call runs
 
 The bridge keeps **pending proposals** in the `bridge()` closure, which lives for the
-process, not in the server factory (`serveStdio` calls the factory more than once). They're
-keyed by tool and input hash (`goal` and `preview` left out), bounded to 256 entries with the
-oldest dropped first, and each entry is dropped once it expires or commits.
+process, not in the server factory (`serveStdio` calls the factory more than once).
+- **Keyed** by tool and input hash, with `goal`, `preview` and `proposal` left out. The input
+  hash is `sha256` of the params as JSON with sorted keys, not `canonical`: a service's
+  `number` params may be floats, which canonical JSON refuses. The hash never leaves the
+  process.
+- **Bounded** to 256 entries, the oldest dropped first.
+- **Dropped** once the entry commits, and once its proposals have less than 2 minutes left, so
+  a code is never handed out just before it expires.
 
 1. **Deny.** If the capability is in the local unsigned `deny` list (`~/.yea/policy.json`,
    SPEC-approval §2), refuse before anything else, previews included. Entries match either
@@ -94,7 +102,14 @@ oldest dropped first, and each entry is dropped once it expires or commits.
      proposal's hash (from `yea_consent`, or saved by `yea approve` on this machine),
      `COMMIT` that proposal with the agent's grants plus the consent, then drop the entry
      and return the receipt.
-   - **An approval round?** If the call carries our state (below), go to step 7.
+   - **An approval round?** If the call carries our state (below), go to step 7. A call
+     carrying our state with no pending entry is refused as a bad state; it never falls
+     through to a fresh `INTENT`.
+   - **A chosen proposal?** If the call names `proposal` (an id from this entry's list),
+     `COMMIT` it with the agent's grants only. The service decides: a `RECEIPT` means the
+     grant allowed it (an irreversible action within the grant, say), and
+     `consent_required` returns that proposal's code. This is the protocol's agent commit,
+     which the old `yea_commit` offered; the model never supplies a consent.
    - **Otherwise,** return the same proposals and codes again, so an approval in progress
      isn't orphaned.
 
@@ -115,11 +130,14 @@ oldest dropped first, and each entry is dropped once it expires or commits.
    come from the proposal.
 
    Auto-commit only ever covers the first proposal, and only if it's undoable (SPEC.md
-   §4.3.1). So an irreversible proposal, or any other than the first, asks even when the
-   grant would allow it: the commit in step 7 or 8 then succeeds without a consent.
+   §4.3.1). For an irreversible proposal, or any but the first, that the grant allows, the
+   model commits it by calling again with `proposal` (step 3), or the person approves it in
+   the form (step 7). Either way the service commits it without a consent.
 6. **Codes, or a form.** The principal is the root `iss` of the grants sent on the `INTENT`;
-   §4.4 requires the same principal for the commit. Grants from more than one principal get
-   no codes and an `isError` saying why.
+   §4.4 requires the same principal for the commit.
+   - No grants at all means the proposals can never be committed (§4.4). The call returns
+     them with no codes and says to run `yea grant` for this agent.
+   - Grants from more than one principal also get no codes, and an `isError` saying why.
    - **By default, and whenever the form can't be used:** return the proposals and, for each
      offerable one (not denied), a protocol consent code. The code is `consentCode`, with a
      `ConsentRequest` built from the proposal (`proposal`, `hash`, `service`, `capability`,
@@ -139,18 +157,30 @@ oldest dropped first, and each entry is dropped once it expires or commits.
    - `checkState`, then `consumeOnce(nonce)`, then `judgeAnswer`. On `run`:
      1. `COMMIT` the proposal with the agent's grants.
      2. A `RECEIPT` means the grant allowed it; done.
-     3. On `consent_required`, run `consentFor(err, proposal)`, unchanged from today, which
-        checks the service's consent request against the proposal the person saw.
+     3. On `consent_required`, run `consentFor(err, c, p)`, unchanged from today, which
+        checks the service's consent request against the proposal the person saw. Also
+        require `err.consent.principal` to equal the grants' `iss` and the local principal
+        key.
      4. Sign the consent grant with the principal key, issued to the agent's key.
      5. `COMMIT` again with it.
+   - A `COMMIT` that fails in transport is retried as is before anything is reported. It's
+     idempotent (§4.4), and a commit that went through must not look pending.
    - `ask-again`, `refuse`, `not-approved`, `denied` and `out-of-band` behave as in mcp-ts.
      Out-of-band proposals fall back to codes.
 
-**`yea_consent({ token })`** checks that the token is a `pg1.` consent grant (single root
-block with `only` and `exp`) held by the agent's key. It saves it in the agent's
-`~/.yea/consents`, keyed by its `only` hash, and says which pending proposal it's for. It
-signs nothing and commits nothing. The token is safe to pass through the model: it's signed
-by the principal and bound to one proposal.
+**`yea_consent({ token })`** saves a consent only if all of these hold:
+- it's a `pg1.` grant of a single root block, with a valid signature;
+- `iss` is the pending entry's principal, and the holder is the agent's key;
+- its caveats are exactly SPEC.md §6.6's five: `svc`, `verbs: ["COMMIT"]`, `can`, `only` and
+  `exp`;
+- `svc`, `can` and `only` match a pending proposal (service id, capability and hash);
+- `exp` is in the future.
+
+Anything else is refused, and nothing is written. A valid consent is saved in the agent's
+`~/.yea/consents` under its `only` hash, never over a different valid consent for the same
+hash, and the result says which pending proposal it's for. It signs nothing and commits
+nothing. Passing a consent through the model is safe: it's signed by the principal, commits
+one exact proposal at one service, and still needs the agent key's proof.
 
 ## Read tools, expand and undo
 
@@ -175,8 +205,16 @@ by the principal and bound to one proposal.
   zero-dependency. `ts/src/tools.ts` stays, because `yea test-drive` uses its generic tools
   with the Claude API, and the SDK root exports `TOOLS` and `INSTRUCTIONS` for
   `bench/run.ts`.
-- **`yea approve`.** A protocol code's `agent` field sets the key the consent is issued to,
-  unless `--to` overrides it.
+- **`yea approve`.** A protocol code may carry an `agent` field, the key the consent should be
+  issued to. It's unsigned, so `yea approve`:
+  - checks its format, and prints it next to the proposal;
+  - on a machine with its own agent key that differs, requires `--to` to say which;
+  - on a machine without one (the key-on-another-device case), uses it, after the y/N that
+    already shows it.
+
+  `agent` changes no bytes SPEC.md pins, since codes are a tooling format and decoders ignore
+  unknown fields. Python's protocol code builder mirrors it, and a protocol-code vector is
+  added.
 - **`yea install`.** The config it writes (`npx -y @yea-protocol/cli mcp <urls>`) doesn't
   change. The tool names do, so these are updated:
   - `plugins/yea/skills/yea/SKILL.md`;
@@ -204,6 +242,10 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
 - the per-service generic fallback past 25 capabilities;
 - a call the agent's grant allows auto-commits in one call;
 - by default, a call over the grant returns codes;
+- a call naming `proposal` commits an irreversible proposal the grant allows, and gets a code
+  when it doesn't;
+- no grants means no codes and a `yea grant` hint;
+- float params hash and cache;
 - `yea approve` (with the code's `agent`) plus `yea_consent` plus the same call commits that
   proposal, once;
 - a re-call before approval returns the same codes, and doesn't orphan the approval;
@@ -216,8 +258,10 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   - a `high` proposal gets a code, not the form;
 - `preview` commits nothing; `deny` refuses first, including previews, and matches the
   capability after a suffix;
-- `yea_expand`, `yea_undo` and `yea_consent` work, and `yea_consent` refuses a policy grant
-  or someone else's grant;
+- `yea_expand`, `yea_undo` and `yea_consent` work. `yea_consent` refuses a policy grant, a
+  delegated or extra-caveat grant, another principal's or another holder's grant, one for no
+  pending proposal, an expired one, and an overwrite of a valid consent;
+- `yea approve` requires `--to` when a code's `agent` differs from the local agent key;
 - security:
   - the model can't approve by any argument;
   - a consent for one proposal never commits another;
@@ -274,3 +318,8 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
    So the default is consent codes approved where the key is, and signing here takes an
    explicit flag the person sets. Whether to offer the flag at all is on the issue as
    `status/needs-james`.
+5. **The model can still commit within the grant.** A job tool takes an optional `proposal`,
+   which commits a pending proposal with the agent's grants only. The service then decides,
+   as with the old `yea_commit`. Irreversible actions the person's grant allows don't need
+   `yea approve` each time. Anything the grant doesn't allow still needs a signed consent,
+   which the model can't make.
