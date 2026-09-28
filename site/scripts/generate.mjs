@@ -34,7 +34,8 @@ const region = (md, name) => {
   return m ? m[1].trim() : '';
 };
 // The region markers VitePress's `<<<` import understands (TS/JS `// #region x`, Python
-// `# region x`, HTML `<!-- #region x -->`), so a snippet reads here as it does on the page.
+// `# region x`, HTML `<!-- #region x -->`), so a region reads here as it does on the page. A
+// whole-file import drops the markers too, which the page keeps.
 const MARKER =
   /^\s*(?:\/\/ ?#?|# ?|<!-- #?)(end)?region ([\w*-]+)(?: -->)?\s*$/i;
 const LANG = {
@@ -47,18 +48,23 @@ const LANG = {
   md: 'md',
 };
 
-/** `lines` inside region `name`, or all of them when `name` is empty; marker lines dropped. */
+/**
+ * The lines of `text` inside region `name` (its first occurrence, as VitePress takes), or all of
+ * them when `name` is empty; marker lines dropped.
+ */
 function snippet(text, name) {
   const lines = text.replace(/\n$/, '').split('\n');
   let inside = !name;
+  let done = false;
   const kept = [];
 
   for (const line of lines) {
     const m = line.match(MARKER);
 
     if (m) {
-      if (m[2] === name) {
+      if (m[2] === name && !done) {
         inside = !m[1];
+        done = Boolean(m[1]);
       }
 
       continue;
@@ -89,14 +95,16 @@ function expandSnippets(p, md) {
   const dir = new URL(p.replace(/[^/]*$/, ''), root);
 
   return md.replace(
-    /^<<< (\S+?)(?:#([\w*-]+))?(?:\s*\{[^}]*\})?\s*$/gm,
-    (_all, file, name) => {
+    /^<<< (\S+?)(?:#([\w*-]+))?(?:\s*\{([^}]*)\})?(?:\s*\[[^\]]*\])?\s*$/gm,
+    (_all, file, name, lang) => {
       const url = file.startsWith('@/')
         ? new URL(file.slice(2), new URL('site/', root))
         : new URL(file, dir);
       const ext = file.split('.').pop();
 
-      return `\`\`\`${LANG[ext] ?? ''}\n${snippet(readFileSync(url, 'utf8'), name)}\n\`\`\``;
+      const fence = lang?.trim().split(/\s/)[0] || LANG[ext] || '';
+
+      return `\`\`\`${fence}\n${snippet(readFileSync(url, 'utf8'), name)}\n\`\`\``;
     },
   );
 }

@@ -190,7 +190,6 @@ function repoLink(href: string): string {
     `python/${clean}`,
     `bench/${clean}`,
     `deploy/demo/${clean}`,
-    `connectors/stripe/${clean}`,
   ];
   const page = candidates.map((c) => PAGES[c]).find(Boolean);
 
