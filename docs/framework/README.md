@@ -17,7 +17,7 @@ the index of what exists.
 | `mcp-ts` | `@yea-protocol/mcp`, a plugin for the TypeScript SDK v2 (`@modelcontextprotocol/server`). It registers job tools, or wraps an existing tool. [SPEC-mcp-ts.md](SPEC-mcp-ts.md) | `approval` | parley-80 |
 | `mcp-py` | `yea-mcp`, a plugin for the official `mcp` 2.x (`MCPServer`, `Extension.intercept_tool_call`), with a FastMCP 4 middleware adapter. | `approval` | parley-05 |
 | `bridge` | Moves `yea mcp`, which was written against the 2025 protocol, onto `mcp-ts`, so there is one MCP implementation that speaks 2026-07-28. | `mcp-ts` | parley-80 |
-| `connector-stripe` | `@yea-protocol/stripe`, the first ready-made connector, built from `examples/stripe-billing.ts`, plus a measured comparison with Stripe's official MCP server. | `mcp-ts` | parley-80 |
+| `connector-stripe` | `@yea-protocol/stripe`, the first ready-made connector, built from `examples/stripe-billing.ts`, plus a measured comparison with Stripe's official MCP server. [SPEC-connector-stripe.md](SPEC-connector-stripe.md) | `mcp-ts` | parley-80 |
 | `docs` | Guides for adding YEA to an MCP server in TypeScript and Python, the site pages, and a repositioned README. | `mcp-ts`, `mcp-py` | both |
 
 **Build order:** `approval`, then `mcp-ts` and `mcp-py` in parallel, then `bridge`,
