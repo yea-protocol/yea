@@ -132,15 +132,22 @@ async def test_guarding_one_server_doesnt_guard_another(world):
     assert not r.is_error and calls == [("other", "x")]
 
 
-async def test_guarding_a_job_tool_is_refused(world):
-    """A job() tool is already guarded: a second routine around it would ask twice (#151, as mcp-ts)."""
+async def test_guarding_a_job_tool_is_refused(world, tmp_path):
+    """A job() tool is already guarded: a second routine around it would ask twice (#151, as mcp-ts).
+    Its own job() tools are refused at once; one registered another way, by what the listing says."""
+    from yea_mcp import yea
+
     done = []
 
     @world.approvals.job(world.server, risk="low")
     async def move(event: str) -> list[Plan]:
         return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event))]
 
-    world.approvals.guard(world.server, "move", describe=lambda a: {"summary": "Move", "effects": []})
+    with pytest.raises(ValueError, match="guard\\(\\): move is already a job tool"):
+        world.approvals.guard(world.server, "move", describe=lambda a: {"summary": "Move", "effects": []})
+
+    other = yea(name="other", transport="stdio", store=world.store, server_key=tmp_path / "other.key")
+    other.guard(world.server, "move", describe=lambda a: {"summary": "Move", "effects": []})
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("move", {"event": "e1"})
     assert r.is_error and "guard(): move is already a job tool; nothing was run" in text(r) and done == []
@@ -168,7 +175,7 @@ async def test_a_tool_re_registered_after_a_listing_is_read_again(world):
     world.approvals.guard(world.server, "publish", describe=lambda a: {"summary": "Publish", "effects": []})
     async with world.client("auto", Person(["decline"])) as c:
         first = await c.call_tool("publish", {"target": "x"})  # learns the listing
-        world.server._tool_manager.remove_tool("publish")
+        world.server.remove_tool("publish")
 
         @world.server.tool()
         async def publish(target: str, preview: bool = False) -> str:  # noqa: F811 — now with its own preview
@@ -190,6 +197,7 @@ def test_a_revert_needs_the_undo_name_free(world):
         @world.approvals.job(world.server, revert=lambda r, ctx: None)
         async def move(event: str) -> list[Plan]:
             return []
+    assert world.server._tool_manager.get_tool("move") is None  # refused before anything was registered
     with pytest.raises(ValueError, match="already has a tool named undo"):
         world.approvals.guard(world.server, "undo", describe=lambda a: {"summary": "x", "effects": []},
                               revert=lambda r, ctx: None)
@@ -199,3 +207,8 @@ def test_a_second_job_with_revert_reuses_yeas_own_undo(world):
     for name in ("a", "b"):
         world.approvals.job(world.server, name=name, revert=lambda r, ctx: None)(lambda event: [])
     assert world.server._tool_manager.get_tool("undo") is not None
+
+
+def test_a_job_with_revert_named_undo_is_refused(world):
+    with pytest.raises(ValueError, match="can't be named undo"):
+        world.approvals.job(world.server, name="undo", revert=lambda r, ctx: None)(lambda event: [])

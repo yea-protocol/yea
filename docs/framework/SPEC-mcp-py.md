@@ -148,8 +148,10 @@ optional `revert`, `confirm_with` and `risk` (the default plan risk, and the ris
 shows, as `mcp-ts`'s `GuardConfig.risk`).
 
 `guard()` refuses a tool that's already guarded on that server, and one registered with `job()`
-(already a job: on `MCPServer` its calls are refused, since the listing is read per call). Like
-`job()`, a guard with `revert` refuses a server whose `undo` tool isn't YEA's. It installs the plugin's
+(already a job): at once when this `yea()` registered it, else by the listing's
+`_meta['dev.yea/job']`, which refuses its calls. Like `job()`, a guard with `revert` refuses,
+before registering anything, a server whose own `undo` tool isn't this `yea()`'s (a tool of a
+mounted server isn't seen). It installs the plugin's
 middleware on **that** server, once (`server.middleware` is a
 public list the SDK lets you extend after construction). So a guard can't be forgotten or
 attached to the wrong server: the middleware only acts on `server`, and only for tools guarded
@@ -163,10 +165,11 @@ on it.
   tool never sees it.
 - On `tools/list` it adds `preview` to each guarded tool's listed schema, on a copy of the
   result.
-- **What it learns from the listing.** On the first `tools/list` or guarded call it reads the
-  server's public `await server.list_tools()`: a guarded tool whose own schema has a `preview`
-  property is refused (the call fails closed), and a tool with an `outputSchema` gets decision
-  6's error results.
+- **What it learns from the listing.** On every guarded call it reads the server's public
+  `await server.list_tools()` (in memory), so a tool re-registered since is judged by what's
+  there now: a guarded tool whose own schema has a `preview` property is refused (the call fails
+  closed), a tool whose `_meta` marks it a job is refused, and a tool with an `outputSchema` gets
+  decision 6's error results.
 - `describe` gets the raw arguments with `preview` taken off, before the tool validates them,
   and must treat them as untrusted. The plan hash binds that raw input, so what the person
   approves is exactly what the tool then receives (the SDK may coerce `"2"` to `2`, which
@@ -363,7 +366,11 @@ Each gets its own test and a note in the code:
   `InputRequiredResult`;
 - `session.client_capabilities` per era;
 - FastMCP's `InputRequiredToolResult`, `context.copy`, `on_list_tools`, and the transform and
-  task paths it refuses.
+  task paths it refuses;
+- the tool registries `job()` and `guard()` read synchronously to find an `undo` tool
+  (`MCPServer._tool_manager.get_tool`, FastMCP's `local_provider._components`, matched by tool
+  name), as `mcp-ts` reads `_registeredTools`: accessed without a fallback, so an SDK that renames
+  them raises at registration instead of skipping the check.
 
 ## Package
 

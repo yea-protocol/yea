@@ -61,9 +61,10 @@ def _runs_as_task(tool: Any) -> bool:
 
 
 def has_tool(server: FastMCP, name: str) -> bool:
-    """Whether ``server`` already registers a tool named ``name``. FastMCP's lookups are async and
-    job()/guard() aren't, so this reads the local provider's registry (a provisional seam)."""
-    return any(k.startswith(f"tool:{name}@") for k in getattr(server.local_provider, "_components", {}))
+    """Whether ``server`` itself registers a tool named ``name`` (any version). FastMCP's lookups
+    are async and job()/guard() aren't, so this reads the local provider's registry, matching by
+    name as FastMCP's own ``remove_tool`` does (a provisional seam: a rename raises, never passes)."""
+    return any(isinstance(c, Tool) and c.name == name for c in server.local_provider._components.values())
 
 
 def _failed(r: Any) -> bool:

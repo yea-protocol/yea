@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from conftest import MODES, text
 from fastmcp import Client, FastMCP
 from fastmcp.tools.tool_transform import ArgTransform, TransformedTool
 from yea import Plan, create, quantity
-
-from conftest import MODES, text
 
 pytestmark = pytest.mark.anyio
 
@@ -179,9 +178,8 @@ async def test_the_same_2026_state_twice_runs_once(world, fm):
 
 
 async def test_a_signed_consent_runs_once(world, fm):
-    from yea import issue_grant
-
     from conftest import PRINCIPAL
+    from yea import issue_grant
 
     done = []
     sender(world, fm, done)
@@ -376,16 +374,27 @@ async def test_fastmcp_refuses_guarding_a_job_tool_and_a_taken_undo(world, fm):
     async def move(event: str) -> list[Plan]:
         return [Plan(f"Move {event}", [create("e")], apply=lambda: None)]
 
-    world.approvals.guard(fm, "move", describe=lambda a: {"summary": "Move", "effects": []})
-    async with Client(fm) as c:
-        r = await c.call_tool("move", {"event": "e1"}, raise_on_error=False)
-    assert r.is_error and "already a job tool" in text(r)
+    with pytest.raises(ValueError, match="already a job tool"):
+        world.approvals.guard(fm, "move", describe=lambda a: {"summary": "Move", "effects": []})
 
     other = FastMCP("other", request_state_security=world.approvals.request_state_security())
 
-    @other.tool
+    @other.tool(version="2")  # a versioned tool is still "undo"
     def undo(receipt: str) -> str:
         return "mine"
 
     with pytest.raises(ValueError, match="already has a tool named undo"):
         world.approvals.job(other, revert=lambda r, ctx: None)(lambda event: [])
+
+
+async def test_fastmcp_guard_risk_shows_in_the_listing_and_a_second_job_reuses_undo(world, fm):
+    @fm.tool
+    def wipe(target: str) -> str:
+        return "wiped"
+
+    world.approvals.guard(fm, "wipe", risk="high", describe=lambda a: {"summary": "Wipe", "effects": []})
+    for name in ("a", "b"):
+        world.approvals.job(fm, name=name, revert=lambda r, ctx: None)(lambda event: [])
+    async with Client(fm) as c:
+        listed = {t.name: t for t in await c.list_tools()}
+    assert listed["wipe"].meta["dev.yea/job"]["risk"] == "high" and "undo" in listed

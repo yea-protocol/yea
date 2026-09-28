@@ -42,12 +42,10 @@ class GuardMiddleware:
     y: Yea
     server: Any
     tools: dict[str, Guarded] = field(default_factory=dict)
-    _info: dict[str, _Info] | None = None
 
     async def __call__(self, ctx: Any, call_next: Callable[[Any], Any]) -> Any:
         params = ctx.params if isinstance(ctx.params, dict) else {}
         if ctx.method == "tools/list":
-            self._info = None  # the listing may have changed (a tool re-registered): read it again on the next call
             return self._advertise(await call_next(ctx))
         if ctx.method == "tools/call" and params.get("name") in self.tools:
             return await self._call(ctx, params, call_next)
@@ -57,17 +55,15 @@ class GuardMiddleware:
         if name in self.tools:
             raise ValueError(f"guard(): {name} is already guarded on this server")
         self.tools[name] = g
-        self._info = None  # re-read the listing, which now has to cover this tool
 
-    async def _learn(self) -> dict[str, _Info]:
-        """What the public listing says about each guarded tool, read once."""
-        if self._info is None:
-            listed = {t.name: t for t in await self.server.list_tools()}
-            self._info = {name: _Info("preview" in ((listed[name].input_schema or {}).get("properties") or {}),
-                                      listed[name].output_schema is not None,
-                                      "dev.yea/job" in (listed[name].meta or {}))
-                          for name in self.tools if name in listed}
-        return self._info
+    async def _learn(self, name: str) -> _Info | None:
+        """What the listing says about the guarded tool ``name`` now: read on every guarded call (it's
+        in memory), so a tool re-registered since is judged by what's there."""
+        tool = next((t for t in await self.server.list_tools() if t.name == name), None)
+        if tool is None:
+            return None
+        return _Info("preview" in ((tool.input_schema or {}).get("properties") or {}), tool.output_schema is not None,
+                     "dev.yea/job" in (tool.meta or {}))
 
     def _advertise(self, result: Any) -> Any:
         """Add ``preview`` and the job annotations to guarded tools in a copy of the listing."""
@@ -87,7 +83,7 @@ class GuardMiddleware:
     async def _call(self, ctx: Any, params: dict, call_next: Callable[[Any], Any]) -> Any:
         name = params["name"]
         g = self.tools[name]
-        info = (await self._learn()).get(name)
+        info = await self._learn(name)
         args = params.get("arguments")
         args = {} if args is None else args
         if info is None:
