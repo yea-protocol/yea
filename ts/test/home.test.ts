@@ -29,3 +29,10 @@ it('moves an old ~/.parley to ~/.yea, keeping its keys', () => {
   expect(existsSync(join(h, '.yea', 'agent.key'))).toBe(true);
   expect(existsSync(join(h, '.parley'))).toBe(false);
 });
+
+it('is exported from the Node entry and honours YEA_HOME', async () => {
+  const { home: fromNode } = await import('../src/node.js');
+
+  process.env.YEA_HOME = '/tmp/yea-home-test';
+  expect(fromNode()).toBe('/tmp/yea-home-test');
+});

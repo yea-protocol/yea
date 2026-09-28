@@ -110,8 +110,11 @@ export function readTightening(v: unknown): Tightening {
 export const atLeast = (r: Risk, floor: Risk) =>
   RISKS.indexOf(r) >= RISKS.indexOf(floor);
 
-/** Job inputs are hashed, and canonical JSON allows only integers (SPEC.md §10). */
-function assertIntegers(v: unknown, path = 'input'): void {
+/**
+ * Job inputs are hashed, and canonical JSON allows only integers (SPEC.md §10). Throws a
+ * TypeError naming the first non-integer number, so a plugin can refuse the call before planning.
+ */
+export function assertIntegers(v: unknown, path = 'input'): void {
   if (typeof v === 'number' && !Number.isSafeInteger(v)) {
     throw new TypeError(
       `${path} is ${v}: job inputs can only hold safe integers; use a string for other numbers`,
