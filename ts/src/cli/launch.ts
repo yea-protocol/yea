@@ -16,34 +16,67 @@ async function trustedPrincipals(): Promise<string[]> {
 
 // ---- try it ----
 
-export async function cmdTestDrive(rest: string[], o: Options, argv: string[]) {
+/** Set on the `yea` that test-drive re-runs through npx, so that one never re-runs again. */
+export const TEST_DRIVE_REEXEC = 'YEA_TEST_DRIVE_REEXEC';
+
+/**
+ * The npx arguments that re-run `yea <argv>` with the Anthropic SDK beside it: the `yea` bin
+ * lives in @yea-protocol/cli (the SDK has none), which ships at the SDK's `version`.
+ */
+export function testDriveNpxArgs(version: string, argv: string[]): string[] {
+  return [
+    '-y',
+    '-p',
+    `@yea-protocol/cli@${version}`,
+    '-p',
+    '@anthropic-ai/sdk',
+    'yea',
+    ...argv,
+  ];
+}
+
+/** Whether @anthropic-ai/sdk can be imported from here. */
+async function hasAnthropicSdk(): Promise<boolean> {
   try {
     await import('@anthropic-ai/sdk');
+
+    return true;
   } catch {
-    // Keep @yea-protocol/sdk dependency-free: fetch the SDK only for this command.
-    const { spawnSync } = await import('node:child_process');
-    const { createRequire } = await import('node:module');
-    const version = createRequire(import.meta.url)(
-      '../../package.json',
-    ).version;
+    return false;
+  }
+}
 
-    console.error('fetching @anthropic-ai/sdk for the test drive…');
-
-    const r = spawnSync(
-      'npx',
-      [
-        '-y',
-        '-p',
-        '@anthropic-ai/sdk',
-        '-p',
-        `@yea-protocol/sdk@${version}`,
-        'yea',
-        ...argv,
-      ],
-      { stdio: 'inherit' },
+/**
+ * Run `yea <argv>` again through npx with the Anthropic SDK, once: a run that is itself the
+ * re-run stops with install advice instead, so a `yea` that still can't see the SDK can't loop.
+ */
+async function reexecWithAnthropicSdk(argv: string[]): Promise<never> {
+  if (process.env[TEST_DRIVE_REEXEC]) {
+    die(
+      "yea test-drive needs @anthropic-ai/sdk, and this yea still can't load it after npx fetched it.\n" +
+        '  install it where yea can find it: npm install @anthropic-ai/sdk\n' +
+        '  (for a global yea: npm install -g @yea-protocol/cli @anthropic-ai/sdk)',
     );
+  }
 
-    process.exit(r.status ?? 1);
+  // Keep @yea-protocol/sdk dependency-free: fetch the SDK only for this command.
+  const { spawnSync } = await import('node:child_process');
+  const { createRequire } = await import('node:module');
+  const version = createRequire(import.meta.url)('../../package.json').version;
+
+  console.error('fetching @anthropic-ai/sdk for the test drive…');
+
+  const r = spawnSync('npx', testDriveNpxArgs(version, argv), {
+    stdio: 'inherit',
+    env: { ...process.env, [TEST_DRIVE_REEXEC]: '1' },
+  });
+
+  process.exit(r.status ?? 1);
+}
+
+export async function cmdTestDrive(rest: string[], o: Options, argv: string[]) {
+  if (!(await hasAnthropicSdk())) {
+    await reexecWithAnthropicSdk(argv);
   }
 
   const { testDrive } = await import('../testdrive.js');
