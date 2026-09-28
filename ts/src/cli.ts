@@ -1164,4 +1164,5 @@ async function consentAndRetry({
   });
 }
 
-main().catch((e) => die(`✗ ${(e as Error).message}`));
+// An error can quote a service's reply (a JSON.parse SyntaxError does), escapes and all.
+main().catch((e) => die(`✗ ${printable((e as Error).message)}`));
