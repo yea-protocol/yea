@@ -32,10 +32,11 @@ async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: st
     if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
         await _release_each(call, held)
         return result
+    saved: dict[str, dict] = {}  # the receipt, once stored: a later failure can say undo is available
     try:
-        return await _recorded(call, hp, held, result, how == "auto")
+        return await _recorded(call, hp, held, result, how == "auto", saved)
     except Exception as e:  # noqa: BLE001
-        return _unrecorded(call, hp, result if call.job.guarded else None, str(e))
+        return _happened(call, hp, f"then {e}", saved.get("receipt"), result if call.job.guarded else None)
 
 
 async def _release_each(call: Call, held: list[Reservation]) -> None:
@@ -67,32 +68,39 @@ def json_safe(v: Any) -> tuple[Any, str | None]:
     try:
         return to_jsonable_python(v, by_alias=True, exclude_none=True), None
     except (ValueError, TypeError) as e:
-        return None, f"its result couldn't be turned into JSON ({e})"
+        first = str(e).split("\n")[0]
+        return None, f"its result couldn't be serialized ({first}), so it isn't shown or kept"
 
 
-async def _recorded(call: Call, hp: HashedPlan, held: list[Reservation], result: Any, auto: bool) -> Result:
-    """After ``apply()`` succeeded: settle, store the receipt, and return it."""
-    safe, problem = json_safe(result)
-    if problem:
-        await settle_all(call.y.store, held)
-        return _unrecorded(call, hp, result if call.job.guarded else None, problem)
+async def _recorded(call: Call, hp: HashedPlan, held: list[Reservation], result: Any, auto: bool,
+                    saved: dict[str, dict]) -> Result:
+    """After ``apply()`` succeeded: settle, store the receipt (without a result that couldn't be
+    serialized, so the job can still be undone), and return it."""
+    safe, note = json_safe(result)
     receipt = _receipt_for(call, hp, safe)
-    try:
-        await settle_all(call.y.store, held)
-        await call.y.store.put_receipt(receipt)
-    except Exception as e:  # noqa: BLE001
-        return _unrecorded(call, hp, result if call.job.guarded else safe, str(e))
+    await settle_all(call.y.store, held)
+    await call.y.store.put_receipt(receipt)
+    saved["receipt"] = receipt
+    if note:
+        return _happened(call, hp, note, receipt, None)
     if call.job.guarded:
         return call.job.with_receipt(result, receipt)
     return receipt_result(receipt, auto)
 
 
-def _unrecorded(call: Call, hp: HashedPlan, result: Any, why: str) -> Result:
-    """The action happened, but its receipt couldn't be kept: say so, and that undo isn't available."""
-    note = (f"✓ {printable(hp.plan.summary)} happened, but its receipt couldn't be saved ({printable(why)}), "
-            "so it can't be undone.")
+def _happened(call: Call, hp: HashedPlan, what: str, receipt: dict | None, result: Any) -> Result:
+    """The action happened, but something after it didn't: say so, and whether undo is available
+    (mcp-ts's wording). A guarded tool's own result, when there is one, is kept with the line."""
+    if receipt is None:
+        undo = "its receipt wasn't saved, so it can't be undone"
+    elif receipt.get("undo"):
+        undo = f"undo is available with receipt {receipt['id']}"
+    else:
+        undo = f"receipt {receipt['id']}; it can't be undone"
+    line = f"✓ {printable(hp.plan.summary)} happened, but {printable(what)}; {undo}."
     if call.job.guarded and result is not None:
-        return call.job.with_note(result, note)
-    safe, _ = json_safe(result)
-    return t.CallToolResult(content=[t.TextContent(type="text", text=note)],
-                            structured_content={"receipt": None, "result": safe})
+        return call.job.with_note(result, line)
+    # A guarded tool's outputSchema only describes the original's own results.
+    return t.CallToolResult(content=[t.TextContent(type="text", text=line)],
+                            structured_content={"receipt": receipt, "result": None},
+                            is_error=call.job.own_results_are_errors())

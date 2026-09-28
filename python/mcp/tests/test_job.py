@@ -172,8 +172,45 @@ async def test_a_result_that_cant_be_json_says_the_action_happened(world, mode):
 
     async with world.client(mode, Person()) as c:
         r = await c.call_tool("odd", {"x": 1})
-    assert done == [1] and not r.is_error
-    assert "✓ Odd happened, but its receipt couldn't be saved" in text(r) and "nothing was run" not in text(r)
+    assert done == [1] and not r.is_error and "nothing was run" not in text(r)
+    receipt = r.structured_content["receipt"]
+    assert text(r) == (f"✓ Odd happened, but its result couldn't be serialized (Circular reference detected (id "
+                       f"repeated)), so it isn't shown or kept; receipt {receipt['id']}; it can't be undone.")
+    assert "result" not in receipt and r.structured_content["result"] is None
+
+
+async def test_a_result_that_cant_be_json_still_leaves_an_undoable_receipt(world):
+    """As mcp-ts: the receipt is kept without the result, so the job can still be undone (#150)."""
+    reverted = []
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: reverted.append(r["result"]))
+    async def odd(x: int) -> list[Plan]:
+        loop = {}
+        loop["self"] = loop
+        return [Plan("Odd", [create("o/1")], apply=lambda: loop, undo_window=60)]
+
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("odd", {"x": 1})
+        rid = r.structured_content["receipt"]["id"]
+        u = await c.call_tool("undo", {"receipt": rid})
+    assert f"; undo is available with receipt {rid}." in text(r)
+    assert not u.is_error and reverted == [None]
+
+
+async def test_a_store_failure_after_apply_says_it_happened_and_why(world, monkeypatch):
+    done = []
+
+    @world.approvals.job(world.server, risk="low")
+    async def ping(x: int) -> list[Plan]:
+        return [Plan("Ping", [create("p/1")], apply=lambda: done.append(x) or {"ok": 1})]
+
+    async def full(receipt):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(world.store, "put_receipt", full)
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("ping", {"x": 1})
+    assert done == [1] and text(r) == "✓ Ping happened, but then disk full; its receipt wasn't saved, so it can't be undone."
 
 
 async def test_the_2025_in_call_ask_rejudges_against_fresh_plans(world):
