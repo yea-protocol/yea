@@ -19,11 +19,7 @@ from yea_mcp import yea
 
 approvals = yea(name="billing", transport="stdio")          # once per process
 
-server = MCPServer(
-    "billing",
-    request_state_security=approvals.request_state_security(),
-    extensions=[approvals.extension()],
-)
+server = MCPServer("billing", request_state_security=approvals.request_state_security())
 
 @approvals.job(server, risk="low", confirm_with=lambda hp, input: input["charge"])
 async def refund(charge: str) -> list[Plan]:
@@ -54,7 +50,7 @@ tool at a time, without changing their transport or their other tools.
 ### `yea(**options)`
 
 Creates the approval context, **once per process**. It holds the server key, the store and the
-request-state keys. One `MCPServer` per process is the norm in Python, but the context doesn't
+request-state key. One `MCPServer` per process is the norm in Python, but the context doesn't
 assume it.
 
 | Option | Default | Meaning |
@@ -62,7 +58,7 @@ assume it.
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file, and is the request-state audience. |
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
 | `store` | `FileStore()` for stdio, `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
-| `single_process` | `False` | HTTP only: a promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
+| `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
 | `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run with `O_EXCL`, mode `0600`, in a `0700` directory; the same file format as `mcp-ts`. A key file that is a symlink, or readable by others, is refused. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
@@ -74,29 +70,32 @@ assume it.
 `sub`; a `state_key` is passed with a `MemoryStore`; HTTP runs on a `MemoryStore` without
 `single_process=True`; `name` is invalid; or the key file is unsafe.
 
-**Per-call refusals.** `sub` returning `""` on HTTP refuses the call. A policy with a `total`
-on a `MemoryStore` without `single_process` refuses too (the policy is read on every call).
+**Per-call refusals.** `sub` returning `""` on HTTP refuses the call. On stdio with a
+`MemoryStore` passed explicitly and without `single_process`, a policy with a `total` refuses
+the call (the policy is read on every call, so this can't be checked at start-up). On HTTP the
+start-up refusal already covers it.
 
 **HTTP serves one person in v0**, as in `mcp-ts`. `sub` must return that person's identity from
-the transport's authentication. The SDK's `authenticated_principal(ctx)` returns the OAuth
-`(client, issuer, subject)` triple; it qualifies only when the token verifier supplies a
-subject, since a client id alone names an app, not a person.
+the transport's authentication. The SDK's `authenticated_principal(ctx)` is **not** enough on
+its own: without a subject it returns `'["<client>",null,null]'`, a non-empty string that names
+an app, not a person. `yea_mcp.token_subject(ctx)` returns the verified token's `subject`, or
+`""` when there is none, and is the recommended `sub`.
 
 ### Request state: the SDK seals it
 
 Unlike the TypeScript SDK, `MCPServer` seals every tool's `request_state` itself: its
-`RequestStateBoundary` middleware encrypts it with AES-256-GCM and binds it to the tool name, a
-hash of the arguments, the authenticated principal and the audience (the server name), with a
-600-second lifetime. A tool reads its own plaintext through `ctx.request_state`; a tampered,
-expired or rebound token never reaches it (the SDK answers with an error first). It does **not**
-stop replay: the same token sent twice runs the handler twice, which is why the core's
-`consume_once` on the state nonce stays.
+`RequestStateBoundary` middleware encrypts it with AES-256-GCM and binds it to the method, the
+tool name, a digest of the arguments, the authenticated principal and the audience (the server
+name), with a 600-second lifetime. Code inside the boundary (tools and later middleware) reads
+the plaintext; a tampered, expired or rebound token never reaches it, because the SDK answers
+with an error first. It does **not** stop replay: the same token sent twice runs the handler
+twice, which is why the core's `consume_once` on the state nonce stays.
 
-`approvals.request_state_security()` returns `RequestStateSecurity(keys=[state_key],
-ttl=600, audience=name)` for `MCPServer(request_state_security=...)` (FastMCP takes the same
-argument). Without it the SDK uses a random per-process key, which is fine for stdio but breaks
+`approvals.request_state_security()` returns `RequestStateSecurity(keys=[state_key], ttl=600,
+audience=name)` for `MCPServer(request_state_security=...)` (FastMCP takes the same argument).
+Without it the SDK uses a random per-process key, which is fine for stdio but breaks
 multi-process HTTP. There is one boundary per server, so a server whose other tools use
-`request_state` shares it; our state is the JSON object `{"yea": {…}}`, and anything else
+`request_state` shares it. Our state is the JSON object `{"yea": {…}}`, and anything else
 refuses the call.
 
 ### `@approvals.job(server, **config)`
@@ -104,13 +103,13 @@ refuses the call.
 Registers the decorated function as a job tool. The function is the **plan** function: its
 parameters are the tool's input (as for `@server.tool()`), and it returns `list[Plan]`, a
 `clarify(...)` question, or raises. It **must not change anything**: it runs on preview, on
-every retry, and again on each round.
+every retry, and again on each round. It may declare a `Context` parameter, which it gets.
 
 | Field | Meaning |
 |---|---|
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
-| `revert` | Optional `revert(receipt) -> Any` (sync or async). With it, plans that set `undo_window` are undoable. It gets the stored job receipt (`input`, `planHash`, `result`, …). |
+| `revert` | Optional `revert(receipt, ctx) -> Any` (sync or async). With it, plans that set `undo_window` are undoable. It gets the stored job receipt (`input`, `planHash`, `result`, …). |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,
@@ -118,13 +117,20 @@ every retry, and again on each round.
 approval, and only after the plan is allowed.
 
 **How `preview` gets in.** `MCPServer` builds a tool's input schema and argument model from the
-function signature, and validates arguments before calling it. `job()` registers a wrapper whose
-`__signature__` is the plan function's parameters plus `preview: bool = False` and a
+function signature, and validates arguments before calling it. `job()` registers a wrapper
+whose `__signature__` is the plan function's parameters plus `preview: bool = False` and a
 keyword-only `ctx: Context`, with matching `__annotations__` (the SDK finds the context
-parameter through `typing.get_type_hints`, so both are needed). The listed schema then shows
-`preview`, the SDK validates the rest, and the wrapper takes `preview` and `ctx` off before
-calling the plan function. A plan function with its own `preview` or context parameter, or with
-`*args`/`**kwargs`, fails registration.
+parameter through `typing.get_type_hints`, so both are needed) and the return annotation
+`CallToolResult`. The listed schema then shows `preview`, the SDK validates the rest, and the
+wrapper takes `preview` off before calling the plan function. A plan function with its own
+`preview` parameter, or with `*args`/`**kwargs`, fails registration.
+
+**What `input` is.** The SDK hands the wrapper validated Python objects (a pydantic model, a
+`date`, an enum). The approval core needs JSON, for the plan hash, the consent code, the
+receipt and `revert`. So `input` is each validated argument dumped in JSON mode, with the
+argument's own type (`TypeAdapter(annotation).dump_python(value, mode="json")`), keyed by
+name. A `float` stays a JSON number, which canonical JSON refuses, so such a call fails closed
+with the core's "use a string or an integer" message (SPEC-approval §1).
 
 ### `approvals.guard(server, name, **config)`
 
@@ -132,46 +138,60 @@ Turns a tool that's already registered into a job without rewriting it. `config`
 `describe(input)`, which returns `{summary, effects, uses?, risk?, undo_window?}`, plus the
 optional `revert` and `confirm_with`.
 
-`MCPServer` has a supported interceptor, so `guard` doesn't replace the handler as `mcp-ts`
-must: `approvals.extension()` is an `Extension` whose `intercept_tool_call` checks, for each
-`tools/call`, whether the tool is guarded. Extensions are fixed when the server is built, so
-the extension goes in `MCPServer(extensions=[...])` and `guard` only registers the tool with it.
+`guard()` installs the plugin's middleware on **that** server, once (`server.middleware` is a
+public list the SDK lets you extend after construction). So a guard can't be forgotten or
+attached to the wrong server: the middleware only acts on `server`, and only for tools guarded
+on it.
 
-- The interceptor sees the raw arguments, before the tool validates them. `describe` gets them
-  with `preview` taken off, and must treat them as untrusted.
-- The original handler runs through `call_next(ctx)`, which returns a `CallToolResult`. That is
-  the plan's `apply`: its result is returned unchanged, with the receipt in
+- It runs inside the request-state boundary (the SDK puts its own middleware first), so it sees
+  plaintext state. It runs before argument validation, on the raw `tools/call` params.
+- It takes `preview` off the arguments (`call_next(replace(ctx, params=...))`), so the original
+  tool never sees it. `preview` must be a JSON boolean; anything else is an error.
+- On `tools/list` it adds `preview` to each guarded tool's listed schema.
+- `describe` gets the raw arguments with `preview` taken off, before the tool validates them,
+  and must treat them as untrusted. The plan hash binds that raw input, so what the person
+  approves is exactly what the tool then receives (the SDK may coerce `"2"` to `2`, which
+  doesn't change what was approved, but a `describe` that doesn't coerce the same way can show
+  a misleading summary). Validating through the tool's own argument model would fix that, but
+  it's a private SDK API (ask first).
+- The original handler runs through `call_next`, which returns a `CallToolResult`. That is the
+  plan's `apply`: its result is returned unchanged, with the receipt in
   `_meta["dev.yea/receipt"]`. `is_error: true` or an `InputRequiredResult` counts as a failure:
   reservations are released and no receipt is written.
-- The interceptor can't rewrite the arguments the handler gets, so `preview: false` reaches the
-  original tool. `MCPServer` argument models ignore unknown fields, so it's harmless; a tool
-  whose own schema has a `preview` property is refused on its first guarded call.
-- The listed schema of a guarded tool doesn't show `preview` (no supported hook changes
-  `tools/list` here). It still works.
+- **Tools that ask their own questions** (through `Resolve`/`Elicit` or their own
+  `InputRequiredResult`) are not supported under `guard` in v0: their state has no `yea` key, so
+  the next round would be refused, and once the handler has run, "nothing changed" can't be
+  promised. `guard()` raises for a tool that has resolver parameters; a tool that returns its own
+  `InputRequiredResult` at run time counts as a failure.
+
+`server.middleware` is marked provisional in `mcp` 2.x, so it is a seam (below). The SDK's
+`Extension.intercept_tool_call` was the alternative, but extensions are fixed when the server is
+built, so `guard()` couldn't check that its interceptor was installed on that server, and a
+missing one would let the original run unguarded.
 
 ### The `undo` tool
 
 `undo(receipt: str)` is registered once per server, the first time a job or guard with
-`revert` is added (`server.add_tool` for jobs; the extension's `tools()` would register it too
-early, before any job exists). It calls the core's `undo_receipt(store, id, service, sub, now,
-revert)` with this server's service id, `sub(ctx)` and the job's `revert`. A receipt from
-another server sharing the store, or for a tool with no `revert` here, is "no such receipt".
-Its annotations say `destructiveHint: true, idempotentHint: true`.
+`revert` is added. It calls the core's `undo_receipt(store, id, service, sub, now, revert)`
+with this server's service id, `sub(ctx)` and the job's `revert`. A receipt from another server
+sharing the store, or for a tool with no `revert` here, is "no such receipt". Its annotations
+say `destructiveHint: true, idempotentHint: true`.
 
 ## How a call runs
 
-The job wrapper and the guard interceptor share one routine, in this order (SPEC-approval §5
+The job wrapper and the guard middleware share one routine, in this order (SPEC-approval §5
 and §6, and the same order as `mcp-ts`):
 
 1. **Validate.** The SDK has validated the input (jobs) or not (guards). Take `preview` off.
-   Refuse non-integer numbers (`plan_hash` raises).
+   Build `input` (above). Refuse non-integer numbers (`plan_hash` raises).
 2. **Deny.** If the tool is in `deny`, return `is_error` now, before planning, consents or a
    preview.
 3. **Plan.** Call the plan function (or `describe`), then hash the plans. A clarification is
    returned as text. No plans means an `is_error` result.
 4. **Preview.** If `preview` was set, return the plans as Lens text
    (`structured_content: {"plans": …}`). Nothing is stored.
-5. **Retry?** Read `ctx.request_state` (plaintext, unsealed by the SDK):
+5. **Retry?** Read the state: `ctx.request_state` in a job, `params["requestState"]` in the
+   guard middleware (both plaintext inside the boundary):
    - `None`: carry on;
    - JSON whose object has a `yea` key: step 10;
    - anything else refuses the call.
@@ -191,8 +211,11 @@ and §6, and the same order as `mcp-ts`):
    each plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their
    terminal, then call again.* `structured_content` carries `{"plans", "codes"}`.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then
-    `consume_once(nonce, exp)`; any failure refuses with one message. Judge the answer with
-    `judge_answer` against the plans step 3 recomputed:
+    `consume_once(nonce, exp)`; any failure refuses with one message. The answer is the `yea`
+    entry of the input responses (`ctx.input_responses` in a job, `params["inputResponses"]`
+    in the guard); it must be an elicitation result, which is dumped to a dict for
+    `judge_answer`. A missing or malformed answer counts as not approved. Judge it against the
+    plans step 3 recomputed:
     - `run`: step 11;
     - `ask-again`: step 8 with the verdict's round;
     - `out-of-band`: step 9 for that plan;
@@ -214,47 +237,53 @@ and §6, and the same order as `mcp-ts`):
 The Python SDK has no legacy shim that re-runs a handler, and its `Resolve`/`Elicit` helpers
 own `request_state` (they can't carry our nonce). So the plugin asks in one of two ways:
 
-- **2026-07-28 clients** (`ctx.protocol_version` is a modern version): return a raw
+- **2026-07-28 clients** (the request's protocol version is a modern one): return a raw
   `InputRequiredResult(input_requests={"yea": ElicitRequest(params=ElicitRequestFormParams(
   message=…, requested_schema=…))}, request_state=json.dumps({"yea": new_state(…)}))`. The
-  client calls the tool again with `input_responses` and the sealed state; the handler re-runs
+  client calls the tool again with `input_responses` and the sealed state; the routine re-runs
   from step 1 and reaches step 10.
-- **2025-era clients**: a raw `InputRequiredResult` from a tool or an interceptor fails with
+- **2025-era clients**: a raw `InputRequiredResult` from a tool or middleware fails with
   "Handler returned an invalid result" on these clients, so ask **inside the call**:
-  `await ctx.session.elicit_form(message=…, requested_schema=…, related_request_id=…)`, which
+  `await session.elicit_form(message=…, requested_schema=…, related_request_id=…)`, which
   takes the core's form schema as is. The state still goes through `new_state`, `check_state`
   and `consume_once` in-process, so rounds, the three-try cap and one-time use are the same;
   ask-again loops inside the same call. Nothing is sealed, because nothing leaves the process.
+  If the connection can't send requests to the client (`NoBackChannelError`, for example on
+  some 2025 HTTP set-ups), the routine takes step 9.
 
 The core's `build_form` output is passed as is in both eras: `message`, and
-`requested_schema` with `oneOf` const/title for the plan and a `confirm` string.
-`elicit_form` takes a raw schema, so there is no pydantic model to build (the SDK's
-`ctx.elicit(message, Model)` can't express `oneOf` titles).
+`requested_schema` with `oneOf` const/title for the plan and a `confirm` string. `elicit_form`
+takes a raw schema, so there is no pydantic model to build (`ctx.elicit(message, Model)` can't
+express `oneOf` titles). SPEC-approval §4 is updated to say `session.elicit_form`.
 
-**Can the client ask?** `ctx.client_capabilities` (the session's, recorded from `initialize` on
-2025 and from the request's reserved `_meta` on 2026). `elicitation.form`, or a bare
+**Can the client ask?** `session.client_capabilities` (recorded from `initialize` on 2025, and
+per request from the reserved `_meta` on 2026). `elicitation.form`, or a bare
 `elicitation: {}`, means yes. `None` means no, so the call takes step 9. The SDK documents
 `None` for an anonymous stateless request, which never sent `initialize` or the reserved
 `_meta` keys; the legacy-stateless-HTTP test pins it.
 
 ## FastMCP 4
 
-`yea_mcp.fastmcp` adapts the same routine to FastMCP 4, whose own middleware system is the
-supported seam:
+`yea_mcp.fastmcp` adapts the same routine to FastMCP 4, whose own middleware is the supported
+seam:
 
-- `approvals.fastmcp_middleware()` is a `fastmcp.server.middleware.Middleware`. Its
-  `on_call_tool` runs the routine for guarded tools; it takes `preview` off the arguments with
-  `context.copy(message=…)` before `call_next`, which matters because FastMCP tool schemas set
-  `additionalProperties: false`.
-- Its `on_list_tools` adds `preview` to guarded tools' listed schemas, since FastMCP has a hook
-  for that.
+- `approvals.fastmcp_middleware()` is a `fastmcp.server.middleware.Middleware`, added with
+  `FastMCP(middleware=[...])` or `mcp.add_middleware(...)`. Its `on_call_tool` runs the routine
+  for guarded tools, and takes `preview` off with `context.copy(message=…)` before `call_next`,
+  which matters because FastMCP tool schemas set `additionalProperties: false`. Its
+  `on_list_tools` adds `preview` to guarded tools' listed schemas.
 - `@approvals.job(mcp, ...)` registers the wrapper with `Tool.from_function`, which honours the
   same `__signature__`/`__annotations__` construction.
 - On 2026 it returns `InputRequiredToolResult(InputRequiredResult(...))`, the documented way for
-  middleware to ask; on 2025 it calls `ctx.session.elicit_form(...)` in the call. FastMCP's own
+  middleware to ask; on 2025 it calls `session.elicit_form(...)` in the call. FastMCP's own
   `ctx.elicit` raises `ToolError` on 2026-07-28, so it isn't used.
 - `FastMCP(request_state_security=approvals.request_state_security())` seals the state.
-- Capabilities come from the session's client parameters, as above.
+- Capabilities come from `session.client_capabilities`, as above (not `client_params`, which is
+  `None` on 2026 when a client omits `clientInfo`).
+- **Transforms and tasks.** A transformed tool calls its parent's `run` directly and skips
+  middleware, and a server-level transform can rename a tool. `guard()` and `job()` refuse a
+  tool that is transformed, or reached through a transform, and a tool with background tasks
+  (`task=True`) enabled, until those paths are checked.
 
 ## Results and annotations
 
@@ -266,23 +295,27 @@ As in `mcp-ts`:
   `destructiveHint: true` unless the author sets it; `openWorldHint` is the author's.
 - Each job tool's `_meta["dev.yea/job"]` is `{"risk", "undoable"}`.
 
-**Guarded tools with an output schema.** A client validates `structured_content` against a
-tool's `outputSchema` unless the result is an error (checked: `mcp`'s client raises "has an
-output schema but did not return structured content"). So for a guarded tool that has one, the
-routine's own results (preview, consent codes, refusals, not approved) are returned with
-`is_error: true`. Only `apply`'s result, which is the tool's own, is returned as a success.
-`mcp-ts` adopts the same rule (decision 6).
+**Guarded tools with an output schema** (decision 6). A client validates `structured_content`
+against a tool's `outputSchema` unless the result is an error (checked: `mcp`'s client raises
+"has an output schema but did not return structured content"). `MCPServer` generates an
+`outputSchema` for any annotated return type, so in Python this is the usual case, not an edge:
+a plain `-> str` tool has one. For such a tool, the routine's own results (preview, consent
+codes, refusals, not approved) are `is_error: true`, and only the original's result is a
+success. The model then sees a preview as an error result; its text says it is a preview.
 
 ## The SDK-dependent seams
 
 Each gets its own test and a note in the code:
 - the synthesized `__signature__`/`__annotations__` that `func_metadata` and
-  `find_context_parameter` read;
-- `Extension.intercept_tool_call` for `guard`, and its fixed-at-construction extension list;
-- `ctx.request_state` being plaintext inside the boundary, and the boundary's binding;
-- `ctx.session.elicit_form` on 2025 clients, and the 2025 rejection of `InputRequiredResult`;
-- `ctx.client_capabilities` per era;
-- FastMCP's `InputRequiredToolResult`, `context.copy`, and `on_list_tools`.
+  `find_context_parameter` read, and the JSON-mode dump of validated arguments;
+- `server.middleware` (provisional in `mcp` 2.x): appended after construction, running inside
+  the request-state boundary, rewriting params, and post-processing `tools/list`;
+- the boundary's binding and plaintext hand-off (`ctx.request_state`, `params["requestState"]`);
+- `session.elicit_form` on 2025 clients, `NoBackChannelError`, and the 2025 rejection of
+  `InputRequiredResult`;
+- `session.client_capabilities` per era;
+- FastMCP's `InputRequiredToolResult`, `context.copy`, `on_list_tools`, and the transform and
+  task paths it refuses.
 
 ## Package
 
@@ -295,10 +328,11 @@ Each gets its own test and a note in the code:
 ## Code layout
 
 ```
-python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), the undo tool
+python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), the undo tool
 python/mcp/src/yea_mcp/call.py        the shared routine: steps 1–11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
-python/mcp/src/yea_mcp/signature.py   the synthesized job signature that carries preview
+python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input
+python/mcp/src/yea_mcp/guard.py       the server middleware for guarded tools
 python/mcp/src/yea_mcp/keys.py        server key, pinned principal, policy and tightening loading
 python/mcp/src/yea_mcp/render.py      Lens text and structured_content for plans, receipts and codes
 python/mcp/src/yea_mcp/fastmcp.py     the FastMCP 4 middleware and job registration
@@ -317,28 +351,37 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
 - on 2026, the same state sent twice runs nothing the second time;
 - a client that can't ask gets consent codes. After a consent is signed (as `yea approve`
   would), the next call runs, once;
-- `preview: true` runs nothing and stores nothing, and a denied tool doesn't even preview;
+- `preview: true` runs nothing and stores nothing, a denied tool doesn't even preview, and a
+  non-boolean `preview` is an error;
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
   from another server sharing the store;
 - `guard` wraps an existing tool: the original runs only once approved, its result passes
-  through with the receipt in `_meta`, and an output-schema tool's refusals are errors;
+  through with the receipt in `_meta`, and an output-schema tool's own results are errors. The
+  original never sees `preview`;
+- a job whose input holds a pydantic model, a `date` and an enum gets a stable plan hash, and
+  one with a `float` fails closed;
+- `token_subject` returns `""` for a token with no subject;
+- the 2025 in-call path takes step 9 on `NoBackChannelError`;
 - the start-up and per-call refusals listed under `yea()`;
-- a legacy stateless HTTP request takes the consent-code path.
+- a legacy stateless HTTP request takes the consent-code path;
+- FastMCP: a transformed or task-enabled tool is refused by `job()` and `guard()`.
 
 Security cases in `test_security.py`, the approval core's list from the MCP side; any fix that
 lands in the SDK core also gets its regression test in the core's security tests (repo rule 3):
 a denied tool never runs, even with a stored consent; a `high` plan is never offered; an
 irreversible plan never auto-runs; a consent for one plan never runs another; a stored copy of
 the policy grant never counts as a consent; a `request_state` without our `yea` object is
-refused; and a guarded tool's original handler never runs before approval.
+refused; a guarded tool's original handler never runs before approval, and guarding one server
+doesn't guard a same-named tool on another.
 
 ## Boundaries
 
 - **Always:** put the decision in the approval core, not here; read the policy and the time on
   every call; fail closed on anything unexpected (a missing key, grant or `sub`, a store error,
-  an unexpected `request_state`).
+  an unexpected `request_state`, a lost back-channel).
 - **Ask first:** depend on anything beyond `yea-sdk`, `mcp` and (for the extra) `fastmcp`;
-  change the plaintext of the state; add tools other than `undo`; use a private SDK API.
+  change the plaintext of the state; add tools other than `undo`; use a private SDK API (such as
+  a tool's argument model for `describe`).
 - **Never:** trust a `request_state` that isn't ours; run `apply()` from a plan function; treat
   an annotation as enforcement; use sampling; use `Resolve`/`Elicit` or FastMCP's `ctx.elicit`
   for the approval itself.
@@ -360,10 +403,12 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
 1. **2025-era clients are asked inside the call**, not through a re-run shim. The Python SDK has
    no shim, and `Resolve`/`Elicit` can't carry our nonce. The logical rounds, the state and the
    one-time use are the same as on 2026.
-2. **`guard` uses the SDK's `Extension` interceptor** on `MCPServer`, and FastMCP's
-   `Middleware`, rather than replacing handlers. Both are supported seams.
+2. **`guard` uses `server.middleware`** on `MCPServer` (installed by `guard()` itself, so it
+   can't be left off) and FastMCP's `Middleware`, rather than replacing handlers. `mcp`'s
+   middleware is provisional, which the seam test watches.
 3. **Job tools are plain decorated functions**, whose signature is the input schema, as
-   `@server.tool()` already is; `preview` is added to that signature.
+   `@server.tool()` already is; `preview` is added to that signature, and `input` is its
+   JSON-mode dump.
 4. **The request-state key and audience come from `yea()`**, passed to the server as
    `request_state_security`. The SDK does the sealing; the plugin only adds the nonce.
 5. **Package:** `yea-mcp` (import `yea_mcp`), with FastMCP as an extra.
