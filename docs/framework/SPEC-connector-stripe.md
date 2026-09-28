@@ -187,8 +187,10 @@ What that means in practice:
 ### Keys and permissions
 
 - **Supplying the key.** `STRIPE_SECRET_KEY_FILE` names a file that must be owned by the
-  server's OS user with mode `0600`, and not be a symlink; the connector refuses anything
-  looser, so other users on the machine can't read it. `STRIPE_SECRET_KEY` also works.
+  server's OS user with mode `0600` or `0400`, and be a regular file (not a symlink); the
+  connector refuses anything looser, so other users on the machine can't read it. It is
+  opened once with `O_NOFOLLOW` and checked on the open file. Where the platform has no
+  owners or mode bits to check (Windows), it is read with a warning on stderr. `STRIPE_SECRET_KEY` also works.
   The key file is the opposite of the principal key file: the principal's public key must
   be out of the server's reach to change, while the secret must be readable by the server
   and nobody else.

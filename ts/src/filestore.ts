@@ -20,7 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 import { randomId, sha256 } from './crypto.js';
 import { isPublicKey } from './grants.js';
 import { home } from './home.js';
-import { uid } from './keyfile.js';
+import { canCheckOwners, uid } from './keyfile.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -345,11 +345,11 @@ function changeable(path: string): boolean {
  * above it may be owned or writable by the server's OS user, or the agent could swap the key.
  */
 export function checkKeyFile(path: string): string | null {
-  if (typeof process.getuid !== 'function') {
+  if (!canCheckOwners()) {
     return "can't check who owns the principal key file on this platform";
   }
 
-  if (process.getuid() === 0) {
+  if (uid() === 0) {
     return 'refusing to trust a principal key file while running as root: run the server as its own user';
   }
 

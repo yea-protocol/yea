@@ -357,6 +357,8 @@ export {
 } from './home.js';
 
 export {
+  canCheckOwners,
+  checkServerKeyDir,
   type PrivateFileOptions,
   readPrivateFile,
   readServerSeed,

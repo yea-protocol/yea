@@ -11,8 +11,9 @@ import {
   fstatSync,
   openSync,
   readFileSync,
+  statSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { home } from './home.js';
 
 /** Server names name a key file (`~/.yea/server/<name>.key`) and appear in consent codes. */
@@ -21,9 +22,14 @@ export const SERVER_NAME = /^[a-z0-9._-]{1,64}$/;
 /** An Ed25519 seed as a key file holds it: 32 bytes, b64url. */
 const SEED = /^[A-Za-z0-9_-]{43}$/;
 
+/** Seeds are 44 bytes and API keys a few hundred; anything this big is not a key file. */
+const MAX_PRIVATE_FILE = 64 * 1024;
+
+/** Whether this platform has OS user ids and mode bits to check (not Windows). */
+export const canCheckOwners = () => typeof process.getuid === 'function';
+
 /** This process's OS user id, or -1 where the platform has none (Windows). */
-export const uid = () =>
-  typeof process.getuid === 'function' ? process.getuid() : -1;
+export const uid = () => process.getuid?.() ?? -1;
 
 /** Where the server named `name` keeps its seed: `~/.yea/server/<name>.key`. */
 export const serverKeyPath = (name: string) =>
@@ -39,21 +45,15 @@ export interface PrivateFileOptions {
 
 const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
 
-/** Why an open private file can't be trusted, or null. */
-function unsafePrivateFile(
+/** Why the owner and mode of an open private file can't be trusted, or null. */
+function unsafeOwnerOrMode(
   path: string,
-  fd: number,
-  owner: number,
+  st: { uid: number; mode: number },
+  owner: number | undefined,
 ): string | null {
-  const st = fstatSync(fd);
-
-  if (!st.isFile()) {
-    return `${path} is not a regular file`;
-  }
-
-  if (typeof process.getuid !== 'function') {
+  if (!canCheckOwners()) {
     // Windows has no uid or mode bits to check. Say so rather than pass silently; refusing
-    // would make every server unusable there.
+    // would make every server unusable there. stderr, so a stdio MCP stream stays clean.
     console.error(
       `yea: warning: can't check who owns ${path} or who can read it on this platform; keep it private yourself`,
     );
@@ -61,8 +61,8 @@ function unsafePrivateFile(
     return null;
   }
 
-  if (st.uid !== owner) {
-    return `${path} is not owned by this user`;
+  if (st.uid !== (owner ?? uid())) {
+    return `${path} is not owned by ${owner === undefined ? 'this user' : `uid ${owner}`}`;
   }
 
   // Group and other bits: a secret others can read (or write) is not this user's alone.
@@ -71,10 +71,37 @@ function unsafePrivateFile(
     : null;
 }
 
-/** Open `path` read-only without following a symlink (O_NOFOLLOW). */
+/** Why an open private file can't be trusted, or null. */
+function unsafePrivateFile(
+  path: string,
+  fd: number,
+  owner: number | undefined,
+): string | null {
+  const st = fstatSync(fd);
+
+  if (!st.isFile()) {
+    return `${path} is not a regular file`;
+  }
+
+  if (st.size > MAX_PRIVATE_FILE) {
+    return `${path} is larger than 64 KiB, too big for a key file`;
+  }
+
+  return unsafeOwnerOrMode(path, st, owner);
+}
+
+/**
+ * Open `path` read-only without following a symlink (O_NOFOLLOW). O_NONBLOCK keeps a FIFO from
+ * blocking the open forever; fstat then refuses it as not a regular file.
+ */
 function openNoFollow(path: string, label: string): number {
+  const flags =
+    constants.O_RDONLY |
+    (constants.O_NOFOLLOW ?? 0) |
+    (constants.O_NONBLOCK ?? 0);
+
   try {
-    return openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    return openSync(path, flags);
   } catch (e) {
     const why =
       errno(e) === 'ELOOP' ? `${path} is a symlink` : (e as Error).message;
@@ -84,14 +111,15 @@ function openNoFollow(path: string, label: string): number {
 }
 
 /**
- * The text of a file only this user may read: not a symlink, a regular file, owned by `owner`,
- * and no group or other permission bits (0600 or 0400). It is opened once (O_NOFOLLOW) and the
- * checks run on that descriptor, so the file read is the file checked. Throws
- * `refusing <label>: <why>`; a missing file's error has the ENOENT error as its `cause`.
+ * The text of a file only this user may read: not a symlink, a regular file of at most 64 KiB,
+ * owned by `owner`, and no group or other permission bits (0600 or 0400). It is opened once
+ * (O_NOFOLLOW) and the checks run on that descriptor, so the file read is the file checked.
+ * Throws `refusing <label>: <why>`; a missing file's error has the ENOENT error as its `cause`.
+ * Where owners can't be checked (Windows) it warns on stderr and reads the file.
  */
 export function readPrivateFile(
   path: string,
-  { label, owner = uid() }: PrivateFileOptions,
+  { label, owner }: PrivateFileOptions,
 ): string {
   const fd = openNoFollow(path, label);
 
@@ -106,6 +134,62 @@ export function readPrivateFile(
   } finally {
     closeSync(fd);
   }
+}
+
+/**
+ * Why the directory holding a server key can't be trusted, or null: it must be this user's,
+ * and not writable by group or others (who could replace the key file).
+ */
+function unsafeKeyDir(dir: string): string | null {
+  const st = statSync(dir);
+
+  if (!st.isDirectory()) {
+    return `${dir} is not a directory`;
+  }
+
+  if (!canCheckOwners()) {
+    return null;
+  }
+
+  if (st.uid !== uid()) {
+    return `${dir} is not owned by this user`;
+  }
+
+  return (st.mode & 0o022) !== 0
+    ? `${dir} can be written by other users (chmod 700 it)`
+    : null;
+}
+
+/**
+ * Whoever can write the key directory's parent can swap the key directory for their own. So
+ * the parent must be owned by this user or root, and not writable by others unless it has the
+ * sticky bit (like /tmp), which stops them renaming a directory they don't own.
+ */
+function unsafeParentDir(dir: string): string | null {
+  if (!canCheckOwners()) {
+    return null;
+  }
+
+  const st = statSync(dir);
+  const owner = st.uid === uid() || st.uid === 0;
+  const othersWrite = (st.mode & 0o022) !== 0;
+  const sticky = (st.mode & 0o1000) !== 0;
+
+  if (!owner) {
+    return `${dir} is owned by another user`;
+  }
+
+  return othersWrite && !sticky
+    ? `${dir} can be written by other users (chmod 755 it)`
+    : null;
+}
+
+/**
+ * Why the directory `dir` holding a server key (or its parent) can't be trusted, or null.
+ * Throws the `statSync` error if `dir` doesn't exist.
+ */
+export function checkServerKeyDir(dir: string): string | null {
+  return unsafeKeyDir(dir) ?? unsafeParentDir(dirname(dir));
 }
 
 /**

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { dirname } from 'node:path';
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
@@ -22,7 +23,12 @@ import {
   issueGrant,
 } from './grants.js';
 import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
-import { readServerSeed, SERVER_NAME, serverKeyPath } from './keyfile.js';
+import {
+  checkServerKeyDir,
+  readServerSeed,
+  SERVER_NAME,
+  serverKeyPath,
+} from './keyfile.js';
 import {
   effectLine,
   fmtDuration,
@@ -358,19 +364,37 @@ async function cmdServiceId(rest: string[]) {
 }
 
 /**
- * The seed in a server key file, held to the rules the server itself applies (not a symlink,
- * owned by this user, 0600 or 0400), so the id printed is the one the server uses.
+ * The seed in a server key file, held to the rules the server itself applies: a key directory
+ * only this user can change, and a key file that is not a symlink, is this user's and is
+ * private (0600 or 0400). So the id printed is the one the server uses.
  */
 function serverSeed(path: string): string {
   try {
-    return readServerSeed(path);
+    return checkedServerSeed(path);
   } catch (e) {
-    const cause = (e as Error).cause as NodeJS.ErrnoException | undefined;
-
-    return cause?.code === 'ENOENT'
+    return missing(e)
       ? die(`no server key at ${path}: start the server once to create it`)
       : die((e as Error).message);
   }
+}
+
+/** The key directory's check, then the key file's; throws why either is refused. */
+function checkedServerSeed(path: string): string {
+  const why = checkServerKeyDir(dirname(path));
+
+  if (why) {
+    throw new Error(`refusing the server key: ${why}`);
+  }
+
+  return readServerSeed(path);
+}
+
+/** Whether `e`, or the error it wraps, is ENOENT. */
+function missing(e: unknown): boolean {
+  const err = e as NodeJS.ErrnoException & { cause?: unknown };
+  const cause = err.cause as NodeJS.ErrnoException | undefined;
+
+  return err.code === 'ENOENT' || cause?.code === 'ENOENT';
 }
 
 async function cmdGrant() {

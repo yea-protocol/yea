@@ -61,4 +61,18 @@ describe('yea service-id', () => {
     );
     expect(run(home, 'link').err).toMatch(/is a symlink/);
   });
+
+  it('refuses a key directory others can write, as the server does', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-sid-'));
+    const dir = join(home, 'server');
+
+    mkdirSync(dir, { mode: 0o700 });
+    writeFileSync(join(dir, 'files.key'), `${(await P.keyPair()).seed}\n`, {
+      mode: 0o600,
+    });
+    chmodSync(dir, 0o770);
+    expect(run(home, 'files').err).toMatch(
+      /refusing the server key: .* can be written by other users \(chmod 700 it\)/,
+    );
+  });
 });
