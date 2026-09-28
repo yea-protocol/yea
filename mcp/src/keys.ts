@@ -153,7 +153,8 @@ export function loadServerSeed(path: string): string {
 
   mkdirSync(dir, { recursive: true, mode: 0o700 });
 
-  const why = unsafeKeyDir(dir);
+  // The directory above counts too: whoever can write it can swap `server/` for their own.
+  const why = unsafeKeyDir(dir) ?? unsafeKeyDir(dirname(dir));
 
   if (why) {
     throw new Error(`yea(): refusing the server key: ${why}`);
