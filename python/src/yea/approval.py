@@ -90,7 +90,10 @@ def phrase_of(p: HashedPlan, phrase_for: Callable[[HashedPlan], str] | None) -> 
 
 
 def phrase_matches(typed: Any, phrase: str) -> bool:
-    return isinstance(typed, str) and normalize_phrase(typed) == normalize_phrase(phrase)
+    """Both sides normalized and equal. An empty answer never matches, even an empty phrase."""
+    if not isinstance(typed, str) or not normalize_phrase(typed):
+        return False
+    return normalize_phrase(typed) == normalize_phrase(phrase)
 
 
 # ------------------------------------------------------------------ §2 policy
@@ -100,6 +103,8 @@ def check_key_file(path: str | os.PathLike[str]) -> str | None:
     """Why the pinned principal key file can't be trusted, or None. It is refused if the file, any
     symlink on the way to it, or any directory above one of them is owned by, or writable by,
     this process's user: any of those would let an agent running as it swap in its own key."""
+    if not hasattr(os, "geteuid") or os.geteuid() == 0:
+        return "the server runs as root (or can't tell its user), so no key file is out of its reach"
     try:
         visited, real = _resolve_links(Path(os.path.abspath(path)))
         if not stat.S_ISREG(real.stat().st_mode):
@@ -343,9 +348,14 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
         lines.extend(_plan_lines(i, p))
         if p in offered:
             lines.append(f"  to approve, type: {phrase_of(p, phrase_for)}")
-    held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered]
+    held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered and p.tool not in policy.deny]
+    denied = [f"[{i}]" for i, p in enumerate(plans, 1) if p.tool in policy.deny]
+    if held or denied:
+        lines.append("")
     if held:
-        lines.extend(["", f"Not offered here (approve outside the chat): {', '.join(held)}"])
+        lines.append(f"Not offered here (approve outside the chat): {', '.join(held)}")
+    if denied:
+        lines.append(f"Never allowed by your policy: {', '.join(denied)}")
     return {"message": "\n".join(lines), "requested_schema": _schema(offered, phrase_for), "offered": [p.plan_hash for p in offered]}
 
 
@@ -449,7 +459,8 @@ def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan,
     preimage (``job``), so ``yea approve`` can re-check the hash, and the phrase to type."""
     consent = {"proposal": p.plan_hash, "hash": p.plan_hash, "service": server_key, "capability": p.tool,
                "principal": principal, "summary": p.plan.summary, "expires": now + CONSENT_TTL}
-    return consent_code(consent, {"job": plan_preimage(p.tool, input, p.plan, p.risk), "phrase": phrase})
+    job = plan_preimage(p.tool, input, p.plan, p.risk)
+    return consent_code(consent, {"job": job, "phrase": phrase_of(p, lambda _: phrase)})
 
 
 # ------------------------------------------------------------------ §5 reservations, §7 undo, §8 store choice
@@ -540,40 +551,52 @@ def new_receipt_id() -> str:
 
 
 async def consent_for(plans: list[HashedPlan], store: ApprovalStore, policy: Policy, now: int) -> HashedPlan | None:
-    """The first recomputed plan with a valid, unused consent from ``yea approve``, consuming it.
-
-    A consent counts only if it is a grant signed by the pinned principal, issued to this
-    server's key, for a COMMIT of that tool at this server, bound to that plan hash by an
-    ``only`` caveat, and not expired. A policy grant copied into the consents folder has no
-    ``only`` and never counts. Denied tools are never run."""
-    if policy.principal is None or policy.server_key is None:
-        return None
+    """The first recomputed plan with a valid, unused consent from ``yea approve``, consuming it
+    by grant id. Denied tools are never run."""
     for p in plans:
         if p.tool in policy.deny:
             continue
         token = await store.get_consent(p.plan_hash)
-        g = _valid_consent(token, p, policy, now) if token else None
-        if g is not None and await store.consume_once(g.id, _expiry(g)):
+        check = check_job_consent(token, p, policy, now) if token else None
+        if check is not None and check.ok and check.id and check.exp is not None and await store.consume_once(check.id, check.exp):
             return p
     return None
 
 
-def _valid_consent(token: str, p: HashedPlan, policy: Policy, now: int) -> Grant | None:
+@dataclass(frozen=True)
+class ConsentCheck:
+    ok: bool
+    id: str | None = None  # the consent grant's id, which the caller consumes once
+    why: str | None = None
+    exp: int | None = None
+
+
+_NOT_A_CONSENT = "not a consent for this plan"
+
+
+def check_job_consent(token: Any, p: HashedPlan, policy: Policy, now: int) -> ConsentCheck:
+    """Whether ``token`` is a consent from ``yea approve`` for exactly this plan: a grant with an
+    ``only`` equal to the plan hash and an ``exp``, signed by the pinned principal, issued to
+    this server's key, and valid as a COMMIT of the tool here now. A copied policy grant has no
+    ``only`` and never counts."""
     try:
-        g = decode_grant(token.strip())
+        g = decode_grant(token.strip()) if isinstance(token, str) else None
     except ValueError:
-        return None
+        g = None
+    if g is None:
+        return ConsentCheck(False, why=_NOT_A_CONSENT)
     caveats = [c for b in g.blocks for c in b["p"]["caveats"]]
-    if {"only": p.plan_hash} not in caveats or _expiry(g) is None:
-        return None
+    exp = _expiry(g)
+    if {"only": p.plan_hash} not in caveats or exp is None:
+        return ConsentCheck(False, why=_NOT_A_CONSENT)
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": p.plan_hash, "risk": p.risk, **({"uses": uses} if uses is not None else {})}
     ctx = GrantContext(policy.server_key or "", "COMMIT", p.tool, now, proposal)
-    ok = verify_grant(g, [policy.principal or ""], policy.server_key or "", ctx).ok
-    return g if ok else None
+    v = verify_grant(g, [policy.principal or ""], policy.server_key or "", ctx)
+    return ConsentCheck(True, id=g.id, exp=exp) if v.ok else ConsentCheck(False, why=v.reason)
 
 
-def _expiry(g: Grant) -> Any:
+def _expiry(g: Grant) -> int | None:
     """The earliest ``exp`` in the grant; consents must have one, which bounds a replay."""
     exps = [c["exp"] for b in g.blocks for c in b["p"]["caveats"] if isinstance(c, dict) and type(c.get("exp")) is int]
     return min(exps) if exps else None

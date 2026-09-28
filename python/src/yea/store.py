@@ -22,6 +22,8 @@ _B64URL = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MEASURE = re.compile(r"[a-z][a-z0-9_.\-]{0,63}")
 LOCK_WAIT = 2.0  # seconds to wait for a ledger lock before failing closed
 LOCK_STALE = 30.0  # a lock file older than this was left by a crashed process
+CLAIM_STALE = 600  # an undo claim this old with no done marker was left by a crashed revert
+PRUNE_AT = 1024  # MemoryStore drops expired consumed ids once it holds this many
 
 
 class LedgerKey(NamedTuple):
@@ -105,7 +107,7 @@ class MemoryStore:
         self._now = now
         self._consumed: dict[str, int] = {}
         self._receipts: dict[str, dict] = {}
-        self._claimed: set[str] = set()
+        self._claimed: dict[str, float] = {}  # receipt id -> when it was claimed
         self._undone: set[str] = set()
         self._ledger: dict[LedgerKey, _Ledger] = {}
         self._consents: dict[str, str] = {}
@@ -113,7 +115,7 @@ class MemoryStore:
     async def consume_once(self, id: str, expires_at: int) -> bool:
         if id in self._consumed:
             return False
-        if len(self._consumed) > 10_000:
+        if len(self._consumed) >= PRUNE_AT:
             now = int(self._now())
             self._consumed = {k: e for k, e in self._consumed.items() if e > now}
         self._consumed[id] = expires_at
@@ -128,17 +130,18 @@ class MemoryStore:
 
     async def claim_undo(self, id: str) -> bool:
         _receipt_id(id)
-        if id in self._claimed or id in self._undone:
+        now = self._now()
+        if id in self._undone or (id in self._claimed and now - self._claimed[id] <= CLAIM_STALE):
             return False
-        self._claimed.add(id)
+        self._claimed[id] = now
         return True
 
     async def release_undo(self, id: str) -> None:
-        self._claimed.discard(_receipt_id(id))
+        self._claimed.pop(_receipt_id(id), None)
 
     async def mark_undone(self, id: str) -> None:
         self._undone.add(_receipt_id(id))
-        self._claimed.discard(id)
+        self._claimed.pop(id, None)
 
     async def reserve(self, k: LedgerKey, amount: int, max: int) -> Reservation | None:
         led = self._ledger.setdefault(_key(k), _Ledger())
@@ -238,7 +241,11 @@ class FileStore:
         undo = self.root / "undo"
         if (undo / f"{_receipt_id(id)}.done").exists():
             return False
-        return _create_excl(undo / f"{id}.claim")
+        claim = undo / f"{id}.claim"
+        if _create_excl(claim):
+            return True
+        _break_if_stale(claim, CLAIM_STALE)  # a revert that crashed mid-way can be tried again
+        return not (undo / f"{id}.done").exists() and _create_excl(claim)
 
     async def release_undo(self, id: str) -> None:
         (self.root / "undo" / f"{_receipt_id(id)}.claim").unlink(missing_ok=True)
@@ -317,12 +324,12 @@ async def _acquire(lock: Path) -> str:
     return token
 
 
-def _break_if_stale(lock: Path) -> None:
+def _break_if_stale(lock: Path, stale: float | None = None) -> None:
     """Remove a stale lock without removing a fresh one someone just took: move it aside under a
     unique name, then delete it only if it's the same file we found stale; else put it back."""
     try:
         st = lock.stat()
-        if time.time() - st.st_mtime <= LOCK_STALE:
+        if time.time() - st.st_mtime <= (LOCK_STALE if stale is None else stale):
             return
         aside = lock.with_name(f"{lock.name}.{secrets.token_hex(6)}.stale")
         os.rename(lock, aside)

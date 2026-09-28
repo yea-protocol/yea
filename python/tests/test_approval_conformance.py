@@ -8,7 +8,8 @@ from conftest import CONFORMANCE
 
 from yea import Plan
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_state, decide, job_consent_code, judge_answer, load_policy,
+    HashedPlan, Policy, Tightening, build_form, check_job_consent, check_state, decide, job_consent_code, judge_answer,
+    load_policy,
     phrase_matches, plan_hash, read_tightening,
 )
 from yea.store import FileStore, LedgerKey
@@ -22,6 +23,11 @@ pytestmark = pytest.mark.skipif(DATA is None, reason=f"{PATH} missing")
 def cases(section):
     items = (DATA or {}).get(section, [])
     return [pytest.param(c, id=c.get("name", str(i))) for i, c in enumerate(items)] or [pytest.param(None)]
+
+
+def cases_of(section):
+    items = ((DATA or {}).get(section) or {}).get("cases", [])
+    return [pytest.param(c, id=c["name"]) for c in items] or [pytest.param(None)]
 
 
 def to_plan(d):
@@ -54,7 +60,7 @@ def test_decide(case):
     used = {of: value(q) for of, q in case["used"].items()}
 
     def used_of(k: LedgerKey) -> int:
-        return used.get(k.of, 0) if k.block == DATA["policyBlockId"] else 0
+        return used.get(k.of, 0)
 
     d = decide([to_hashed(p) for p in case["plans"]], to_policy(case["policy"]), used_of, case["now"])
     want = case["expect"]
@@ -77,6 +83,9 @@ def test_forms(case):
     form = build_form([to_hashed(p) for p in case["plans"]], case["why"], to_policy(case["policy"]),
                       lambda p: phrases[p.plan_hash])
     want = case["expect"]
+    if want is None:
+        assert form is None
+        return
     assert form["message"] == want["message"]
     assert form["requested_schema"] == want["requestedSchema"]
     assert form["offered"] == want["offered"]
@@ -131,3 +140,13 @@ def test_file_store(tmp_path):
     asyncio.run(go())
     files = {p.relative_to(tmp_path).as_posix(): p.read_text(encoding="utf-8") for p in tmp_path.rglob("*") if p.is_file()}
     assert files == DATA["fileStore"]["files"]
+
+
+@pytest.mark.parametrize("case", cases_of("consents"))
+def test_job_consents(case):
+    c = DATA["consents"]
+    policy = load_policy(None, DATA["keys"]["server"], DATA["keys"]["principal"], Tightening())
+    got = check_job_consent(case["grant"], to_hashed(c["plan"]), policy, case["now"])
+    want = case["expect"]
+    assert got.ok is want["ok"]
+    assert (got.id if got.ok else got.why) == (want["id"] if want["ok"] else want["why"])

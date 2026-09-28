@@ -644,3 +644,42 @@ def test_a_stale_lock_is_broken_but_a_fresh_one_is_not_removed_by_its_breaker(tm
     assert lock.exists()  # only the holder releases it
     with pytest.raises(StoreError):
         st._still_held(lock, "not-mine")
+
+
+def test_a_crashed_undo_claim_can_be_claimed_again(tmp_path):
+    async def go():
+        clock = [1000.0]
+        mem = MemoryStore(now=lambda: clock[0])
+        rid = "r_abcdefghijkl"
+        assert await mem.claim_undo(rid) and not await mem.claim_undo(rid)
+        clock[0] += 601
+        assert await mem.claim_undo(rid)  # the first revert never finished
+        await mem.mark_undone(rid)
+        clock[0] += 10_000
+        assert not await mem.claim_undo(rid)  # done stays done
+
+        fs = FileStore(tmp_path)
+        assert await fs.claim_undo(rid) and not await fs.claim_undo(rid)
+        os.utime(tmp_path / "undo" / f"{rid}.claim", (0, 0))
+        assert await fs.claim_undo(rid)
+        await fs.mark_undone(rid)
+        os.utime(tmp_path / "undo" / f"{rid}.claim", (0, 0))
+        assert not await fs.claim_undo(rid)
+
+    run(go())
+
+
+def test_the_key_check_refuses_when_running_as_root(monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    assert "root" in check_key_file("/etc/hosts")
+
+
+def test_memory_store_prunes_expired_consumed_ids():
+    async def go():
+        s = MemoryStore(now=lambda: NOW)
+        for i in range(1024):
+            await s.consume_once(f"old-{i}", NOW - 1)
+        await s.consume_once("fresh", NOW + 600)
+        assert len(s._consumed) <= 2 and not await s.consume_once("fresh", NOW + 600)
+
+    run(go())
