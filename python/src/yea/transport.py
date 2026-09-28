@@ -32,16 +32,26 @@ def _error(re: str, code: str, message: str) -> dict:
     return {"yea": 1, "id": "s_" + code, "re": re, "kind": "ERROR", "code": code, "message": message}
 
 
+def _event_line(event: dict) -> str | None:
+    """An EVENT as one line, or None (logged and dropped) if it can't be serialized. Raising here
+    would fail the handler mid-``apply``, and a retry would run ``apply`` again."""
+    try:
+        return dumps(event) + "\n"
+    except Exception:  # noqa: BLE001
+        log.warning("dropped an EVENT that could not be serialized (re=%s)", event.get("re"))
+        return None
+
+
 def _frame_id(frame: Any) -> str:
     return frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
 
 
 def _final_line(reply: dict, frame: Any) -> str:
-    """The final reply as one line. A reply that can't be serialized (NaN, a datetime) is replaced
-    by an ERROR, so every request still gets exactly one final reply (§2.2)."""
+    """The final reply as one line. A reply that can't be serialized (NaN, a non-string key) is
+    replaced by an ERROR, so every request still gets exactly one final reply (§2.2)."""
     try:
         return dumps(reply) + "\n"
-    except (TypeError, ValueError):
+    except Exception:  # noqa: BLE001 — whatever it is, the request still gets its final reply
         return dumps({**_error(_frame_id(frame), "internal", "reply could not be serialized"), "id": "s_err"}) + "\n"
 
 
@@ -74,8 +84,9 @@ async def serve_stream(service: Service, reader: asyncio.StreamReader, writer: A
 
     def send(frame: dict) -> None:
         # write() is synchronous and buffers whole lines, so frames never interleave.
-        if not writer.is_closing():
-            writer.write((dumps(frame) + "\n").encode("utf-8"))
+        line = _event_line(frame)
+        if line is not None and not writer.is_closing():
+            writer.write(line.encode("utf-8"))
 
     async def run(frame: Any) -> None:
         line = _final_line(await service.handle(frame, send), frame)
@@ -180,7 +191,9 @@ async def _http_conn(service: Service, path: str, reader: asyncio.StreamReader, 
                 writer.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
 
             def send(frame: dict) -> None:
-                chunk(dumps(frame) + "\n")
+                line = _event_line(frame)
+                if line is not None:
+                    chunk(line)
 
             request = _parse(await reader.readexactly(length))
             chunk(_final_line(await service.handle(request, send), request))
