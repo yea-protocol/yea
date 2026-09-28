@@ -50,7 +50,6 @@ export const RATCHET = {
   'python/src/yea/service.py': ['length'], // #108: split
   'python/src/yea/store.py': ['length'], // #108: split
   'site/.vitepress/theme/components/Landing.vue': ['length'], // #108: split
-  'site/.vitepress/theme/components/Playground.vue': ['length'], // #108: split
   'ts/src/approval.ts': ['length'], // #108: split
   'ts/src/ask.ts': ['length'], // #108: split
   'ts/src/client.ts': ['length'], // #108: split
