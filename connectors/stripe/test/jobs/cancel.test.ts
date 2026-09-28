@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cancelJob } from '../src/cancel.js';
-import { price, type Schedule, subscription } from './fake-stripe.js';
-import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
+import { cancelJob } from '../../src/jobs/cancel.js';
+import { price, type Schedule, subscription } from '../fake-stripe.js';
+import { D, expectOwnFreshKeys, NOW, plansOf, setup } from '../helpers.js';
 
 const chen = { customer: 'chen@wei.studio' };
 

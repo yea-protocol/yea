@@ -7,7 +7,7 @@ import {
   stepOf,
   toQuantity,
 } from '../src/currency.js';
-import { refundJob } from '../src/refund.js';
+import { refundJob } from '../src/jobs/refund.js';
 import { fakeStripe } from './fake-stripe.js';
 import { D, NOW, plansOf, setup } from './helpers.js';
 

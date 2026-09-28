@@ -9,11 +9,9 @@ import {
 } from '@modelcontextprotocol/server';
 import type { Approvals } from '@yea-protocol/mcp';
 import { isLiveKey, type StripeOptions, stripeApi } from './api.js';
-import { cancelJob } from './cancel.js';
-import { changeJob } from './change.js';
 import { type Ctx, confirmOf, type JobSpec } from './context.js';
 import { registerCustomer } from './customer.js';
-import { refundJob } from './refund.js';
+import { cancelJob, changeJob, refundJob } from './jobs.js';
 
 export const NAME = 'yea-stripe';
 export const VERSION = '0.1.0';

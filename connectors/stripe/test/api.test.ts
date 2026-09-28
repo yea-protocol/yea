@@ -10,8 +10,7 @@ import {
   stripeApi,
   subscriptionPage,
 } from '../src/api.js';
-import { cancelJob } from '../src/cancel.js';
-import { refundJob } from '../src/refund.js';
+import { cancelJob, refundJob } from '../src/jobs.js';
 import { fakeStripe, price, subscription } from './fake-stripe.js';
 import { D, NOW, plansOf, setup, TEST_KEY } from './helpers.js';
 
