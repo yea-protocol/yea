@@ -9,9 +9,10 @@ import type { Client } from './client.js';
 import { consentCode, consentGrant } from './consent.js';
 import { keyPair } from './crypto.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
+import { untrustedLens } from './lens.js';
 import { printable } from './text.js';
 import { INSTRUCTIONS } from './tooldefs.js';
-import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
+import type { ConsentRequest, ErrorReply, Event, Proposal } from './types.js';
 
 export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
@@ -125,11 +126,11 @@ async function greet(clients: Client[], services: Map<string, Client>) {
       const b = await c.hello(1500);
 
       if (b.kind !== 'BRIEF') {
-        throw new Error(b.lens);
+        throw new Error(untrustedLens(b));
       }
 
       services.set(b.service.id, c);
-      briefs.push(b.lens);
+      briefs.push(untrustedLens(b));
     } catch (e) {
       problems.push(
         `(a service could not be reached: ${(e as Error).message})`,
@@ -148,15 +149,15 @@ async function askTool(
   const budget = a.budget ?? 1500;
 
   if (a.handle) {
-    return { text: (await c.expand(a.handle, { budget })).lens };
+    return { text: untrustedLens(await c.expand(a.handle, { budget })) };
   }
 
   if (!a.capability) {
-    return { text: (await c.hello(budget)).lens };
+    return { text: untrustedLens(await c.hello(budget)) };
   }
 
   return {
-    text: (await c.ask(a.capability, a.params ?? {}, { budget })).lens,
+    text: untrustedLens(await c.ask(a.capability, a.params ?? {}, { budget })),
   };
 }
 
@@ -177,7 +178,7 @@ async function intentTool(
     }
   }
 
-  return { text: r.lens, isError: r.kind === 'ERROR' };
+  return { text: untrustedLens(r), isError: r.kind === 'ERROR' };
 }
 
 async function undoTool(
@@ -187,7 +188,7 @@ async function undoTool(
 ): Promise<ToolResult> {
   const r = await c.undo(a.receipt);
 
-  return { text: r.lens, isError: r.kind === 'ERROR' };
+  return { text: untrustedLens(r), isError: r.kind === 'ERROR' };
 }
 
 async function commitTool(
@@ -196,7 +197,7 @@ async function commitTool(
   a: ToolArgs,
 ): Promise<ToolResult> {
   const events: string[] = [];
-  const onEvent = (e: { lens: string }) => events.push(e.lens);
+  const onEvent = (e: Event) => events.push(untrustedLens(e));
   const known = s.seen.get(a.proposal);
 
   if (!known || known.service !== a.service) {
@@ -215,7 +216,7 @@ async function commitTool(
     if ('why' in asked) {
       return {
         text:
-          r.lens +
+          untrustedLens(r) +
           `\n  → the service's consent request doesn't match this proposal (${asked.why}); not asking the user to sign it.`,
         isError: true,
       };
@@ -233,7 +234,7 @@ async function commitTool(
     if (!token) {
       return {
         text:
-          r.lens +
+          untrustedLens(r) +
           `\n  → the user did not approve this here. If they want it, ask them to review it and run, in their own terminal: yea approve ${consentCode(consent, p)}  — then call yea_commit again.`,
         isError: true,
       };
@@ -243,7 +244,7 @@ async function commitTool(
   }
 
   return {
-    text: [...events, r.lens].join('\n'),
+    text: [...events, untrustedLens(r)].join('\n'),
     isError: r.kind === 'ERROR',
   };
 }

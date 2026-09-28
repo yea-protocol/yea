@@ -1,7 +1,8 @@
 /**
  * What the bridge shows the model (SPEC-bridge). Service replies are untrusted: they are always
- * re-rendered as Lens here (never the service's own `lens`), with every service-written string
- * outside `data` and `result` made one line, so a summary can't forge a line of ours.
+ * re-rendered as Lens here (never the service's own `lens`) with `untrustedLens`: every
+ * service-written string is made one line, except the values Lens quotes itself, and every
+ * line is escaped, so a summary can't forge a line of ours or hide text from the model.
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {

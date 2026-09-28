@@ -23,6 +23,10 @@ const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 /** Tab, and variation selectors U+FE00–FE0F, which ordinary emoji use. */
 const keep = (cp: number) => cp === 0x09 || (cp >= 0xfe00 && cp <= 0xfe0f);
 
+/** `s` with each unsafe code point (see `UNSAFE`, less `keep`) replaced by `esc(c)`. */
+export const escapeUnsafe = (s: string, esc: (c: string) => string) =>
+  s.replace(UNSAFE, (c) => (keep(c.codePointAt(0) ?? 0) ? c : esc(c)));
+
 /**
  * One line of untrusted text, each unsafe character shown as `\u{hex}`. A newline inside it is
  * escaped, so it can't add fake lines. A zero-width joiner inside an emoji sequence is escaped
@@ -30,11 +34,25 @@ const keep = (cp: number) => cp === 0x09 || (cp >= 0xfe00 && cp <= 0xfe0f);
  * screen, seeing every character beats a pretty picture.
  */
 export const printable = (s: string) =>
-  s.replace(UNSAFE, (c) => {
-    const cp = c.codePointAt(0) ?? 0;
+  escapeUnsafe(s, (c) => `\\u{${(c.codePointAt(0) ?? 0).toString(16)}}`);
 
-    return keep(cp) ? c : `\\u{${cp.toString(16)}}`;
-  });
+/** Each UTF-16 code unit of `c` as a JSON `\uXXXX` escape. */
+const jsonEscape = (c: string) =>
+  Array.from(
+    { length: c.length },
+    (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`,
+  ).join('');
+
+/**
+ * `JSON.stringify` output with the characters `printable` escapes written as `\uXXXX`, so it's
+ * still JSON. `JSON.stringify` escapes only C0 inside strings, so a raw newline is the
+ * pretty-printer's and stays.
+ */
+export const jsonPrintable = (json: string) =>
+  json
+    .split('\n')
+    .map((line) => escapeUnsafe(line, jsonEscape))
+    .join('\n');
 
 /**
  * `s` cut to `max` code points, the last one `…` when cut; a surrogate pair is never split.

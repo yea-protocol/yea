@@ -108,26 +108,14 @@ export async function checkConsentRequest(
 /**
  * What to show a person asked to consent to request `k`, or why it must not be shown
  * (SPEC.md §6.6). `p` is the proposal it's for: the one the agent got from `service`, or the
- * detail a consent code carries. Without `p` only the service's summary can be shown, with a
- * warning.
+ * detail a consent code carries. There is no view without it: the service-written summary
+ * alone is never enough to sign.
  */
 export async function consentLines(
   k: ConsentRequest,
-  p: Proposal | undefined,
+  p: Proposal,
   service?: string,
 ): Promise<{ lines: string[] } | { why: string }> {
-  if (!p) {
-    return {
-      lines: [
-        "⚠ no proposal details in this code; only the service's summary:",
-        printable(k.summary),
-        printable(
-          `  service: ${k.service} · ${k.capability} · proposal ${k.proposal}`,
-        ),
-      ],
-    };
-  }
-
   const why = await checkConsentRequest(k, p, service);
 
   if (why) {
@@ -171,6 +159,10 @@ async function recipientOf(
   };
 }
 
+/** Why a consent code without its proposal is refused (SPEC.md §6.6), and what to do instead. */
+export const NO_DETAIL =
+  "this consent code carries no proposal, so only the service-written summary could be shown, not its effects, uses, risk and undo (SPEC.md §6.6); have the agent's tool (yea mcp, yea test-drive) make a new code, which includes the proposal";
+
 /**
  * Approve one protocol consent code: check it's for `principal`, pick the agent (SPEC-bridge),
  * show the proposal, ask, and sign. `save` keeps the consent only when this machine's agent key
@@ -199,6 +191,10 @@ export async function approveConsentCode(o: {
     };
   }
 
+  if (!consent.detail) {
+    return { ok: false, why: NO_DETAIL };
+  }
+
   const agent = await recipientOf(consent.agent, o);
 
   if ('why' in agent) {
@@ -215,7 +211,7 @@ export async function approveConsentCode(o: {
   }
 
   return signIfApproved(o, {
-    consent: consent.detail ? consentFrom(consent, consent.detail) : consent,
+    consent: consentFrom(consent, consent.detail),
     agent: agent.key,
     shown: shown.lines,
   });
