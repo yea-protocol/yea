@@ -162,7 +162,8 @@ def test_undo(case):
         for r in u["receipts"]:
             await store.put_receipt(r)
         if case["undoneBefore"]:
-            await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
+            first = await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
+            assert first.kind == "undone"
         return await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
 
     got = asyncio.run(go())

@@ -717,6 +717,11 @@ def test_another_servers_receipt_is_no_such_receipt(store):
         r = await undo_receipt(store, rid, "billing-prod", "", NOW, lambda _: None)
         assert r.kind == "refused" and r.why == "no such receipt"
         assert (await undo_receipt(store, rid, "billing-test", "", NOW, lambda _: None)).kind == "undone"
+        bare = new_receipt_id()
+        r = _receipt(bare, NOW + 60)
+        del r["service"]
+        await store.put_receipt(r)
+        assert (await undo_receipt(store, bare, "S", "", NOW, lambda _: None)).why == "no such receipt"
 
     run(go())
 
