@@ -4,7 +4,10 @@
  * (`printable`), so a name can't forge a line, a fake `[test]`, or a closing quote.
  */
 import { printable } from '@yea-protocol/sdk';
-import type { Customer } from './api.js';
+import type Stripe from 'stripe';
+
+/** What a summary shows of a customer. */
+type Named = Pick<Stripe.Customer, 'id' | 'name' | 'email'>;
 
 /** The longest piece of customer text shown, in characters. */
 export const MAX_TEXT = 80;
@@ -27,7 +30,7 @@ export const quoted = (s: string) =>
   `"${printable(cap(s).replace(/[\\"]/g, (c) => `\\${c}`))}"`;
 
 /** How a summary names a customer: their quoted name, else email, else id. */
-export function who(c: Customer): string {
+export function who(c: Named): string {
   if (c.name) {
     return quoted(c.name);
   }
@@ -36,7 +39,7 @@ export function who(c: Customer): string {
 }
 
 /** A list label for a customer: quoted name and email, and the id. */
-export function label(c: Customer): string {
+export function label(c: Named): string {
   const parts = [
     c.name ? quoted(c.name) : null,
     c.email ? quoted(c.email) : null,
@@ -53,6 +56,6 @@ const PLAIN_EMAIL = /^[A-Za-z0-9._%+'-]{1,64}@[A-Za-z0-9.-]{1,190}$/;
  * What a person types to approve a cancel or plan change: the customer's email, or the id when
  * there is no email, or the email has anything a person couldn't read and type as it is.
  */
-export function confirmPhrase(c: Customer): string {
+export function confirmPhrase(c: Named): string {
   return c.email && PLAIN_EMAIL.test(c.email) ? c.email : c.id;
 }

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cancelJob } from '../src/cancel.js';
-import type { Schedule } from '../src/schedule.js';
-import { price, subscription } from './fake-stripe.js';
+import { price, type Schedule, subscription } from './fake-stripe.js';
 import { D, NOW, plansOf, setup } from './helpers.js';
 
 const chen = { customer: 'chen@wei.studio' };

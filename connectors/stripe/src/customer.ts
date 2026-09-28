@@ -8,12 +8,12 @@ import {
   type McpServer,
 } from '@modelcontextprotocol/server';
 import { lean } from '@yea-protocol/sdk';
+import type Stripe from 'stripe';
 import {
-  type Charge,
   findCustomers,
+  idOf,
   period,
   recentCharges,
-  type Subscription,
   subscriptionPage,
 } from './api.js';
 import { type Ctx, day } from './context.js';
@@ -38,21 +38,21 @@ const text = (t: string) => [{ type: 'text' as const, text: t }];
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A subscription as a flat row. */
-function subRow(s: Subscription) {
+function subRow(s: Stripe.Subscription) {
   const end = s.items.data.length ? period(s).end : null;
-  const ends = s.cancel_at_period_end || (s.cancel_at ?? null) !== null;
+  const ends = s.cancel_at_period_end || s.cancel_at !== null;
 
   return {
     id: s.id,
     plan: s.items.data.map((i) => priceLabel(i.price)).join(' + '),
     status: s.status,
     [ends ? 'cancels' : 'renews']: end === null ? null : day(end),
-    schedule: s.schedule,
+    schedule: s.schedule && idOf(s.schedule),
   };
 }
 
 /** A payment as a flat row, with what's left to refund. */
-const paymentRow = (ch: Charge) => ({
+const paymentRow = (ch: Stripe.Charge) => ({
   id: ch.id,
   date: day(ch.created),
   amount: formatMoney(ch.amount, ch.currency),
@@ -112,7 +112,7 @@ async function lookUp(ctx: Ctx, who: string): Promise<CallToolResult> {
   const view = {
     mode: ctx.live ? 'LIVE' : 'test',
     id: c.id,
-    name: c.name === null ? null : safeText(c.name),
+    name: typeof c.name === 'string' ? safeText(c.name) : null,
     email: c.email === null ? null : safeText(c.email),
     subscriptions: page.subs.map(subRow),
     ...(page.more

@@ -164,7 +164,8 @@ What the server does enforce, whoever calls it:
   second refund is never silently skipped;
 - customer names and emails are shown quoted, capped at 80 characters, with control and
   direction-changing characters escaped, so a customer can't forge what you approve;
-- the Stripe API version is pinned (`2026-08-26.dahlia`);
+- Stripe is called through Stripe's official Node SDK ([`stripe`](https://www.npmjs.com/package/stripe)),
+  with the API version pinned (`2026-08-26.dahlia`) and the SDK's telemetry off;
 - the key, and anything that looks like a Stripe key, is taken out of every error message.
 
 ## Over HTTP
@@ -213,7 +214,9 @@ const approvals = yea({ name: 'yea-stripe', transport: 'stdio' });
 serveStdio(stripeServer({ key: process.env.STRIPE_SECRET_KEY ?? '', approvals }));
 ```
 
-`@yea-protocol/stripe/api` is the dependency-free Stripe client and readers on their own.
+`@yea-protocol/stripe/api` is the Stripe client and readers on their own: the official SDK with
+the version pinned, a fresh idempotency key per write, errors an agent can act on, and a check
+that every answer is in the key's mode.
 
 ## License
 

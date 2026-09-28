@@ -38,7 +38,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.1.0",
-    "@yea-protocol/mcp": "^0.1.0"
+    "@yea-protocol/mcp": "^0.1.0",
+    "stripe": "^22.6.2"
   },
   "peerDependencies": {
     "@yea-protocol/sdk": "^0.1.0"

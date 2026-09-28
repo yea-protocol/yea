@@ -2,7 +2,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "."
+    "rootDir": "../..",
+    // test/stripe-billing.test.ts checks examples/stripe-billing.ts, which imports this package.
+    "paths": {
+      "@yea-protocol/stripe/api": ["./src/api.ts"],
+      "@yea-protocol/stripe/currency": ["./src/currency.ts"]
+    }
   },
   "include": ["src", "test"]
 }

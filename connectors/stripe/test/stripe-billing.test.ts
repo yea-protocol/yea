@@ -1,9 +1,9 @@
-// The guide's full example against a fake of the Stripe endpoints it calls, shared with the
-// @yea-protocol/stripe connector's tests.
+// The guide's full example (examples/stripe-billing.ts), which reads Stripe through this
+// package's client, against the same fake of the Stripe endpoints.
+import * as P from '@yea-protocol/sdk';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { fakeStripe } from '../../connectors/stripe/test/fake-stripe.ts';
-import { stripeBilling } from '../../examples/stripe-billing.ts';
-import * as P from '../src/index.js';
+import { stripeBilling } from '../../../examples/stripe-billing.js';
+import { fakeStripe } from './fake-stripe.js';
 
 let principal: P.KeyPair, agent: P.KeyPair;
 
@@ -113,7 +113,7 @@ describe("Stripe-backed billing (the guide's full example)", () => {
       throw new Error(r.kind);
     }
 
-    // Every answer is lost; the client's own retries (which wait 0.5 s, then 1 s) reuse the key.
+    // Every answer is lost; the SDK's own retries (half a second apart) reuse the key.
     stripe.fail({ path: '/refunds', network: true, times: 3 });
 
     const out = await client.commit(r.proposals[0]);

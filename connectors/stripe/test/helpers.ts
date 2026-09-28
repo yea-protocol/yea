@@ -65,7 +65,6 @@ export function setup(
     key: o.live ? LIVE_KEY : TEST_KEY,
     fetch: stripe.fetch,
     now: () => clock.now,
-    sleep: async () => {},
   });
 
   return { stripe, ctx, clock };
@@ -134,7 +133,6 @@ export async function world(
     approvals,
     fetch: s.stripe.fetch,
     now: () => s.clock.now,
-    sleep: async () => {},
   });
 
   return { ...s, home, store, principal, approvals, factory };

@@ -92,7 +92,9 @@ wants a real API rather than a demo.
   changes that alter the billing interval (Stripe then resets the billing date and charges
   regardless).
 - **API version.** Every request sends `Stripe-Version: 2026-08-26.dahlia`, the version the
-  connector is tested against. Subscription periods are read from
+  connector is tested against and the one `stripe` 22.6 pins. The connector passes it to the SDK
+  as `apiVersion`, typed as the SDK's `LatestApiVersion`, so an SDK update that moves to another
+  version fails the build instead of changing what's sent. Subscription periods are read from
   `items.data[].current_period_end`, where Stripe has kept them since `2025-03-31.basil`.
 
 ### Stable plans
@@ -108,8 +110,10 @@ the hashes: the same within a day, and a new ask ("plans changed") after midnigh
 
 ### Idempotency
 
-Each `apply()` makes a fresh random `Idempotency-Key` for each of its writes. It reuses that
-key only for its own network retries of the same request, never across calls. Stripe replays
+Each `apply()` makes a fresh random `Idempotency-Key` for each of its writes, and passes it to
+the SDK call as `idempotencyKey`. Only the SDK's own network retries of that request reuse it,
+never another call. Every write passes one explicitly, `DELETE` included (the SDK only makes
+its own for POSTs). Stripe replays
 a saved response for any repeat of a key within 24 hours, so a key derived from the plan
 would turn a deliberate second refund, or a cancel after an undo, into a silent no-op.
 `revert` makes its own fresh keys. The approval core already stops an approved plan running
@@ -237,8 +241,10 @@ yea grant --to <server key> --can cancel_subscription --can change_plan --risk l
 
 - **Location:** `connectors/stripe/`, a new workspace, published as `@yea-protocol/stripe`.
 - **Binary:** `yea-stripe`, so `npx -y @yea-protocol/stripe` works.
-- **Dependencies:** `@yea-protocol/mcp` and `@modelcontextprotocol/server`. Stripe is called
-  with `fetch`, not the Stripe SDK: the connector uses nine endpoints.
+- **Dependencies:** `@yea-protocol/mcp`, `@modelcontextprotocol/server`, and Stripe's official
+  SDK, `stripe` (no dependencies of its own). Stripe is called through the SDK's resources, with
+  its types; the connector adds the idempotency keys, the error messages and the mode check
+  (`src/api.ts`).
 - **Transports:** stdio by default; `--http <port>` serves Streamable HTTP, which needs `sub`
   configured (SPEC-mcp-ts). The binary takes it from `YEA_SUB`, for requests that carry
   `Authorization: Bearer $YEA_HTTP_TOKEN` (32 characters or more); anything else gets 401
@@ -287,8 +293,9 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
 
 ## Testing
 
-- **Unit tests** against a fake Stripe, the fetch fake from `ts/test/stripe-billing.test.ts`,
-  extended:
+- **Unit tests** against a fake Stripe (`test/fake-stripe.ts`), a `fetch` the SDK is given
+  through `Stripe.createFetchHttpClient`, so the tests run offline, and test the SDK's own
+  encoding, headers and retries. They cover:
   - the plans for each job;
   - every currency special case;
   - clarification on ambiguous and 5-or-more matches;
@@ -320,7 +327,6 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
   - escape customer text.
 - **Ask first:**
   - adding jobs beyond these four;
-  - adding the Stripe SDK as a dependency;
   - any live model run (money);
   - the npm name, and the README's wording about Stripe.
 - **Never:**
@@ -345,7 +351,7 @@ What the build (#71) found, and where it chose the closest safe behaviour:
   error names that id.
 - **A write that fails part-way** throws `PartialApplyError` from `@yea-protocol/mcp`, which
   shows the message instead of "nothing changed" (added to SPEC-mcp-ts, step 11). A write whose
-  result is unknown (no answer after the client's retries, or a 5xx) is reported the same way.
+  result is unknown (no answer after the SDK's retries, or a 5xx) is reported the same way.
 - **Multi-item subscriptions are refused by both subscription jobs,** not only `change_plan`:
   a period end read from one item could be wrong for the others.
 - **`change_plan` on a scheduled subscription:** never "at renewal" (any schedule, ours
@@ -367,8 +373,8 @@ What the build (#71) found, and where it chose the closest safe behaviour:
 - **The `customer` tool** isn't a job, so several matches come back as a list of ids to call
   again with, rather than a clarification.
 - **The example** keeps its protocol-level plans; its Stripe client and readers come from
-  `@yea-protocol/stripe/api`, which has no dependencies. Its refund now sends a fresh
-  idempotency key instead of one derived from the plan.
+  `@yea-protocol/stripe/api`. Its refund now sends a fresh idempotency key instead of one
+  derived from the plan.
 - **The smoke test** reads and previews by default; `STRIPE_TEST_WRITES=1` also cancels at
   period end and changes at renewal in test mode, then undoes both, which is what confirms the
   write and schedule permissions.
@@ -425,13 +431,38 @@ After the re-check (#76):
 - **Only the subscription jobs refuse** a customer with more than 100 subscriptions; a refund
   and the `customer` tool read the first page (the tool says the list is cut).
 
+After the switch to Stripe's SDK (#80):
+
+- **Version.** `stripe` 22.6.2 pins `2026-08-26.dahlia`, the version the connector was built
+  and smoke-tested against, so nothing on the wire changed. The pin stays explicit.
+- **Retries** are the SDK's: two after the first try (three in all), with backoff from half a
+  second, on network failures, timeouts, 409 and 5xx, and as `Stripe-Should-Retry` says. A 429
+  isn't retried unless Stripe says to; it reaches the agent as "rate limiting; try again
+  shortly". Each try times out after 30 s.
+- **Errors** are mapped from the SDK's classes to one `StripeError` (status, code, `unknown`,
+  `permission`): `StripePermissionError` names the missing permission;
+  `StripeAuthenticationError` points at the key file; `StripeRateLimitError` says to wait. A
+  `StripeConnectionError`, or any failure that isn't Stripe's, is "no answer". On a write, that
+  and a `StripeAPIError` (a 5xx, a conflict, an answer that couldn't be read) mean the write may
+  have happened. The SDK's messages don't carry the key; the key and anything like one is still
+  taken out of every message, since Stripe's own can echo a masked key.
+- **The invoice preview** now carries an idempotency key: the SDK adds its own to every POST.
+  It writes nothing, so that changes nothing.
+- **Telemetry is off.** With it on, the SDK writes a machine id to `~/.config/stripe` and sends
+  it, with the platform, on every request.
+- **The fake** stays a `fetch`: the SDK is pointed at it with `Stripe.createFetchHttpClient`
+  rather than `host`/`port`/`protocol`, so no server is started and everything but the socket
+  is the SDK's code. The example's test moved to `connectors/stripe/test/`, so `ts/` doesn't
+  resolve `stripe`.
+
 ## Decisions
 
 Adopted for v0 under the standing go-ahead; any can be reopened.
 
 1. **Four tools.** One read tool and three jobs, named for the job (the map's
    one-tool-per-job rule), not Stripe's endpoints.
-2. **`fetch`, not the Stripe SDK.** It keeps the package small and matches the example.
+2. **Stripe's official SDK** (#80), not a hand-written client: less code to own and review,
+   Stripe's types, retries and error classes. It replaced a `fetch` client of about 600 lines.
 3. **Live mode raises risk one level, rather than refusing.** Refusing would make the
    connector a demo. Raising the risk sends live refunds and immediate changes out of band.
 4. **No schedule-on-schedule in v0.** Subscriptions with a schedule we didn't create don't

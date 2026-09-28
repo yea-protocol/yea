@@ -1,19 +1,93 @@
 /**
- * A fake of the Stripe endpoints the connector and examples/stripe-billing.ts call: the fetch
- * fake that started in ts/test/stripe-billing.test.ts, extended with prices, invoice previews,
- * subscription schedules, idempotent replays and injected failures. It keeps the state it
- * serves in plain arrays, so tests can look at what changed.
+ * A fake of the Stripe endpoints the connector and examples/stripe-billing.ts call, as the
+ * `fetch` the SDK sends with (`Stripe.createFetchHttpClient`): customers, charges, prices,
+ * invoice previews, subscriptions and schedules, with idempotent replays and injected failures.
+ * It keeps the state it serves in plain arrays, so tests can look at what changed. Its objects
+ * carry only the fields the connector reads.
  */
-import type { Charge, Customer, Price, Subscription } from '../src/api.js';
-import type { Schedule } from '../src/schedule.js';
 
 export const D = 86400;
 
-type FakeCharge = Charge & { customer: string };
+export interface Customer {
+  id: string;
+  name: string | null;
+  email: string | null;
+  deleted?: boolean;
+  /** Negative is credit, as Stripe keeps it. */
+  balance?: number;
+}
+
+export interface Charge {
+  id: string;
+  customer: string;
+  created: number;
+  amount: number;
+  amount_refunded: number;
+  currency: string;
+  status: string;
+  payment_intent: string | null;
+}
+
+export interface Price {
+  id: string;
+  active: boolean;
+  nickname: string | null;
+  currency: string;
+  unit_amount: number | null;
+  billing_scheme?: 'per_unit' | 'tiered';
+  lookup_key: string | null;
+  transform_quantity: unknown;
+  recurring: {
+    interval: string;
+    interval_count: number;
+    usage_type: 'licensed' | 'metered';
+  } | null;
+}
+
+export interface SubscriptionItem {
+  id: string;
+  quantity?: number;
+  current_period_start: number;
+  current_period_end: number;
+  price: Price;
+  discounts: unknown[];
+}
+
+export interface Subscription {
+  id: string;
+  customer: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  cancel_at: number | null;
+  schedule: string | null;
+  pending_update: {
+    expires_at?: number;
+    subscription_items?: unknown[];
+  } | null;
+  latest_invoice: string | null;
+  discounts: unknown[];
+  items: { data: SubscriptionItem[] };
+}
+
+export interface SchedulePhase {
+  start_date: number;
+  end_date: number | null;
+  items: { price: string; quantity?: number; [setting: string]: unknown }[];
+  [setting: string]: unknown;
+}
+
+export interface Schedule {
+  id: string;
+  subscription: string | null;
+  status: string;
+  end_behavior: string;
+  phases: SchedulePhase[];
+  current_phase: { start_date: number; end_date: number } | null;
+}
 
 export interface FakeState {
   customers: Customer[];
-  charges: FakeCharge[];
+  charges: Charge[];
   subs: Subscription[];
   prices: Price[];
   schedules: Schedule[];
@@ -102,6 +176,8 @@ export function subscription(
     cancel_at_period_end: false,
     cancel_at: null,
     schedule: null,
+    pending_update: null,
+    latest_invoice: null,
     discounts: [],
     items: {
       data: [
@@ -387,9 +463,7 @@ export function fakeStripe(
 
   /** A customer's credit balance (negative, as Stripe keeps it), applied to what's due. */
   const due = (customer: string, total: number) => {
-    const c = state.customers.find((x) => x.id === customer) as
-      | (Customer & { balance?: number })
-      | undefined;
+    const c = state.customers.find((x) => x.id === customer);
 
     return Math.max(0, total + Math.min(0, c?.balance ?? 0));
   };
@@ -521,7 +595,7 @@ export function fakeStripe(
       sub.pending_update = {
         expires_at: now + 23 * 3600,
         subscription_items: [wanted],
-      } as Subscription['pending_update'];
+      };
       sub.latest_invoice = nextId('in');
 
       return json(sub);

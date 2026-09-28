@@ -18,10 +18,7 @@ import { refundJob } from './refund.js';
 export const NAME = 'yea-stripe';
 export const VERSION = '0.1.0';
 
-export interface ConnectorOptions
-  extends Pick<StripeOptions, 'fetch' | 'sleep' | 'newKey' | 'attempts'> {
-  /** The Stripe secret or restricted key. Any key without `_test_` is live. */
-  key: string;
+export interface ConnectorOptions extends StripeOptions {
   /** The approval context, from `yea({ name: 'yea-stripe', … })`, made once per process. */
   approvals: Approvals;
   /** Now, in Unix seconds. Default: the system clock. */

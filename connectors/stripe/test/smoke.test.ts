@@ -19,10 +19,11 @@
  *   STRIPE_TEST_KEY=rk_test_… STRIPE_TEST_CUSTOMER=cus_… STRIPE_TEST_PRICE=price_… \
  *     [STRIPE_TEST_WRITES=1] npx vitest run test/smoke.test.ts
  */
-import { describe, expect, it } from 'vitest';
-import { isLiveKey, type Subscription } from '../src/api.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { isLiveKey } from '../src/api.js';
 import { cancelJob } from '../src/cancel.js';
 import { changeJob } from '../src/change.js';
+import type { Ctx } from '../src/context.js';
 import { refundJob } from '../src/refund.js';
 import { uncopied } from '../src/schedule.js';
 import { contextFor } from '../src/server.js';
@@ -32,7 +33,12 @@ const customer = process.env.STRIPE_TEST_CUSTOMER ?? '';
 const price = process.env.STRIPE_TEST_PRICE ?? '';
 
 describe.skipIf(!key)('real Stripe, test mode', () => {
-  const ctx = contextFor({ key });
+  let ctx: Ctx;
+
+  // Made only when the suite runs: the SDK refuses an empty key.
+  beforeAll(() => {
+    ctx = contextFor({ key });
+  });
 
   it('is a test key', () => {
     expect(isLiveKey(key)).toBe(false);
@@ -41,36 +47,28 @@ describe.skipIf(!key)('real Stripe, test mode', () => {
   it.skipIf(!customer || !price)(
     'an always_invoice preview holds proration lines only',
     async () => {
-      const subs = await ctx.stripe.get<{ data: Subscription[] }>(
-        '/subscriptions',
-        { customer, limit: '1' },
+      const subs = await ctx.stripe.read((s) =>
+        s.subscriptions.list({ customer, limit: 1 }),
       );
       const sub = subs.data[0];
       const item = sub?.items.data[0];
 
       expect(item).toBeDefined();
 
-      const preview = await ctx.stripe.preview<{
-        lines: {
-          data: {
-            proration?: boolean;
-            parent?: { subscription_item_details?: { proration?: boolean } };
-          }[];
-        };
-      }>('/invoices/create_preview', {
-        subscription: sub?.id,
-        subscription_details: {
-          items: [{ id: item?.id, price, quantity: item?.quantity ?? 1 }],
-          proration_behavior: 'always_invoice',
-          proration_date: Math.floor(Date.now() / 1000),
-        },
-      });
+      const preview = await ctx.stripe.read((s) =>
+        s.invoices.createPreview({
+          subscription: sub?.id,
+          subscription_details: {
+            items: [{ id: item?.id, price, quantity: item?.quantity ?? 1 }],
+            proration_behavior: 'always_invoice',
+            proration_date: Math.floor(Date.now() / 1000),
+          },
+        }),
+      );
 
       expect(
         preview.lines.data.every(
-          (l) =>
-            l.parent?.subscription_item_details?.proration === true ||
-            l.proration === true,
+          (l) => l.parent?.subscription_item_details?.proration === true,
         ),
       ).toBe(true);
     },
@@ -79,9 +77,8 @@ describe.skipIf(!key)('real Stripe, test mode', () => {
   it.skipIf(!customer || !price)(
     'a subscription with settings the copy drops gets no "at renewal"',
     async () => {
-      const subs = await ctx.stripe.get<{ data: Subscription[] }>(
-        '/subscriptions',
-        { customer, limit: '1' },
+      const subs = await ctx.stripe.read((s) =>
+        s.subscriptions.list({ customer, limit: 1 }),
       );
       const plans = await changeJob(ctx).plan({ customer, price });
 

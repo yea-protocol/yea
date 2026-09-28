@@ -5,21 +5,15 @@
  * undoable. Not affiliated with, endorsed by, or sponsored by Stripe, Inc.
  */
 export {
-  API,
-  type Charge,
-  type Customer,
   currentSubscriptions,
-  encodeForm,
   findCustomers,
   isLiveKey,
-  type Price,
   period,
   recentCharges,
   STRIPE_VERSION,
-  type Stripe,
+  type StripeApi,
   StripeError,
   type StripeOptions,
-  type Subscription,
   stripeApi,
   subscriptionPage,
 } from './api.js';
