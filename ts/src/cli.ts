@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
-import { approveConsentCode } from './approve.js';
+import { approveConsentCode, consentFrom, consentLines } from './approve.js';
 import {
   type JobConsent,
   phraseMatches,
@@ -24,7 +24,13 @@ import {
   issueGrant,
 } from './grants.js';
 import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
-import { effectLine, fmtDuration, fmtTime, lean } from './lens.js';
+import {
+  effectLine,
+  fmtDuration,
+  fmtTime,
+  lean,
+  untrustedLens,
+} from './lens.js';
 import { connect } from './node.js';
 import {
   addService,
@@ -34,7 +40,7 @@ import {
   removeService,
 } from './setup.js';
 import { printable } from './text.js';
-import type { ConsentRequest, Proposal, Risk, Verb } from './types.js';
+import type { ConsentRequest, Proposal, Reply, Risk, Verb } from './types.js';
 import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
 
 const HELP = `yea — the protocol agents speak
@@ -1019,6 +1025,13 @@ async function cmdExpand(c: Client, [handle]: string[]) {
   show(await c.expand(handle, { budget: budgetFlag() }));
 }
 
+/**
+ * Print a service's reply at the terminal (`yea do`): re-rendered from its fields, never the
+ * service's own `lens`, and each line escaped, so terminal escapes can't hide or fake a prompt.
+ */
+const say = (r: Reply) =>
+  console.log(untrustedLens(r).split('\n').map(printable).join('\n'));
+
 /** `yea do`: intent → choose → commit, answering questions and consent prompts at the terminal. */
 async function interactive(
   c: Client,
@@ -1031,7 +1044,7 @@ async function interactive(
     for (;;) {
       const r = await c.intent(capability, params, { goal: o.goal });
 
-      console.log(r.lens);
+      say(r);
 
       if (r.kind === 'CLARIFY') {
         const n = Number(await rl.question('\nchoose › ')) - 1;
@@ -1051,16 +1064,16 @@ async function interactive(
         return;
       }
 
-      let res = await c.commit(chosen, { onEvent: (e) => console.log(e.lens) });
+      let res = await c.commit(chosen, { onEvent: say });
 
       if (res.kind === 'ERROR' && res.code === 'consent_required') {
-        console.log(res.lens);
+        say(res);
         res =
           (await consentAndRetry({ c, rl, chosen, consent: res.consent })) ??
           res;
       }
 
-      console.log(res.lens);
+      say(res);
 
       return;
     }
@@ -1109,27 +1122,26 @@ async function consentAndRetry({
   chosen: Proposal;
   consent: ConsentRequest | undefined;
 }) {
-  const p = await principalKey();
+  if (!k) {
+    die("✗ the service's error has no consent request; not signing");
+  }
 
-  if (
-    !k ||
-    k.proposal !== chosen.id ||
-    k.hash !== chosen.hash ||
-    k.capability !== chosen.capability ||
-    k.service !== (await c.audience())
-  ) {
+  const view = await consentLines(k, chosen, await c.audience());
+
+  if ('why' in view) {
     die(
-      "✗ the service's consent request doesn't match the proposal shown; not signing",
+      `✗ the service's consent request doesn't match the proposal shown (${view.why}); not signing`,
     );
   }
+
+  const p = await principalKey();
 
   if (!p || p.public !== k.principal) {
     return null;
   }
 
-  console.log(
-    `\n  ${chosen.summary}\n${chosen.effects.map((e) => `    ${effectLine(e)}`).join('\n')}`,
-  );
+  // SPEC.md §6.6: effects, uses, risk and undo, from the proposal whose hash was just checked.
+  console.log(['', ...view.lines.map((l) => `  ${l}`)].join('\n'));
 
   if (
     !/^y/i.test(
@@ -1143,13 +1155,14 @@ async function consentAndRetry({
   const token = await consentGrant({
     principal: p,
     agent: a.public,
-    consent: { ...k, expires: Math.min(k.expires, chosen.expires) },
+    consent: consentFrom(k, chosen),
   });
 
   return c.commit(chosen, {
     grants: [token],
-    onEvent: (e) => console.log(e.lens),
+    onEvent: say,
   });
 }
 
-main().catch((e) => die(`✗ ${(e as Error).message}`));
+// An error can quote a service's reply (a JSON.parse SyntaxError does), escapes and all.
+main().catch((e) => die(`✗ ${printable((e as Error).message)}`));

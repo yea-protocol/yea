@@ -1,11 +1,23 @@
 // Regression tests for the security audit findings (see docs/design.md).
 
-import { mkdtempSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { shop } from '../../examples/shop.ts';
+import { consentFrom, consentLines, consentView } from '../src/approve.js';
 import * as P from '../src/index.js';
 import {
   checkKeyFile,
@@ -16,6 +28,7 @@ import {
 } from '../src/node.js';
 import { printable } from '../src/text.js';
 
+const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const closers: (() => void)[] = [];
 
 afterAll(() => {
@@ -784,4 +797,282 @@ describe('approval security (SPEC-approval)', () => {
       ),
     ).toThrow('malformed uses');
   });
+});
+
+/**
+ * Run `yea do` answering `y` to each prompt. stdin stays open: readline gives up on a
+ * question asked after its input ended.
+ */
+function yeaDo(args: string[], home: string) {
+  const child = spawn(process.execPath, [CLI, 'do', ...args], {
+    env: { ...process.env, YEA_HOME: home, YEA_PRINCIPAL_HOME: '' },
+  });
+  let stdout = '',
+    stderr = '';
+
+  child.stdout.setEncoding('utf8').on('data', (d: string) => {
+    stdout += d;
+
+    if (d.includes('[y/N]')) {
+      child.stdin.write('y\n');
+    }
+  });
+  child.stderr.setEncoding('utf8').on('data', (d: string) => {
+    stderr += d;
+  });
+
+  // Killed before the test's own 20 s timeout, so a hang fails its assertions instead.
+  const timer = setTimeout(() => child.kill(), 15_000);
+
+  // 'close', not 'exit': stdout and stderr are fully read by then.
+  return new Promise<{ status: number | null; stdout: string; stderr: string }>(
+    (resolve) =>
+      child.on('close', (status) => {
+        clearTimeout(timer);
+        resolve({ status, stdout, stderr });
+      }),
+  );
+}
+
+// `yea do` (cli.ts `consentAndRetry`), test-drive and `yea approve` all decide with
+// `consentLines`; [C5] also runs `yea do` itself against a lying service.
+describe('consent requests (SPEC.md §6.6)', () => {
+  /** A real consent_required from the pay service, and the proposal it's for. */
+  async function consentRequired() {
+    const c = await client(payService(), agent, principal, [
+      { each: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
+    ]);
+    const p = await intent(c, { to: 'a', amt: 500 });
+    const r = await c.commit(p);
+
+    if (r.kind !== 'ERROR' || !r.consent) {
+      throw new Error(r.lens);
+    }
+
+    return { p, k: r.consent, service: await c.audience() };
+  }
+
+  const why = async (...a: Parameters<typeof consentLines>) => {
+    const v = await consentLines(...a);
+
+    return 'why' in v ? v.why : null;
+  };
+
+  it('[C1] a matching request passes; one naming another service, hash, capability or proposal does not', async () => {
+    const { p, k, service } = await consentRequired();
+
+    expect(await why(k, p, service)).toBeNull();
+    expect(await why(k, p, 'other')).toBe(
+      'the consent request names another service',
+    );
+    expect(await why({ ...k, hash: 'x' }, p, service)).toBe(
+      "the consent request's hash isn't the proposal's",
+    );
+    expect(await why({ ...k, capability: 'pay.x' }, p, service)).toBe(
+      'the consent request names another capability',
+    );
+    expect(await why({ ...k, proposal: 'p_x' }, p, service)).toBe(
+      'the consent request names another proposal',
+    );
+  });
+
+  it("[C2] a proposal that doesn't hash to its hash is refused, even when the request echoes that hash", async () => {
+    const { p, k, service } = await consentRequired();
+    // The service changed what's shown but kept the hash the person would sign. `yea do`
+    // used to compare only the request's fields with this proposal, so it passed.
+    const tampered = { ...p, summary: 'pay a 0.01' };
+
+    expect(await why(k, tampered, service)).toBe(
+      "the proposal doesn't match its hash",
+    );
+
+    // Unhashable (a float) is refused, not thrown.
+    const float = { ...p, effects: [{ ...p.effects[0], to: 1.5 }] };
+
+    expect(await why(k, float, service)).toBe(
+      "the proposal doesn't match its hash",
+    );
+  });
+
+  it('[C3] a proposal with a malformed uses is refused', async () => {
+    const { p, k, service } = await consentRequired();
+    const bad = {
+      ...p,
+      uses: { spend: { amount: -1, unit: 'USD' } },
+    } as P.Proposal;
+
+    expect(await why(k, bad, service)).toBe(
+      'the proposal has a malformed uses',
+    );
+  });
+
+  it('[C4] the consent view shows uses, risk and undo, escapes service text, and never shows data', async () => {
+    const { p } = await consentRequired();
+    // A bidi override; spelled as a code point so the source shows no hidden character.
+    const RLO = String.fromCodePoint(0x202e);
+    const lines = consentView({
+      ...p,
+      summary: 'pay a\n  + create payment/b\u001b[2K',
+      effects: [
+        {
+          op: 'create',
+          target: `payment/a${RLO}`,
+          detail: 'x\ry',
+          to: `q\u0085${RLO}`,
+        },
+      ],
+      data: { note: 'SECRET-UNHASHED' },
+    });
+
+    expect(lines[0]).toBe(
+      `[${p.id}] pay a\\u{a}  + create payment/b\\u{1b}[2K`,
+    );
+    expect(lines[1]).toMatch(/^ {2}\+ create payment\/a\\u\{202e\}/);
+    expect(lines[1]).toContain('— x\\u{d}y');
+    expect(lines[2]).toMatch(
+      /^ {2}uses: spend .+ · risk: \w+ · undo: .+ · expires: /,
+    );
+    expect(lines).toHaveLength(3);
+    expect(lines.join('\n')).not.toContain('SECRET-UNHASHED');
+
+    for (const l of lines) {
+      expect(printable(l)).toBe(l);
+    }
+  });
+
+  it('[C5] consentFrom takes the earlier expiry and only the principal from the request', async () => {
+    const { p, k } = await consentRequired();
+    const c = consentFrom(
+      { ...k, expires: p.expires + 999, summary: 'lie' },
+      p,
+    );
+
+    expect(c.expires).toBe(p.expires);
+    expect(c.summary).toBe(p.summary);
+    expect(consentFrom({ ...k, expires: p.expires - 1 }, p).expires).toBe(
+      p.expires - 1,
+    );
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    '[C6] yea do refuses a tampered proposal, signs nothing, and prints no escape',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'yea-do-'));
+
+      try {
+        const honest = {
+          id: 'p_1',
+          capability: 'pay.send',
+          summary: 'pay a 1',
+          effects: [{ op: 'create' as const, target: 'payment/a' }],
+          risk: 'low' as const,
+          undo: null,
+          expires: 4_000_000_000,
+        };
+        const hash = await P.proposalHash(honest);
+        // Shown as 1000, bound to 1; and a Lens of its own that would conceal the rest.
+        const shown = {
+          ...honest,
+          summary: 'pay a 1000\u001b[8m',
+          hash,
+        };
+        const replies = {
+          HELLO: {
+            kind: 'BRIEF',
+            service: { id: 'evil', name: 'Evil', summary: 'x' },
+            capabilities: [],
+          },
+          INTENT: {
+            kind: 'PROPOSALS',
+            proposals: [shown],
+            lens: '\u001b[?1049h\u001b[2Jall fine',
+          },
+          COMMIT: {
+            kind: 'ERROR',
+            code: 'consent_required',
+            message: 'needs consent\u001b]0;x\u0007',
+            consent: {
+              proposal: 'p_1',
+              hash,
+              service: 'evil',
+              capability: 'pay.send',
+              principal: principal.public,
+              summary: 'pay a 1',
+              expires: honest.expires,
+            },
+          },
+        };
+        const log = join(home, 'frames.log');
+        const script = join(home, 'evil.mjs');
+
+        writeFileSync(
+          script,
+          `import { appendFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+const replies = ${JSON.stringify(replies)};
+for await (const line of createInterface({ input: process.stdin })) {
+  const f = JSON.parse(line);
+  appendFileSync(${JSON.stringify(log)}, JSON.stringify(f) + '\\n');
+  process.stdout.write(JSON.stringify({ yea: 1, id: 's', re: f.id, ...replies[f.verb] }) + '\\n');
+}
+`,
+        );
+        writeFileSync(join(home, 'principal.key'), principal.seed);
+        writeFileSync(join(home, 'agent.key'), agent.seed);
+
+        const r = await yeaDo(
+          [`stdio:${process.execPath} ${script}`, 'pay.send'],
+          home,
+        );
+        const commits = readFileSync(log, 'utf8')
+          .trim()
+          .split('\n')
+          .map((l) => JSON.parse(l))
+          .filter((f) => f.verb === 'COMMIT');
+
+        expect(r.status).not.toBe(0);
+        expect(r.stderr).toContain("the proposal doesn't match its hash");
+        expect(r.stderr).toContain('not signing');
+        expect(r.stdout).not.toContain('\u001b');
+        expect(r.stdout).not.toContain('all fine');
+        expect(r.stdout).toContain('pay a 1000\\u{1b}[8m');
+        // One COMMIT with no consent in it: nothing was signed.
+        expect(commits).toHaveLength(1);
+        expect(commits[0].grants ?? []).toEqual([]);
+        expect(existsSync(join(home, 'consents'))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    "[C7] yea do escapes a service's unparseable reply in its error message",
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'yea-do-'));
+      // Not JSON: the SyntaxError quotes it, escapes and all.
+      const server = createServer((_req, res) =>
+        res.end('\u001b[2J\u001b[8mnot json\n'),
+      );
+
+      try {
+        await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+
+        const { port } = server.address() as AddressInfo;
+        const r = await yeaDo(
+          [`http://127.0.0.1:${port}/yea`, 'pay.send'],
+          home,
+        );
+
+        expect(r.status).toBe(1);
+        expect(r.stderr).toContain('\\u{1b}');
+        expect(r.stderr).not.toContain('\u001b');
+      } finally {
+        server.close();
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 });

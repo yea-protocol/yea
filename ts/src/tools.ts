@@ -4,18 +4,21 @@
  * instead; it lives in `@yea-protocol/mcp/bridge`.)
  */
 
+import { consentFrom, consentLines } from './approve.js';
 import type { Client } from './client.js';
-import { keyPair, proposalHash } from './crypto.js';
+import { keyPair } from './crypto.js';
 import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
-import { lens } from './lens.js';
+import { printable } from './text.js';
 import { INSTRUCTIONS } from './tooldefs.js';
 import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
-import { isUses } from './uses.js';
 
 export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
-/** Ask the human to approve `shown` (the proposal's Lens). Resolve true only on explicit approval. */
+/**
+ * Ask the human to approve `shown`: `at <service>:` and the proposal's Lens, escaped, as are
+ * `service` and `reason`. Resolve true only on explicit approval.
+ */
 export type Approver = (req: {
   service: string;
   shown: string;
@@ -207,18 +210,25 @@ async function commitTool(
   let r = await c.commit(p, { grants: loadGrants('consents'), onEvent });
 
   if (r.kind === 'ERROR' && r.code === 'consent_required') {
-    const consent = await consentFor(r, c, p);
+    const asked = await consentFor(r, c, p);
 
-    if (!consent) {
+    if ('why' in asked) {
       return {
         text:
           r.lens +
-          "\n  → the service's consent request doesn't match this proposal; not asking the user to sign it.",
+          `\n  → the service's consent request doesn't match this proposal (${asked.why}); not asking the user to sign it.`,
         isError: true,
       };
     }
 
-    const token = await askHuman({ approve: s.approve, consent, err: r, c, p });
+    const { consent, shown } = asked;
+    const token = await askHuman({
+      approve: s.approve,
+      consent,
+      shown,
+      err: r,
+      c,
+    });
 
     if (!token) {
       return {
@@ -238,51 +248,37 @@ async function commitTool(
   };
 }
 
-/** Build the consent only from the proposal we showed, never from the service's error. */
+/**
+ * Check the service's consent request against the proposal we showed, and build the consent
+ * from that proposal, never from the service's error; with the lines to show the person.
+ */
 async function consentFor(
   err: ErrorReply,
   c: Client,
   p: Proposal,
-): Promise<ConsentRequest | null> {
+): Promise<{ consent: ConsentRequest; shown: string[] } | { why: string }> {
   const k = err.consent;
 
-  if (
-    !k ||
-    k.proposal !== p.id ||
-    k.hash !== p.hash ||
-    k.capability !== p.capability ||
-    k.service !== (await c.audience())
-  ) {
-    return null;
+  if (!k) {
+    return { why: 'the service sent none' };
   }
 
-  if (
-    (p.uses !== undefined && !isUses(p.uses)) ||
-    (await proposalHash(p)) !== p.hash
-  ) {
-    return null;
-  }
+  const view = await consentLines(k, p, await c.audience());
 
-  return {
-    proposal: p.id,
-    hash: p.hash,
-    service: k.service,
-    capability: p.capability,
-    principal: k.principal,
-    summary: p.summary,
-    expires: Math.min(k.expires, p.expires),
-  };
+  return 'why' in view
+    ? view
+    : { consent: consentFrom(k, p), shown: view.lines };
 }
 
 /** Route a consent to the human; returns the signed consent grant, or null if not approved. */
 async function askHuman(o: {
   approve?: Approver;
   consent: ConsentRequest;
+  shown: string[];
   err: ErrorReply;
   c: Client;
-  p: Proposal;
 }): Promise<string | null> {
-  const { approve, consent, c, p } = o;
+  const { approve, consent, c } = o;
   const principal = await principalKey();
 
   if (
@@ -294,22 +290,11 @@ async function askHuman(o: {
     return null;
   }
 
-  const shown = lens({
-    yea: 1,
-    id: '-',
-    re: '-',
-    kind: 'PROPOSALS',
-    proposals: [p],
-  })
-    .split('\n')
-    .slice(1)
-    .join('\n');
-
   if (
     !(await approve({
-      service: consent.service,
-      shown,
-      reason: o.err.message,
+      service: printable(consent.service),
+      shown: o.shown.join('\n'),
+      reason: printable(o.err.message),
     }))
   ) {
     return null;

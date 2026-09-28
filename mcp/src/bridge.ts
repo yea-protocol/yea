@@ -15,13 +15,19 @@ import {
   McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
-import { type Brief, Client, est, printable } from '@yea-protocol/sdk';
+import {
+  type Brief,
+  Client,
+  est,
+  printable,
+  untrustedLens,
+} from '@yea-protocol/sdk';
 import { type ConsentStore, homeConsents } from './bridge/consent.js';
 import { greet, type Service } from './bridge/greet.js';
 import type { Bridge } from './bridge/job.js';
 import { passThrough } from './bridge/params.js';
 import { PendingProposals } from './bridge/pending.js';
-import { clip, safeLens } from './bridge/render.js';
+import { clip } from './bridge/render.js';
 import {
   buildTools,
   errorOf,
@@ -85,7 +91,7 @@ function capabilityList(svc: Service, budget: number): string {
     })),
     more: undefined,
   };
-  const lines = safeLens(brief).split('\n');
+  const lines = untrustedLens(brief).split('\n');
   const head = lines.length - svc.capabilities.length;
   const kept = lines.slice(0, head);
   let used = est(kept.join('\n'));

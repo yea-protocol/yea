@@ -11,15 +11,15 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Client,
+  checkProposal,
   consentCode,
   decodeConsentCode,
   decodeGrant,
-  isUses,
   type Proposal,
   type Proposals,
   printable,
-  proposalHash,
   type ReceiptReply,
+  untrustedLens,
 } from '@yea-protocol/sdk';
 import { readTighteningFor } from '../keys.js';
 import { errorResult, NOTHING_RAN, refused, textResult } from '../result.js';
@@ -32,12 +32,7 @@ import {
   type PendingProposals,
   pendingKey,
 } from './pending.js';
-import {
-  proposalsLens,
-  proposalView,
-  replyResult,
-  safeLens,
-} from './render.js';
+import { proposalsLens, proposalView, replyResult } from './render.js';
 
 /** What every call shares: the pending proposals, the consent store and the clock. */
 export interface Bridge {
@@ -145,24 +140,27 @@ async function previewCall(b: Bridge, call: JobCall): Promise<CallToolResult> {
   );
 }
 
-/** Whether a proposal passes the checks a consent would need (SPEC.md §6.6, like `consentFor`). */
-async function sound(p: Proposal, capability: string): Promise<boolean> {
+/**
+ * Why a proposal fails the checks a consent would need (SPEC.md §6.6), or null: well-typed id,
+ * hash and expiry, this tool's capability, then the SDK's `checkProposal` (uses and hash).
+ */
+async function unsound(
+  p: Proposal,
+  capability: string,
+): Promise<string | null> {
   if (
     typeof p?.id !== 'string' ||
     typeof p.hash !== 'string' ||
-    p.capability !== capability ||
-    !Number.isSafeInteger(p.expires) ||
-    (p.uses !== undefined && !isUses(p.uses))
+    !Number.isSafeInteger(p.expires)
   ) {
-    return false;
+    return 'its id, hash or expiry is malformed';
   }
 
-  try {
-    return (await proposalHash(p)) === p.hash;
-  } catch {
-    // A proposal canonical JSON can't hash (a float, say) can't be bound by a consent.
-    return false;
+  if (p.capability !== capability) {
+    return "its capability isn't this tool's";
   }
+
+  return checkProposal(p);
 }
 
 /** Step 5: the proposals that pass, and a line for each that doesn't (never shown otherwise). */
@@ -171,12 +169,12 @@ async function checkProposals(r: Proposals, capability: string) {
   const dropped: string[] = [];
 
   for (const p of r.proposals) {
-    if (await sound(p, capability)) {
-      kept.push(p);
+    const why = await unsound(p, capability);
+
+    if (why) {
+      dropped.push(`✗ dropped a proposal from the service: ${why}`);
     } else {
-      dropped.push(
-        `✗ dropped a proposal from the service: its hash, uses or capability doesn't check out`,
-      );
+      kept.push(p);
     }
   }
 
@@ -188,7 +186,8 @@ async function commitOnce(c: Client, p: Proposal, extra: string[]) {
   const events: string[] = [];
   const o = {
     grants: extra,
-    onEvent: (e: Parameters<typeof safeLens>[0]) => events.push(safeLens(e)),
+    onEvent: (e: Parameters<typeof untrustedLens>[0]) =>
+      events.push(untrustedLens(e)),
   };
   let r: Awaited<ReturnType<Client['commit']>>;
 
@@ -203,7 +202,7 @@ async function commitOnce(c: Client, p: Proposal, extra: string[]) {
 
 /** A receipt as a tool result, with any progress events before it. */
 const receiptResult = (r: ReceiptReply, events: string[] = []) =>
-  textResult([...events, safeLens(r)], { receipt: r.receipt });
+  textResult([...events, untrustedLens(r)], { receipt: r.receipt });
 
 /**
  * Step 3, with pending proposals. A call naming `proposal` acts on that proposal only: it commits
