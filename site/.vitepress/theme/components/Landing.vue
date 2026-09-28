@@ -99,7 +99,7 @@ const compare = [
 </script>
 
 <template>
-  <div class="landing">
+  <main class="landing">
     <section class="hero">
       <div class="hero-copy">
         <h1>HTTP was built for browsers. YEA is built for agents.</h1>
@@ -246,7 +246,7 @@ claude mcp add yea -- npx @yea-protocol/cli mcp \
       <h2>How it compares</h2>
       <div class="table-wrap">
         <table class="compare">
-          <thead><tr><th></th><th>REST / HTTP APIs</th><th>MCP</th><th>YEA</th></tr></thead>
+          <thead><tr><th><span class="sr-only">Aspect</span></th><th>REST / HTTP APIs</th><th>MCP</th><th>YEA</th></tr></thead>
           <tbody>
             <tr v-for="c in compare" :key="c[0]"><th scope="row">{{ c[0] }}</th><td>{{ c[1] }}</td><td>{{ c[2] }}</td><td class="us">{{ c[3] }}</td></tr>
           </tbody>
@@ -267,7 +267,7 @@ claude mcp add yea -- npx @yea-protocol/cli mcp \
         <a class="btn ghost" :href="repo">Star on GitHub</a>
       </div>
     </section>
-  </div>
+  </main>
 </template>
 
 <style scoped>
@@ -275,6 +275,10 @@ claude mcp add yea -- npx @yea-protocol/cli mcp \
 section { max-width: var(--w); margin: 0 auto; }
 h1, h2 { font-family: var(--font-head); color: var(--vp-c-text-1); letter-spacing: -0.02em; }
 a { color: var(--vp-c-brand-1); }
+/* Links in running text are underlined, so they don't rely on colour alone (WCAG 1.4.1). */
+a:not(.btn) { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:not(.btn):hover { text-decoration-thickness: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* hero */
 .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; padding: 88px 0 96px; }
@@ -304,7 +308,8 @@ h1 { font-size: clamp(2.3rem, 4.4vw, 3.6rem); line-height: 1.02; font-weight: 60
 .ln.amber { color: var(--state-amber); }
 .ln.green { color: var(--state-green); }
 .ln.undo { color: var(--vp-c-text-1); }
-.ln.struck { text-decoration: line-through; text-decoration-color: var(--vp-c-text-3); opacity: 0.7; transition: opacity 0.4s; }
+/* An undone commit: struck through and greyed, without dropping below 4.5:1. */
+.ln.struck { text-decoration: line-through; text-decoration-color: var(--vp-c-text-3); color: var(--vp-c-text-3); transition: color 0.4s; }
 figcaption { display: flex; align-items: center; gap: 18px; padding: 10px 20px; border-top: 1px solid var(--vp-c-divider); font-size: 0.8rem; color: var(--vp-c-text-3); }
 .key::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; vertical-align: 1px; }
 .key.amber::before { background: var(--state-amber); }
@@ -343,17 +348,17 @@ tr.total td { font-weight: 600; background: var(--vp-c-bg-alt); }
 .quote blockquote p::after { content: "”"; color: var(--vp-c-brand-1); }
 .attrib { margin-top: 24px; font-size: 0.95rem; color: var(--vp-c-text-3); max-width: 64ch; }
 
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: start; }
 .split p { color: var(--vp-c-text-2); line-height: 1.65; }
 .cmd { margin: 0; padding: 18px 20px; background: var(--vp-code-block-bg); border: 1px solid var(--vp-c-divider); border-radius: 12px; font-family: var(--vp-font-family-mono); font-size: 0.84rem; line-height: 1.7; overflow-x: auto; color: var(--vp-c-text-1); }
-.warn { margin-top: 16px; padding: 12px 16px; border-left: 3px solid var(--state-amber); background: var(--vp-c-brand-soft); border-radius: 0 8px 8px 0; font-size: 0.92rem; }
+.warn { margin-top: 16px; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--state-amber) 45%, transparent); background: var(--vp-c-brand-soft); border-radius: 8px; font-size: 0.92rem; }
 
 .end { text-align: left; }
 .end p { margin-bottom: 28px; }
 
 @media (max-width: 960px) {
   .hero { grid-template-columns: 1fr; gap: 40px; padding-top: 40px; }
-  .split { grid-template-columns: 1fr; gap: 24px; }
+  .split { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .changes { grid-template-columns: 1fr; }
   .changes dt { padding-bottom: 4px; border-bottom: 0; }
 }

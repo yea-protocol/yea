@@ -23,19 +23,25 @@
   --vp-c-bg-elv: #FFFFFF;
   --vp-c-text-1: var(--ink);
   --vp-c-text-2: #3C414B;
-  --vp-c-text-3: #6A707A;
+  --vp-c-text-3: #5C616A;
   --vp-c-divider: #DAD5C9;
   --vp-c-border: #CFC9BB;
   --vp-c-gutter: #E2DDD1;
-  /* amber is too light for text on paper; the brand hue, darkened for contrast */
-  --vp-c-brand-1: #9A5B00;
-  --vp-c-brand-2: #B36B00;
+  /* amber is too light for text on paper; the brand hue, darkened for contrast.
+     Light-theme text colours clear 4.5:1 on paper, on the code background and on the warning tint. */
+  --vp-c-brand-1: #8E5400;
+  --vp-c-brand-2: #9A5B00;
   --vp-c-brand-3: #FFB224;
   --vp-c-brand-soft: rgba(255, 178, 36, 0.18);
-  --state-amber: #A15F00;
-  --state-green: #0E8A67;
-  --state-red: #C73434;
+  --state-amber: #8E5400;
+  --state-green: #0B6E52;
+  --state-red: #B52F2F;
   --vp-code-block-bg: #ECE8DF;
+  /* inline code: the code-block tint, not VitePress's cool grey; the same inside info blocks */
+  --vp-code-bg: #ECE8DF;
+  --vp-custom-block-info-code-bg: var(--vp-code-bg);
+  /* code and links in danger blocks sit on a doubled red tint */
+  --vp-c-danger-1: #A02127;
   --vp-button-brand-bg: var(--ink);
   --vp-button-brand-text: var(--paper);
   --vp-button-brand-hover-bg: #262A33;
@@ -63,6 +69,9 @@
   --state-green: var(--green);
   --state-red: var(--red);
   --vp-code-block-bg: #10131A;
+  --vp-code-bg: var(--vp-c-default-soft);
+  --vp-custom-block-info-code-bg: var(--vp-c-default-soft);
+  --vp-c-danger-1: var(--vp-c-red-1);
   --vp-button-brand-bg: var(--amber);
   --vp-button-brand-text: var(--ink);
   --vp-button-brand-hover-bg: #FFC04D;
@@ -79,6 +88,13 @@ h1, h2, h3, h4, .VPNavBarTitle .title, .vp-doc h1, .vp-doc h2, .vp-doc h3 {
 .vp-doc p, .vp-doc li { max-width: 72ch; }
 .vp-doc table { font-size: 0.92rem; }
 .vp-doc blockquote { border-left-color: var(--vp-c-brand-1); }
+
+/* Shiki's github-light tokens were tuned for white. On the paper code background four of them
+   fall under 4.5:1, so light mode uses the same hues, darkened. */
+html:not(.dark) .vp-code span[style*="--shiki-light:#D73A49"] { color: #B2303D; }
+html:not(.dark) .vp-code span[style*="--shiki-light:#6A737D"] { color: #5B636C; }
+html:not(.dark) .vp-code span[style*="--shiki-light:#E36209"] { color: #A14606; }
+html:not(.dark) .vp-code span[style*="--shiki-light:#22863A"] { color: #1C6F30; }
 
 :focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }
 

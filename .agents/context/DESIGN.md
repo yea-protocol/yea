@@ -19,17 +19,17 @@ colors:
   paper-divider: "#DAD5C9"
   paper-border: "#CFC9BB"
   paper-text-2: "#3C414B"
-  paper-text-3: "#6A707A"
+  paper-text-3: "#5C616A"
   signal-amber: "#FFB224"
   signal-amber-hover: "#FFC04D"
   signal-amber-press: "#E09A10"
-  amber-ink: "#9A5B00"
-  amber-ink-hover: "#B36B00"
-  state-amber-light: "#A15F00"
+  amber-ink: "#8E5400"
+  amber-ink-hover: "#9A5B00"
+  state-amber-light: "#8E5400"
   receipt-green: "#2BD9A5"
-  state-green-light: "#0E8A67"
+  state-green-light: "#0B6E52"
   refusal-red: "#FF5C5C"
-  state-red-light: "#C73434"
+  state-red-light: "#B52F2F"
 typography:
   display:
     fontFamily: "Space Grotesk Variable, Space Grotesk, system-ui, sans-serif"
@@ -225,8 +225,9 @@ nav item and "current step" in the hero stepper is amber too. Fixing this is the
 task.
 
 **The Light Theme Is Equal Rule.** Every state colour has a light-theme partner darkened for
-contrast on paper. *Current gap:* several partners fall short of 4.5:1 on the paper code
-background (see the audit).
+contrast on paper. Light-theme text colours clear 4.5:1 on paper, on the code tint (#ECE8DF, also
+used for inline code) and on the warning tint. Four of Shiki's github-light token colours are
+darkened in light mode for the same reason.
 
 ## 3. Typography
 
@@ -328,6 +329,7 @@ signed.
 - **Do** show real output: Lens a model would read, frames the core produced.
 - **Do** put caveats next to numbers, at the same size as the claim, with the method linked.
 - **Do** keep prose at 72ch or less and Lens at 12px or more.
+- **Do** underline links in running text; colour alone doesn't mark a link.
 - **Do** honour `prefers-reduced-motion` and render finished states without JavaScript.
 
 ### Don't:
@@ -340,7 +342,7 @@ signed.
   "developer tool".
 - **Don't** overclaim: no figure without a method link, no "10x".
 - **Don't** imitate any other brand, including the MCP clients and APIs YEA works with.
-- **Don't** use `border-left` or `border-right` wider than 1px as a coloured accent on callouts
-  (the landing's `.warn` does today).
+- **Don't** use `border-left` or `border-right` wider than 1px as a coloured accent on callouts;
+  use a tinted block with a full 1px border, as the landing's key warning does.
 - **Don't** set human-facing copy in mono, or machine output in the body font.
 - **Don't** mention how "YEA" is pronounced, and don't use Calendly as an example.
