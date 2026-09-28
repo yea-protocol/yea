@@ -3,7 +3,7 @@
  * guide says, step by step: the guarded tool asks, the job undoes, a policy lets only the
  * undoable job run on its own, and a client that can't ask gets consent codes.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer } from '../../examples/mcp-quickstart.js';
@@ -34,7 +34,7 @@ function files(w: Pick<World, 'approvals'>) {
     root,
     report,
     args: { path: report },
-    factory: () => createServer(w.approvals),
+    factory: () => createServer(w.approvals, root),
   };
 }
 
@@ -136,6 +136,46 @@ describe('step 4: undo', () => {
     expect(existsSync(f.report)).toBe(true);
   });
 });
+
+describe.each(['delete_file', 'move_to_trash'])(
+  '%s stays inside its root',
+  (tool) => {
+    it('refuses a path outside it, before anyone is asked', async () => {
+      const w = await world({ name: 'files' });
+      const f = files(w);
+      const outside = join(tmp(), 'secret.key');
+
+      writeFileSync(outside, 'x');
+
+      const conn = await connect('2026', f.factory);
+      const r = await conn.call({ path: outside }, tool);
+
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(/is outside .*; nothing was run/);
+      expect(conn.elicited).toHaveLength(0);
+      expect(existsSync(outside)).toBe(true);
+    });
+
+    it('refuses a symlink that leads outside it, even under a policy', async () => {
+      const w = await world({ name: 'files' });
+      const f = files(w);
+      const outside = join(tmp(), 'secret.key');
+      const link = join(f.root, 'docs', 'innocent.txt');
+
+      writeFileSync(outside, 'x');
+      symlinkSync(outside, link);
+      await grantPolicy(w, [{ can: ['move_to_trash'] }, { risk: 'low' }]);
+
+      const conn = await connect('2026', f.factory);
+      const r = await conn.call({ path: link }, tool);
+
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(/is outside/);
+      expect(existsSync(outside)).toBe(true);
+      expect(existsSync(link)).toBe(true);
+    });
+  },
+);
 
 describe('step 5: a signed policy', () => {
   it('lets the undoable job run on its own, and still asks before a delete', async () => {

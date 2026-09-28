@@ -32,6 +32,10 @@ Here is the whole change. `delete_file` is registered exactly as before, and one
 
 <<< ../../examples/mcp-quickstart.ts#imports
 
+The example's tools only touch files inside one folder, so a mistaken or hostile path can't reach anything else, including the server's own key and approval store:
+
+<<< ../../examples/mcp-quickstart.ts#root
+
 <<< ../../examples/mcp-quickstart.ts#guard
 
 - **`describe(input)`** says what the call will do: a one-line `summary` and its `effects`. It must not change anything. Its input is untyped (`Record<string, unknown>`), so convert fields with `String(...)`.
@@ -58,7 +62,7 @@ In **Claude Code**, from your server's folder:
 claude mcp add files -- npx tsx server.ts
 ```
 
-Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- node server.ts` works too. Relative paths are resolved from the folder the server starts in.
+Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- node server.ts` works too. The tools only act inside `FILES_ROOT` (default: the folder the server starts in), so set it to the folder you mean, for example `claude mcp add files -e FILES_ROOT=$HOME/scratch -- npx tsx server.ts`.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
