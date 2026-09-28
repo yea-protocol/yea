@@ -14,7 +14,7 @@ const SERVICE_CUT = 40;
 const RESERVED = /^yea[_-]/i;
 
 /** The bridge's own tools, which no remote tool may be named. */
-export const UTILITY_TOOLS = ['yea_consent', 'yea_expand', 'yea_undo'];
+const UTILITY_TOOLS = ['yea_consent', 'yea_expand', 'yea_undo'];
 
 /** Every character outside `[A-Za-z0-9_-]` becomes `_`, then the name is cut to `max`. */
 export const sanitize = (name: string, max = CUT) =>

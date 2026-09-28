@@ -22,24 +22,22 @@ import {
   type ReceiptReply,
 } from '@yea-protocol/sdk';
 import { readTighteningFor } from '../keys.js';
+import { errorResult, NOTHING_RAN, refused, textResult } from '../result.js';
+import type { Obj } from '../util.js';
 import { type ConsentStore, checkConsent } from './consent.js';
 import type { Service } from './greet.js';
 import {
-  fresh,
+  approvable,
   type Pending,
   type PendingProposals,
   pendingKey,
 } from './pending.js';
 import {
-  errorResult,
   proposalsLens,
   proposalView,
   replyResult,
   safeLens,
-  textOf,
 } from './render.js';
-
-type Obj = Record<string, unknown>;
 
 /** What every call shares: the pending proposals, the consent store and the clock. */
 export interface Bridge {
@@ -61,8 +59,6 @@ export interface JobCall {
   preview: boolean;
   proposal?: string;
 }
-
-const NOTHING_RAN = 'nothing was run';
 
 /** Errors after which the pending proposals are gone, so a fresh INTENT is the way on. */
 const STALE = new Set(['not_found', 'expired', 'conflict']);
@@ -101,7 +97,7 @@ export async function runJobCall(
   const refusal = denied(b, call);
 
   if (refusal) {
-    return errorResult([`✗ ${refusal}; ${NOTHING_RAN}`]);
+    return refused(refusal);
   }
 
   if (call.preview) {
@@ -139,14 +135,14 @@ async function previewCall(b: Bridge, call: JobCall): Promise<CallToolResult> {
 
   const { kept, dropped } = await checkProposals(r, call.capability);
 
-  return {
-    content: textOf([
-      'preview: nothing was run',
+  return textResult(
+    [
+      `preview: ${NOTHING_RAN}`,
       ...(kept.length ? [proposalsLens(kept)] : []),
       ...dropped,
-    ]),
-    structuredContent: { proposals: kept.map(proposalView) },
-  };
+    ],
+    { proposals: kept.map(proposalView) },
+  );
 }
 
 /** Whether a proposal passes the checks a consent would need (SPEC.md §6.6, like `consentFor`). */
@@ -206,10 +202,8 @@ async function commitOnce(c: Client, p: Proposal, extra: string[]) {
 }
 
 /** A receipt as a tool result, with any progress events before it. */
-const receiptResult = (r: ReceiptReply, events: string[] = []) => ({
-  content: textOf([...events, safeLens(r)]),
-  structuredContent: { receipt: r.receipt },
-});
+const receiptResult = (r: ReceiptReply, events: string[] = []) =>
+  textResult([...events, safeLens(r)], { receipt: r.receipt });
 
 /**
  * Step 3, with pending proposals. A call naming `proposal` acts on that proposal only: it commits
@@ -231,9 +225,9 @@ async function pendingCall(
           p,
           consent: await usableConsent(b, call, { entry, p }),
         })
-      : errorResult([
-          `✗ ${printable(call.proposal)} is not one of this call's proposals (${entry.proposals.map((x) => printable(x.id)).join(', ')}); ${NOTHING_RAN}`,
-        ]);
+      : refused(
+          `${printable(call.proposal)} is not one of this call's proposals (${entry.proposals.map((x) => printable(x.id)).join(', ')})`,
+        );
   }
 
   for (const p of entry.proposals) {
@@ -244,7 +238,7 @@ async function pendingCall(
     }
   }
 
-  const coded = entry.proposals.filter((p) => fresh(p, b.now()));
+  const coded = entry.proposals.filter((p) => approvable(p, b.now()));
 
   // Nothing left to approve here: rather than wait out the last minutes, start over.
   if (!coded.length) {
@@ -395,14 +389,14 @@ async function proposalsFound(
   r: Proposals,
 ): Promise<CallToolResult> {
   const checked = await checkProposals(r, call.capability);
-  const live = checked.kept.filter((p) => fresh(p, b.now()));
+  const live = checked.kept.filter((p) => approvable(p, b.now()));
   const dropped = [
     ...checked.dropped,
     ...expiringNote(checked.kept.length - live.length),
   ];
 
   if (!live.length) {
-    return errorResult([`✗ no usable proposals; ${NOTHING_RAN}`, ...dropped]);
+    return refused('no usable proposals', dropped);
   }
 
   const principals = await principalsOf(call.svc.client);
@@ -460,7 +454,7 @@ function codesFor(call: JobCall, entry: Pending) {
 function noGrants(call: JobCall, entry: Pending, dropped: string[]) {
   return errorResult(
     [
-      `✗ nothing was run, and these can't be committed: no grant for this agent is sent to ${printable(call.svc.id)}`,
+      `✗ ${NOTHING_RAN}, and these can't be committed: no grant for this agent is sent to ${printable(call.svc.id)}`,
       proposalsLens(entry.proposals),
       ...dropped,
       `Ask the user to run \`yea grant\` for this agent${call.svc.agent ? ` (${call.svc.agent})` : ' (run `yea install` to make its key)'}, then call again.`,
@@ -503,17 +497,14 @@ function proposalsResult(
         'No consent code can be offered for these (there is no agent key: run `yea install`).',
       ];
 
-  return {
-    content: textOf([
+  return textResult(
+    [
       `${NOTHING_RAN}: ${why}.`,
       proposalsLens(entry.proposals),
       ...dropped,
       ...tail,
       'To commit one the grant may allow (an irreversible one, say), call this tool again with the same arguments and `proposal: "<id>"`.',
-    ]),
-    structuredContent: {
-      proposals: entry.proposals.map(proposalView),
-      codes,
-    },
-  };
+    ],
+    { proposals: entry.proposals.map(proposalView), codes },
+  );
 }

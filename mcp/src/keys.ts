@@ -26,6 +26,7 @@ import {
   type Tightening,
 } from '@yea-protocol/sdk';
 import { home, readPinnedKey } from '@yea-protocol/sdk/node';
+import { errorMessage, warnOnce } from './util.js';
 
 const NAME = /^[a-z0-9._-]{1,64}$/;
 const SEED = /^[A-Za-z0-9_-]{43}$/;
@@ -150,7 +151,7 @@ function readKeyFile(path: string): string {
     fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   } catch (e) {
     throw new Error(
-      `yea(): refusing the server key: ${errno(e) === 'ELOOP' ? `${path} is a symlink` : (e as Error).message}`,
+      `yea(): refusing the server key: ${errno(e) === 'ELOOP' ? `${path} is a symlink` : errorMessage(e)}`,
     );
   }
 
@@ -210,23 +211,13 @@ export function pinnedPrincipal(option: string | undefined): Pinned {
     : { why: 'the principal option is not an ed25519 public key' };
 }
 
-const warned = new Set<string>();
-
-/** Warn on stderr, once per message, so a per-call read doesn't flood the log. */
-export function warnOnce(message: string) {
-  if (!warned.has(message)) {
-    warned.add(message);
-    console.error(`yea: ${message}`);
-  }
-}
-
 /** Read a file, or null if it doesn't exist; other errors are reported and read as absent. */
 function readIfThere(path: string): string | null {
   try {
     return readFileSync(path, 'utf8');
   } catch (e) {
     if (errno(e) !== 'ENOENT') {
-      warnOnce(`can't read ${path}: ${(e as Error).message}`);
+      warnOnce(`can't read ${path}: ${errorMessage(e)}`);
     }
 
     return null;
@@ -292,7 +283,7 @@ function fileTightening(): { t: Tightening } | { broken: string } | null {
   } catch (e) {
     return errno(e) === 'ENOENT'
       ? null
-      : { broken: `can't read ${path}: ${(e as Error).message}` };
+      : { broken: `can't read ${path}: ${errorMessage(e)}` };
   }
 
   return parseTightening(path, text);

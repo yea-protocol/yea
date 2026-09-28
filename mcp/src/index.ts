@@ -42,14 +42,19 @@ import {
   defaultKeyPath,
   loadServerSeed,
   pinnedPrincipal,
-  warnOnce,
 } from './keys.js';
-import { errorResult } from './render.js';
+import {
+  errorResult,
+  JOB_ANNOTATIONS,
+  textResult,
+  UNDO_ANNOTATIONS,
+} from './result.js';
 import { previewSchema, takePreview } from './schema.js';
+import { errorMessage, warnOnce } from './util.js';
 
 export type { RevertFn, RevertInput } from './call.js';
 
-export { canAsk, canElicitForm } from './client.js';
+export { errorResult, textResult } from './result.js';
 
 export { PREVIEW } from './schema.js';
 
@@ -242,10 +247,7 @@ export function yea(o: YeaOptions): Approvals {
 function logServiceId(y: Yea, name: string) {
   y.serviceId().then(
     (id) => console.error(`yea: service id ${id} (name ${name})`),
-    (e: unknown) =>
-      warnOnce(
-        `can't derive the service id: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+    (e: unknown) => warnOnce(`can't derive the service id: ${errorMessage(e)}`),
   );
 }
 
@@ -305,9 +307,7 @@ const jobMeta = (risk: Risk | undefined, undoable: boolean) => ({
 
 /** A job changes things: destructive unless the author says otherwise. Hints, not enforcement. */
 const jobAnnotations = (a: ToolAnnotations | undefined): ToolAnnotations => ({
-  readOnlyHint: false,
-  idempotentHint: false,
-  destructiveHint: true,
+  ...JOB_ANNOTATIONS,
   ...a,
 });
 
@@ -411,9 +411,7 @@ function guardSchema(schema: StandardSchemaWithJSON): StandardSchemaWithJSON {
   try {
     return previewSchema(schema);
   } catch (e) {
-    throw new TypeError(
-      `guard(): ${e instanceof Error ? e.message : String(e)}`,
-    );
+    throw new TypeError(`guard(): ${errorMessage(e)}`);
   }
 }
 
@@ -506,11 +504,7 @@ function registerUndo(
     {
       description: 'Undo a job by its receipt id, within its undo window.',
       inputSchema: RECEIPT_SCHEMA,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-      },
+      annotations: UNDO_ANNOTATIONS,
     },
     (args, ctx) => undoCall(y, reverts, args.receipt, ctx),
   );
@@ -544,15 +538,9 @@ async function undoCall(
     });
 
     return out.kind === 'undone'
-      ? {
-          content: [
-            {
-              type: 'text',
-              text: `↶ undid ${out.receipt.id}: ${out.receipt.summary}`,
-            },
-          ],
-          structuredContent: { undone: out.receipt.id },
-        }
+      ? textResult([`↶ undid ${out.receipt.id}: ${out.receipt.summary}`], {
+          undone: out.receipt.id,
+        })
       : errorResult([`✗ ${out.why}; nothing was undone`]);
   } catch (e) {
     // A revert that may have half-happened says so, never "nothing was undone".
@@ -561,7 +549,7 @@ async function undoCall(
     }
 
     return errorResult([
-      `✗ undo failed: ${e instanceof Error ? e.message : String(e)}; nothing was undone, and it can be tried again`,
+      `✗ undo failed: ${errorMessage(e)}; nothing was undone, and it can be tried again`,
     ]);
   }
 }

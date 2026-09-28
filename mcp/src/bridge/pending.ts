@@ -9,7 +9,7 @@ import { type Proposal, sha256 } from '@yea-protocol/sdk';
 export const MAX_PENDING = 256;
 
 /** A proposal gets no new code once it has less than this many seconds left. */
-export const MIN_LEFT = 120;
+const MIN_LEFT = 120;
 
 /** One call's proposals, the principal they need consent from, and their consent codes. */
 export interface Pending {
@@ -49,20 +49,21 @@ export async function pendingKey(
 }
 
 /** Whether a proposal has enough time left to hand out a code for it: approved, then committed. */
-export const fresh = (p: Proposal, now: number) => p.expires - now >= MIN_LEFT;
+export const approvable = (p: Proposal, now: number) =>
+  p.expires - now >= MIN_LEFT;
 
 /** Whether a proposal hasn't expired: an approval already saved can still commit it. */
 const alive = (p: Proposal, now: number) => p.expires > now;
 
 /**
- * `e` with its expired proposals dropped, and codes only for the fresh ones: a proposal with
+ * `e` with its expired proposals dropped, and codes only for the approvable ones: a proposal with
  * under 2 minutes left stays, marked "no new codes", until it really expires.
  */
 function prune(e: Pending, now: number): Pending {
   e.proposals = e.proposals.filter((p) => alive(p, now));
 
   const coded = new Set(
-    e.proposals.filter((p) => fresh(p, now)).map((p) => p.id),
+    e.proposals.filter((p) => approvable(p, now)).map((p) => p.id),
   );
 
   e.codes = e.codes.filter((c) => coded.has(c.proposal));

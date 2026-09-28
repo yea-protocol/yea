@@ -4,15 +4,11 @@
  * unchanged, because the service validates them itself.
  */
 import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server';
+import { isObject, type Obj } from '../util.js';
 import { clip } from './render.js';
 
-type Obj = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
 /** The job tools' own fields: a capability param with one of these names would shadow it. */
-export const JOB_FIELDS = ['goal', 'preview', 'proposal'];
+const JOB_FIELDS = ['goal', 'preview', 'proposal'];
 
 /** Nesting deeper than this maps to no constraint, so a hostile schema can't recurse forever. */
 const MAX_DEPTH = 16;
@@ -37,7 +33,7 @@ function baseSchema(base: string): Obj {
 }
 
 /** A type string: `base[]? — description`. */
-export function typeSchema(type: string): Obj {
+function typeSchema(type: string): Obj {
   const cut = type.indexOf(' — ');
   const t = (cut < 0 ? type : type.slice(0, cut)).trim();
   const description = cut < 0 ? '' : clip(type.slice(cut + 3).trim());

@@ -4,12 +4,12 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { type Answer, type ErrorReply, printable } from '@yea-protocol/sdk';
+import { errorResult, textResult } from '../result.js';
+import type { Obj } from '../util.js';
 import { type ConsentStore, checkConsent, readConsent } from './consent.js';
 import type { Service } from './greet.js';
 import type { Pending, PendingProposals } from './pending.js';
-import { errorResult, replyResult, textOf } from './render.js';
-
-type Obj = Record<string, unknown>;
+import { replyResult } from './render.js';
 
 /** An ANSWER, and how to fetch what it elided. */
 function answerResult(svc: Service, r: Answer | ErrorReply): CallToolResult {
@@ -88,7 +88,7 @@ function entryFor(c: ConsentContext, token: unknown): Pending | undefined {
     );
 }
 
-const refused = (why: string) =>
+const consentRefused = (why: string) =>
   errorResult([`✗ consent refused: ${why}; nothing was saved`]);
 
 /**
@@ -102,20 +102,20 @@ export async function consentCall(
   const shape = readConsent(token);
 
   if ('why' in shape) {
-    return refused(shape.why);
+    return consentRefused(shape.why);
   }
 
   const entry = entryFor(c, token);
   const agent = entry ? c.services.get(entry.service)?.agent : null;
 
   if (!entry || !agent) {
-    return refused(
+    return consentRefused(
       'it is for no pending proposal (it may have expired, or the bridge restarted: call the tool again for fresh proposals and codes)',
     );
   }
 
   if (entry.refused.has(token as string)) {
-    return refused(
+    return consentRefused(
       'this consent was refused by the service when it was used; ask the user to approve the code again',
     );
   }
@@ -124,7 +124,7 @@ export async function consentCall(
   const check = await checkConsent(token, o);
 
   if (!check.ok) {
-    return refused(check.why);
+    return consentRefused(check.why);
   }
 
   return keepConsent(c, token as string, { ...o, proposal: check.proposal });
@@ -151,17 +151,17 @@ async function keepConsent(
     (await checkConsent(kept, o)).ok;
 
   if (blocking) {
-    return refused(
+    return consentRefused(
       'a different valid consent for this proposal is already saved',
     );
   }
 
   c.consents.put(o.proposal.hash, token);
 
-  return {
-    content: textOf([
+  return textResult(
+    [
       `✓ consent saved for [${printable(o.proposal.id)}] ${printable(o.proposal.summary)} at ${printable(o.entry.service)}. Call ${o.entry.tool} again with the same arguments to commit it.`,
-    ]),
-    structuredContent: { proposal: o.proposal.id, tool: o.entry.tool },
-  };
+    ],
+    { proposal: o.proposal.id, tool: o.entry.tool },
+  );
 }

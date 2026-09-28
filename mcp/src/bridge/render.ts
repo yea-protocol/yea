@@ -5,8 +5,8 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { lens, type Proposal, printable, type Reply } from '@yea-protocol/sdk';
-
-type Obj = Record<string, unknown>;
+import { textResult } from '../result.js';
+import type { Obj } from '../util.js';
 
 /** Lens renders these as lean values (strings quoted), so they keep their own text. */
 const VALUES = new Set(['data', 'result']);
@@ -58,19 +58,6 @@ export function safeLens(reply: Reply): string {
 export const proposalsLens = (proposals: Proposal[]) =>
   safeLens({ yea: 1, id: '-', re: '-', kind: 'PROPOSALS', proposals });
 
-export const textOf = (lines: string[]) => [
-  { type: 'text' as const, text: lines.join('\n') },
-];
-
-/** A refusal or failure: `isError`, so the model sees the reason and the fix. */
-export function errorResult(lines: string[], structured?: Obj): CallToolResult {
-  return {
-    content: textOf(lines),
-    isError: true,
-    ...(structured ? { structuredContent: structured } : {}),
-  };
-}
-
 /** A reply as a tool result: its Lens, `isError` for an ERROR, and `structured` as data. */
 export function replyResult(
   reply: Reply,
@@ -78,9 +65,8 @@ export function replyResult(
   extra: string[] = [],
 ): CallToolResult {
   return {
-    content: textOf([safeLens(reply), ...extra]),
+    ...textResult([safeLens(reply), ...extra], structured),
     ...(reply.kind === 'ERROR' ? { isError: true } : {}),
-    ...(structured ? { structuredContent: structured } : {}),
   };
 }
 

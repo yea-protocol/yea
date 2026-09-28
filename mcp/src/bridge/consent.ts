@@ -5,6 +5,7 @@
  */
 import { checkGrant, decodeGrant, type Proposal } from '@yea-protocol/sdk';
 import { loadConsent, saveGrant } from '@yea-protocol/sdk/node';
+import { errorMessage, isObject, type Obj } from '../util.js';
 import type { Pending } from './pending.js';
 
 /** Where consents are kept, by the proposal hash they commit. */
@@ -28,11 +29,6 @@ export interface ConsentFields {
   only: string;
   exp: number;
 }
-
-type Obj = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 const oneString = (v: unknown): v is [string] =>
   Array.isArray(v) && v.length === 1 && typeof v[0] === 'string';
@@ -82,7 +78,7 @@ export function readConsent(token: unknown): ConsentFields | { why: string } {
   try {
     blocks = decodeGrant(token);
   } catch (e) {
-    return { why: `not a readable grant (${(e as Error).message})` };
+    return { why: `not a readable grant (${errorMessage(e)})` };
   }
 
   if (blocks.length !== 1) {
@@ -100,7 +96,7 @@ export function readConsent(token: unknown): ConsentFields | { why: string } {
 }
 
 /** The pending proposal a consent's `svc`, `can` and `only` name, if `entry` has it. */
-export const proposalFor = (entry: Pending, f: ConsentFields) =>
+const proposalFor = (entry: Pending, f: ConsentFields) =>
   f.svc === entry.service && f.can === entry.capability
     ? entry.proposals.find((p) => p.hash === f.only)
     : undefined;
