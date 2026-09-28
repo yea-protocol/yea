@@ -4,6 +4,7 @@ import pytest
 from conftest import CONFORMANCE, load_vectors
 
 from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
+from yea._json import CanonicalError
 from yea.keys import verify_proof
 from yea.uses import is_uses
 
@@ -25,7 +26,17 @@ def cases(name, key="name"):
 
 @pytest.mark.parametrize("case", cases("canonical"))
 def test_canonical(case):
+    if case.get("error"):  # a lone surrogate has no canonical form (SPEC §10)
+        with pytest.raises(CanonicalError):
+            canonical(case["input"])
+        return
     assert canonical(case["input"]) == case["canonical"]
+
+
+def test_canonical_joins_a_surrogate_pair_built_in_python():
+    """Python can hold a pair as two code points (JSON parsing joins them); JS reads them as one
+    character, so canonical does too, and only a lone one is refused (#160)."""
+    assert canonical({"s": "\ud83c\udf89"}) == canonical({"s": "\U0001f389"}) == '{"s":"\U0001f389"}'
 
 
 @pytest.mark.parametrize("case", cases("estimate", "text"))

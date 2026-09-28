@@ -109,17 +109,30 @@ def canonical(v: Any) -> str:
             return str(int(v))
         raise CanonicalError(f"only integers are allowed in canonical JSON (got {v!r})")
     if isinstance(v, str):
-        return quote(v)
+        return quote(_well_formed(v))
     if isinstance(v, dict):
         for k in v:
             if not isinstance(k, str):
                 raise CanonicalError("object keys must be strings")
+        v = {_well_formed(k): x for k, x in v.items()}
         # Sort by code point. Python compares str by code point, unlike JS's UTF-16 sort,
         # but the two agree for all BMP keys (and keys SHOULD be ASCII).
         return "{" + ",".join(quote(k) + ":" + canonical(v[k]) for k in sorted(v)) + "}"
     if isinstance(v, (list, tuple)):
         return "[" + ",".join(canonical(x) for x in v) + "]"
     raise CanonicalError(f"not JSON-serializable: {type(v).__name__}")
+
+
+def _well_formed(s: str) -> str:
+    """``s`` with any surrogate pair joined into its character, as JavaScript reads it. A lone
+    surrogate has no UTF-8 encoding, so it has no canonical form (SPEC §10)."""
+    if not any("\ud800" <= ch <= "\udfff" for ch in s):
+        return s
+    joined = s.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
+    lone = next((ch for ch in joined if "\ud800" <= ch <= "\udfff"), None)
+    if lone is not None:
+        raise CanonicalError(f"a lone surrogate (U+{ord(lone):04X}) has no canonical form")
+    return joined
 
 
 def canonical_bytes(v: Any) -> bytes:
