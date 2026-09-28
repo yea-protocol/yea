@@ -19,7 +19,7 @@ from calendar_example import calendar
 from yea import serve_http, serve_stdio, serve_tcp
 
 
-def bound(server: asyncio.base_events.Server) -> str:
+def bound(server: asyncio.Server) -> str:
     """``host:port`` of the server's first socket, as bound. With port 0 and a name like
     ``localhost``, each address gets its own free port, so name the address, not ``HOST``."""
     host, port = server.sockets[0].getsockname()[:2]

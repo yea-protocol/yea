@@ -21,6 +21,8 @@ REPO = ROOT.parent
 SEEDS = json.loads((REPO / "conformance" / "grants.json").read_text())["seeds"]
 PRINCIPAL = key_from_seed(SEEDS["principal"])
 AGENT = key_from_seed(SEEDS["agent"])
+# serve.ts's start-up line on stderr names each service's bound addresses.
+UP = re.compile(r"(\w+) yea://(\S+) http://(\S+)/yea")
 
 
 def _node_ok() -> bool:
@@ -37,26 +39,37 @@ if not NODE_OK and os.environ.get("YEA_REQUIRE_INTEROP"):
 pytestmark = pytest.mark.skipif(not NODE_OK, reason="needs node >= 22.18 and a built ts/dist")
 
 
-UP = re.compile(r"(\w+) yea://(\S+) http://(\S+)/yea")
-
-
 def _read_ports(proc: subprocess.Popen, found: queue.Queue) -> None:
-    """Read the servers' stderr until the "up" line, then keep draining it."""
+    """Read the servers' stderr until the "up" line, then keep draining it; at EOF, put the log."""
     assert proc.stderr
     log = ""
     for line in proc.stderr:
         log += line
-        if "examples up" in line:
+        if line.startswith("yea examples up"):
             found.put({name: (tcp, http) for name, tcp, http in UP.findall(line)})
     found.put(log)
 
 
+def _start_failed(proc: subprocess.Popen, found: queue.Queue, why: str) -> None:
+    """Stop the servers and fail with their stderr, flushed once the process is gone."""
+    proc.kill()
+    proc.wait(5)
+    log = ""
+    try:
+        while not isinstance(log := found.get(timeout=5), str):
+            pass
+    except queue.Empty:
+        pass
+    pytest.fail(f"TS servers {why}:\n{log}")
+
+
 @pytest.fixture(scope="module")
 def ts_servers():
-    """Start examples/serve.ts on free ports (YEA_PORT=0) and yield the ports it reports,
-    so parallel runs never reach each other's servers."""
+    """Start examples/serve.ts on free ports (YEA_PORT=0) and yield each service's bound
+    ``host:port`` pair, so parallel runs never reach each other's servers."""
+    env = {**os.environ, "YEA_TRUST": PRINCIPAL.public, "HOST": "127.0.0.1", "YEA_PORT": "0"}
     proc = subprocess.Popen(
-        ["node", "examples/serve.ts"], cwd=REPO, env={**os.environ, "YEA_TRUST": PRINCIPAL.public, "YEA_PORT": "0"},
+        ["node", "examples/serve.ts"], cwd=REPO, env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
     )
     found: queue.Queue = queue.Queue()
@@ -64,10 +77,12 @@ def ts_servers():
     try:
         ports = found.get(timeout=15)
     except queue.Empty:
-        ports = "timed out"
-    if not isinstance(ports, dict):
-        proc.kill()
-        pytest.fail(f"TS servers did not start: {ports}")
+        _start_failed(proc, found, "did not start within 15s")
+    if isinstance(ports, str):
+        found.put(ports)  # the log: the process already exited
+        _start_failed(proc, found, f"exited ({proc.poll()})")
+    if not {"calendar", "shop"} <= ports.keys():
+        _start_failed(proc, found, f"reported {ports}, not calendar and shop")
     yield ports
     proc.terminate()
     proc.wait(5)

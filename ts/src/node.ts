@@ -240,13 +240,14 @@ export async function transport(
   }
 
   const port = Number(u.port) || (secure ? DEFAULT_TLS_PORT : DEFAULT_PORT);
+  // URL keeps an IPv6 literal's brackets ("[::1]"); net and tls want the bare address.
+  const host = u.hostname.replace(/^\[(.*)\]$/, '$1');
   const sock: net.Socket = await new Promise((resolve, reject) => {
     const s = secure
-      ? tls.connect(
-          { host: u.hostname, port, servername: u.hostname, ...o.tls },
-          () => resolve(s),
+      ? tls.connect({ host, port, servername: host, ...o.tls }, () =>
+          resolve(s),
         )
-      : net.connect({ host: u.hostname, port }, () => resolve(s));
+      : net.connect({ host, port }, () => resolve(s));
 
     s.once('error', reject);
   });

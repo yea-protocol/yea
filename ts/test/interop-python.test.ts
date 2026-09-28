@@ -13,30 +13,37 @@ const ready =
   existsSync(`${pyDir}/examples/serve.py`) &&
   !process.env.SKIP_INTEROP;
 
+/** serve.py's start-up line on stderr: the addresses it bound. */
+const UP = /python example up · calendar yea:\/\/(\S+) http:\/\/(\S+)\/yea/;
+
 /**
- * Wait for serve.py's "up" line on stderr and return the `host:port` of its
- * TCP and HTTP servers, as bound. The service binds port 0, so parallel runs
- * never reach each other's process.
+ * Wait for serve.py's "up" line and return the `host:port` of its TCP and HTTP
+ * servers, as bound. The service binds port 0, so parallel runs never reach
+ * each other's process.
  */
 function boundAddresses(proc: ChildProcess): Promise<[string, string]> {
   return new Promise((resolve, reject) => {
     let log = '';
-    const fail = (why: string) =>
+    const fail = (why: string) => {
+      clearTimeout(timer);
       reject(new Error(`python service ${why}:\n${log}`));
+    };
     const timer = setTimeout(() => fail('did not start'), 25_000);
 
     proc.stderr?.setEncoding('utf8');
     proc.stderr?.on('data', (chunk: string) => {
       log += chunk;
 
-      const m = /yea:\/\/(\S+) http:\/\/(\S+)\/yea/.exec(log);
+      const m = UP.exec(log);
 
       if (m) {
         clearTimeout(timer);
         resolve([m[1], m[2]]);
       }
     });
-    proc.on('exit', (code) => fail(`exited (${code})`));
+    proc.on('error', (e) => fail(`could not start (${e.message})`));
+    // 'close', not 'exit': by then stderr is drained, so the log is complete.
+    proc.on('close', (code) => fail(`exited (${code})`));
   });
 }
 
@@ -52,6 +59,7 @@ describe.skipIf(!ready)('interop: TS client → Python service', async () => {
       env: {
         ...process.env,
         YEA_TRUST: principal.public,
+        HOST: '127.0.0.1',
         YEA_PORT: '0',
         YEA_HTTP_PORT: '0',
       },

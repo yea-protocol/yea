@@ -13,9 +13,17 @@ import { shop } from './shop.ts';
 
 const trust = (process.env.YEA_TRUST ?? '').split(',').filter(Boolean);
 const host = process.env.HOST ?? '127.0.0.1';
-const base = Number(process.env.YEA_PORT ?? 7447);
+const base = Number(process.env.YEA_PORT || 7447);
 const cal = calendar({ trust });
 const sh = shop({ trust });
+
+// The shop's HTTP port is base + 1002, so the base must leave room for it.
+if (!Number.isInteger(base) || base < 0 || base > 65_535 - 1002) {
+  console.error(
+    `YEA_PORT must be a whole number from 0 to ${65_535 - 1002} (0 binds free ports), not ${JSON.stringify(process.env.YEA_PORT)}`,
+  );
+  process.exit(2);
+}
 
 /** The port `offset` above the base, or 0 (any free port) when the base is 0. */
 const at = (offset: number) => (base === 0 ? 0 : base + offset);
