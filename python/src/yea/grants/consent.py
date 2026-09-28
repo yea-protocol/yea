@@ -1,4 +1,4 @@
-"""Consent: a single-use grant for one exact proposal, and the pc1 code that carries the request (SPEC §6.4)."""
+"""Consent: a single-use grant for one exact proposal, and the pc1 code that carries the request (SPEC §6.6)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,10 @@ from typing import Any
 
 from .._json import b64url_decode, b64url_encode, canonical_bytes, loads
 from ..keys import KeyPair
-from .caveats import _safe_int
-from .token import Grant, issue_grant
+from .token import Grant, _safe_int, issue_grant
+
+CONSENT_PREFIX = "pc1."
+_CONSENT_STR_FIELDS = ("proposal", "hash", "service", "capability", "principal", "summary")
 
 
 def consent_grant(principal: KeyPair, agent_key: str, consent: Mapping[str, Any]) -> Grant:
@@ -24,10 +26,6 @@ def consent_grant(principal: KeyPair, agent_key: str, consent: Mapping[str, Any]
         {"only": consent["hash"]},
         {"exp": consent["expires"]},
     ])
-
-
-CONSENT_PREFIX = "pc1."
-_CONSENT_STR_FIELDS = ("proposal", "hash", "service", "capability", "principal", "summary")
 
 
 def consent_code(consent: Mapping[str, Any], detail: Mapping[str, Any] | None = None, agent: str | None = None) -> str:

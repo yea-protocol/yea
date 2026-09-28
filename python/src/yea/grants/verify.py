@@ -1,4 +1,4 @@
-"""Verifying a grant chain against a request: signatures, holders, trust and every caveat (SPEC §6.3)."""
+"""Verifying a grant chain against a request: signatures, holders, trust and every caveat (SPEC §6.4)."""
 
 from __future__ import annotations
 

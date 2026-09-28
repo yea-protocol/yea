@@ -81,6 +81,10 @@ def _is_int(v: Any) -> bool:
     return type(v) is int
 
 
+def _safe_int(v: Any) -> bool:
+    return _is_int(v) and abs(v) <= 2**53 - 1
+
+
 def decode_grant(token: str) -> Grant:
     """Decode and structurally validate a token. Does not check signatures. Raises ValueError."""
     if not isinstance(token, str) or not token.startswith(TOKEN_PREFIX):

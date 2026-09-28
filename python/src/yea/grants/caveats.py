@@ -10,10 +10,9 @@ from .._json import compact
 from ..risk import exceeds, is_risk
 from ..uses import fmt_quantity, is_limit, is_uses, limit_value, same_unit, value
 from .context import GrantContext
-from .token import _is_int
+from .token import _safe_int
 
 RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
-
 
 # Caveats that, when they are the only ones failing a COMMIT, mean "ask the human" (§6.6).
 CONSENT_CAVEATS = frozenset({"risk", "each", "total"})
@@ -58,10 +57,6 @@ def limit_denial(name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any
     if name == "total" and already + value(q) > limit_value(limit):
         return Denial(f"{of} would pass the total limit of {shown}", hard=False)
     return None
-
-
-def _safe_int(v: Any) -> bool:
-    return _is_int(v) and abs(v) <= 2**53 - 1
 
 
 def _str_list(v: Any) -> bool:
