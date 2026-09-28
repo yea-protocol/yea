@@ -3,7 +3,15 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
-    groups: { dev: { dependency-type: development } }
+    groups:
+      # Minor and patch dev updates travel together; each major gets its own PR.
+      dev:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # The types must match the oldest Node the SDK supports (ts/package.json engines).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: pip
     directory: /python
     schedule: { interval: weekly }
