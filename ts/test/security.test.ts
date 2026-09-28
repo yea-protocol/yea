@@ -604,7 +604,13 @@ describe('approval security (SPEC-approval)', () => {
       42,
     ]) {
       expect(
-        await P.undoJob(store, { id, sub: '', now, revert: () => null }),
+        await P.undoJob(store, {
+          service: 'S',
+          id,
+          sub: '',
+          now,
+          revert: () => null,
+        }),
       ).toEqual({ kind: 'refused', why: 'no such receipt' });
     }
 

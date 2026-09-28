@@ -189,6 +189,33 @@ describe('conformance vectors', () => {
       expect(r, c.name).toEqual(c.expect);
     }
 
+    for (const c of v.undo.cases) {
+      const s = new P.MemoryStore();
+
+      for (const r of v.undo.receipts) {
+        await s.putReceipt(r);
+      }
+
+      const call = () =>
+        P.undoJob(s, {
+          service: 'S',
+          id: c.id,
+          sub: c.sub,
+          now: c.now,
+          revert: () => null,
+        });
+
+      if (c.undoneBefore) {
+        await call();
+      }
+
+      const got = await call();
+
+      expect(got.kind === 'undone' ? { kind: 'undone' } : got, c.name).toEqual(
+        c.expect,
+      );
+    }
+
     const cc = v.consentCode;
 
     expect(

@@ -125,6 +125,35 @@
       "planHash": "UIstb--i53BhNVIkSbRYt1q5DSXuIGQmM2BHAO7IgTA"
     },
     {
+      "name": "emptyUses",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 3600,
+        "uses": {}
+      },
+      "risk": "low",
+      "undoable": true,
+      "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U"
+    },
+    {
       "name": "a non-integer input fails closed",
       "tool": {
         "name": "refund",
@@ -3120,6 +3149,180 @@
       }
     }
   ],
+  "undo": {
+    "service": "S",
+    "receipts": [
+      {
+        "id": "r_DDDDDDDDDDDD",
+        "service": "another-server",
+        "proposal": "H",
+        "capability": "reschedule",
+        "summary": "Move standup",
+        "at": 1790000000,
+        "effects": [],
+        "undo": {
+          "until": 1790000060
+        },
+        "tool": "reschedule",
+        "input": {
+          "event": "e1"
+        },
+        "planHash": "H",
+        "sub": "client-1"
+      },
+      {
+        "id": "r_AAAAAAAAAAAA",
+        "service": "S",
+        "proposal": "H",
+        "capability": "reschedule",
+        "summary": "Move standup",
+        "at": 1790000000,
+        "effects": [],
+        "undo": {
+          "until": 1790000060
+        },
+        "tool": "reschedule",
+        "input": {
+          "event": "e1"
+        },
+        "planHash": "H",
+        "sub": "client-1"
+      },
+      {
+        "id": "r_BBBBBBBBBBBB",
+        "service": "S",
+        "proposal": "H",
+        "capability": "reschedule",
+        "summary": "Move standup",
+        "at": 1790000000,
+        "effects": [],
+        "undo": null,
+        "tool": "reschedule",
+        "input": {
+          "event": "e1"
+        },
+        "planHash": "H",
+        "sub": "client-1"
+      },
+      {
+        "id": "r_CCCCCCCCCCCC",
+        "service": "S",
+        "proposal": "H",
+        "capability": "reschedule",
+        "summary": "Move standup",
+        "at": 1790000000,
+        "effects": [],
+        "undo": {
+          "until": 1790000060
+        },
+        "tool": "reschedule",
+        "input": {
+          "event": "e1"
+        },
+        "planHash": "H",
+        "sub": "client-1"
+      }
+    ],
+    "cases": [
+      {
+        "name": "within the window",
+        "id": "r_AAAAAAAAAAAA",
+        "sub": "client-1",
+        "now": 1790000010,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "undone"
+        }
+      },
+      {
+        "name": "allowed at until itself",
+        "id": "r_AAAAAAAAAAAA",
+        "sub": "client-1",
+        "now": 1790000060,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "undone"
+        }
+      },
+      {
+        "name": "closed at until + 1",
+        "id": "r_AAAAAAAAAAAA",
+        "sub": "client-1",
+        "now": 1790000061,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "refused",
+          "why": "the undo window has closed"
+        }
+      },
+      {
+        "name": "another principal",
+        "id": "r_AAAAAAAAAAAA",
+        "sub": "client-2",
+        "now": 1790000010,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "refused",
+          "why": "no such receipt"
+        }
+      },
+      {
+        "name": "never undoable",
+        "id": "r_BBBBBBBBBBBB",
+        "sub": "client-1",
+        "now": 1790000010,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "refused",
+          "why": "this job can never be undone"
+        }
+      },
+      {
+        "name": "already undone",
+        "id": "r_CCCCCCCCCCCC",
+        "sub": "client-1",
+        "now": 1790000010,
+        "undoneBefore": true,
+        "expect": {
+          "kind": "refused",
+          "why": "this job was already undone"
+        }
+      },
+      {
+        "name": "an id outside the format",
+        "id": "../x",
+        "sub": "client-1",
+        "now": 1790000010,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "refused",
+          "why": "no such receipt"
+        }
+      },
+      {
+        "name": "a receipt from another server sharing the store",
+        "id": "r_DDDDDDDDDDDD",
+        "sub": "client-1",
+        "now": 1790000010,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "refused",
+          "why": "no such receipt"
+        }
+      },
+      {
+        "name": "an unknown id",
+        "id": "r_ZZZZZZZZZZZZ",
+        "sub": "client-1",
+        "now": 1790000010,
+        "undoneBefore": false,
+        "expect": {
+          "kind": "refused",
+          "why": "no such receipt"
+        }
+      }
+    ]
+  },
   "consents": {
     "plan": {
       "tool": "refund",

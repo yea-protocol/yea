@@ -21,6 +21,8 @@ export interface Reservation {
 
 /** SPEC.md's receipt, plus what undo needs to call the tool's `revert` from any process. */
 export interface JobReceipt extends Receipt {
+  /** The service id (server key) that ran it; undo refuses receipts from another server. */
+  service: string;
   tool: string;
   input: unknown;
   planHash: string;
