@@ -83,7 +83,7 @@ wants a real API rather than a demo.
 - **If a write fails part-way,** `apply()` doesn't claim nothing changed:
   - when the second write fails, or times out with an unknown result, `apply()` releases the
     schedule;
-  - if that release also fails, it throws a distinct error naming the leftover `sch_…` id,
+  - if that release also fails, it throws a distinct error naming the leftover `sub_sched_…` id,
     and mcp-ts shows that error instead of "nothing changed".
 - **Cancelling a scheduled subscription.** Stripe manages cancellation through the schedule.
   So "at period end" becomes a schedule update to `end_behavior=cancel` (undo sets it back to
@@ -240,7 +240,9 @@ yea grant --to <server key> --can cancel_subscription --can change_plan --risk l
 - **Dependencies:** `@yea-protocol/mcp` and `@modelcontextprotocol/server`. Stripe is called
   with `fetch`, not the Stripe SDK: the connector uses nine endpoints.
 - **Transports:** stdio by default; `--http <port>` serves Streamable HTTP, which needs `sub`
-  configured (SPEC-mcp-ts).
+  configured (SPEC-mcp-ts). The binary takes it from `YEA_SUB`, for requests that carry
+  `Authorization: Bearer $YEA_HTTP_TOKEN` (32 characters or more); anything else gets 401
+  before the MCP handler, and on loopback the `Host` header is checked too.
 - **The example:** `examples/stripe-billing.ts` stays as the protocol-level example in the
   guide. The Stripe-reading helpers move into the connector, and the example imports them.
 
@@ -293,7 +295,7 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
   - a fresh idempotency key per call, and a deliberate second identical refund writing twice;
   - stable plan hashes across rounds within a day, and a change after midnight;
   - a failed second schedule write releasing the schedule, and a failed release naming the
-    leftover `sch_…` id;
+    leftover `sub_sched_…` id;
   - cancel at period end through `end_behavior` on a scheduled subscription, and its undo;
   - multi-item and interval-changing subscriptions refused;
   - `revert` for every undoable plan;
@@ -334,6 +336,94 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
 - All tests pass, in CI without Stripe access.
 - Once James approves the spend, the comparison is published in `bench/` with every run and
   its caveats, and linked from the README.
+
+## Build notes
+
+What the build (#71) found, and where it chose the closest safe behaviour:
+
+- **Schedule ids are `sub_sched_…`**, not `sch_…`: Stripe's prefix. The leftover-schedule
+  error names that id.
+- **A write that fails part-way** throws `PartialApplyError` from `@yea-protocol/mcp`, which
+  shows the message instead of "nothing changed" (added to SPEC-mcp-ts, step 11). A write whose
+  result is unknown (no answer after the client's retries, or a 5xx) is reported the same way.
+- **Multi-item subscriptions are refused by both subscription jobs,** not only `change_plan`:
+  a period end read from one item could be wrong for the others.
+- **`change_plan` on a scheduled subscription:** never "at renewal" (any schedule, ours
+  included), and "now" only when the schedule has no later phase, since that phase would undo
+  it. Otherwise the job is refused, saying why. Likewise "cancel at period end" through a
+  schedule is offered only when its current phase is its last and ends at the period end, and
+  its `end_behavior` is `release`.
+- **Also refused:** a change to another currency (Stripe can't change a subscription's
+  currency). "At renewal" isn't offered on a subscription with discounts (copying them into
+  the new phase isn't confirmed) or with a pending cancellation (it ends at renewal).
+- **The new phase** carries the new price for one billing period (`duration`, the price's
+  interval), with `proration_behavior=none`, then releases, so the subscription stays on it.
+  `duration` replaced `iterations` in recent API versions; the smoke test confirms it.
+- **The undo window** is in whole days from the start of today (UTC), less a day before the
+  period end or renewal, so it is stable all day and always closes before it.
+- **Prices** are named by `price_` id or lookup key.
+- **The key file** may also be `0400`: anything without group or other bits.
+- **`yea-stripe --service-key`** prints the server's public key, for `yea grant --to`.
+- **The `customer` tool** isn't a job, so several matches come back as a list of ids to call
+  again with, rather than a clarification.
+- **The example** keeps its protocol-level plans; its Stripe client and readers come from
+  `@yea-protocol/stripe/api`, which has no dependencies. Its refund now sends a fresh
+  idempotency key instead of one derived from the plan.
+- **The smoke test** reads and previews by default; `STRIPE_TEST_WRITES=1` also cancels at
+  period end and changes at renewal in test mode, then undoes both, which is what confirms the
+  write and schedule permissions.
+- **`@yea-protocol/sdk` is a peer dependency,** as in `@yea-protocol/mcp`, so a server has one
+  copy of it.
+
+After review (#76):
+
+- **A refund's default payment** is the latest *successful* one. If it's fully refunded, the
+  call is refused with the recent payments listed, never moved to an older one: after a refund
+  whose result was unknown, a retry would otherwise refund a different payment of the same
+  amount under the same phrase. Summaries name the payment's date.
+- **"What's unused" is labelled an estimate.** The charge isn't matched to the subscription's
+  invoice (since basil, charges no longer name their invoice).
+- **Subscriptions** are listed with Stripe's default status filter (no cancelled ones) and
+  `limit=100`; a customer with more is refused unless the call names the `sub_` id, which is
+  then fetched directly.
+- **"At renewal" is also refused** when the subscription, or the phase Stripe makes, has any of
+  `automatic_tax` (enabled), custom `invoice_settings`, `billing_thresholds`, `on_behalf_of`,
+  `transfer_data`, `application_fee_percent` or `add_invoice_items`: the phase copy doesn't carry
+  them, and their schedule semantics aren't confirmed. A phase found with one after the first
+  write is released.
+- **"Now" shows `amount_due`** (after the customer's credit balance), not only the net, and the
+  update sends `payment_behavior=pending_if_incomplete`, so a declined payment leaves the old
+  price on. The smoke test checks that an `always_invoice` preview holds proration lines only;
+  `pending_if_incomplete` with a declining card, and `DELETE` on a scheduled subscription, are
+  smoke-test items to check by hand.
+- **Prices must be `active`,** by id as well as by lookup key.
+- **Every response's `livemode`** is checked against the key: a mismatch fails closed.
+- **The key itself** is taken out of every error message, whatever its format.
+- **Reverts** go through the same unknown-result handling as writes, and `undo` reports a
+  `PartialApplyError` as failing part-way (SPEC-mcp-ts).
+- **`--http 0`** is refused, and on Windows the key file's owner and mode can't be checked, so
+  the server warns.
+- **The example** reports a write of unknown outcome as a non-retryable `conflict`, since a
+  retry with a fresh key would refund twice, and formats amounts by the currency table.
+
+After the re-check (#76):
+
+- **A repeat refund reads differently.** On a payment already partly refunded, the summary says
+  "already refunded X on <date of the last refund>" (from `GET /v1/refunds?charge=`), and the
+  phrase to type is the amount then "again", so a retry after a lost answer can't be approved
+  by habit. A payment with nothing left is refused, naming the refunds already made.
+- **"What's unused"** is the unused share of the amount *paid*, less what's already refunded,
+  so asking again never offers more.
+- **A change left pending** by a declined payment is a `PartialApplyError`, not a receipt: it
+  says the change is pending, and that Stripe discards it after about 23 hours if the invoice
+  isn't paid.
+- **A subscription with a `pending_update`** gets neither "now" nor "at renewal": the job is
+  refused, naming the invoice it waits on (`latest_invoice`), and saying Stripe applies the
+  change once that's paid or discards it. A retry can't make a second update and invoice.
+  The "already refunded … on" date is the latest *succeeded* refund's.
+- **Customer reads must carry `livemode`;** one without it fails closed.
+- **Only the subscription jobs refuse** a customer with more than 100 subscriptions; a refund
+  and the `customer` tool read the first page (the tool says the list is cut).
 
 ## Decisions
 

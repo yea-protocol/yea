@@ -449,6 +449,27 @@ const failedResult = (job: JobDef, result: unknown) =>
     result.isError === true ||
     isInputRequiredResult(result));
 
+/**
+ * An `apply()` that failed after changing something throws an error with `partial: true`
+ * (`PartialApplyError`). Checked structurally, so a second copy of this package still counts.
+ */
+export const isPartial = (e: unknown): e is Error =>
+  e instanceof Error && (e as { partial?: unknown }).partial === true;
+
+/**
+ * An `apply()` that failed part-way: say what it says, never "nothing changed". Reservations stay
+ * held, which can only over-count, since what was used is unknown.
+ */
+function partialResult(
+  hp: HashedPlan,
+  e: Error,
+  how: 'auto' | 'approved',
+): CallToolResult {
+  return errorResult([
+    `✗ ${how === 'approved' ? 'approved, but ' : ''}${hp.plan.summary} failed part-way: ${e.message}${how === 'approved' ? ' The approval is used up.' : ''}`,
+  ]);
+}
+
 /** Release reservations; one that can't be released stays held, which only over-counts. */
 const releaseAll = (y: Yea, held: Reservation[]) =>
   Promise.allSettled(held.map((r) => y.store.release(r)));
@@ -465,6 +486,10 @@ async function runPlan(
   try {
     result = await hp.plan.apply();
   } catch (e) {
+    if (isPartial(e)) {
+      return partialResult(hp, e, how);
+    }
+
     await releaseAll(call.y, held);
 
     return errorResult([

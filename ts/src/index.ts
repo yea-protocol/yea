@@ -135,6 +135,8 @@ export {
   type Reservation,
 } from './store.js';
 
+export { printable } from './text.js';
+
 export * from './types.js';
 
 export {

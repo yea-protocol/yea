@@ -809,6 +809,8 @@ describe('approval security (SPEC-approval)', () => {
     expect(printable('pay \u202eDSU 001')).toBe('pay \\u{202e}DSU 001');
     expect(printable('a\u2028b\u061cc')).toBe('a\\u{2028}b\\u{61c}c');
     expect(printable('tab\tand café')).toBe('tab\tand café');
+    // Exported, so connectors escape untrusted text the same way.
+    expect(P.printable).toBe(printable);
   });
 
   it('[A9] reserveAll releases what it made when the store fails part way', async () => {

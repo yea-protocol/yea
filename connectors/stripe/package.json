@@ -1,0 +1,78 @@
+{
+  "name": "@yea-protocol/stripe",
+  "version": "0.1.0",
+  "description": "An MCP server for the Stripe API with YEA job tools: previewed, approved refunds, cancellations and plan changes, with undo. Not affiliated with Stripe, Inc.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "yea-stripe": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./currency": {
+      "types": "./dist/currency.d.ts",
+      "default": "./dist/currency.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p tsconfig.test.json && vitest run",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.1.0",
+    "@yea-protocol/mcp": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@yea-protocol/sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.1.0",
+    "@types/node": "^22",
+    "@yea-protocol/sdk": "0.1.0",
+    "typescript": "^7.0",
+    "vitest": "^5.0.1"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "mcp",
+    "model-context-protocol",
+    "stripe-api",
+    "billing",
+    "refunds",
+    "approval",
+    "undo"
+  ],
+  "author": "James Solomon",
+  "homepage": "https://yea-protocol.github.io/yea/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yea-protocol/yea.git",
+    "directory": "connectors/stripe"
+  },
+  "bugs": {
+    "url": "https://github.com/yea-protocol/yea/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

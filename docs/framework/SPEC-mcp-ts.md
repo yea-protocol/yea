@@ -195,6 +195,8 @@ job's `revert`:
 - A receipt from another server sharing the store, or for a tool with no `revert` here, is
   "no such receipt".
 - It returns the undo receipt, or the refusal (SPEC-approval §7).
+- A `revert` that throws a `PartialApplyError` is reported as failing part-way, with its
+  message, never as "nothing was undone".
 - Its annotations say `destructiveHint: true, idempotentHint: true`.
 
 ## How a call runs
@@ -255,6 +257,11 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
     - **If it throws** (for `guard`: or returns an error or `input_required`): `release` the
       reservations and say the approval was used and nothing changed (SPEC-approval §5
       step 8).
+    - **If it throws a `PartialApplyError`** (any error with `partial: true`, checked
+      structurally): it failed after changing something, such as a connector's second write
+      failing and its clean-up failing too. The result shows its message, which says what was
+      left behind, and never "nothing changed". The reservations stay held, which can only
+      over-count.
     - **If it succeeds:** first make the result JSON-safe (a JSON round trip; one that fails,
       such as a circular or `bigint` result, becomes `null` with a note, so the response can
       always be sent). Then `settle`, then `putReceipt` a `JobReceipt`:

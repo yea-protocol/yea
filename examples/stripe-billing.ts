@@ -12,51 +12,38 @@ import {
   clarify,
   fix,
   type Plan,
-  quantity,
   send,
   service,
   update,
   YeaError,
 } from '@yea-protocol/sdk';
+// The Stripe-reading helpers are shared with the @yea-protocol/stripe connector.
+import {
+  type Charge,
+  type Customer,
+  currentSubscriptions,
+  findCustomers,
+  period,
+  recentCharges,
+  type Stripe,
+  StripeError,
+  type Subscription,
+  stripeApi,
+} from '@yea-protocol/stripe/api';
+// Stripe's currency rules: zero- and three-decimal currencies, ISK and UGX.
+import {
+  formatMoney as amt,
+  formatNumber,
+  parseMoney,
+  roundDown as roundToStep,
+  toQuantity,
+} from '@yea-protocol/stripe/currency';
 
-const API = 'https://api.stripe.com/v1';
-const amt = (minor: number, cur: string) =>
-  `${(minor / 100).toFixed(2)} ${cur.toUpperCase()}`;
 const day = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 10);
 const roundDown = (secs: number) =>
   secs >= 86400
     ? Math.floor(secs / 86400) * 86400
     : Math.max(0, Math.floor(secs / 3600) * 3600);
-
-/** The fields of Stripe's objects that this service reads. */
-interface Customer {
-  id: string;
-  name: string;
-  email: string;
-}
-interface Charge {
-  id: string;
-  created: number;
-  amount: number;
-  amount_refunded: number;
-  currency: string;
-  status: string;
-}
-interface Subscription {
-  id: string;
-  status: string;
-  cancel_at_period_end: boolean;
-  items: {
-    data: {
-      current_period_start: number;
-      current_period_end: number;
-      price: { id: string; nickname: string | null };
-    }[];
-  };
-}
-interface List<T> {
-  data: T[];
-}
 
 export function stripeBilling(opts: {
   key: string;
@@ -105,40 +92,38 @@ export function stripeBilling(opts: {
   );
 }
 
-/** The only code that speaks REST. Stripe errors become errors that teach. */
-function connect(key: string, f: typeof fetch) {
-  return async function stripe<T = unknown>(
-    method: 'GET' | 'POST' | 'DELETE',
-    path: string,
-    body?: Record<string, string>,
-    idempotencyKey?: string,
-  ): Promise<T> {
-    const res = await f(API + path, {
-      method,
-      headers: {
-        authorization: `Bearer ${key}`,
-        ...(body
-          ? { 'content-type': 'application/x-www-form-urlencoded' }
-          : {}),
-        ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
-      },
-      body: body ? new URLSearchParams(body).toString() : undefined,
-    });
-    const json: unknown = await res.json();
-
-    if (res.ok) {
-      return json as T;
+/**
+ * Stripe's REST API through the connector's client, which pins the API version and sends a
+ * fresh idempotency key with each write. Stripe errors become errors that teach.
+ */
+function connect(key: string, f: typeof fetch): Stripe {
+  const api = stripeApi({ key, fetch: f });
+  const taught = async <T>(call: Promise<T>): Promise<T> => {
+    try {
+      return await call;
+    } catch (e) {
+      throw e instanceof StripeError ? teach(e) : e;
     }
+  };
 
-    const { error } = json as { error?: { message?: string } };
-
-    throw teach(res.status, error?.message ?? `Stripe returned ${res.status}`);
+  return {
+    get: (path, query) => taught(api.get(path, query)),
+    preview: (path, form) => taught(api.preview(path, form)),
+    write: (method, path, form) => taught(api.write(method, path, form)),
   };
 }
 
-type Stripe = ReturnType<typeof connect>;
+function teach(e: StripeError) {
+  const { status, message } = e;
 
-function teach(status: number, message: string) {
+  // A write that may have happened must not be retried: with a fresh
+  // idempotency key, a retry would be a second refund.
+  if (e.unknown) {
+    return new YeaError('conflict', message, {
+      fix: [fix('ASK billing.customer to see whether it happened')],
+    });
+  }
+
   if (status === 404) {
     return new YeaError('not_found', message, {
       fix: [fix('ASK billing.customer with a name or email')],
@@ -151,7 +136,7 @@ function teach(status: number, message: string) {
     });
   }
 
-  if (status >= 500) {
+  if (status >= 500 || status === 0) {
     return new YeaError('unavailable', message, { retry: 5 });
   }
 
@@ -160,28 +145,10 @@ function teach(status: number, message: string) {
   return new YeaError('conflict', message);
 }
 
-/**
- * People say "Chen" or an email, not cus_NffrFeUfNV2Hib. Stripe's exact match
- * on a string field matches any record containing the words, so "Chen" finds
- * "Chen Wei".
- */
-async function findCustomers(stripe: Stripe, who: string) {
-  if (/^cus_\w+$/.test(who)) {
-    return [await stripe<Customer>('GET', `/customers/${who}`)];
-  }
+// People say "Chen" or an email, not cus_NffrFeUfNV2Hib: findCustomers
+// looks an email up exactly, and otherwise searches names and emails.
 
-  // Stripe wants double-quoted, backslash-escaped strings.
-  const q = JSON.stringify(who);
-  const query = new URLSearchParams({
-    query: `name:${q} OR email:${q}`,
-    limit: '5',
-  });
-
-  return (await stripe<List<Customer>>('GET', `/customers/search?${query}`))
-    .data;
-}
-
-const label = (c: Customer) => `${c.name} <${c.email}>`;
+const label = (c: Customer) => `${c.name ?? c.id} <${c.email ?? '-'}>`;
 const noMatch = (who: string) =>
   new YeaError('not_found', `no customer matches ${JSON.stringify(who)}`, {
     fix: [fix('try their email address')],
@@ -228,23 +195,9 @@ async function one(
   return then(m[0]);
 }
 
-const charges = async (stripe: Stripe, c: Customer) =>
-  (
-    await stripe<List<Charge>>(
-      'GET',
-      `/charges?${new URLSearchParams({ customer: c.id, limit: '5' })}`,
-    )
-  ).data;
-const activeSub = (c: Customer) =>
-  new URLSearchParams({ customer: c.id, status: 'active', limit: '1' });
+const charges = (stripe: Stripe, c: Customer) => recentCharges(stripe, c.id, 5);
 const subscription = async (stripe: Stripe, c: Customer) =>
-  (await stripe<List<Subscription>>('GET', `/subscriptions?${activeSub(c)}`))
-    .data[0] ?? null;
-// Since API version 2025-03-31, the billing period is on the subscription item.
-const period = (s: Subscription) => ({
-  start: s.items.data[0].current_period_start,
-  end: s.items.data[0].current_period_end,
-});
+  (await currentSubscriptions(stripe, c.id))[0] ?? null;
 
 // #region ask
 async function customerOverview(stripe: Stripe, who: string) {
@@ -303,7 +256,8 @@ async function refundPlans(
 
   // The choices a person would offer: all of it, or the unused part.
   const plans = [refund(left, 'full')];
-  const unused = sub && ch.id === chs[0]?.id ? unusedPart(left, sub) : null;
+  const unused =
+    sub && ch.id === chs[0]?.id ? unusedPart(left, sub, ch.currency) : null;
 
   if (unused) {
     plans.push(refund(unused.amount, `unused ${unused.days} days`));
@@ -335,9 +289,15 @@ function refundable(chs: Charge[], c: Customer, payment?: string) {
   );
 }
 
-/** A partial refund, converted to minor units and checked against `left`. */
+/** A partial refund, converted to Stripe's units and checked against `left`. */
 function partial(major: number, left: number, cur: string) {
-  const amount = Math.round(major * 100);
+  let amount = 0;
+
+  try {
+    amount = parseMoney(String(major), cur);
+  } catch {
+    amount = 0;
+  }
 
   if (amount > 0 && amount <= left) {
     return amount;
@@ -345,18 +305,25 @@ function partial(major: number, left: number, cur: string) {
 
   throw new YeaError(
     'invalid_params',
-    `refund must be between 0.01 and ${amt(left, cur)}`,
+    `refund must be more than 0 and at most ${amt(left, cur)}, in amounts ${cur.toUpperCase()} allows`,
     {
-      fix: [fix(`refund the rest (${amt(left, cur)})`, { amount: left / 100 })],
+      fix: [
+        fix(`refund the rest (${amt(left, cur)})`, {
+          amount: Number(formatNumber(left, cur)),
+        }),
+      ],
     },
   );
 }
 
 /** The part of `left` that pays for the rest of the period, if it's less. */
-function unusedPart(left: number, sub: Subscription) {
+function unusedPart(left: number, sub: Subscription, cur: string) {
   const { start, end } = period(sub);
   const now = Date.now() / 1000;
-  const amount = Math.round(left * Math.max(0, (end - now) / (end - start)));
+  const amount = roundToStep(
+    Math.round(left * Math.max(0, (end - now) / (end - start))),
+    cur,
+  );
 
   if (amount <= 0 || amount >= left) {
     return null;
@@ -378,24 +345,21 @@ function refunder(stripe: Stripe, c: Customer, ch: Charge) {
         amt(ch.amount_refunded, ch.currency),
         amt(ch.amount_refunded + amount, ch.currency),
       ),
-      send(c.email, `refund receipt; back on the card in 5–10 days`),
+      send(c.email ?? c.id, `refund receipt; back on the card in 5–10 days`),
     ],
     // What the refund spends, by the `spend` convention (docs/conventions.md).
     uses: {
-      spend: quantity(amount, { scale: 2, unit: ch.currency.toUpperCase() }),
+      spend: toQuantity(amount, ch.currency),
     },
-    // YEA runs apply() at most once; the key covers a network retry.
+    // YEA runs apply() at most once. write() sends a fresh idempotency key,
+    // which only its own network retries reuse: a key derived from the plan
+    // would turn a deliberate second refund into a silent replay.
     apply: () =>
-      stripe(
-        'POST',
-        '/refunds',
-        {
-          charge: ch.id,
-          amount: String(amount),
-          reason: 'requested_by_customer',
-        },
-        `yea-refund-${ch.id}-${ch.amount_refunded}-${amount}`,
-      ),
+      stripe.write('POST', '/refunds', {
+        charge: ch.id,
+        amount: String(amount),
+        reason: 'requested_by_customer',
+      }),
     // No revert: Stripe can't reverse a refund, so the plan says
     // "undo: never" and YEA never commits it automatically.
   });
@@ -420,7 +384,7 @@ async function cancelPlans(
       update(`subscription/${sub.id}`, 'status', sub.status, 'canceled'),
     ],
     risk: 'medium',
-    apply: () => stripe('DELETE', path), // no inverse call exists, so no revert
+    apply: () => stripe.write('DELETE', path), // no inverse call exists, so no revert
   };
 
   if (sub.cancel_at_period_end) {
@@ -435,9 +399,9 @@ async function cancelPlans(
     ],
     // Whole days, so it reads "undo: 13d" and ends before the period does.
     undoWindow: roundDown(end - Date.now() / 1000),
-    apply: () => stripe('POST', path, { cancel_at_period_end: 'true' }),
+    apply: () => stripe.write('POST', path, { cancel_at_period_end: 'true' }),
     // The inverse REST call.
-    revert: () => stripe('POST', path, { cancel_at_period_end: 'false' }),
+    revert: () => stripe.write('POST', path, { cancel_at_period_end: 'false' }),
   };
   // #endregion cancel-plan
 

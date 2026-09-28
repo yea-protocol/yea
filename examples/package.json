@@ -1,1 +1,1 @@
-{ "name": "yea-examples", "private": true, "type": "module", "dependencies": { "@yea-protocol/sdk": "*" } }
+{ "name": "yea-examples", "private": true, "type": "module", "dependencies": { "@yea-protocol/sdk": "*", "@yea-protocol/stripe": "*" } }

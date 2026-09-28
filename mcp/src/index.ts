@@ -31,6 +31,7 @@ import {
 import { FileStore } from '@yea-protocol/sdk/node';
 import {
   callerOf,
+  isPartial,
   type JobDef,
   type RevertFn,
   runJob,
@@ -51,6 +52,14 @@ export type { RevertFn, RevertInput } from './call.js';
 export { canAsk, canElicitForm } from './client.js';
 
 export { PREVIEW } from './schema.js';
+
+/**
+ * Thrown by an `apply()` that failed after changing something, so the result doesn't say
+ * "nothing changed". Its message says what was left behind, and how to fix it.
+ */
+export class PartialApplyError extends Error {
+  readonly partial = true;
+}
 
 export interface YeaOptions {
   /** The server's name, `[a-z0-9._-]{1,64}`: names its key file and appears in consent codes. */
@@ -530,6 +539,11 @@ async function undoCall(
         }
       : errorResult([`✗ ${out.why}; nothing was undone`]);
   } catch (e) {
+    // A revert that may have half-happened says so, never "nothing was undone".
+    if (isPartial(e)) {
+      return errorResult([`✗ undo failed part-way: ${e.message}`]);
+    }
+
     return errorResult([
       `✗ undo failed: ${e instanceof Error ? e.message : String(e)}; nothing was undone, and it can be tried again`,
     ]);
