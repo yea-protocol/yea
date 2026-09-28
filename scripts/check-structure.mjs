@@ -43,7 +43,6 @@ export const RATCHET = {
   'mcp/src/bridge/tools.ts': ['length'], // #108: split
   'mcp/src/serverkey.ts': ['name'], // #108: rename to server-key.ts
   'python/mcp/src/yea_mcp/call.py': ['length'], // #108: split
-  'python/src/yea/approval.py': ['length'], // #108: split
   'python/src/yea/client.py': ['length'], // #108: split
   'python/src/yea/grants.py': ['length'], // #108: split
   'python/src/yea/lens.py': ['length'], // #108: split
