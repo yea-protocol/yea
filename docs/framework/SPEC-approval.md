@@ -46,9 +46,9 @@ preview, on every retry, and under the TypeScript legacy shim (as SPEC.md §4.3 
 ```
 call delete_branch({repo: "site", branch: "old-nav"})
   │
-  ├─ preview: true ─────────────────────────────▶ plans as text; nothing runs, nothing stored
+  ├─ tool in deny? ─────────────────────────────▶ refuse, nothing runs (not even a preview)
   │
-  ├─ tool in deny? ─────────────────────────────▶ refuse, nothing runs
+  ├─ preview: true ─────────────────────────────▶ plans as text; nothing runs, nothing stored
   │
   ├─ plans = handler(input)             (or a clarification: returned as is)
   │
