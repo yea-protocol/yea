@@ -13,7 +13,7 @@ import {
   readServerSeed,
   SERVER_NAME,
   serverKeyPath,
-} from '../keyfile.js';
+} from '../key-file.js';
 import { fmtTime, lean } from '../lens.js';
 import { isRisk } from '../risk.js';
 import type { Verb } from '../types.js';

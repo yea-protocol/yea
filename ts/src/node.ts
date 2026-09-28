@@ -262,12 +262,7 @@ export async function connect(
   return new Client(await transport(url, { tls: opts.tls }), opts);
 }
 
-export {
-  checkKeyFile,
-  defaultFileStore,
-  FileStore,
-  readPinnedKey,
-} from './file-store.js';
+export { defaultFileStore, FileStore } from './file-store.js';
 
 export {
   agentKey,
@@ -286,7 +281,9 @@ export {
   SERVER_NAME,
   serverKeyPath,
   uid,
-} from './keyfile.js';
+} from './key-file.js';
+
+export { checkKeyFile, readPinnedKey } from './pinned-key.js';
 
 export {
   type FetchApp,

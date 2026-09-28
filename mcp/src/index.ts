@@ -29,7 +29,7 @@ import { type GuardConfig, guardTool } from './guard.js';
 import { pinnedPrincipal } from './policy.js';
 import { jobAnnotations, jobMeta } from './result.js';
 import { previewSchema, takePreview } from './schema.js';
-import { checkName, loadServerSeed } from './serverkey.js';
+import { checkName, loadServerSeed } from './server-key.js';
 import { registerUndo, undoFree } from './undo.js';
 import { errorMessage, warnOnce } from './util.js';
 

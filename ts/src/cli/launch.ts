@@ -108,7 +108,7 @@ export async function cmdTestDrive(rest: string[], o: Options, argv: string[]) {
     await reexecWithAnthropicSdk(argv);
   }
 
-  const { testDrive } = await import('../testdrive.js');
+  const { testDrive } = await import('../test-drive.js');
 
   await testDrive({ model: o.model, prompt: rest.join(' ') || undefined });
   process.exit(0);

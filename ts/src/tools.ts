@@ -6,7 +6,7 @@
  */
 import type { Client } from './client.js';
 import { untrustedLens } from './lens.js';
-import { INSTRUCTIONS } from './tooldefs.js';
+import { INSTRUCTIONS } from './tool-defs.js';
 import { askTool, intentTool, undoTool } from './tools/calls.js';
 import { commitTool } from './tools/commit.js';
 import type {
@@ -17,7 +17,7 @@ import type {
   ToolResult,
 } from './tools/state.js';
 
-export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
+export { INSTRUCTIONS, TOOLS } from './tool-defs.js';
 export type { Approver, ToolResult } from './tools/state.js';
 
 export interface ToolHost {

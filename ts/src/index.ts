@@ -155,7 +155,7 @@ export {
 
 export { clip, printable } from './text.js';
 
-export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
+export { INSTRUCTIONS, TOOLS } from './tool-defs.js';
 
 export * from './types.js';
 

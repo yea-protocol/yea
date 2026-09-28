@@ -3,7 +3,7 @@
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, describe, expect, it } from 'vitest';
-import { testDrive } from '../src/testdrive.js';
+import { testDrive } from '../src/test-drive.js';
 
 const day = (n: number) =>
   new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);

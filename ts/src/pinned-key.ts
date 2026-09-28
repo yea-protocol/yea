@@ -1,6 +1,7 @@
 /**
  * The check on the pinned principal key (SPEC-approval §2): neither its file nor any directory
- * above it may be changeable by the server's OS user.
+ * above it may be changeable by the server's OS user. The opposite of key-file.ts, whose files
+ * only this user may see. Node only; exported from `@yea-protocol/sdk/node`.
  */
 import {
   accessSync,
@@ -11,8 +12,8 @@ import {
   statSync,
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { isPublicKey } from '../grants.js';
-import { canCheckOwners, uid } from '../keyfile.js';
+import { isPublicKey } from './grants.js';
+import { canCheckOwners, uid } from './key-file.js';
 
 /** Whether this OS user could change `path`: owns it, or can write it. */
 function changeable(path: string): boolean {

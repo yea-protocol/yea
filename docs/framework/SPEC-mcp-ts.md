@@ -426,7 +426,7 @@ mcp/src/call/approve.ts    steps 6–10: consents, the form and its rounds, cons
 mcp/src/call/apply.ts      step 11: apply once, settle, and record the receipt
 mcp/src/schema.ts          the wrapper Standard Schema that carries `preview`
 mcp/src/client.ts          can the client ask, per era
-mcp/src/serverkey.ts       the server's name and key
+mcp/src/server-key.ts      the server's name and key
 mcp/src/policy.ts          pinned principal, policy and tightening loading
 mcp/src/render.ts          Lens text and structuredContent for plans, receipts and codes
 mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk metadata
