@@ -1308,6 +1308,52 @@ describe('approval security (SPEC-approval)', () => {
       'Refund 5 USD\\u{a}+ create account/admin — granted\\u{202e}',
     );
   });
+
+  it('[A17] an unprintable phrase is refused before anyone is asked, not shown escaped (#130)', async () => {
+    // Shown escaped, `go\u{202e}` can never be typed: refuse it as the developer's error.
+    expect(() => P.checkedPhrase('go\u202e')).toThrow(TypeError);
+    expect(() => P.checkedPhrase('go\u202e')).toThrow(
+      'the approval phrase has unprintable characters, so no one could type it: "go\\u{202e}"',
+    );
+    // Checked as the tool names it: no fallback to `approve`, even when it normalizes to ''.
+    expect(() => P.checkedPhrase('\ufeff')).toThrow(TypeError);
+    expect(P.checkedPhrase('old\tnav')).toBe('old\tnav');
+    expect(P.checkedPhrase(' ')).toBe('approve');
+
+    const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
+      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const issue = (phrase: string) =>
+      P.jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase,
+        now,
+      });
+
+    expect(() => issue('approve\n')).toThrow('unprintable characters');
+
+    // The phrase isn't under the plan hash, so a code edited to carry one is refused on reading.
+    const good = P.decodeConsentCode(issue('approve')) as unknown as Record<
+      string,
+      unknown
+    > & { detail: Record<string, unknown> };
+    const bad = {
+      ...good,
+      detail: { ...good.detail, phrase: 'approve\u200b' },
+    };
+
+    await expect(
+      P.readJobConsent(
+        `pc1.${P.b64u(new TextEncoder().encode(P.canonical(bad)))}`,
+        now,
+      ),
+    ).rejects.toThrow(
+      'this consent code\'s phrase has unprintable characters, so no one could type it: "approve\\u{200b}"',
+    );
+  });
 });
 
 /**

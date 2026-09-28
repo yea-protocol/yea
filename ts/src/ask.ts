@@ -22,7 +22,12 @@ export {
   type Verdict,
 } from './ask/judge.js';
 
-export { DEFAULT_PHRASE, type PhraseFor, phraseMatches } from './ask/phrase.js';
+export {
+  checkedPhrase,
+  DEFAULT_PHRASE,
+  type PhraseFor,
+  phraseMatches,
+} from './ask/phrase.js';
 
 export {
   type ApprovalState,

@@ -1,8 +1,9 @@
 /**
  * The confirmation phrase (docs/framework/SPEC-approval.md §3): how a typed
- * answer is normalized and matched, and the `approve` fallback.
+ * answer is normalized and matched, the `approve` fallback, and the printable-text rule.
  */
 import type { HashedPlan } from '../approval.js';
+import { printable } from '../text.js';
 
 /** The phrase a person types to approve this plan: the tool's, or `approve`. */
 export type PhraseFor = (hp: HashedPlan) => string;
@@ -24,6 +25,24 @@ export const phraseMatches = (typed: unknown, phrase: string) =>
 /** A phrase that is empty once normalized falls back to `approve`. */
 export const effectivePhrase = (phrase: string) =>
   normalizePhrase(phrase) === '' ? DEFAULT_PHRASE : phrase;
+
+/**
+ * A tool's phrase, checked before anyone is asked (§3): it must be printable text, since the
+ * person is shown it escaped and could never type the raw characters, so anything else is a
+ * developer error. `whose` names the phrase in the error. Then the `approve` fallback applies.
+ */
+export function checkedPhrase(
+  phrase: string,
+  whose = 'the approval phrase',
+): string {
+  if (printable(phrase) !== phrase) {
+    throw new TypeError(
+      `${whose} has unprintable characters, so no one could type it: "${printable(phrase)}"`,
+    );
+  }
+
+  return effectivePhrase(phrase);
+}
 
 export const withFallback =
   (phraseFor: PhraseFor): PhraseFor =>

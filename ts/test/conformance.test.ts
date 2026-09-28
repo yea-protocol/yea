@@ -153,6 +153,16 @@ describe('conformance vectors', () => {
       );
     }
 
+    for (const c of v.phraseChecks) {
+      const check = () => P.checkedPhrase(c.phrase);
+
+      if (c.expect === null) {
+        expect(check, JSON.stringify(c.phrase)).toThrow(TypeError);
+      } else {
+        expect(check(), JSON.stringify(c.phrase)).toBe(c.expect);
+      }
+    }
+
     for (const c of v.forms) {
       const f = P.buildForm(
         c.plans.map(asHashed),

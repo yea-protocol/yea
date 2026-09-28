@@ -590,3 +590,25 @@ describe('a policy file that can not be read', () => {
     expect(w.applied).toEqual([]);
   });
 });
+
+describe('an unprintable phrase', () => {
+  it('[M16] is refused as a tool error before anyone is asked, with no form and no code (#130)', async () => {
+    const w = await world();
+    // The refund job's confirmWith returns the charge id, so this phrase hides a bidi override.
+    const evil = { charge: 'ch_1‮' };
+    const elicit = await connect('2026', refundServer(w));
+    const codes = await connect('2025-no-elicit', refundServer(w));
+
+    for (const r of [await elicit.call(evil), await codes.call(evil)]) {
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toContain(
+        'the phrase from confirmWith() has unprintable characters, so no one could type it: "ch_1\\u{202e}"',
+      );
+      expect(textOf(r)).not.toMatch(/‮/);
+      expect(r.structuredContent).toBeUndefined();
+    }
+
+    expect(elicit.elicited).toEqual([]);
+    expect(w.applied).toEqual([]);
+  });
+});

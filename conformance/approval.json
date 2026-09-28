@@ -1429,6 +1429,52 @@
       "match": true
     }
   ],
+  "phraseChecks": [
+    {
+      "phrase": "old-nav",
+      "expect": "old-nav"
+    },
+    {
+      "phrase": "",
+      "expect": "approve"
+    },
+    {
+      "phrase": " \t",
+      "expect": "approve"
+    },
+    {
+      "phrase": "old\tnav",
+      "expect": "old\tnav"
+    },
+    {
+      "phrase": "café",
+      "expect": "café"
+    },
+    {
+      "phrase": "👍️",
+      "expect": "👍️"
+    },
+    {
+      "phrase": "go‮",
+      "expect": null
+    },
+    {
+      "phrase": "approve\n",
+      "expect": null
+    },
+    {
+      "phrase": "old​nav",
+      "expect": null
+    },
+    {
+      "phrase": "﻿",
+      "expect": null
+    },
+    {
+      "phrase": "ch_1",
+      "expect": null
+    }
+  ],
   "forms": [
     {
       "name": "one plan",

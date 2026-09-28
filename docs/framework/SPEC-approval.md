@@ -191,17 +191,23 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
   `confirmWith(plan, input): string`, the way GitHub asks you to type a repository's name
   before deleting it: the branch name, the recipient, the amount as written in the summary.
   If the tool names none, or names one that is empty once normalized, the phrase is
-  `approve`. The field's description shows the exact phrase; with several plans, the message
-  names each plan's phrase next to it. Denied plans are listed apart as never allowed, and
-  when no plan can be offered at all, there is no form: the call fails closed with consent
-  codes (§6).
+  `approve`. A phrase must be printable text: `printable(phrase) === phrase`; anything else is
+  a developer error, refused before the person is asked. The form shows a phrase escaped, so
+  no one could type its raw characters. The check is on the phrase as the tool names it,
+  before the `approve` fallback, and there is no fallback for it: a tool that derives its
+  phrase from service data must make it printable text. The job call fails as a tool error,
+  and `yea approve` refuses a consent code whose phrase isn't printable. The field's
+  description shows the exact phrase; with several plans, the message names each plan's
+  phrase next to it. Denied plans are listed apart as never allowed, and when no plan can be
+  offered at all, there is no form: the call fails closed with consent codes (§6).
 
 Service text is untrusted, even when the server's own code writes it: a summary often carries
 a customer's name or a remote record. So every string the form shows goes through `printable`
 (control, format, line/paragraph-separator and invisible filler characters become `\u{…}`
-escapes, as in §6): the reason, each summary, each phrase, and each `oneOf` title. An effect
-line is rendered from its fields made one line (`oneLine`), keeping `from` and `to`, which Lens
-quotes itself, and the whole line then goes through `printable`. A summary can't add a line to
+escapes, as in §6): the reason, each summary, each phrase (a second line of defense: a
+phrase that needs escaping is refused above), and each `oneOf` title. An effect line is
+rendered from its fields made one line (`oneLine`), keeping `from` and `to`, which Lens quotes
+itself, and the whole line then goes through `printable`. A summary can't add a line to
 the message or hide characters in it. The conformance cases pin this.
 
 An accepted form counts as approval **only** when `confirm` matches the phrase: both sides are

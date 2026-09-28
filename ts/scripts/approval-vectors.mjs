@@ -605,6 +605,34 @@ const phrases = [
   return { typed, phrase, match };
 });
 
+// ---- a tool's phrase, checked before anyone is asked (§3) ----
+// `expect` is the phrase the person types, or null when the phrase is refused.
+const phraseChecks = [
+  ['old-nav', 'old-nav'],
+  ['', 'approve'],
+  [' \t', 'approve'],
+  ['old\tnav', 'old\tnav'],
+  ['café', 'café'],
+  ['👍\ufe0f', '👍\ufe0f'],
+  ['go\u202e', null],
+  ['approve\n', null],
+  ['old\u200bnav', null],
+  ['\ufeff', null],
+  ['ch_1\u0085', null],
+].map(([phrase, want]) => {
+  let got;
+
+  try {
+    got = P.checkedPhrase(phrase);
+  } catch {
+    got = null;
+  }
+
+  must(`checked phrase ${JSON.stringify(phrase)}`, got, want);
+
+  return { phrase, expect: want };
+});
+
 // ---- the form (§3) ----
 const phraseFor = (hp) =>
   hp.tool === 'delete_branch' ? 'old-nav' : P.DEFAULT_PHRASE;
@@ -1262,6 +1290,7 @@ export const approval = {
   hash,
   decide: decideOut,
   phrases,
+  phraseChecks,
   forms,
   states,
   judge,
