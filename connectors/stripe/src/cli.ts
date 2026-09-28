@@ -7,6 +7,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { yea } from '@yea-protocol/mcp';
 import { isLiveKey } from './api.js';
 import { parseArgs, USAGE } from './args.js';
+import { errorMessage } from './context.js';
 import { httpApp, httpAuthFrom, serveHttp, subOf } from './http.js';
 import { readSecretKey } from './key.js';
 import { NAME, stripeServer } from './server.js';
@@ -64,6 +65,6 @@ async function main(argv: string[]) {
 }
 
 main(process.argv.slice(2)).catch((e: unknown) => {
-  console.error(`${NAME}: ${e instanceof Error ? e.message : String(e)}`);
+  console.error(`${NAME}: ${errorMessage(e)}`);
   process.exit(1);
 });

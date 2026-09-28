@@ -5,61 +5,52 @@
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
 import { create, type JobPlan, type Risk, update } from '@yea-protocol/sdk';
-import { idOf, period, type Stripe } from './api.js';
+import { cancelling, idOf, period, type Stripe } from './api.js';
 import {
   applying,
   type Ctx,
   day,
   type JobSpec,
   riskFor,
-  startOfDay,
   tag,
+  today,
   undoWindowBefore,
 } from './context.js';
 import { formatMoney, toQuantity } from './currency.js';
 import {
-  oneCustomer,
+  inputSchema,
+  oneCustomerSubscription,
   oneItem,
-  oneSubscription,
   priceLabel,
   priceName,
+  SUBSCRIPTION_FIELD,
 } from './find.js';
 import {
   changeAtRenewal,
   getSchedule,
   onlyCurrentPhase,
   releaseSchedule,
+  SCHEDULE_ID,
   uncopied,
 } from './schedule.js';
 import { confirmPhrase, quoted, who } from './text.js';
 
-export interface ChangeInput {
+interface ChangeInput {
   customer: string;
   price: string;
   subscription?: string;
 }
 
-const SCHEMA = {
-  type: 'object',
-  properties: {
-    customer: {
-      type: 'string',
-      description: "The customer's name, email or cus_ id.",
-    },
+const SCHEMA = inputSchema(
+  {
     price: {
       type: 'string',
       description: 'The new price: its price_ id or lookup key.',
     },
-    subscription: {
-      type: 'string',
-      description: 'The sub_ id, if the customer has more than one.',
-    },
+    subscription: SUBSCRIPTION_FIELD,
   },
-  required: ['customer', 'price'],
-  additionalProperties: false,
-};
-
-const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
+  ['price'],
+);
 
 interface Change {
   c: Stripe.Customer;
@@ -157,7 +148,6 @@ const moving = (ctx: Ctx, ch: Change) =>
 
 function atRenewal(ctx: Ctx, ch: Change): JobPlan {
   const { end } = period(ch.sub);
-  const undoWindow = undoWindowBefore(ctx, end);
   const risk: Risk = riskFor(
     ctx,
     cheaperOrSame(ch.item.price, ch.to) ? 'low' : 'medium',
@@ -172,7 +162,7 @@ function atRenewal(ctx: Ctx, ch: Change): JobPlan {
       ),
     ],
     risk,
-    ...(undoWindow === undefined ? {} : { undoWindow }),
+    ...undoWindowBefore(ctx, end),
     data: { confirm: confirmPhrase(ch.c) },
     apply: () =>
       changeAtRenewal(ctx, {
@@ -230,7 +220,7 @@ function proration(p: Preview, from: string) {
 }
 
 async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
-  const date = Math.max(startOfDay(ctx.now()), period(ch.sub).start);
+  const date = Math.max(today(ctx), period(ch.sub).start);
   const items = [{ id: ch.item.id, price: ch.to.id, quantity: ch.quantity }];
   const preview = await ctx.stripe.read((s) =>
     s.invoices.createPreview({
@@ -293,11 +283,10 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
  * would undo it.
  */
 async function whatFits(ctx: Ctx, ch: Change) {
-  const ends = ch.sub.cancel_at_period_end || ch.sub.cancel_at !== null;
-
   if (!ch.sub.schedule) {
     return {
-      renewal: !ends && !discounted(ch) && uncopied(ch.sub).length === 0,
+      renewal:
+        !cancelling(ch.sub) && !discounted(ch) && uncopied(ch.sub).length === 0,
       now: true,
     };
   }
@@ -336,32 +325,22 @@ function refusePending(sub: Stripe.Subscription) {
 }
 
 async function changePlans(ctx: Ctx, input: ChangeInput) {
-  const c = await oneCustomer(ctx, input);
+  const found = await oneCustomerSubscription(ctx, input);
 
-  if ('clarify' in c) {
-    return c.clarify;
+  if ('clarify' in found) {
+    return found.clarify;
   }
 
-  const sub = await oneSubscription(ctx, c.found, input);
+  const { c, sub } = found.found;
 
-  if ('clarify' in sub) {
-    return sub.clarify;
-  }
+  refusePending(sub);
 
-  refusePending(sub.found);
-
-  const item = oneItem(sub.found);
+  const item = oneItem(sub);
   const to = await findPrice(ctx, input.price);
 
   refuseUnsafe(item.price, to);
 
-  const ch: Change = {
-    c: c.found,
-    sub: sub.found,
-    item,
-    to,
-    quantity: item.quantity ?? 1,
-  };
+  const ch: Change = { c, sub, item, to, quantity: item.quantity ?? 1 };
   const fits = await whatFits(ctx, ch);
   const plans = fits.renewal ? [atRenewal(ctx, ch)] : [];
 

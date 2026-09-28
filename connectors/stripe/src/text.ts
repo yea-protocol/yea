@@ -10,7 +10,7 @@ import type { Stripe } from './api.js';
 type Named = Pick<Stripe.Customer, 'id' | 'name' | 'email'>;
 
 /** The longest piece of customer text shown, in characters. */
-export const MAX_TEXT = 80;
+const MAX_TEXT = 80;
 
 /** At most `MAX_TEXT` characters, with `…` when cut. */
 function cap(s: string): string {

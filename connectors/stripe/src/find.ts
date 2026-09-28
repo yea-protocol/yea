@@ -16,11 +16,40 @@ import { label, quoted, safeText, who } from './text.js';
 /** At most this many matches are listed; this many means there may be more. */
 export const MAX_MATCHES = 5;
 
-export type Found<T> = { found: T } | { clarify: Clarification };
+type Found<T> = { found: T } | { clarify: Clarification };
+
+/** The schema field that names a customer, as every tool takes it. */
+const CUSTOMER_FIELD = {
+  type: 'string',
+  description: "The customer's name, email or cus_ id.",
+};
+
+/** The schema field that picks one of a customer's subscriptions. */
+export const SUBSCRIPTION_FIELD = {
+  type: 'string',
+  description: 'The sub_ id, if the customer has more than one.',
+};
+
+/** A tool's input schema: the customer (always required), then `fields`, and nothing else. */
+export function inputSchema(
+  fields: Record<string, unknown> = {},
+  required: string[] = [],
+) {
+  return {
+    type: 'object' as const,
+    properties: { customer: CUSTOMER_FIELD, ...fields },
+    required: ['customer', ...required],
+    additionalProperties: false,
+  };
+}
 
 /** "3 customers match", or "5 or more customers match" when the list is full. */
-const howMany = (n: number, noun: string) =>
+export const howMany = (n: number, noun: string) =>
   `${n >= MAX_MATCHES ? `${MAX_MATCHES} or more` : n} ${noun}`;
+
+/** What a lookup that found no one says. */
+export const noMatch = (who: string) =>
+  `no customer matches ${quoted(who)}; try their exact email or cus_ id`;
 
 /** The one customer `input.customer` means, or a question listing the matches. */
 export async function oneCustomer<I extends { customer: string }>(
@@ -31,9 +60,7 @@ export async function oneCustomer<I extends { customer: string }>(
   const [first] = matches;
 
   if (!first) {
-    throw new Error(
-      `no customer matches ${quoted(input.customer)}; try their exact email or cus_ id`,
-    );
+    throw new Error(noMatch(input.customer));
   }
 
   if (matches.length === 1) {
@@ -73,7 +100,7 @@ const subLabel = (s: Stripe.Subscription) =>
   `${s.id}: ${s.items.data.map((i) => priceLabel(i.price)).join(', ')} (${s.status})`;
 
 /** The one subscription meant: `input.subscription`, the only one, or a question. */
-export async function oneSubscription<I extends { subscription?: string }>(
+async function oneSubscription<I extends { subscription?: string }>(
   ctx: Ctx,
   c: Stripe.Customer,
   input: I,
@@ -110,6 +137,24 @@ export async function oneSubscription<I extends { subscription?: string }>(
       })),
     ),
   };
+}
+
+/** The customer and subscription a job acts on, or the question that picks them. */
+export async function oneCustomerSubscription<
+  I extends { customer: string; subscription?: string },
+>(
+  ctx: Ctx,
+  input: I,
+): Promise<Found<{ c: Stripe.Customer; sub: Stripe.Subscription }>> {
+  const c = await oneCustomer(ctx, input);
+
+  if ('clarify' in c) {
+    return c;
+  }
+
+  const sub = await oneSubscription(ctx, c.found, input);
+
+  return 'clarify' in sub ? sub : { found: { c: c.found, sub: sub.found } };
 }
 
 /** Refuse what v0 can't do safely: a subscription with more than one item. */
