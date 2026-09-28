@@ -21,6 +21,7 @@
     "lint": "biome check .",
     "lint:style": "oxlint --config .oxlintrc.json ts/src ts/test ts/scripts mcp/src mcp/test cli/bin connectors/stripe/src connectors/stripe/test examples bench deploy/demo/src scripts site/scripts site/.vitepress/config.ts site/.vitepress/theme/index.ts site/.vitepress/theme/components/Playground.vue site/.vitepress/theme/components/playground",
     "lint:style:fix": "npm run lint:style -- --fix",
+    "typecheck:site": "node scripts/typecheck-site.mjs --noEmit -p site",
     "format": "biome format --write .",
     "prepare": "lefthook install || true"
   },
@@ -36,6 +37,8 @@
     "@biomejs/biome": "2.5.14",
     "@stylistic/eslint-plugin": "5.10.0",
     "lefthook": "2.1.14",
-    "oxlint": "1.85.0"
+    "oxlint": "1.85.0",
+    "typescript6": "npm:typescript@6.0.3",
+    "vue-tsc": "3.3.11"
   }
 }

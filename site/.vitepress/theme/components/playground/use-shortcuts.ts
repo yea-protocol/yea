@@ -66,7 +66,9 @@ export function useShortcuts({ form, current, examples, send }: ShortcutDeps) {
           ? r.proposals[0]
           : r.proposals[r.proposals.length - 1];
 
-      await act('COMMIT', p.id, service);
+      if (p) {
+        await act('COMMIT', p.id, service);
+      }
     }
   }
 

@@ -27,13 +27,12 @@ export function captureTransport(
     async request(frame, onEvent) {
       const events: Event[] = [];
       const t0 = performance.now();
-      const reply = await service.handle(
-        JSON.parse(JSON.stringify(frame)),
-        (e) => {
-          events.push(e);
-          onEvent?.(e);
-        },
-      );
+      // A JSON round trip, as a real transport would send it: the service can't share objects with the client.
+      const copy: Request = JSON.parse(JSON.stringify(frame));
+      const reply = await service.handle(copy, (e) => {
+        events.push(e);
+        onEvent?.(e);
+      });
 
       record({ request: frame, reply, events, ms: performance.now() - t0 });
 

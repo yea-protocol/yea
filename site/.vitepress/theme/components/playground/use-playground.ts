@@ -56,6 +56,15 @@ async function start({ core, keys, services }: Runtime): Promise<void> {
   services.value = startServices(modules, principal.public);
 }
 
+/** Consent's state and action, named as consent's so they sit flat beside the rest. */
+const consentFields = (c: ReturnType<typeof useConsent>) => ({
+  consentRequest: c.request,
+  consentMessage: c.message,
+  consentFacts: c.facts,
+  consentCheck: c.check,
+  approveConsent: c.approve,
+});
+
 export function usePlayground() {
   const runtime: Runtime = {
     core: shallowRef(null),
@@ -103,8 +112,15 @@ export function usePlayground() {
     policy: grants.policy,
     grant: grants.grant,
     grantInfo: grants.grantInfo,
-    ...request,
-    ...shortcuts,
-    consent,
+    form,
+    paramsError: request.paramsError,
+    caps: request.caps,
+    targets: request.targets,
+    pickCapability: request.pickCapability,
+    parsedParams,
+    act: shortcuts.act,
+    choose: shortcuts.choose,
+    runPreset: shortcuts.runPreset,
+    ...consentFields(consent),
   };
 }

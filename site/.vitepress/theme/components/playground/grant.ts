@@ -13,7 +13,7 @@ export interface PolicyForm extends Record<ServiceKey, boolean> {
   exp: string;
 }
 
-const SECONDS = { m: 60, h: 3600, d: 86400 } as const;
+const SECONDS: Record<string, number> = { m: 60, h: 3600, d: 86400 };
 
 /** A USD spend limit from a text field, in cents. */
 const usd = (s: string): Limit => ({
@@ -29,14 +29,13 @@ const isAmount = (s: string) => s !== '' && Number(s) >= 0;
 /** The `exp` caveat for a lifetime like `8h`, or null when it doesn't parse. */
 function expiry(lifetime: string): Caveat | null {
   const m = /^(\d+)([mhd])$/.exec(lifetime);
+  const unit = m ? SECONDS[m[2]] : undefined;
 
-  if (!m) {
+  if (!m || unit === undefined) {
     return null;
   }
 
-  const unit = m[2] as keyof typeof SECONDS;
-
-  return { exp: Math.floor(Date.now() / 1000) + Number(m[1]) * SECONDS[unit] };
+  return { exp: Math.floor(Date.now() / 1000) + Number(m[1]) * unit };
 }
 
 /** The grant's caveats, in the order the panel lists them. */

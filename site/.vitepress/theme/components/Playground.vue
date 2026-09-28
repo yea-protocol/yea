@@ -15,7 +15,6 @@ import ReplyPane from './playground/ReplyPane.vue';
 import RequestPane from './playground/RequestPane.vue';
 import { usePlayground } from './playground/use-playground';
 
-const pg = usePlayground();
 const {
   core,
   failed,
@@ -23,6 +22,7 @@ const {
   selected,
   busy,
   current,
+  send,
   policy,
   grant,
   grantInfo,
@@ -30,15 +30,17 @@ const {
   paramsError,
   caps,
   targets,
-} = pg;
-const { pickCapability, parsedParams, send, act, choose, runPreset } = pg;
-const {
-  request: consent,
-  message: consentMessage,
-  facts: consentFacts,
-  check: consentCheck,
-  approve,
-} = pg.consent;
+  pickCapability,
+  parsedParams,
+  act,
+  choose,
+  runPreset,
+  consentRequest,
+  consentMessage,
+  consentFacts,
+  consentCheck,
+  approveConsent,
+} = usePlayground();
 
 const view = computed(() =>
   current.value && core.value ? lensView(core.value, current.value) : null,
@@ -75,7 +77,7 @@ function onKey(e: KeyboardEvent) {
       <section class="pane out" aria-label="What the model reads" aria-live="polite">
         <template v-if="current">
           <ReplyPane v-if="view" :exchange="current" :view="view" />
-          <ConsentCard v-if="consent" :message="consentMessage" :service="consent.service" :check="consentCheck" :facts="consentFacts" @approve="approve()" />
+          <ConsentCard v-if="consentRequest" :message="consentMessage" :service="consentRequest.service" :check="consentCheck" :facts="consentFacts" @approve="approveConsent()" />
           <QuickActions v-else :exchange="current" @act="act" @choose="choose" />
         </template>
 

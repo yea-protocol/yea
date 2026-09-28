@@ -11,9 +11,11 @@ import {
   type Keys,
   SERVICES,
   type ServiceKey,
-  type TargetVerb,
 } from './model';
 import { type ReceivedProposal, receivedProposal, type Seen } from './seen';
+import type { useShortcuts } from './use-shortcuts';
+
+type Act = ReturnType<typeof useShortcuts>['act'];
 
 export type ConsentCheck = 'checking' | 'ok' | 'mismatch';
 
@@ -29,12 +31,7 @@ interface ConsentDeps {
   keys: ShallowRef<Keys | null>;
   current: ComputedRef<Exchange | null>;
   seen: Seen;
-  act: (
-    verb: TargetVerb,
-    target: string,
-    service: ServiceKey,
-    grants?: string[],
-  ) => Promise<void>;
+  act: Act;
 }
 
 type Fmt = Pick<Core, 'fmtQuantity' | 'fmtDuration'>;
@@ -106,7 +103,13 @@ export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {
     };
   });
 
-  watch(request, async (c) => {
+  watch(request, async (c, _old, onCleanup) => {
+    // A newer request replaces this one: drop this check's result when it lands.
+    let stale = false;
+
+    onCleanup(() => {
+      stale = true;
+    });
     check.value = 'checking';
 
     const p = proposal.value;
@@ -119,7 +122,11 @@ export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {
       return;
     }
 
-    check.value = (await matches(sdk, c, p, x.service)) ? 'ok' : 'mismatch';
+    const ok = await matches(sdk, c, p, x.service);
+
+    if (!stale) {
+      check.value = ok ? 'ok' : 'mismatch';
+    }
   });
 
   /** Sign a consent grant for exactly this proposal as the human, then commit with it. */
