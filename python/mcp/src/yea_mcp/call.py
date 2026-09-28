@@ -20,6 +20,7 @@ from yea.approval import (
 )
 from yea.service import Clarification
 from yea.store import ApprovalStore, Reservation
+from yea.text import printable
 from yea.uses import check_uses
 
 from .ask import answer_of, ask_in_call, can_ask, input_required, is_modern, parse_state
@@ -175,7 +176,7 @@ async def run_job(y: Yea, job: JobDef, input: dict, preview: bool, req: Req,
             return preview_result(call.plans, job.own_results_are_errors())
         return await _route(call)
     except Exception as e:  # noqa: BLE001 — nothing has been applied yet
-        return error_result([f"✗ {e}; {NOTHING_RAN}"])
+        return error_result([f"✗ {printable(str(e))}; {NOTHING_RAN}"])
 
 
 async def _route(call: Call) -> Result:
@@ -272,7 +273,8 @@ async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: st
     except Exception as e:  # noqa: BLE001
         await release_all(call.y.store, held)
         approved = how == "approved"
-        return error_result([f"✗ {'approved, but ' if approved else ''}{hp.plan.summary} failed: {e}; nothing changed."
+        return error_result([f"✗ {'approved, but ' if approved else ''}{printable(hp.plan.summary)} failed: "
+                             f"{printable(str(e))}; nothing changed."
                              f"{' The approval is used up: calling again asks again.' if approved else ''}"])
     if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
         try:
@@ -327,7 +329,8 @@ async def _recorded(call: Call, hp: HashedPlan, held: list[Reservation], result:
 
 def _unrecorded(call: Call, hp: HashedPlan, result: Any, why: str) -> Result:
     """The action happened, but its receipt couldn't be kept: say so, and that undo isn't available."""
-    note = f"✓ {hp.plan.summary} happened, but its receipt couldn't be saved ({why}), so it can't be undone."
+    note = (f"✓ {printable(hp.plan.summary)} happened, but its receipt couldn't be saved ({printable(why)}), "
+            "so it can't be undone.")
     if call.job.guarded and result is not None:
         return call.job.with_note(result, note)
     safe, _ = json_safe(result)

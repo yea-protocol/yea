@@ -20,7 +20,8 @@ from typing import Any
 from ._json import CanonicalError, b64url_encode, canonical, sha256_b64url
 from .grants import RISK_ORDER, Grant, GrantContext, block_id, consent_code, decode_grant, verify_grant
 from .keys import parse_public_key
-from .lens import effect_line, fmt_duration
+from .lens import fmt_duration, safe_effect_line
+from .text import printable
 from .store import ApprovalStore, FileStore, LedgerKey, MemoryStore, Reservation, is_receipt_id
 from .uses import check_uses, fmt_uses, is_limit, limit_value, same_unit, value
 
@@ -346,11 +347,11 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
     offered = offered_plans(plans, policy)
     if not offered:
         return None
-    lines = [f"Approval needed: {why}.", ""]
+    lines = [f"Approval needed: {printable(why)}.", ""]
     for i, p in enumerate(plans, 1):
         lines.extend(_plan_lines(i, p))
         if p in offered:
-            lines.append(f"  to approve, type: {phrase_of(p, phrase_for)}")
+            lines.append(f"  to approve, type: {printable(phrase_of(p, phrase_for))}")
     held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered and p.tool not in policy.deny]
     denied = [f"[{i}]" for i, p in enumerate(plans, 1) if p.tool in policy.deny]
     if held:
@@ -366,14 +367,17 @@ def _plan_lines(n: int, p: HashedPlan) -> list[str]:
         attrs.append(f"uses: {u}")
     attrs.append(f"risk: {p.risk}")
     attrs.append(f"undo: {fmt_duration(p.plan.undo_window)}" if p.undoable else "undo: never")
-    return [f"[{n}] {p.plan.summary}", *("  " + effect_line(e) for e in p.plan.effects), "  " + " · ".join(attrs)]
+    # Service text is untrusted: escaped, so a summary can't forge lines or hide characters (#100).
+    return [f"[{n}] {printable(p.plan.summary)}", *("  " + safe_effect_line(e) for e in p.plan.effects),
+            "  " + " · ".join(attrs)]
 
 
 def _schema(offered: list[HashedPlan], phrase_for: Callable[[HashedPlan], str]) -> dict:
     if len(offered) == 1:
-        confirm = {"type": "string", "title": "Confirm", "description": f'Type "{phrase_of(offered[0], phrase_for)}" to approve.'}
+        confirm = {"type": "string", "title": "Confirm", "description": f'Type "{printable(phrase_of(offered[0], phrase_for))}" to approve.'}
         return {"type": "object", "properties": {"confirm": confirm}, "required": ["confirm"]}
-    plan = {"type": "string", "title": "Plan", "oneOf": [{"const": p.plan_hash, "title": p.plan.summary} for p in offered]}
+    plan = {"type": "string", "title": "Plan",
+            "oneOf": [{"const": p.plan_hash, "title": printable(p.plan.summary)} for p in offered]}
     confirm = {"type": "string", "title": "Confirm", "description": "Type the chosen plan's phrase, shown next to it above."}
     return {"type": "object", "properties": {"plan": plan, "confirm": confirm}, "required": ["plan", "confirm"]}
 

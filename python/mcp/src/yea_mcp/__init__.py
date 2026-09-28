@@ -19,6 +19,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.request_state import RequestStateSecurity
 from yea.approval import STATE_TTL, HashedPlan, undo_receipt
 from yea.store import ApprovalStore, FileStore, MemoryStore, default_store_dir, is_receipt_id
+from yea.text import printable
 
 from .call import JobDef, Req, Yea, _maybe, caller_of, is_memory_store, run_job
 from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
@@ -200,8 +201,8 @@ async def undo_call(y: Yea, reverts: dict[str, Callable[..., Any]], id: str, ctx
         out = await undo_receipt(y.store, id if revert else None, y.service_id, sub, int(time.time()), call_revert)
         if out.kind == "undone" and out.receipt is not None:
             return t.CallToolResult(content=[t.TextContent(type="text", text=f"↶ undid {out.receipt['id']}: "
-                                                                               f"{out.receipt['summary']}")],
+                                                                               f"{printable(out.receipt['summary'])}")],
                                     structured_content={"undone": out.receipt["id"]})
         return error_result([f"✗ {out.why}; nothing was undone"])
     except Exception as e:  # noqa: BLE001
-        return error_result([f"✗ undo failed: {e}; nothing was undone, and it can be tried again"])
+        return error_result([f"✗ undo failed: {printable(str(e))}; nothing was undone, and it can be tried again"])

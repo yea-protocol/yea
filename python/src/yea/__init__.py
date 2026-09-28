@@ -24,6 +24,7 @@ from .service import (
 )
 from .transport import serve_http, serve_stdio, serve_stream, serve_tcp
 from .uses import fmt_quantity, quantity, spend
+from .text import clip, one_line, printable
 from .validate import validate_params
 
 __version__ = "0.1.0"
@@ -31,9 +32,9 @@ __version__ = "0.1.0"
 __all__ = [
     "CanonicalError", "Clarification", "Client", "CommitCtx", "Ctx", "Grant", "GrantContext", "HandleStore", "KeyPair",
     "MemoryHandleStore", "YeaError", "Plan", "Reply", "Service", "Verification", "b64url_decode", "b64url_encode",
-    "canonical", "clarify", "compact", "check_consent", "connect", "consent_code", "consent_grant", "decode_consent_code", "create", "decode_grant", "delegate_grant",
+    "canonical", "clarify", "clip", "compact", "check_consent", "connect", "consent_code", "consent_grant", "decode_consent_code", "create", "decode_grant", "delegate_grant",
     "effect_line", "est", "fit", "fix", "fmt_duration", "fmt_quantity", "fmt_time", "generate_key", "issue_grant",
-    "key_from_seed", "lean", "lens", "local", "proposal_hash", "quantity", "remove", "scalar", "send", "serve_http",
+    "key_from_seed", "lean", "lens", "local", "one_line", "printable", "proposal_hash", "quantity", "remove", "scalar", "send", "serve_http",
     "serve_stdio", "serve_stream", "serve_tcp", "service", "sign_proof", "spend", "update", "validate_params", "verify",
     "verify_grant", "verify_proof",
 ]

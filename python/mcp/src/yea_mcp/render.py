@@ -6,9 +6,10 @@ from __future__ import annotations
 from typing import Any
 
 import mcp_types as t
-from yea import lean, lens
+from yea import lean
 from yea.approval import HashedPlan
-from yea.lens import effect_line, fmt_duration
+from yea.lens import fmt_duration, safe_effect_line, untrusted_lens
+from yea.text import printable
 from yea.service import Clarification
 from yea.uses import check_uses, fmt_uses
 
@@ -28,7 +29,9 @@ def _plan_lines(n: int, hp: HashedPlan) -> list[str]:
     v = plan_view(hp)
     attrs = [*([f"uses: {fmt_uses(v['uses'])}"] if "uses" in v else []), f"risk: {v['risk']}",
              f"undo: {fmt_duration(v['undo']['window']) if v['undo'] else 'never'}"]
-    return [f"[{n}] {v['summary']}", *(f"  {effect_line(e)}" for e in v["effects"]), "  " + " · ".join(attrs)]
+    # Service text is untrusted: escaped, so a summary can't forge lines or hide characters.
+    return [f"[{n}] {printable(v['summary'])}", *(f"  {safe_effect_line(e)}" for e in v["effects"]),
+            "  " + " · ".join(attrs)]
 
 
 def plans_text(plans: list[HashedPlan]) -> list[str]:
@@ -63,7 +66,7 @@ def consent_result(why: str, plans: list[HashedPlan], codes: list[dict], unavail
     else:
         tail = ["Ask the user to run `yea approve <code>` in their terminal, then call again.",
                 *(f"  code for [{_number(plans, c)}]: {c['code']}" for c in codes)]
-    return error_result([f"✗ approval needed: {why}; nothing was run", *plans_text(plans), *tail],
+    return error_result([f"✗ approval needed: {printable(why)}; nothing was run", *plans_text(plans), *tail],
                         {"plans": [plan_view(hp) for hp in plans], "codes": codes})
 
 
@@ -73,16 +76,16 @@ def _number(plans: list[HashedPlan], c: dict) -> int:
 
 def receipt_result(receipt: dict, auto: bool) -> t.CallToolResult:
     """A job's receipt as Lens (the protocol's RECEIPT), with the job's result."""
-    line = lens({"yea": 1, "id": receipt["id"], "re": receipt["proposal"], "kind": "RECEIPT",
-                 "receipt": receipt, "auto": auto})
+    line = untrusted_lens({"yea": 1, "id": receipt["id"], "re": receipt["proposal"], "kind": "RECEIPT",
+                           "receipt": receipt, "auto": auto})
     return t.CallToolResult(content=_text([line]),
                             structured_content={"receipt": receipt, "result": receipt.get("result")})
 
 
 def clarify_result(c: Clarification) -> t.CallToolResult:
     """A plan's question back to the model, with what to call again with for each answer."""
-    lines = [f"? {c.question}"]
-    lines += [f"  {i}. {o.get('label', '')} → {', '.join(lean(o.get('params', {})).splitlines())}"
+    lines = [f"? {printable(c.question)}"]
+    lines += [printable(f"  {i}. {printable(str(o.get('label', '')))} → {', '.join(lean(o.get('params', {})).split(chr(10)))}")
               for i, o in enumerate(c.options, 1)]
     return t.CallToolResult(content=_text(lines),
                             structured_content={"clarify": {"question": c.question, "options": c.options}})
