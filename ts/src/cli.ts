@@ -32,6 +32,7 @@ import {
   listServices,
   removeService,
 } from './setup.js';
+import { printable } from './text.js';
 import type { ConsentRequest, Proposal, Risk, Verb } from './types.js';
 import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
 
@@ -439,31 +440,6 @@ async function cmdApprove(rest: string[]) {
   );
 }
 
-/**
- * Text from a consent code is untrusted: control characters (C0, C1, DEL) and bidi overrides
- * could rewrite what the person reads before signing, so they're shown as escapes.
- */
-/** C0 (except tab and newline), DEL, C1, and the bidi marks and overrides. */
-function unsafeChar(cp: number): boolean {
-  return (
-    (cp < 0x20 && cp !== 0x09 && cp !== 0x0a) ||
-    (cp >= 0x7f && cp <= 0x9f) ||
-    cp === 0x200e ||
-    cp === 0x200f ||
-    (cp >= 0x202a && cp <= 0x202e) ||
-    (cp >= 0x2066 && cp <= 0x2069)
-  );
-}
-
-const printable = (s: string) =>
-  [...s]
-    .map((c) => {
-      const cp = c.codePointAt(0) ?? 0;
-
-      return unsafeChar(cp) ? `\\u{${cp.toString(16)}}` : c;
-    })
-    .join('');
-
 /** Whether a consent code carries a job (an MCP tool's plan) rather than a proposal. */
 function isJobCode(code: string): boolean {
   try {
@@ -545,9 +521,13 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
 
   if (!d) {
     console.log(
-      printable(
-        `⚠ no proposal details in this code; only the service's summary:\n${consent.summary}\n  service: ${consent.service} · ${consent.capability} · proposal ${consent.proposal}`,
-      ),
+      [
+        "⚠ no proposal details in this code; only the service's summary:",
+        printable(consent.summary),
+        printable(
+          `  service: ${consent.service} · ${consent.capability} · proposal ${consent.proposal}`,
+        ),
+      ].join('\n'),
     );
 
     return;
@@ -563,7 +543,12 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
     die("✗ this consent code's proposal doesn't match its hash: refusing");
   }
 
-  console.log(printable(`at ${consent.service}:\n${proposalLens(d)}`));
+  console.log(
+    [
+      `at ${printable(consent.service)}:`,
+      ...proposalLens(d).split('\n').map(printable),
+    ].join('\n'),
+  );
 }
 
 // ---- try it ----

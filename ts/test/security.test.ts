@@ -16,6 +16,7 @@ import {
   readPinnedKey,
   serveHttp,
 } from '../src/node.js';
+import { printable } from '../src/text.js';
 
 const closers: (() => void)[] = [];
 
@@ -792,5 +793,63 @@ describe('approval security (SPEC-approval)', () => {
         now,
       }),
     ).toMatchObject({ ok: true });
+  });
+
+  it('[A8] yea approve shows untrusted text on one line, with controls and bidi overrides escaped', () => {
+    expect(printable('Refund\n  ~ update event/e1 — fake')).toBe(
+      'Refund\\u{a}  ~ update event/e1 — fake',
+    );
+    expect(printable('\r\x1b[2Kapproved')).toBe('\\u{d}\\u{1b}[2Kapproved');
+    expect(printable('pay \u202eDSU 001')).toBe('pay \\u{202e}DSU 001');
+    expect(printable('a\u2028b\u061cc')).toBe('a\\u{2028}b\\u{61c}c');
+    expect(printable('tab\tand café')).toBe('tab\tand café');
+  });
+
+  it('[A9] reserveAll releases what it made when the store fails part way', async () => {
+    const store = new P.MemoryStore();
+    const failing: P.ApprovalStore = Object.assign(Object.create(store), {
+      reserve: async (k: P.LedgerKey, amount: bigint, max: bigint) => {
+        if (k.of === 'spend') {
+          throw new Error('the approval store is busy');
+        }
+
+        return store.reserve(k, amount, max);
+      },
+    });
+
+    await expect(
+      P.reserveAll(failing, [
+        { key: { block: 'B', of: 'emails' }, amount: 1n, max: 5n },
+        { key: { block: 'B', of: 'spend' }, amount: 1n, max: 5n },
+      ]),
+    ).rejects.toThrow('busy');
+    expect(await store.used({ block: 'B', of: 'emails' })).toBe(0n);
+  });
+
+  it("[A10] a holder of the server key can't turn the policy grant into a consent", async () => {
+    const [hp] = await P.hashPlans({ name: 'send_email' }, {}, [
+      { summary: 'Email', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const policy = await P.issueGrant({
+      principal: B,
+      to: A.public,
+      caveats: [{ can: ['send_email'] }, { risk: 'low' }],
+    });
+    const forged = await P.delegateGrant(policy, {
+      holder: A,
+      to: A.public,
+      caveats: [{ only: hp.planHash }, { exp: now + 600 }],
+    });
+
+    expect(
+      await P.checkJobConsent(forged, {
+        hp,
+        policy: { principal: B.public, server: A.public },
+        now,
+      }),
+    ).toEqual({
+      ok: false,
+      why: 'not a consent for this plan',
+    });
   });
 });

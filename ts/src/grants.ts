@@ -47,13 +47,20 @@ export function decodeGrant(token: string): Block[] {
     throw new Error('not a pg1 grant');
   }
 
-  const blocks = JSON.parse(fromUtf8(unb64u(token.slice(PREFIX.length))));
+  // Language-neutral: every implementation reports the same text (SPEC-approval reasons).
+  let blocks: unknown;
+
+  try {
+    blocks = JSON.parse(fromUtf8(unb64u(token.slice(PREFIX.length))));
+  } catch {
+    throw new Error('not valid b64url JSON');
+  }
 
   if (!Array.isArray(blocks) || blocks.length === 0) {
     throw new Error('grant has no blocks');
   }
 
-  for (const b of blocks) {
+  for (const b of blocks as Partial<Block>[]) {
     if (
       typeof b?.s !== 'string' ||
       typeof b?.p?.sub !== 'string' ||
@@ -63,7 +70,7 @@ export function decodeGrant(token: string): Block[] {
     }
   }
 
-  return blocks;
+  return blocks as Block[];
 }
 
 export const blockId = (b: Block) => sha256(b.s);

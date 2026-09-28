@@ -932,7 +932,7 @@
       "now": 1790000000,
       "expect": {
         "kind": "ask",
-        "why": "malformed grant: Unexpected token 'o', \"nope\" is not valid JSON"
+        "why": "malformed grant: not valid b64url JSON"
       }
     },
     {
@@ -1756,6 +1756,92 @@
         "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8": "approve"
       },
       "expect": null
+    },
+    {
+      "name": "out of band and denied lines",
+      "plans": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch old-nav (restorable at a1b2c3d)",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/old-nav"
+              }
+            ],
+            "undoWindow": 86400
+          },
+          "planHash": "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg",
+          "risk": "medium",
+          "undoable": true
+        },
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch main",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/main"
+              }
+            ],
+            "risk": "high",
+            "undoWindow": 86400
+          },
+          "planHash": "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA",
+          "risk": "high",
+          "undoable": true
+        },
+        {
+          "tool": "delete_customer",
+          "plan": {
+            "summary": "Delete customer Chen",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "customer/c9"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "delete_branch can't be undone",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg": "old-nav",
+        "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA": "old-nav",
+        "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: delete_branch can't be undone.\n\n[1] Delete branch old-nav (restorable at a1b2c3d)\n  - delete branch/old-nav\n  risk: medium · undo: 1d\n  to approve, type: old-nav\n[2] Delete branch main\n  - delete branch/main\n  risk: high · undo: 1d\n[3] Delete customer Chen\n  - delete customer/c9\n  risk: low · undo: 1m\n\nNot offered here (approve outside the chat): [2]\n\nNever allowed by your policy: [3]",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"old-nav\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
+        ]
+      }
     },
     {
       "name": "an empty phrase falls back to approve",
@@ -3071,6 +3157,15 @@
         }
       },
       {
+        "name": "a consent delegated by the server key onto the policy grant",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9LHsicCI6eyJjYXZlYXRzIjpbeyJvbmx5IjoiVVBwV0x4UWNjQzVDa2pfZ2o5ZGt2YjdvdXJIYW9QeWt1SFJtOHg1Q1B5NCJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwicHJldiI6ImNSdnlWdUZTRHZGbVhWR3ZNQU9ySktxR29qVzdrdk43THhIdVViZE5RRzgiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6Ik5FdkdyRF9iSlRmbXItNmFTUlhnNnBNTFJ4aHREdGg2SFdqaDRyNm51UWFJUlhrNlBRZV83RG5ULW5oNkVOLWJ1VXB2S2ZsMDNCSmhkS0VFNkZEV0RRIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this plan"
+        }
+      },
+      {
         "name": "the policy grant copied into the store",
         "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
         "now": 1790000000,
@@ -3164,7 +3259,7 @@
       "consents/UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "pg1.example",
       "consumed/WDKSoRuiQ4FKzxcrRUH-G1gXsfj5_6UGiyP1fzmW1Ac": "1790000600",
       "ledger/cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8/emails.json": "{\"settled\":\"5\",\"reserved\":{}}",
-      "undo/r_AAAAAAAAAAAA.claim": "",
+      "undo/r_AAAAAAAAAAAA.claim": "*",
       "undo/r_AAAAAAAAAAAA.done": ""
     }
   }

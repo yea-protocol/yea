@@ -601,6 +601,12 @@ for (const [name, keys, why, policyChange] of [
     {},
   ],
   [
+    'out of band and denied lines',
+    ['deleteBranch', 'deleteHigh', 'customer'],
+    "delete_branch can't be undone",
+    {},
+  ],
+  [
     'an empty phrase falls back to approve',
     ['deleteBranch'],
     "delete_branch can't be undone",
@@ -609,7 +615,7 @@ for (const [name, keys, why, policyChange] of [
 ]) {
   const hps = await Promise.all(keys.map(hashed));
   const policy = { ...base, ...policyChange };
-  const phraseOf = forms.length >= 5 ? () => '  ' : phraseFor;
+  const phraseOf = name.startsWith('an empty phrase') ? () => '  ' : phraseFor;
   const f = P.buildForm(hps, why, policy, phraseOf);
 
   forms.push({
@@ -629,11 +635,22 @@ for (const [name, keys, why, policyChange] of [
 }
 
 must('held back', forms[1].expect.offered.length, 1);
-must('nothing to offer', forms[4].expect, null);
+
+const form = (n) => forms.find((f) => f.name === n).expect;
+
+must('nothing to offer', form('nothing to offer'), null);
 must(
   'empty phrase',
-  forms[5].expect.requestedSchema.properties.confirm.description,
+  form('an empty phrase falls back to approve').requestedSchema.properties
+    .confirm.description,
   'Type "approve" to approve.',
+);
+must(
+  'both lines',
+  form('out of band and denied lines').message.endsWith(
+    '\n\nNot offered here (approve outside the chat): [2]\n\nNever allowed by your policy: [3]',
+  ),
+  true,
 );
 
 // ---- state (§4) ----
@@ -953,6 +970,17 @@ const consents = [];
 for (const [name, grant, at, want] of [
   ['a consent for this plan', await consentFor(refundHp.planHash), now, true],
   [
+    'a consent delegated by the server key onto the policy grant',
+    await P.delegateGrant(policyGrant, {
+      holder: server,
+      to: server.public,
+      iat: now,
+      caveats: [{ only: refundHp.planHash }, { exp: now + 600 }],
+    }),
+    now,
+    'not a consent for this plan',
+  ],
+  [
     'the policy grant copied into the store',
     policyGrant,
     now,
@@ -1015,7 +1043,10 @@ const walk = (d) => {
     if (statSync(p).isDirectory()) {
       walk(p);
     } else {
-      files[relative(dir, p)] = readFileSync(p, 'utf8');
+      // Undo claims hold a random token: only their presence is pinned.
+      files[relative(dir, p)] = p.endsWith('.claim')
+        ? '*'
+        : readFileSync(p, 'utf8');
     }
   }
 };

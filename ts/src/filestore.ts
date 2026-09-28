@@ -78,20 +78,21 @@ function readOrNull(path: string): string | null {
 }
 
 /**
- * Remove `path` if it's older than `ageMs`, without ever removing a fresh file someone else
- * just created: move it aside, then check it's the same old file before deleting it.
+ * Remove `path` if it's older than `ageMs`, without ever removing a fresh one someone else just
+ * created: read its contents (a random token) first, move it aside, and delete it only if the
+ * moved file still holds that token. Otherwise put it back and leave it.
  */
 function breakIfStale(path: string, ageMs: number) {
-  let seen: { ino: number; mtimeMs: number };
+  let seen: string | null;
 
   try {
-    seen = statSync(path);
+    if (Date.now() - statSync(path).mtimeMs <= ageMs) {
+      return;
+    }
+
+    seen = readOrNull(path);
   } catch {
     return; // already gone
-  }
-
-  if (Date.now() - seen.mtimeMs <= ageMs) {
-    return;
   }
 
   const aside = `${path}.${randomId('s')}.stale`;
@@ -102,17 +103,17 @@ function breakIfStale(path: string, ageMs: number) {
     return; // someone else moved it first
   }
 
-  if (statSync(aside).ino === seen.ino) {
+  if (seen !== null && readOrNull(aside) === seen) {
     rmSync(aside, { force: true });
 
     return;
   }
 
-  // We moved a fresh file: put it back unless another has taken its place, then drop ours.
+  // We moved a fresh file: put it back unless another has taken its place.
   try {
     linkSync(aside, path);
   } catch {
-    // a newer one exists; the moved-aside file's owner will see it lost and fail closed
+    // a newer one exists; the moved file's owner sees its token gone and fails closed
   }
 
   rmSync(aside, { force: true });
@@ -157,13 +158,14 @@ export class FileStore implements ApprovalStore {
 
     const claim = this.undoPath(id, 'claim');
 
-    if (createOnce(claim)) {
+    // Each claim holds a fresh token, so a stale one is only ever broken by its own contents.
+    if (createOnce(claim, randomId('k'))) {
       return true;
     }
 
     breakIfStale(claim, STALE_CLAIM_MS);
 
-    return createOnce(claim);
+    return createOnce(claim, randomId('k'));
   }
 
   async releaseUndo(id: string): Promise<void> {
@@ -269,6 +271,12 @@ export class FileStore implements ApprovalStore {
       }
 
       writeAtomic(this.ledgerPath(key, 'json'), JSON.stringify(l));
+
+      // A lock broken as stale between the check and the write (a holder paused > 30 s) may
+      // have let another write through; refuse rather than report success (SPEC-approval §8).
+      if (readOrNull(lock) !== token) {
+        throw new Error(`lost the approval store lock while writing (${lock})`);
+      }
 
       return out;
     } finally {

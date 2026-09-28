@@ -227,7 +227,9 @@ describe('conformance vectors', () => {
         if (statSync(p).isDirectory()) {
           walk(p);
         } else {
-          files[relative(dir, p)] = readFileSync(p, 'utf8');
+          files[relative(dir, p)] = p.endsWith('.claim')
+            ? '*'
+            : readFileSync(p, 'utf8');
         }
       }
     };

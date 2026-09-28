@@ -298,8 +298,9 @@ phrase only checks that the person read the plan.
    saves it in the store under the plan hash (`YEA_STORE`, else `~/.yea/store`).
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
-and checks it: it must carry `only` = that plan hash and an `exp` (so a copied policy grant
-never counts), and pass the grant check as a `COMMIT` of the tool at this server, signed by
+and checks it: it must be a single root block that itself carries `only` = that plan hash
+and an `exp` (so neither a copied policy grant nor a block the server's key appended to one
+ever counts), and pass the grant check as a `COMMIT` of the tool at this server, signed by
 the pinned principal key (§2). It then consumes it with
 `consumeOnce(<consent grant id>, exp)`, and runs that plan. Consents are keyed by plan hash,
 not by code, so a fresh code for the same plan still finds them; a consumed or expired one
@@ -367,7 +368,7 @@ cases so the TypeScript and Python servers and the `yea` command share one store
 
 ```
 consumed/<b64url(sha256(id))>        empty marker, created with O_EXCL; holds exp as text
-undo/<receipt id>.claim, .done       empty markers, created with O_EXCL; the claim stays after done
+undo/<receipt id>.claim, .done       markers, created with O_EXCL; the claim holds a random token and stays after done
 receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
@@ -375,11 +376,14 @@ consents/<planHash>                  the pg1. consent grant (plan hashes are b64
 
 Ledger files are `{"settled": "<decimal>", "reserved": {"<v_ id>": "<decimal>"}}`, updated under
 an exclusive lock file (`<of>.lock` beside them, `O_EXCL`, retried every 10 ms for up to 2 s,
-then a store error). The lock holds a random token: its holder re-checks the token before
-writing and deletes the lock only if it still holds it. A lock older than 30 s is stale and
-is broken by renaming it aside and deleting it only if it's the same file (inode) that was
-seen stale. An undo claim older than 10 minutes with no `done` marker (the process died) may
-be claimed again the same way. Files are written to a uniquely named temp file
+then a store error). The lock holds a random token: its holder re-checks the token before and
+after writing, deletes the lock only if it still holds it, and reports a store error (nothing
+runs) if the token changed. A lock older than 30 s is stale: a waiter reads its token, renames
+it aside, and deletes it only if the moved file still holds that token; otherwise it links it
+back. Undo claims hold a token too, and one older than 10 minutes with no `done` marker (the
+process died) may be claimed again the same way. A holder paused for more than 30 s between
+its checks is the one case lock files can't fully close; the check after writing turns it
+into a store error instead of a silent overshoot. Files are written to a uniquely named temp file
 (`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids
 are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be
 removed after `exp`.

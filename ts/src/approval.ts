@@ -364,16 +364,17 @@ export async function checkJobConsent(
   },
 ): Promise<{ ok: true; id: string } | { ok: false; why: string }> {
   const blocks = await blocksOf(grant);
+  // A consent comes straight from the principal: one root block that itself carries `only`
+  // and `exp`. A delegated block can't turn another grant (the policy) into a consent.
+  const root = blocks?.length === 1 ? blocks[0] : null;
   const has = (k: string, want?: unknown) =>
-    !!blocks?.some((b) =>
-      b.caveats.some((c) => {
-        const v = caveatOf(c, k);
+    !!root?.caveats.some((c) => {
+      const v = caveatOf(c, k);
 
-        return v !== undefined && (want === undefined || v === want);
-      }),
-    );
+      return v !== undefined && (want === undefined || v === want);
+    });
 
-  if (!blocks || !has('only', o.hp.planHash) || !has('exp')) {
+  if (!root || !has('only', o.hp.planHash) || !has('exp')) {
     return { ok: false, why: 'not a consent for this plan' };
   }
 
