@@ -2,6 +2,7 @@
  * The "From REST to YEA" worked example (examples/stripe-jobs.ts) against a fake of the Stripe
  * endpoints it calls: the read, the refund that always asks, and the cancel that can be undone.
  */
+import { unixNow } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createServer,
@@ -14,7 +15,7 @@ afterEach(() => {
 });
 
 const D = 86_400;
-const now = Math.floor(Date.now() / 1000);
+const now = unixNow();
 
 interface Call {
   method: string;

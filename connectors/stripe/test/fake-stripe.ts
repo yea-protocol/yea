@@ -5,6 +5,7 @@
  * It keeps the state it serves in plain arrays, so tests can look at what changed. Its objects
  * carry only the fields the connector reads.
  */
+import { unixNow } from '@yea-protocol/sdk';
 
 export const D = 86400;
 
@@ -326,7 +327,7 @@ export function fakeStripe(
 ) {
   const declines = o.declines ?? false;
   let scheduled: ((s: Schedule) => void) | undefined;
-  const now = o.now ?? Math.floor(Date.now() / 1000);
+  const now = o.now ?? unixNow();
   const base = defaultState(now);
   const state: FakeState = { ...base, ...o.state?.(base) };
   const calls: Call[] = [];

@@ -3,8 +3,7 @@
  * in-process, an agent with a grant from a principal, a temp YEA home for consents, and what
  * `yea approve` does with a protocol consent code, without the terminal.
  */
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   approveConsentCode,
@@ -22,9 +21,7 @@ import {
 } from '@yea-protocol/sdk';
 import { calendar, shop } from '@yea-protocol/sdk/examples';
 import { type BridgeOptions, bridge } from '../src/bridge.js';
-import { connect, type Kind } from './helpers.js';
-
-export const nowS = () => Math.floor(Date.now() / 1000);
+import { connect, type Kind, tmp } from './harness.js';
 
 /** A spending limit per commit: 40.00 USD. */
 export const EACH_40: Caveat = {
@@ -39,7 +36,7 @@ export interface Keys {
 
 /** A fresh YEA home (consents are kept there), a principal and an agent. */
 export async function keys(): Promise<Keys> {
-  const home = mkdtempSync(join(tmpdir(), 'yea-bridge-'));
+  const home = tmp('yea-bridge-');
 
   process.env.YEA_HOME = home;
   delete process.env.YEA_PRINCIPAL_HOME;

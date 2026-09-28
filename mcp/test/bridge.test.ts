@@ -3,6 +3,7 @@
  * both eras, with and without elicitation. Security cases are in bridge-security.test.ts.
  */
 
+import { unixNow } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { saveGrant } from '@yea-protocol/sdk/node';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,7 +16,6 @@ import {
   examples,
   type Keys,
   keys,
-  nowS,
   proposalsOf,
   recorded,
   SMALL_ORDER,
@@ -215,7 +215,7 @@ describe('a job tool call', () => {
 
   it('an expired pending entry falls back to a fresh INTENT', async () => {
     const k = await keys();
-    let now = nowS();
+    let now = unixNow();
     const { conn, shop } = await bridged(k, '2026', {
       options: { now: () => now },
     });
