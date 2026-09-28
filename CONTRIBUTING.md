@@ -45,6 +45,8 @@ npm run demo && npm run bench
 npm run lint && npm run lint:style && npm run lint:structure   # the checks CI runs
 ```
 
+The docs site (`site/`, built with `npm run site`) follows the design context in `.agents/context/`: PRODUCT.md for who it's for and DESIGN.md for its tokens, which you update when theme tokens change.
+
 ## Code style
 
 TypeScript and JavaScript are formatted by [Biome](https://biomejs.dev) (80 columns, single

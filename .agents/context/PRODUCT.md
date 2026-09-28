@@ -35,9 +35,13 @@ irreversible stops for the person, who approves that exact proposal by signing i
 Receipts carry an undo window, and UNDO is a verb. Replies fit a token budget and come in Lens, a
 compact text format written for models.
 
-The product people adopt first is the framework: plugins for the official MCP SDKs that add this
-preview, approve and undo loop to an existing MCP server one tool at a time. The protocol, the
-bridge (`yea mcp`) and the CLI sit underneath.
+The framework is meant to be what people adopt first: plugins for the official MCP SDKs
+(`@yea-protocol/mcp` for TypeScript, `yea-mcp` for Python) that add this preview, approve and undo
+loop to an existing MCP server one tool at a time. It is unreleased: neither plugin is on npm or
+PyPI yet (nor are the SDKs and the `yea` command, per the guides), so the guides install from the
+repository and the site must say so wherever it offers that path. The protocol, the CLI and the
+bridge (`yea mcp`, which exposes YEA services to any MCP client) sit underneath. The playground is
+the one path that needs no install at all.
 
 The site exists to get a developer from "what is this" to a working, guarded action, and to give
 an evaluator enough evidence (the spec, the security model, published benchmarks with their
@@ -55,6 +59,17 @@ something: following a guide, checking the spec, driving the playground. One sur
 | Why YEA (`/why`) | brand-leaning long-form | An essay. Reading comfort and voice matter more than chrome. |
 | Guide, reference, spec, benchmark pages | product | Docs as a tool: familiar navigation, fast search, readable prose and code. |
 | Playground (`/playground`) | product | An interactive tool. State, feedback and keyboard use come first. |
+
+### Decided direction (James, 2026-09-28)
+
+- **Light first.** The site follows the reader's OS theme. Pages are designed and reviewed in the
+  light theme first, and both themes must meet WCAG AA.
+- **The landing lets the visitor say yes.** Its hero is a real proposal the visitor approves,
+  then sees the receipt, then undoes, on the real core. The page is ordered by protocol state,
+  shows its evidence as one chart with the caveats beside it, and offers two paths: "I have an MCP
+  server" (the framework, marked unreleased) and "I'm building an agent or service".
+- **One voice in type.** A single family carries all human-facing text; machine output keeps
+  its own mono. (Specific fonts live in DESIGN.md.)
 
 ## Brand Personality
 

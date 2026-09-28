@@ -170,15 +170,35 @@ defaults) and high on the landing, which stacks seven full-width bands, three of
 
 Layout is a centred column: 1152px on the landing, 1360px on the playground, VitePress's doc
 width (688px content) on guide pages. Sections are separated by 1px hairline rules and a uniform
-72px band padding. Motion is limited to the hero exchange revealing step by step and 150ms
-colour transitions; `prefers-reduced-motion` collapses all of it.
+72px band padding.
+
+Motion today: the hero exchange reveals its four steps at 400ms and then every 1.5s, each step
+fading in over 450ms with a 4px rise (`ease-out`), and the undone commit greys out over 400ms. The
+stepper's colour changes over 300ms, landing buttons over 150ms, and VitePress's own chrome over
+250ms. With JavaScript on, the page renders the finished exchange, then blanks and replays it.
+`prefers-reduced-motion` skips the replay in JavaScript and cuts every CSS animation and
+transition to 0.01ms in `style.css`.
+
+**Decided direction (James, 2026-09-28; not built yet).** These replace the current values as the
+theme and landing PRs in #117 land; update this file with each one.
+- **Type:** Public Sans (variable, via `@fontsource`) is the one family for all human-facing
+  text, with hierarchy carried by strong weight contrast; JetBrains Mono stays for Lens and other
+  machine output. Space Grotesk and Inter go.
+- **Theme:** follow the OS (`appearance: true`), designed and reviewed light first; both themes
+  meet WCAG AA.
+- **Colour:** a separate link/brand token, so amber means only proposed and waiting on consent;
+  inline code turns neutral.
+- **Landing:** a proposal-slip hero in which the visitor approves a real proposal, sees the
+  receipt and undoes it, running the real core; sections ordered by protocol state; one
+  evidence chart with its caveats beside it; two paths, "I have an MCP server" (with the
+  framework card from #75) and "I'm building an agent or service".
 
 This system rejects, per PRODUCT.md: generic AI-agent startup marketing, crypto and web3
 aesthetics, security fear-marketing, SaaS landing templates, decorative terminal costume, and
 overclaiming numbers.
 
 **Key Characteristics:**
-- Dark by default; warm paper for light, not white.
+- Dark by default today (light-first, OS-following is decided); warm paper for light, not white.
 - One signal colour whose meaning is protocol state.
 - Real Lens output as the main image, set in mono.
 - Flat surfaces separated by hairlines; almost no shadow.
@@ -221,8 +241,9 @@ for protocol state.
 **The State Colour Rule.** Amber is proposed and waiting on a person, green is committed, red is
 refused. Nothing else gets those colours (stated in the header of `style.css`). *Current
 violations:* VitePress maps `--vp-c-brand-1` to amber, so every link, inline code chip, active
-nav item and "current step" in the hero stepper is amber too. Fixing this is the first theme
-task.
+nav item and "current step" in the hero stepper is amber too, and doc blockquotes carry a 2px
+amber left border (`.vp-doc blockquote` in `style.css`), which is also a side stripe. Fixing
+these is the first theme task.
 
 **The Light Theme Is Equal Rule.** Every state colour has a light-theme partner darkened for
 contrast on paper. Light-theme text colours clear 4.5:1 on paper, on the code tint (#ECE8DF, also
@@ -237,6 +258,8 @@ darkened in light mode for the same reason.
 
 **Character:** A quirky geometric grotesk for headings over a neutral workhorse sans, with a
 coding mono for everything the protocol emits. All three are self-hosted through `@fontsource`.
+Decided replacement: Public Sans for all human-facing text and JetBrains Mono for machine output
+(see Overview).
 
 ### Hierarchy
 - **Display** (600, clamp 2.3–3.6rem, 1.02): the landing headline only.
@@ -306,8 +329,9 @@ and a shadow on the same surface.
 ### Hero Exchange (signature component)
 The landing's right column: a four-step stepper (Intent, Proposal, Commit, Undo) over a mono
 screen that reveals one real Lens exchange step by step (400ms, then every 1.5s), with a legend
-(proposed, committed) and a Replay button. After undo, the commit lines are struck through. SSR
-and reduced motion render the finished exchange.
+(proposed, committed) and a Replay button. After undo, the commit lines are struck through and
+greyed. The server-rendered page and reduced motion show the finished exchange; otherwise it
+blanks and replays on load. To be replaced by the proposal-slip hero (see Overview).
 
 ### Playground (signature component)
 A two-pane tool: the agent's request on the left (service and verb segmented controls, capability

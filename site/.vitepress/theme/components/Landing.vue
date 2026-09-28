@@ -246,7 +246,7 @@ claude mcp add yea -- npx @yea-protocol/cli mcp \
       <h2>How it compares</h2>
       <div class="table-wrap">
         <table class="compare">
-          <thead><tr><th><span class="sr-only">Aspect</span></th><th>REST / HTTP APIs</th><th>MCP</th><th>YEA</th></tr></thead>
+          <thead><tr><th><span class="visually-hidden">Aspect</span></th><th>REST / HTTP APIs</th><th>MCP</th><th>YEA</th></tr></thead>
           <tbody>
             <tr v-for="c in compare" :key="c[0]"><th scope="row">{{ c[0] }}</th><td>{{ c[1] }}</td><td>{{ c[2] }}</td><td class="us">{{ c[3] }}</td></tr>
           </tbody>
@@ -278,7 +278,6 @@ a { color: var(--vp-c-brand-1); }
 /* Links in running text are underlined, so they don't rely on colour alone (WCAG 1.4.1). */
 a:not(.btn) { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 a:not(.btn):hover { text-decoration-thickness: 2px; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* hero */
 .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; padding: 88px 0 96px; }
