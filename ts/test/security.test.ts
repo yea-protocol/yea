@@ -1,6 +1,6 @@
 // Regression tests for the security audit findings (see docs/design.md).
 
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -429,6 +429,115 @@ describe('security regressions', () => {
     );
   });
 
+  it('[U10] a plan with an unknown risk never becomes a proposal', async () => {
+    const errors: unknown[] = [];
+    // `undefined` leaves the field out; anything else, `null` included, is set.
+    const svc = (plan: unknown, def: unknown) =>
+      P.service({
+        id: 'bad',
+        name: 'Bad',
+        summary: 'bad',
+        trust: [principal.public],
+        onError: (e) => errors.push(e),
+      }).intent('bad.do', {
+        summary: 'do',
+        ...(def !== undefined ? { risk: def as P.Risk } : {}),
+        plan: () => ({
+          summary: 'do it',
+          effects: [],
+          ...(plan !== undefined ? { risk: plan as P.Risk } : {}),
+          apply: () => null,
+        }),
+      });
+
+    for (const [plan, def] of [
+      ['critical', undefined],
+      ['toString', undefined],
+      [undefined, 'critical'],
+      // A null is refused, not defaulted past.
+      [null, undefined],
+      [undefined, null],
+      [null, 'low'],
+    ]) {
+      errors.length = 0;
+
+      const c = await client(svc(plan, def), agent, principal);
+      const r = await c.intent('bad.do', {});
+      const label = `${plan} ${def}`;
+
+      expect(r.kind === 'ERROR' && r.code, label).toBe('internal');
+      expect(String(errors[0]), label).toMatch(/unknown risk/);
+    }
+  });
+
+  it('[U11] yea grant refuses a --risk that is not a risk level, before reading any key', () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-risk-'));
+
+    for (const risk of ['critical', 'toString', '']) {
+      const r = spawnSync(
+        process.execPath,
+        [CLI, 'grant', '--to', agent.public, '--risk', risk],
+        { env: { ...process.env, YEA_HOME: home }, encoding: 'utf8' },
+      );
+
+      expect(r.status, risk).toBe(1);
+      expect(r.stderr, risk).toMatch(/bad risk .*\(low\|medium\|high\)/);
+      expect(r.stdout, risk).toBe('');
+    }
+  });
+
+  it('[U8] a risk caveat fails closed, hard, on a proposal with an unknown risk', async () => {
+    const g = await P.issueGrant({
+      principal,
+      to: agent.public,
+      caveats: [{ risk: 'high' }],
+    });
+
+    for (const risk of ['critical', 'toString', null]) {
+      const r = await P.checkGrant(g, {
+        service: 's',
+        verb: 'COMMIT',
+        capability: 'x',
+        trusted: [principal.public],
+        proofKey: agent.public,
+        proposal: { hash: 'h', risk: risk as P.Risk },
+      });
+
+      expect(r.ok ? 'ok' : r.code, String(risk)).toBe('forbidden');
+    }
+  });
+
+  it('[U9] a client treats a proposal with an unknown risk as invalid', async () => {
+    const hostile = (risk: unknown): P.Transport => ({
+      request: async (frame) =>
+        ({
+          yea: 1,
+          id: 's1',
+          re: frame.id,
+          kind: 'PROPOSALS',
+          proposals: [
+            {
+              id: 'p_x',
+              capability: 'x.do',
+              summary: 'do it',
+              effects: [],
+              risk,
+              undo: null,
+              expires: 1,
+              hash: 'h',
+            },
+          ],
+        }) as P.FinalReply,
+      close: () => {},
+    });
+
+    for (const risk of ['critical', 'toString', null, undefined]) {
+      const r = await new P.Client(hostile(risk)).intent('x.do', {});
+
+      expect(r.kind === 'ERROR' && r.code, String(risk)).toBe('bad_frame');
+    }
+  });
+
   it('[U6] a client treats a reply with a malformed uses as invalid, and never renders it', async () => {
     const hostile = (uses: unknown): P.Transport => ({
       request: async (frame) =>
@@ -821,6 +930,89 @@ describe('approval security (SPEC-approval)', () => {
       ),
     ).toThrow('malformed uses');
   });
+
+  it('[A13] a plan with an unknown risk never gets a plan hash', async () => {
+    expect(() =>
+      P.planPreimage(
+        'refund',
+        {},
+        { summary: 'x', effects: [] },
+        'critical' as P.Risk,
+      ),
+    ).toThrow('unknown risk');
+    await expect(
+      P.hashPlans({ name: 'refund', risk: 'critical' as P.Risk }, {}, [
+        { summary: 'x', effects: [], apply: () => null },
+      ]),
+    ).rejects.toThrow('unknown risk');
+    // A null plan risk is refused, not defaulted to the tool's.
+    await expect(
+      P.hashPlans({ name: 'refund', risk: 'low' }, {}, [
+        { summary: 'x', effects: [], risk: null as never, apply: () => null },
+      ]),
+    ).rejects.toThrow('unknown risk');
+  });
+
+  it('[A14] an unknown risk ranks above every known one, and an unknown floor or ceiling fails closed', () => {
+    const known: P.Risk[] = ['low', 'medium', 'high'];
+
+    for (const bad of [
+      'critical',
+      'toString',
+      '__proto__',
+      '',
+      1,
+      null,
+      undefined,
+    ] as unknown as P.Risk[]) {
+      for (const k of known) {
+        // Always out of band, whatever the floor; over every ceiling.
+        expect(P.atLeast(bad, k)).toBe(true);
+        expect(P.exceeds(bad, k)).toBe(true);
+        // A bad floor sends everything out of band; a bad ceiling passes nothing.
+        expect(P.atLeast(k, bad)).toBe(true);
+        expect(P.exceeds(k, bad)).toBe(true);
+      }
+    }
+
+    expect(P.atLeast('medium', 'high')).toBe(false);
+    expect(P.exceeds('medium', 'high')).toBe(false);
+    expect(P.exceeds('high', 'medium')).toBe(true);
+  });
+
+  it('[A15] yea approve refuses a job consent code whose plan has an unknown risk', async () => {
+    const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
+      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const good = P.decodeConsentCode(
+      P.jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: 'approve',
+        now,
+      }),
+    ) as unknown as Record<string, unknown> & {
+      detail: { job: Record<string, unknown>; phrase: string };
+    };
+    // Rehashed, so only the risk is wrong.
+    const job = { ...good.detail.job, risk: 'critical' };
+    const hash = await P.planHashOf(job);
+    const bad = {
+      ...good,
+      hash,
+      proposal: hash,
+      detail: { ...good.detail, job },
+    };
+
+    await expect(
+      P.readJobConsent(
+        `pc1.${P.b64u(new TextEncoder().encode(P.canonical(bad)))}`,
+        now,
+      ),
+    ).rejects.toThrow('not a job consent code');
+  });
 });
 
 /**
@@ -859,7 +1051,7 @@ function yeaDo(args: string[], home: string) {
 }
 
 // `yea do` (cli.ts `consentAndRetry`), test-drive and `yea approve` all decide with
-// `consentLines`; [C5] also runs `yea do` itself against a lying service.
+// `consentLines`; [C6] also runs `yea do` itself against a lying service.
 describe('consent requests (SPEC.md §6.6)', () => {
   /** A real consent_required from the pay service, and the proposal it's for. */
   async function consentRequired() {
@@ -927,6 +1119,18 @@ describe('consent requests (SPEC.md §6.6)', () => {
 
     expect(await why(k, bad, service)).toBe(
       'the proposal has a malformed uses',
+    );
+  });
+
+  it('[C8] a proposal with an unknown risk is refused', async () => {
+    const { p, k, service } = await consentRequired();
+    const bad = { ...p, risk: 'critical' } as unknown as P.Proposal;
+
+    // Rehashed, so only the risk is wrong.
+    bad.hash = await P.proposalHash(bad);
+
+    expect(await why({ ...k, hash: bad.hash }, bad, service)).toBe(
+      'the proposal has an unknown risk',
     );
   });
 

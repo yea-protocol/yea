@@ -37,6 +37,7 @@ import {
   untrustedLens,
 } from './lens.js';
 import { connect } from './node.js';
+import { isRisk } from './risk.js';
 import {
   addService,
   CLIENTS,
@@ -45,7 +46,7 @@ import {
   removeService,
 } from './setup.js';
 import { printable } from './text.js';
-import type { ConsentRequest, Proposal, Reply, Risk, Verb } from './types.js';
+import type { ConsentRequest, Proposal, Reply, Verb } from './types.js';
 import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
 import { unixNow } from './util.js';
 
@@ -184,8 +185,12 @@ function caveats(): Caveat[] {
     c.push({ total: limit(l) });
   }
 
-  if (o.risk) {
-    c.push({ risk: o.risk as Risk });
+  if (o.risk !== undefined) {
+    c.push({
+      risk: isRisk(o.risk)
+        ? o.risk
+        : die(`bad risk ${o.risk} (low|medium|high)`),
+    });
   }
 
   return c;
@@ -399,9 +404,11 @@ function missing(e: unknown): boolean {
 }
 
 async function cmdGrant() {
+  // Bad caveat flags are refused before any key is read.
+  const cav = caveats();
   const p = (await principalKey()) ?? die('no principal key — run yea init');
   const to = o.to ?? (await agentKey())?.public ?? die('no agent key');
-  const token = await issueGrant({ principal: p, to, caveats: caveats() });
+  const token = await issueGrant({ principal: p, to, caveats: cav });
   const info = await inspectGrant(token);
 
   if (!o.to) {

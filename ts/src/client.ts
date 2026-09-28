@@ -2,6 +2,7 @@
 import { randomId } from './crypto.js';
 import { type Caveat, decodeGrant, makeProof } from './grants.js';
 import { lens } from './lens.js';
+import { isRisk } from './risk.js';
 import type { Service } from './service.js';
 import type {
   Answer,
@@ -60,31 +61,45 @@ function grantCovers(token: string, aud: string): boolean {
   }
 }
 
-/**
- * SPEC §5.1: a proposal or receipt with a malformed `uses` is invalid, so the reply becomes a
- * local `bad_frame` error instead of something a model or a person might act on.
- */
-function rejectMalformedUses(reply: FinalReply): FinalReply {
-  const items: (Proposal | Receipt)[] =
-    reply.kind === 'PROPOSALS'
-      ? reply.proposals
-      : reply.kind === 'RECEIPT'
-        ? [reply.receipt]
-        : [];
-  const bad = items.find((x) => x.uses !== undefined && !isUses(x.uses));
-
-  if (!bad) {
-    return reply;
+/** What is malformed about a proposal or receipt (SPEC §5.1), or null if nothing is. */
+function malformedPart(x: Proposal | Receipt, isProposal: boolean) {
+  if (x.uses !== undefined && !isUses(x.uses)) {
+    return 'a malformed uses';
   }
 
-  return {
-    yea: 1,
-    id: reply.id,
-    re: reply.re,
-    kind: 'ERROR',
-    code: 'bad_frame',
-    message: `${reply.kind === 'PROPOSALS' ? 'proposal' : 'receipt'} ${bad.id} from the service has a malformed uses, so it was ignored`,
-  };
+  // Only a proposal carries a risk.
+  return isProposal && !isRisk((x as Proposal).risk) ? 'an unknown risk' : null;
+}
+
+/**
+ * SPEC §5.1: a proposal with a malformed `uses` or an unknown `risk`, or a receipt with a
+ * malformed `uses`, is invalid, so the reply becomes a local `bad_frame` error instead of
+ * something a model or a person might act on.
+ */
+function rejectMalformed(reply: FinalReply): FinalReply {
+  const isProposal = reply.kind === 'PROPOSALS';
+  const items: (Proposal | Receipt)[] = isProposal
+    ? reply.proposals
+    : reply.kind === 'RECEIPT'
+      ? [reply.receipt]
+      : [];
+
+  for (const x of items) {
+    const why = malformedPart(x, isProposal);
+
+    if (why) {
+      return {
+        yea: 1,
+        id: reply.id,
+        re: reply.re,
+        kind: 'ERROR',
+        code: 'bad_frame',
+        message: `${isProposal ? 'proposal' : 'receipt'} ${x.id} from the service has ${why}, so it was ignored`,
+      };
+    }
+  }
+
+  return reply;
 }
 
 export class Client {
@@ -115,7 +130,7 @@ export class Client {
       frame,
       onEvent && ((e) => onEvent({ ...e, lens: e.lens ?? lens(e) })),
     );
-    const reply = rejectMalformedUses(received);
+    const reply = rejectMalformed(received);
 
     return { ...reply, lens: reply.lens ?? lens(reply) } as WithLens<T>;
   }

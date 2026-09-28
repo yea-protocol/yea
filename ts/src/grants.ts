@@ -6,7 +6,7 @@
 import { b64u, fromUtf8, unb64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import { type KeyPair, keyPair, sha256, sign, verify } from './crypto.js';
-import { atLeast, isRisk } from './risk.js';
+import { exceeds, isRisk } from './risk.js';
 import type { ConsentRequest, Proof, Proposal, Risk, Verb } from './types.js';
 import {
   exact,
@@ -339,8 +339,14 @@ function malformed(k: string, v: unknown, env: CaveatEnv): string | null {
     return `malformed caveat ${JSON.stringify({ [k]: v })}`;
   }
 
-  // A limit can't be judged against a malformed `uses` (SPEC §6.3), so that fails closed too.
   const p = env.p;
+
+  // A ceiling can't be judged against an unknown risk (SPEC §6.3), so that fails closed too.
+  if (k === 'risk' && p && !isRisk(p.risk)) {
+    return 'unknown risk on the proposal';
+  }
+
+  // A limit can't be judged against a malformed `uses` (SPEC §6.3), so that fails closed too.
   const isLimitCaveat = k === 'each' || k === 'total';
 
   // `undefined` means absent; JSON can't carry it, so a `null` is still malformed.
@@ -449,7 +455,7 @@ const CAVEAT_CHECKS: Record<
   },
   // `v` is a known risk: malformed() rejects any other ceiling before this runs.
   risk: (v, { p }) =>
-    p && !atLeast(v as Risk, p.risk)
+    p && exceeds(p.risk, v as Risk)
       ? `risk ${p.risk} exceeds ceiling ${v}`
       : null,
   only: (v, { ctx, p }) =>

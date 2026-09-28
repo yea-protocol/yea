@@ -12,7 +12,7 @@ import {
   type TotalLimit,
   usedOf,
 } from './grants.js';
-import { atLeast, isRisk } from './risk.js';
+import { atLeast, isRisk, knownRisk, resolveRisk } from './risk.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -144,6 +144,8 @@ export function planPreimage(
     );
   }
 
+  knownRisk(risk);
+
   return {
     tool,
     input,
@@ -168,7 +170,7 @@ export function hashPlans(
 ): Promise<HashedPlan[]> {
   return Promise.all(
     plans.map(async (plan) => {
-      const risk = plan.risk ?? tool.risk ?? 'medium';
+      const risk = resolveRisk('medium', plan.risk, tool.risk);
 
       return {
         tool: tool.name,

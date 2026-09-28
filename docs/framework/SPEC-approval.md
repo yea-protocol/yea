@@ -35,7 +35,10 @@ those servers.
 
 Terms:
 - A **plan** is the existing `Plan`: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`
-  and `apply()`. A plan's `risk` defaults to the tool's declared risk, else `medium`.
+  and `apply()`. A plan's `risk` defaults to the tool's declared risk, else `medium`. Any
+  risk other than `low`, `medium` or `high` is malformed: that plan never gets a plan hash, and
+  the call is refused. Wherever a risk is compared anyway, an unknown one fails closed: it
+  counts as riskier than `high`, so it passes no `risk` ceiling and always goes out of band.
 - The **policy** is the person's standing rules (§2).
 - The **store** holds consumed approvals, receipts and the usage ledger (§8).
 
@@ -491,7 +494,7 @@ export function decide(
   - deleting the unsigned policy file returns to the defaults, never to something looser;
   - undo refuses outside its window, for another principal, a second time, for an id that
     isn't in the generated format (`../x`), and for a receipt from another server;
-  - a plan with a malformed `uses` never gets a plan hash;
+  - a plan with a malformed `uses` or an unknown `risk` never gets a plan hash;
   - a principal key file writable by the server's user, or in a directory it can write, is
     refused;
   - a partly failed reservation releases the reservations already made;

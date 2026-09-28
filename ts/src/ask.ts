@@ -17,7 +17,7 @@ import {
   encodeConsentCode,
 } from './grants.js';
 import { effectLine, fmtDuration } from './lens.js';
-import { atLeast } from './risk.js';
+import { atLeast, isRisk } from './risk.js';
 import type { ConsentRequest, Effect } from './types.js';
 import { fmtUses, isUses } from './uses.js';
 import { isStringList } from './util.js';
@@ -373,7 +373,8 @@ function isJob(j: unknown): j is JobConsent['job'] {
     typeof o.tool === 'string' &&
     typeof o.summary === 'string' &&
     Array.isArray(o.effects) &&
-    (o.uses === undefined || isUses(o.uses))
+    (o.uses === undefined || isUses(o.uses)) &&
+    isRisk(o.risk)
   );
 }
 
