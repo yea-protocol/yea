@@ -124,16 +124,21 @@ async def test_another_jobs_state_is_refused(world):
     async def refund_other(amount: int) -> list[Plan]:
         return [Plan("Other", [create("x")], apply=lambda: done.append("other"))]
 
+    from mcp.shared.exceptions import MCPError
+    from yea.approval import check_state
+
     async with world.client("auto", Person()) as c:
         first = await c.session.call_tool("refund", {"amount": 5}, allow_input_required=True)
         answer = {"yea": t.ElicitResult(action="accept", content={"confirm": "approve"})}
-        try:
-            r = await c.session.call_tool("refund_other", {"amount": 5}, input_responses=answer,
-                                          request_state=first.request_state, allow_input_required=True)
-            assert r.is_error
-        except Exception:  # noqa: BLE001 — the SDK's binding rejects it before our code runs
-            pass
-    assert done == []
+        with pytest.raises(MCPError):  # the SDK's binding: the state was sealed for another tool
+            await c.session.call_tool("refund_other", {"amount": 5}, input_responses=answer,
+                                      request_state=first.request_state, allow_input_required=True)
+    assert done == [] and not first.request_state.startswith("{")  # sealed on the wire, never our plaintext
+    # And our own check, should a state ever get past the binding: it names its tool.
+    from yea.approval import input_hash, new_state
+
+    ours = new_state("refund", input_hash({"amount": 5}), "", ["h"], 1, 1_790_000_000)
+    assert check_state(ours, "refund_other", input_hash({"amount": 5}), "", 1_790_000_000) is None
 
 
 async def test_a_state_replayed_by_another_caller_is_refused(tmp_path, monkeypatch):
@@ -228,3 +233,48 @@ async def test_legacy_stateless_http_takes_the_consent_code_path(tmp_path, monke
                               elicitation_callback=Person()) as c:
                 r = await c.call_tool("send", {"to": "ana"})
     assert r.is_error and "yea approve" in text(r) and done == []
+
+
+async def test_a_namespaced_copy_of_a_guarded_fastmcp_tool_is_refused(world):
+    from fastmcp import Client as FastClient
+    from fastmcp import FastMCP
+    from fastmcp.server.transforms import Namespace
+
+    fm = FastMCP("b", request_state_security=world.approvals.request_state_security())
+    calls = []
+
+    @fm.tool
+    def wipe(target: str) -> str:
+        calls.append(target)
+        return "wiped"
+
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+    fm.add_transform(Namespace("x"))
+    async with FastClient(fm) as c:
+        r = await c.call_tool("x_wipe", {"target": "db"}, raise_on_error=False)
+    assert r.is_error and "under another name" in text(r) and calls == []
+
+
+async def test_a_failing_original_with_a_broken_store_is_still_its_own_error(world):
+    import mcp_types as mt
+
+    calls = []
+
+    @world.server.tool()
+    async def charge(cents: int) -> str:
+        calls.append(cents)
+        raise RuntimeError("card declined")
+
+    world.approvals.guard(world.server, "charge", revert=lambda r, ctx: None,
+                          describe=lambda a: {"summary": "Charge", "effects": [], "risk": "low", "undo_window": 60,
+                                              "uses": {"spend": {"amount": a["cents"], "scale": 2, "unit": "USD"}}})
+    world.grant({"can": ["charge"]}, {"total": {"of": "spend", "max": 10000, "scale": 2, "unit": "USD"}})
+
+    async def broken(r):
+        raise OSError("disk full")
+
+    world.store.release = broken
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("charge", {"cents": 500})
+    assert r.is_error and "happened" not in text(r) and calls == [500]
+    assert isinstance(r, mt.CallToolResult)

@@ -82,17 +82,46 @@ def _with_note(r: ToolResult, note: str) -> ToolResult:
 class FastMCPGuard(Middleware):
     """One per FastMCP server: its guarded tools, installed by ``guard()`` itself."""
 
+    MARK = "dev.yea/guarded"
+
     def __init__(self, y: Yea, server: FastMCP):
         self.y = y
         self.server = server
         self.tools: dict[str, Guarded] = {}
+        self._fns: dict[int, str] = {}  # id(tool function) -> guarded name
+        self._marked = False
 
     def add(self, name: str, g: Guarded) -> None:
         if name in self.tools:
             raise ValueError(f"guard(): {name} is already guarded on this server")
         self.tools[name] = g
+        self._marked = False
+
+    async def _mark(self) -> None:
+        """Mark each guarded tool by identity, not just by name: FastMCP can publish the same tool
+        under another name (a ``Namespace`` copies it with a new name), and the mark in its
+        metadata and its function travel with every copy."""
+        if self._marked:
+            return
+        for name in self.tools:
+            for tool in (await self.server.local_provider.get_tool(name), await self.server.get_tool(name)):
+                if tool is None:
+                    continue
+                tool.meta = {**(tool.meta or {}), self.MARK: name}
+                if (fn := getattr(tool, "fn", None)) is not None:
+                    self._fns[id(fn)] = name
+        self._marked = True
+
+    def _guarded_name(self, tool: Tool) -> str | None:
+        """Which guarded tool this is, whatever it's called now."""
+        mark = (tool.meta or {}).get(self.MARK)
+        if isinstance(mark, str) and mark in self.tools:
+            return mark
+        fn = getattr(tool, "fn", None)
+        return self._fns.get(id(fn)) if fn is not None else None
 
     async def on_list_tools(self, context: Any, call_next: Any) -> Any:
+        await self._mark()
         return [self._advertise(tool) for tool in await call_next(context)]
 
     def _advertise(self, tool: Tool) -> Tool:
@@ -107,6 +136,7 @@ class FastMCPGuard(Middleware):
                                        "meta": {**(tool.meta or {}), **job_meta(None, g.revert is not None)}})
 
     async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+        await self._mark()
         name = context.message.name
         tool = await self._resolve(name)
         if tool is None:
@@ -119,6 +149,9 @@ class FastMCPGuard(Middleware):
                                                  "approval; nothing was run"]))
         g = self.tools.get(tool.name)  # the tool the call resolves to, not the name it was asked for
         if g is None:
+            if (was := self._guarded_name(tool)) is not None:
+                return _as_tool_result(error_result([f"✗ {name} is the guarded tool {was} under another name, which "
+                                                     "would skip its approval; nothing was run"]))
             return await call_next(context)
         return _as_tool_result(await self._call(context, call_next, tool, g))
 

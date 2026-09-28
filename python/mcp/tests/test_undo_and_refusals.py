@@ -146,10 +146,22 @@ def test_the_server_key_directory_and_file_are_checked(tmp_path, monkeypatch):
     open_dir = tmp_path / "open"
     open_dir.mkdir(mode=0o777)
     os.chmod(open_dir, 0o777)
-    with pytest.raises(ValueError, match="owned by this user, mode 0700"):
+    with pytest.raises(ValueError, match="writable by no one else"):
         yea(name="s", transport="stdio", server_key=open_dir / "k.key")
     good = tmp_path / "good"
     ap = yea(name="s", transport="stdio", server_key=good / "k.key")
     assert (good.stat().st_mode & 0o777) == 0o700 and ((good / "k.key").stat().st_mode & 0o777) == 0o600
     assert yea(name="s", transport="stdio", server_key=good / "k.key").service_id() == ap.service_id()
     assert not list(good.glob("*.tmp"))
+
+
+def test_a_memory_store_subclass_is_still_a_memory_store(tmp_path, monkeypatch):
+    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+
+    class CountingStore(MemoryStore):
+        pass
+
+    with pytest.raises(ValueError, match="single_process"):
+        yea(name="s", transport="http", sub=lambda r: "me", store=CountingStore(), server_key=tmp_path / "k")
+    with pytest.raises(ValueError, match="shared state_key"):
+        yea(name="s", transport="stdio", store=CountingStore(), state_key=b"k" * 32, server_key=tmp_path / "k")

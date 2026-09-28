@@ -105,8 +105,9 @@ class Call:
 
 
 def is_memory_store(store: Any) -> bool:
-    """By name, not class: two copies of the SDK core mean two MemoryStore classes."""
-    return type(store).__name__ == "MemoryStore"
+    """By name along the class's ancestry, not by class: two copies of the SDK core mean two
+    MemoryStore classes, and a subclass (a counting store in tests, say) is still one."""
+    return any(c.__name__ == "MemoryStore" and c.__module__.startswith("yea") for c in type(store).__mro__)
 
 
 async def _maybe(v: Any) -> Any:
@@ -226,7 +227,11 @@ async def _replanned(call: Call) -> Call:
         plans = hash_plans(call.job, call.input, list(out)) if isinstance(out, (list, tuple)) else []
     except Exception:  # noqa: BLE001
         plans = []
-    return Call(call.y, call.job, call.input, call.req, call.sub, int(time.time()), call.policy, plans, call.plan)
+    try:
+        policy = policy_for(call.y)  # a deny added while the person was reading counts
+    except Exception:  # noqa: BLE001
+        policy = call.policy
+    return Call(call.y, call.job, call.input, call.req, call.sub, int(time.time()), policy, plans, call.plan)
 
 
 async def _fail_closed(call: Call, why: str, plans: list[HashedPlan]) -> t.CallToolResult:
@@ -270,13 +275,16 @@ async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: st
         approved = how == "approved"
         return error_result([f"✗ {'approved, but ' if approved else ''}{hp.plan.summary} failed: {e}; nothing changed."
                              f"{' The approval is used up: calling again asks again.' if approved else ''}"])
-    try:
-        if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
+    if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
+        try:
             await release_all(call.y.store, held)
-            return result
+        except Exception:  # noqa: BLE001 — a reservation that can't be released only over-counts
+            pass
+        return result
+    try:
         return await _recorded(call, hp, held, result, how == "auto")
     except Exception as e:  # noqa: BLE001
-        return _unrecorded(call, hp, None, str(e))
+        return _unrecorded(call, hp, result if call.job.guarded else None, str(e))
 
 
 def _receipt_for(call: Call, hp: HashedPlan, result: Any) -> dict:

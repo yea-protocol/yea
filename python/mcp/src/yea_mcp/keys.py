@@ -42,11 +42,14 @@ def default_key_path(name: str) -> Path:
 
 
 def _check_dir(d: Path) -> None:
-    """The key's directory is this user's and 0700; its parent is this user's or root's, and not
-    writable by others unless sticky (like /tmp)."""
+    """The key's directory is this user's and writable by no one else; its parent is this user's or
+    root's, and not writable by others unless sticky (like /tmp)."""
+    if not hasattr(os, "geteuid"):
+        return  # no POSIX owners (Windows): as mcp-ts, only the file checks apply
     st = d.lstat()
-    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid() or st.st_mode & 0o077:
-        raise ValueError(f"yea(): refusing the server key: {d} must be a directory owned by this user, mode 0700")
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid() or st.st_mode & 0o022:
+        raise ValueError(f"yea(): refusing the server key: {d} must be a directory owned by this user, "
+                         "writable by no one else")
     p = d.parent.stat()
     if p.st_uid not in (os.geteuid(), 0) or (p.st_mode & 0o002 and not p.st_mode & stat.S_ISVTX):
         raise ValueError(f"yea(): refusing the server key: {d.parent} can be changed by other users")
@@ -71,14 +74,14 @@ def _create_key(path: Path) -> None:
 def _read_key(path: Path) -> str:
     """Open without following a symlink, check the open file, and read that same file."""
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     except OSError as e:
         raise ValueError(f"yea(): refusing the server key: {path} is a symlink or unreadable ({e.strerror})") from None
     with os.fdopen(fd, encoding="utf-8") as f:
         st = os.fstat(f.fileno())
         if not stat.S_ISREG(st.st_mode):
             raise ValueError(f"yea(): refusing the server key: {path} is not a regular file")
-        if st.st_uid != os.geteuid():
+        if hasattr(os, "geteuid") and st.st_uid != os.geteuid():
             raise ValueError(f"yea(): refusing the server key: {path} is not owned by this user")
         if sys.platform != "win32" and st.st_mode & 0o077:
             raise ValueError(f"yea(): refusing the server key: {path} can be read by other users (chmod 600 it)")

@@ -59,7 +59,7 @@ assume it.
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
 | `store` | `FileStore()` for stdio (under `YEA_STORE` when set), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
-| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and `0700`, and that directory's parent this user's or root's and not writable by others unless sticky. It's read with `O_NOFOLLOW` and checked on the open file (a regular file, this user's, readable by no one else). Its public key is the service id, and the holder of policy and consent grants. |
+| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and writable by no one else (it's created `0700`), and that directory's parent this user's or root's and not writable by others unless sticky; without POSIX owners (Windows), as in `mcp-ts`, only the file checks apply. It's read with `O_NOFOLLOW` and checked on the open file (a regular file, this user's, readable by no one else). Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
@@ -309,7 +309,9 @@ seam:
   name, then an app tool's hashed `<12 hex>_<name>`) and decides on the resolved tool's name. A
   transformed tool calls its parent's `run` directly and skips middleware, and a transform can
   rename a tool, so a `TransformedTool` whose `parent_tool` chain reaches a guarded tool is
-  refused. `job()` needs no such check: its routine is inside the tool function, which
+  refused. A `Namespace` renames a tool by copying it, so the guard also marks each guarded
+  tool by identity (a `dev.yea/guarded` entry in its metadata, and its function), and refuses a
+  tool that carries the mark under another name. `job()` needs no such check: its routine is inside the tool function, which
   `parent_tool.run` still calls.
 - **Tasks.** FastMCP has no public synchronous tool lookup, so `guard()` can't see a tool's
   `task_config` when it registers; a guarded task-enabled tool is refused when called. Running
