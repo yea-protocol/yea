@@ -277,9 +277,13 @@ and §6, and the same order as `mcp-ts`):
       `None`), `tool`, `input`, `planHash`, `sub` and `result`. Return the receipt as Lens
       text with `structured_content: {"receipt", "result"}`, or for `guard`, a copy of the
       original result mapping with the receipt in `_meta`.
-    - If anything fails after `apply()` succeeded (the result can't be turned into JSON, a
-      circular object for example, or `settle_all` or `put_receipt` fails): say the action
-      happened and that undo isn't available.
+    - A result that can't be turned into JSON (a circular object, say) is left out: the receipt is
+      stored without it, so the job can still be undone, and the result says the action happened,
+      that its result isn't shown or kept, and whether undo is available (as `mcp-ts`).
+    - If anything fails after `apply()` succeeded (`settle_all`, `put_receipt`, or anything after
+      the receipt is saved): say the action happened, what failed, and whether undo is available
+      (only once the receipt was saved and the plan is undoable), in `mcp-ts`'s words. For `guard`,
+      the original's result, when it's usable, is kept with that line.
 
 ### Asking, per era
 

@@ -212,3 +212,21 @@ def test_a_second_job_with_revert_reuses_yeas_own_undo(world):
 def test_a_job_with_revert_named_undo_is_refused(world):
     with pytest.raises(ValueError, match="can't be named undo"):
         world.approvals.job(world.server, name="undo", revert=lambda r, ctx: None)(lambda event: [])
+
+
+async def test_a_guarded_tool_keeps_its_result_when_its_receipt_cant_be_saved(world, monkeypatch):
+    """The action happened: the original's result goes back, with a line saying undo isn't available (#150)."""
+    @world.server.tool()
+    async def zap(target: str) -> str:
+        return "zapped"
+
+    world.approvals.guard(world.server, "zap", describe=lambda a: {"summary": "Zap", "effects": [], "risk": "low"})
+
+    async def full(receipt):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(world.store, "put_receipt", full)
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("zap", {"target": "x"})
+    assert not r.is_error and text(r).startswith("zapped")
+    assert "✓ Zap happened, but then disk full; its receipt wasn't saved, so it can't be undone." in text(r)
