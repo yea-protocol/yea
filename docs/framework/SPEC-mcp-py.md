@@ -84,6 +84,14 @@ its own: without a subject it returns `'["<client>",null,null]'`, a non-empty st
 an app, not a person. `yea_mcp.token_subject(ctx)` returns the verified token's `subject`, or
 `""` when there is none, and is the recommended `sub`.
 
+**No HTTP front end in `yea-mcp` (v0).** `mcp-ts` ships one (`@yea-protocol/mcp/http`:
+`httpGate`, `httpApp`, `subOf`, `httpAuthFrom`, `serveHttp`), with a bearer token compared in
+constant time, a `Host` check on loopback against DNS rebinding, and a request body cap. `yea-mcp`
+has no counterpart: serve HTTP with the MCP SDK's own Streamable HTTP transport and its
+authentication (a `TokenVerifier` or OAuth), put `token_subject` in `sub`, and bind to loopback or
+put the server behind a proxy that checks `Host` and caps request bodies. Porting the front end is
+tracked in [#176](https://github.com/yea-protocol/yea/issues/176).
+
 ### Request state: the SDK seals it
 
 Unlike the TypeScript SDK, `MCPServer` seals every tool's `request_state` itself: its
