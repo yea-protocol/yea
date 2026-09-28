@@ -1,26 +1,23 @@
 """Shared conformance vectors (../conformance/*.json), generated from the TS implementation."""
 
-import json
-
 import pytest
-from conftest import CONFORMANCE
+from conftest import CONFORMANCE, load_vectors
 
 from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
 from yea.uses import is_uses
 
 
 def vectors(name):
-    path = CONFORMANCE / f"{name}.json"
-    if not path.exists():
-        pytest.skip(f"{path} not present")
-    return json.loads(path.read_text(encoding="utf-8"))
+    data = load_vectors(name)
+    if data is None:
+        pytest.skip(f"{CONFORMANCE / name}.json not present")
+    return data
 
 
 def cases(name, key="name"):
-    path = CONFORMANCE / f"{name}.json"
-    if not path.exists():
-        return [pytest.param(None, marks=pytest.mark.skip(reason=f"{path} missing"))]
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = load_vectors(name)
+    if data is None:
+        return [pytest.param(None, marks=pytest.mark.skip(reason=f"{CONFORMANCE / name}.json missing"))]
     items = data["cases"] if isinstance(data, dict) else data
     return [pytest.param(c, id=str(c.get(key, i))) for i, c in enumerate(items)]
 
@@ -66,6 +63,11 @@ def test_grants_total_block_ids():
     assert data["rootTotalBlockId"] in ids and data["countsTotalBlockId"] in ids
 
 
+def test_grants_seeds_name_the_trusted_principal():
+    data = vectors("grants")
+    assert key_from_seed(data["seeds"]["principal"]).public in data["cases"][0]["trusted"]
+
+
 def test_protocol_consent_code():
     v = vectors("grants")["consentCode"]
     code = consent_code(v["consent"], v["detail"], agent=v["agent"])
@@ -87,10 +89,10 @@ def test_lens(case):
 
 
 def _uses_cases(key):
-    path = CONFORMANCE / "uses.json"
-    if not path.exists():
-        return [pytest.param(None, marks=pytest.mark.skip(reason=f"{path} missing"))]
-    items = json.loads(path.read_text(encoding="utf-8"))[key]
+    data = load_vectors("uses")
+    if data is None:
+        return [pytest.param(None, marks=pytest.mark.skip(reason=f"{CONFORMANCE}/uses.json missing"))]
+    items = data[key]
     return [pytest.param(c, id=c.get("name") or c.get("lens")) for c in items]
 
 

@@ -27,7 +27,7 @@ from .key_file import (
     load_principal_key,
 )
 from .ledger import release_all, reserve_all, settle_all, spent
-from .phrase import normalize_phrase, phrase_matches, phrase_of
+from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of
 from .plan import HashedPlan, input_hash, plan_hash, plan_preimage
 from .policy import (
     DEFAULT_OUT_OF_BAND,
@@ -47,6 +47,7 @@ __all__ = [
     "input_hash",
     "HashedPlan",
     "normalize_phrase",
+    "checked_phrase",
     "phrase_of",
     "phrase_matches",
     "check_key_file",

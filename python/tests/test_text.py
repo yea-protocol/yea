@@ -91,3 +91,10 @@ def test_a_quoted_value_is_escaped_once():
     hp = HashedPlan("t", p, plan_hash("t", {}, p, "low"), "low", False)
     form = build_form([hp], "why", Policy(), lambda h: "approve")
     assert '  ~ update t: "a\\u{202e}b" → 2' in form["message"].split("\n")
+
+
+def test_format_characters_newer_than_the_interpreter_are_still_escaped():
+    """U+0890–0891 and U+13439–1343F are unassigned in Python 3.10's Unicode 13, but TS and later
+    Pythons refuse them in a phrase, so every Python escapes them (#130)."""
+    for c in ("࢐", "࢑", "\U00013439", "\U0001343f"):
+        assert printable(f"x{c}") == f"x\\u{{{ord(c):x}}}"
