@@ -1,7 +1,10 @@
 /** Bounds a service's memory by periodically forgetting expired proposals, old receipts and stale auto-INTENT replays. */
-import { DAY, type ServiceState } from './state.js';
+import { DAY } from '../util.js';
+import type { ServiceState } from './state.js';
 
 export class Sweeper {
+  private sweeps = 0;
+
   constructor(
     private readonly state: Pick<
       ServiceState,
@@ -9,7 +12,6 @@ export class Sweeper {
     >,
   ) {}
 
-  private sweeps = 0;
   /** Bound memory: forget expired uncommitted proposals, and receipts a day after their undo window. */
   sweep(now: number) {
     if (++this.sweeps % 100 !== 0 && this.state.proposals.size < 5000) {

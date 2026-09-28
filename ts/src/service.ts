@@ -2,6 +2,8 @@
  * Build a YEA service. Transport-independent: `handle(frame)` turns a request frame
  * into its final reply (emitting EVENTs along the way). Transports live in node.ts / http.ts.
  * The verb handlers live in service/; this file registers capabilities and dispatches frames.
+ * A verb that needs collaborators or private helpers is a `<Verb>Handler` class holding a
+ * `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`.
  */
 import { Authorizer } from './authorize.js';
 import { fit, MemoryHandleStore } from './budget.js';
@@ -30,11 +32,11 @@ import { unixNow } from './util.js';
 export class Service {
   readonly id: string;
   private readonly state: ServiceState;
-  private readonly intents: IntentHandler;
-  private readonly commits: CommitHandler;
-  private readonly undos: UndoHandler;
+  private readonly intentHandler: IntentHandler;
+  private readonly commitHandler: CommitHandler;
+  private readonly undoHandler: UndoHandler;
 
-  constructor(private opts: ServiceOptions) {
+  constructor(opts: ServiceOptions) {
     this.id = opts.id;
 
     const now = opts.now ?? unixNow;
@@ -57,13 +59,13 @@ export class Service {
 
     const executor = new Executor(this.state);
 
-    this.intents = new IntentHandler(
+    this.intentHandler = new IntentHandler(
       this.state,
       executor,
       new Sweeper(this.state),
     );
-    this.commits = new CommitHandler(this.state, executor);
-    this.undos = new UndoHandler(this.state);
+    this.commitHandler = new CommitHandler(this.state, executor);
+    this.undoHandler = new UndoHandler(this.state);
   }
 
   /** Register a read-only capability. */
@@ -84,12 +86,15 @@ export class Service {
     return listCapabilities(this.state);
   }
 
-  brief(budget = this.opts.defaultBudget ?? 2000, re = 'discover'): Brief {
+  brief(
+    budget = this.state.opts.defaultBudget ?? 2000,
+    re = 'discover',
+  ): Brief {
     const r: Brief = replyFrame(re, 'BRIEF', {
       service: {
-        id: this.opts.id,
-        name: this.opts.name,
-        summary: this.opts.summary,
+        id: this.state.opts.id,
+        name: this.state.opts.name,
+        summary: this.state.opts.summary,
       },
       capabilities: this.capabilities,
     });
@@ -115,7 +120,8 @@ export class Service {
       }
 
       const req = frame;
-      const budget = positiveInt(req.budget) ?? this.opts.defaultBudget ?? 2000;
+      const budget =
+        positiveInt(req.budget) ?? this.state.opts.defaultBudget ?? 2000;
 
       switch (req.verb) {
         case 'HELLO':
@@ -123,18 +129,18 @@ export class Service {
         case 'ASK':
           return await onAsk(this.state, req, budget);
         case 'INTENT':
-          return await this.intents.onIntent(req, budget, emit);
+          return await this.intentHandler.onIntent(req, budget, emit);
         case 'COMMIT':
-          return await this.commits.onCommit(req, budget, emit);
+          return await this.commitHandler.onCommit(req, budget, emit);
         case 'UNDO':
-          return await this.undos.onUndo(req, budget, emit);
+          return await this.undoHandler.onUndo(req, budget, emit);
         case 'EXPAND':
           return await onExpand(this.state, req, budget);
         default:
           throw unknownVerb(req);
       }
     } catch (e) {
-      return errorReply(this.opts, re, e);
+      return errorReply(this.state.opts, re, e);
     }
   }
 }

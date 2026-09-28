@@ -27,8 +27,6 @@ export interface StoredReceipt {
   undone?: Promise<ReceiptReply | ErrorReply>;
 }
 
-export const DAY = 86400;
-
 /** One instance per Service: every handler holds these same references. */
 export interface ServiceState {
   readonly id: string;

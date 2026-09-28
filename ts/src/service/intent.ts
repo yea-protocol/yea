@@ -8,11 +8,12 @@ import { autoTarget } from '../proof.js';
 import { resolveRisk } from '../risk.js';
 import type { Event, FinalReply, Intent, Proposal } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
+import { DAY } from '../util.js';
 import { validateParams } from '../validate.js';
 import { unknownCapability } from './capabilities.js';
 import type { Executor } from './execute.js';
 import { replayOf, verifiedKey } from './replies.js';
-import { DAY, type ServiceState, type StoredProposal } from './state.js';
+import type { ServiceState, StoredProposal } from './state.js';
 import type { Sweeper } from './sweep.js';
 
 interface IntentRun {
