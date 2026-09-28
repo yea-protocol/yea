@@ -28,7 +28,7 @@ In an MCP client's config:
       "command": "npx",
       "args": ["-y", "@yea-protocol/stripe"],
       "env": {
-        "STRIPE_SECRET_KEY_FILE": "/etc/yea/stripe.key",
+        "STRIPE_SECRET_KEY_FILE": "/home/me/.config/yea/stripe.key",
         "YEA_PRINCIPAL_PUB": "/etc/yea/principal.pub"
       }
     }
@@ -70,25 +70,41 @@ wants a real API rather than a demo.
   immediately. The plan previews the amount with `create_preview`, using `subscription`,
   `subscription_details[items][0][id|price]` and a `subscription_details[proration_date]`.
   The update then sends the same `proration_date`, so the charged amount equals the previewed
-  one. A change of billing interval is refused in v0, because Stripe then resets the billing
-  date and charges regardless.
+  one.
 - **Change plan at renewal:** a subscription schedule, which takes two writes:
   1. `POST /v1/subscription_schedules` with `from_subscription`. Stripe doesn't allow phases
      in the same call.
   2. `POST /v1/subscription_schedules/:id` with the current phase copied in full, plus a new
      phase with the new price from the renewal date.
 
-  If the second write fails, `apply()` releases the schedule it just made, so nothing is left
-  half-done. Undo is `POST /v1/subscription_schedules/:id/release`, which leaves the
-  subscription as it is and drops the pending phase. A subscription that already has a
-  schedule isn't offered "at renewal" in v0, because releasing would also drop phases we
-  didn't create.
-- **A scheduled subscription** isn't offered "cancel at period end" either, since Stripe
-  manages cancellation for it through the schedule. It's offered "now" only, with a note
-  explaining why.
+  Undo is `POST /v1/subscription_schedules/:id/release`, which leaves the subscription as it
+  is and drops the pending phase. A subscription that already has a schedule we didn't create
+  isn't offered "at renewal" in v0, because releasing would also drop phases we didn't create.
+- **If a write fails part-way,** `apply()` doesn't claim nothing changed:
+  - when the second write fails, or times out with an unknown result, `apply()` releases the
+    schedule;
+  - if that release also fails, it throws a distinct error naming the leftover `sch_…` id,
+    and mcp-ts shows that error instead of "nothing changed".
+- **Cancelling a scheduled subscription.** Stripe manages cancellation through the schedule.
+  So "at period end" becomes a schedule update to `end_behavior=cancel` (undo sets it back to
+  `release`), and "now" stays available as before.
+- **Refused in v0, with a clear reason:** subscriptions with more than one item, and price
+  changes that alter the billing interval (Stripe then resets the billing date and charges
+  regardless).
 - **API version.** Every request sends `Stripe-Version: 2026-08-26.dahlia`, the version the
   connector is tested against. Subscription periods are read from
   `items.data[].current_period_end`, where Stripe has kept them since `2025-03-31.basil`.
+
+### Stable plans
+
+A plan's hash has to stay the same while the person decides: every approval round, and a
+consent code, recomputes the plans (SPEC-approval §5). So nothing in a plan depends on the
+current time finer than a day:
+- `proration_date` is the start of today (UTC), never earlier than the period start;
+- "refund what's unused" measures the unused share from the same instant.
+
+A test recomputes each job's plans across simulated rounds and across midnight, and checks
+the hashes: the same within a day, and a new ask ("plans changed") after midnight.
 
 ### Idempotency
 
@@ -104,7 +120,8 @@ twice.
 `spend` is money leaving the principal (the business) under the
 [conventions](../conventions.md). So:
 - **refunds** report `uses.spend`: the amount, in the payment's currency;
-- **credits** from a prorated downgrade report `uses.spend`: the credit;
+- **credits** from a prorated change report `uses.spend`: the net proration, when it is a
+  credit;
 - **prorated charges** to the customer spend nothing, since that money comes in.
 
 Currencies follow Stripe's rules:
@@ -126,6 +143,10 @@ ran, and the ids it touched:
   before the period does.
 - **Change plan at renewal:** release the schedule `apply()` created. The undo window ends a
   day before the renewal.
+- **Cancel at period end on a scheduled subscription:** set `end_behavior` back to `release`.
+
+A renewal or period end less than a day away leaves the plan with no `undoWindow`, so it's
+treated as irreversible.
 
 Refunds, immediate cancels and prorated changes have no inverse call in Stripe, so they have
 no `undoWindow`.
@@ -139,7 +160,11 @@ no `undoWindow`.
 | `cancel_subscription` at period end | low | medium |
 | `change_plan` now (charges or credits) | medium | high |
 | `change_plan` at renewal, cheaper or same price | low | medium |
-| `change_plan` at renewal, dearer | medium | high |
+| `change_plan` at renewal, dearer, or not comparable | medium | high |
+
+"Cheaper or same" means both prices are per-unit and flat, in the same currency and interval,
+with the same quantity, and the new unit amount is no higher. Anything else (tiered, metered,
+a quantity change) can't be compared, so it counts as dearer.
 
 **Live mode** is any key that doesn't contain `_test_`, so an unknown format fails toward
 caution. Every plan's summary starts with `[test]` or `[LIVE]`.
@@ -152,11 +177,17 @@ What that means in practice:
 
 ### Keys and permissions
 
-- **Supplying the key.** Prefer `STRIPE_SECRET_KEY_FILE`, which is checked like
-  `YEA_PRINCIPAL_PUB`: neither the file nor any directory above it may be owned or writable
-  by the server's OS user. `STRIPE_SECRET_KEY` also works, with a warning on stderr.
-- **The threat model.** A key the agent can read lets the agent call Stripe directly and skip
-  every approval. The README says this plainly, and so do the comparison's caveats.
+- **Supplying the key.** `STRIPE_SECRET_KEY_FILE` names a file that must be owned by the
+  server's OS user with mode `0600`, and not be a symlink; the connector refuses anything
+  looser, so other users on the machine can't read it. `STRIPE_SECRET_KEY` also works.
+  The key file is the opposite of the principal key file: the principal's public key must
+  be out of the server's reach to change, while the secret must be readable by the server
+  and nobody else.
+- **The threat model.** Whatever the server can read, an agent running as the same OS user
+  can read too, and a Stripe key lets it call Stripe directly and skip every approval. Only a
+  separate OS user for the server, or a remote server, keeps the key from the agent. The
+  README says this plainly, recommends the separate user for live keys, and the comparison's
+  caveats repeat it.
 - **Permissions.** The README recommends a restricted key (`rk_…`) with only these
   permissions:
   - Customers: read (`customer_read`);
@@ -223,9 +254,12 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
     runs.
   - Both run behind the same client harness (`bench/agent-eval`), with the same model and
     prompt.
-  - The same approval simulator confirms or declines tool calls for both: for the official
-    server through client-side tool-call confirmation, and for ours through the YEA form. It
-    approves only what matches the task.
+  - **The approval simulator is a fixed oracle.** For each task, it holds the one correct
+    write (endpoint and key parameters). It approves exactly that and declines everything
+    else, for both servers: for the official server through client-side tool-call
+    confirmation, and for ours through the YEA form.
+  - **Auto-approval is the same on both sides.** Our server runs with no policy grant, so
+    every job asks. The official server gets the matching confirmation on every write.
   - The official server runs twice: with its full tool set, and filtered to the tools these
     tasks need.
 - **Tasks:** they match the connector's own jobs, and the write-up says so:
@@ -237,8 +271,11 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
 - **Measured per run:**
   - turns, input and output tokens, dollar cost at the published price, and wall time;
   - whether the task was done correctly, graded from Stripe's state after the run;
-  - **safety events**: a write the simulator declined that happened anyway; a write that was
-    wrong; an ambiguity the model guessed at instead of asking.
+  - **safety measures**:
+    - wrong writes **proposed**, meaning submitted for approval: these don't depend on the
+      simulator catching them;
+    - writes that happened without the oracle's approval;
+    - ambiguities the model guessed at instead of asking.
 - **Published:** every run, not only the means. The caveats cover the task selection, the
   official server's much larger scope, the model and date, the client's approval settings,
   and the key-in-reach threat model.
@@ -254,13 +291,16 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
   - every currency special case;
   - clarification on ambiguous and 5-or-more matches;
   - a fresh idempotency key per call, and a deliberate second identical refund writing twice;
-  - `revert` for both undoable plans;
-  - a failed second write in "change at renewal" releasing the schedule;
-  - the scheduled-subscription restrictions;
+  - stable plan hashes across rounds within a day, and a change after midnight;
+  - a failed second schedule write releasing the schedule, and a failed release naming the
+    leftover `sch_…` id;
+  - cancel at period end through `end_behavior` on a scheduled subscription, and its undo;
+  - multi-item and interval-changing subscriptions refused;
+  - `revert` for every undoable plan;
   - live detection (`sk_live_`, `rk_live_`, and an unknown format counting as live) and the
     risk table;
   - escaping of hostile names;
-  - the key-file check.
+  - the key-file check: `0600`, owned by the server's user, not a symlink.
 - **MCP tests** with the in-memory clients from `@yea-protocol/mcp`'s tests:
   - a refund always asks, and the typed amount runs it;
   - cancel at period end auto-runs under the suggested grant in test mode, and can be undone;
@@ -304,8 +344,8 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
 2. **`fetch`, not the Stripe SDK.** It keeps the package small and matches the example.
 3. **Live mode raises risk one level, rather than refusing.** Refusing would make the
    connector a demo. Raising the risk sends live refunds and immediate changes out of band.
-4. **No schedule-on-schedule in v0.** Subscriptions that already have a schedule get only the
-   plans that don't touch it.
+4. **No schedule-on-schedule in v0.** Subscriptions with a schedule we didn't create don't
+   get "at renewal"; cancelling one at period end goes through the schedule.
 5. **The comparison is a separate step,** after the package works and after James approves
    the cost.
 
