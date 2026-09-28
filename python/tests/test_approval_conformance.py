@@ -8,11 +8,11 @@ from conftest import CONFORMANCE
 
 from yea import Plan
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_job_consent, check_state, decide, job_consent_code, judge_answer,
+    HashedPlan, Policy, Tightening, build_form, check_job_consent, undo_receipt, check_state, decide, job_consent_code, judge_answer,
     load_policy,
     phrase_matches, plan_hash, read_tightening,
 )
-from yea.store import FileStore, LedgerKey
+from yea.store import FileStore, LedgerKey, MemoryStore
 from yea.uses import value
 
 PATH = CONFORMANCE / "approval.json"
@@ -151,3 +151,22 @@ def test_job_consents(case):
     want = case["expect"]
     assert got.ok is want["ok"]
     assert (got.id if got.ok else got.why) == (want["id"] if want["ok"] else want["why"])
+
+
+@pytest.mark.parametrize("case", cases_of("undo"))
+def test_undo(case):
+    u = DATA["undo"]
+
+    async def go():
+        store = MemoryStore()
+        for r in u["receipts"]:
+            await store.put_receipt(r)
+        if case["undoneBefore"]:
+            await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
+        return await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
+
+    got = asyncio.run(go())
+    want = case["expect"]
+    assert got.kind == want["kind"]
+    if "why" in want:
+        assert got.why == want["why"]
