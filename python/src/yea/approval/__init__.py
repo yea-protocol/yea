@@ -3,7 +3,7 @@ the approval form, the state that goes round the client, and how an answer is ju
 
 The decisions (plan hash, decide, the form, the state, judging) are synchronous and pure. The
 store helpers (reservations, undo, consents, ``spent``) are async, and the key-file checks and
-``choose_store`` touch the file system. The MCP side (``mcp-py``) drives it all; ``store.py``
+``choose_store`` touch the file system. The MCP side (``mcp-py``) drives it all; ``yea.store``
 holds what must persist.
 
 The entry of the ``yea.approval`` package: it re-exports the parts, each one job per module."""
