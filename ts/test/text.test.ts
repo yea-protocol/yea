@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clip } from '../src/text.js';
+import { clip, printable } from '../src/text.js';
 
 describe('clip', () => {
   it('leaves text of at most max code points alone', () => {
@@ -27,5 +27,19 @@ describe('clip', () => {
     expect(clip('hello', 1)).toBe('…');
     expect(clip('hello', 0)).toBe('');
     expect(clip('hello', -3)).toBe('');
+  });
+});
+
+describe('printable', () => {
+  it('escapes controls, format characters and separators as \\u{hex}', () => {
+    expect(printable('a\nb\x7fc\x85d')).toBe('a\\u{a}b\\u{7f}c\\u{85}d');
+    expect(printable('a\u200bb\u00adc\ufeffd')).toBe(
+      'a\\u{200b}b\\u{ad}c\\u{feff}d',
+    );
+    expect(printable('a\u{e0041}b\u3164c')).toBe('a\\u{e0041}b\\u{3164}c');
+  });
+
+  it('keeps tab, accents, CJK and plain emoji', () => {
+    expect(printable('\tcafé 東京 😀')).toBe('\tcafé 東京 😀');
   });
 });

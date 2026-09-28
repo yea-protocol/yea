@@ -839,6 +839,46 @@ describe('approval security (SPEC-approval)', () => {
     expect(P.printable).toBe(printable);
   });
 
+  it('[A8] printable escapes invisible characters that make two targets look the same', () => {
+    const invisible = [
+      0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0xad, 0x180e, 0xfff9, 0xfffa,
+      0xfffb, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x115f, 0x1160,
+      0x3164, 0xffa0, 0x2028, 0x2029, 0xe0001, 0xe0020, 0xe0041, 0xe007f,
+    ];
+
+    for (const cp of invisible) {
+      const c = String.fromCodePoint(cp);
+
+      expect(printable(`acct${c}_1`)).toBe(`acct\\u{${cp.toString(16)}}_1`);
+    }
+
+    // ASCII smuggled to a model as tag characters shows up, one escape each.
+    const tagged = [...'pay'].map((c) =>
+      String.fromCodePoint(0xe0000 + (c.codePointAt(0) ?? 0)),
+    );
+
+    expect(printable(`ok${tagged.join('')}`)).toBe(
+      'ok\\u{e0070}\\u{e0061}\\u{e0079}',
+    );
+    // A zero-width joiner inside an emoji is escaped too; acceptable on a consent screen.
+    expect(printable('\u{1f469}\u200d\u{1f4bb}')).toBe(
+      '\u{1f469}\\u{200d}\u{1f4bb}',
+    );
+  });
+
+  it('[A8] printable leaves tabs and ordinary text alone', () => {
+    for (const s of [
+      'tab\there',
+      'café, naïve, Ångström, Ελληνικά, русский',
+      '東京で会議 · 서울 · 北京',
+      'thanks 👍 🎉 😀',
+      'שלום مرحبا',
+      '',
+    ]) {
+      expect(printable(s)).toBe(s);
+    }
+  });
+
   it('[A9] reserveAll releases what it made when the store fails part way', async () => {
     const store = new P.MemoryStore();
     const failing: P.ApprovalStore = Object.assign(Object.create(store), {
