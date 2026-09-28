@@ -33,14 +33,95 @@ const region = (md, name) => {
 
   return m ? m[1].trim() : '';
 };
-const page = (p) =>
-  read(p)
-    .replace(/^---[\s\S]*?---\n/, '')
-    .replace(/^<!--@include:.*-->$/gm, '')
+// The region markers VitePress's `<<<` import understands (TS/JS `// #region x`, Python
+// `# region x`, HTML `<!-- #region x -->`), so a snippet reads here as it does on the page.
+const MARKER =
+  /^\s*(?:\/\/ ?#?|# ?|<!-- #?)(end)?region ([\w*-]+)(?: -->)?\s*$/i;
+const LANG = {
+  ts: 'ts',
+  mjs: 'js',
+  js: 'js',
+  py: 'python',
+  json: 'json',
+  sh: 'sh',
+  md: 'md',
+};
+
+/** `lines` inside region `name`, or all of them when `name` is empty; marker lines dropped. */
+function snippet(text, name) {
+  const lines = text.replace(/\n$/, '').split('\n');
+  let inside = !name;
+  const kept = [];
+
+  for (const line of lines) {
+    const m = line.match(MARKER);
+
+    if (m) {
+      if (m[2] === name) {
+        inside = !m[1];
+      }
+
+      continue;
+    }
+
+    if (inside) {
+      kept.push(line);
+    }
+  }
+
+  if (name && !kept.length) {
+    throw new Error(`no region ${name}`);
+  }
+
+  // Region bodies are often indented (a function body): drop the common indent.
+  const indent = Math.min(
+    ...kept.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length),
+  );
+
+  return kept
+    .map((l) => l.slice(Number.isFinite(indent) ? indent : 0))
+    .join('\n')
     .trim();
+}
+
+/** Each `<<< path#region` line in page `p` replaced by that code, fenced, as VitePress shows it. */
+function expandSnippets(p, md) {
+  const dir = new URL(p.replace(/[^/]*$/, ''), root);
+
+  return md.replace(
+    /^<<< (\S+?)(?:#([\w*-]+))?(?:\s*\{[^}]*\})?\s*$/gm,
+    (_all, file, name) => {
+      const url = file.startsWith('@/')
+        ? new URL(file.slice(2), new URL('site/', root))
+        : new URL(file, dir);
+      const ext = file.split('.').pop();
+
+      return `\`\`\`${LANG[ext] ?? ''}\n${snippet(readFileSync(url, 'utf8'), name)}\n\`\`\``;
+    },
+  );
+}
+
+const page = (p) =>
+  expandSnippets(
+    p,
+    read(p)
+      .replace(/^---[\s\S]*?---\n/, '')
+      .replace(/^<!--@include:.*-->$/gm, '')
+      .trim(),
+  );
 const readme = read('README.md');
 
 const pages = [
+  [
+    'Add YEA to your MCP server (TypeScript)',
+    '/guide/mcp-typescript',
+    'Guard a tool you already have, make it undoable, let safe things run on their own: @yea-protocol/mcp',
+  ],
+  [
+    'Add YEA to your MCP server (Python)',
+    '/guide/mcp-python',
+    'The same, for the official Python MCP SDK and FastMCP: yea-mcp',
+  ],
   [
     'Why YEA',
     '/why',
@@ -145,6 +226,9 @@ out(
   'public/llms-full.txt',
   `${[
     `# YEA\n\nSource: https://github.com/yea-protocol/yea · Docs: ${SITE}/`,
+    ...['mcp-typescript', 'mcp-python'].map((p) =>
+      page(`site/guide/${p}.md`).replace(/^# /, '## '),
+    ),
     `## Quickstart\n\n${region(readme, 'quickstart')}`,
     `## Use it from Claude Code and other MCP clients\n\n${region(readme, 'claude-code')}`,
     `## CLI reference\n\n\`\`\`\n${help}\n\`\`\``,
