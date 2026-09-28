@@ -101,14 +101,8 @@ def test_judge(case):
     phrases = case["phrases"]
     v = judge_answer(case["state"], case["answer"], [to_hashed(p) for p in case["recomputed"]], to_policy(case["policy"]),
                      lambda p: phrases[p.plan_hash])
-    want = case["expect"]
-    assert v.kind == want["kind"]
-    if "why" in want:
-        assert v.why == want["why"]
-    if "round" in want:
-        assert v.round == want["round"]
-    if "plan" in want:
-        assert v.plan.plan_hash == want["plan"]
+    got = {"kind": v.kind, "why": v.why, "round": v.round, "plan": v.plan.plan_hash if v.plan else None}
+    assert {k: x for k, x in got.items() if x is not None} == case["expect"]  # the whole verdict, as TS
 
 
 @pytest.mark.parametrize("case", cases("tightening"))
@@ -166,10 +160,7 @@ def test_undo(case):
         return await undo_receipt(store, case["id"], u["service"], case["sub"], case["now"], lambda _: None)
 
     got = asyncio.run(go())
-    want = case["expect"]
-    assert got.kind == want["kind"]
-    if "why" in want:
-        assert got.why == want["why"]
+    assert ({"kind": "undone"} if got.kind == "undone" else {"kind": got.kind, "why": got.why}) == case["expect"]
 
 
 @pytest.mark.parametrize("c", cases("phraseChecks"))  # each case has a name, used as its id

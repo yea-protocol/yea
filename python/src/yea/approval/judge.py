@@ -27,7 +27,7 @@ def judge_answer(state: dict, answer: Mapping[str, Any], recomputed: list[Hashed
                  phrase_for: Callable[[HashedPlan], str]) -> Verdict:
     """Steps 3–7 of §5, after the state was verified and its nonce consumed."""
     if answer.get("action") != "accept":
-        return Verdict("not-approved", "not approved")
+        return Verdict("not-approved")  # no why, as TS: the caller says "not approved" itself
     content = answer.get("content") if isinstance(answer.get("content"), dict) else {}
     pick = _picked(state, content)
     if pick is None:
