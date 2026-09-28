@@ -39,6 +39,17 @@ async function codesFor(conn: Awaited<ReturnType<typeof connect>>, args = ch1) {
   ).codes;
 }
 
+/**
+ * `s` with one character in the middle changed. Changing the last characters can be a no-op:
+ * base64url's final character carries padding bits, so some edits decode to the same bytes.
+ */
+const tampered = (s: string) => {
+  const i = s.length >> 1;
+  const c = s[i] === 'A' ? 'B' : 'A';
+
+  return `${s.slice(0, i)}${c}${s.slice(i + 1)}`;
+};
+
 describe('MCP-side approval security', () => {
   it('[M1] a denied tool never runs, even with a stored consent', async () => {
     const w = await world();
@@ -171,11 +182,7 @@ describe('MCP-side approval security', () => {
     }).mint({ yea: { v: 1 } }, { mcpReq: { method: 'tools/call' } } as never);
     const answer = { yea: { action: 'accept', content: { confirm: 'ch_1' } } };
 
-    for (const requestState of [
-      `${state.slice(0, -2)}xx`,
-      forged,
-      'not-a-state',
-    ]) {
+    for (const requestState of [tampered(state), forged, 'not-a-state']) {
       await expect(
         conn.raw({
           name: 'refund',
