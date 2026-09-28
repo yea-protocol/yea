@@ -477,8 +477,8 @@ def test_a_partly_failed_reservation_releases_the_ones_already_made(store):
     run(go())
 
 
-def _receipt(rid, until, sub=""):
-    return {"id": rid, "tool": "delete_branch", "input": {"b": "x"}, "planHash": "h", "sub": sub,
+def _receipt(rid, until, sub="", service="S"):
+    return {"id": rid, "service": service, "tool": "delete_branch", "input": {"b": "x"}, "planHash": "h", "sub": sub,
             "summary": "s", "effects": [], "undo": None if until is None else {"until": until}, "result": {"sha": "abc"}}
 
 
@@ -488,17 +488,17 @@ def test_undo_once_within_the_window_for_the_same_principal(store):
         rid = new_receipt_id()
         assert is_receipt_id(rid) and len(rid) == 14
         await store.put_receipt(_receipt(rid, NOW + 60))
-        assert (await undo_receipt(store, rid, "someone-else", NOW, calls.append)).why == "no such receipt"
-        assert (await undo_receipt(store, rid, "", NOW + 61, calls.append)).why == "the undo window has closed"
-        assert (await undo_receipt(store, rid, "", NOW, calls.append)).kind == "undone"
+        assert (await undo_receipt(store, rid, "S", "someone-else", NOW, calls.append)).why == "no such receipt"
+        assert (await undo_receipt(store, rid, "S", "", NOW + 61, calls.append)).why == "the undo window has closed"
+        assert (await undo_receipt(store, rid, "S", "", NOW, calls.append)).kind == "undone"
         assert [(c["input"], c["planHash"], c["result"]) for c in calls] == [({"b": "x"}, "h", {"sha": "abc"})]
-        again = await undo_receipt(store, rid, "", NOW, calls.append)
+        again = await undo_receipt(store, rid, "S", "", NOW, calls.append)
         assert again.why == "this job was already undone" and len(calls) == 1
-        bad = await undo_receipt(store, "../x", "", NOW, calls.append)
+        bad = await undo_receipt(store, "../x", "S", "", NOW, calls.append)
         assert bad.kind == "refused" and bad.why == "no such receipt"  # the raw id isn't echoed
         never = new_receipt_id()
         await store.put_receipt(_receipt(never, None))
-        assert (await undo_receipt(store, never, "", NOW, calls.append)).why == "this job can never be undone"
+        assert (await undo_receipt(store, never, "S", "", NOW, calls.append)).why == "this job can never be undone"
 
     run(go())
 
@@ -512,8 +512,8 @@ def test_a_failed_revert_can_be_tried_again(store):
             raise RuntimeError("github is down")
 
         with pytest.raises(RuntimeError):
-            await undo_receipt(store, rid, "", NOW, boom)
-        assert (await undo_receipt(store, rid, "", NOW, lambda _: None)).kind == "undone"
+            await undo_receipt(store, rid, "S", "", NOW, boom)
+        assert (await undo_receipt(store, rid, "S", "", NOW, lambda _: None)).kind == "undone"
 
     run(go())
 
@@ -708,3 +708,24 @@ def test_spent_reads_ahead_the_policy_totals():
         assert decide([h], p, lambda k: amounts.get(k, 0), NOW).kind == "ask"
 
     run(go())
+
+
+def test_another_servers_receipt_is_no_such_receipt(store):
+    async def go():
+        rid = new_receipt_id()
+        await store.put_receipt(_receipt(rid, NOW + 60, service="billing-test"))
+        r = await undo_receipt(store, rid, "billing-prod", "", NOW, lambda _: None)
+        assert r.kind == "refused" and r.why == "no such receipt"
+        assert (await undo_receipt(store, rid, "billing-test", "", NOW, lambda _: None)).kind == "undone"
+        bare = new_receipt_id()
+        r = _receipt(bare, NOW + 60)
+        del r["service"]
+        await store.put_receipt(r)
+        assert (await undo_receipt(store, bare, "S", "", NOW, lambda _: None)).why == "no such receipt"
+
+    run(go())
+
+
+def test_a_malformed_uses_fails_the_plan_hash():
+    with pytest.raises(ValueError, match="malformed uses"):
+        plan_hash("t", {}, plan(uses=[]), "low")
