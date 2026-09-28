@@ -56,13 +56,16 @@ Then create the approval context once per process, and serve. The SDK may call t
 
 ## 3. Run it in your client
 
+The tools only act inside `FILES_ROOT`, so give them a folder of files you can lose. Unset, it defaults to the folder the server starts in, which is your project: `delete_file` could then remove `server.ts`, `package.json` and `node_modules`.
+
 In **Claude Code**, from your server's folder:
 
 ```sh
-claude mcp add files -- npx tsx server.ts
+mkdir -p "$HOME/scratch"
+claude mcp add files -e FILES_ROOT="$HOME/scratch" -- npx tsx server.ts
 ```
 
-Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- node server.ts` works too. The tools only act inside `FILES_ROOT` (default: the folder the server starts in), so set it to the folder you mean, for example `claude mcp add files -e FILES_ROOT=$HOME/scratch -- npx tsx server.ts`.
+Node 22.18 or later can run TypeScript directly, so `node server.ts` works in place of `npx tsx server.ts`.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
@@ -70,7 +73,11 @@ Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- nod
 ```json
 {
   "mcpServers": {
-    "files": { "command": "npx", "args": ["tsx", "/absolute/path/to/server.ts"] }
+    "files": {
+      "command": "npx",
+      "args": ["tsx", "/absolute/path/to/server.ts"],
+      "env": { "FILES_ROOT": "/absolute/path/to/scratch" }
+    }
   }
 }
 ```
@@ -80,7 +87,12 @@ Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- nod
 ```json
 {
   "servers": {
-    "files": { "type": "stdio", "command": "npx", "args": ["tsx", "${workspaceFolder}/server.ts"] }
+    "files": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["tsx", "${workspaceFolder}/server.ts"],
+      "env": { "FILES_ROOT": "/absolute/path/to/scratch" }
+    }
   }
 }
 ```
@@ -122,8 +134,8 @@ After approval, the call returns a receipt:
 ```text
 ✓ Move docs/report.pdf to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
   result:
-    file: /Users/me/project/docs/report.pdf
-    trashedAs: /Users/me/project/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
+    file: /Users/me/scratch/docs/report.pdf
+    trashedAs: /Users/me/scratch/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
 ```
 
 `plan()` refuses anything that isn't a regular file, such as a directory, since `revert` couldn't put it back. `undo({ receipt: "r_Ny6CTkeKuDVI" })` puts the file back, within the window. Undo doesn't ask, because it restores what the person already approved changing. Any job call also takes `"preview": true`, which returns the plans and does nothing.
@@ -169,6 +181,7 @@ The policy is only as strong as the place where your **private** principal key l
 
    ```sh
    claude mcp add files \
+     -e FILES_ROOT="$HOME/scratch" \
      -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
      -e YEA_POLICY="$HOME/.config/yea/files.policy" \
      -- npx tsx server.ts

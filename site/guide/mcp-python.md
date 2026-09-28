@@ -51,13 +51,14 @@ Build the server. Leave out the `add_move_to_trash` line until step 4:
 
 ## 3. Run it in your client
 
+The tools only act inside `FILES_ROOT`, so give them a folder of files you can lose. Unset, it defaults to the folder the server starts in, which is your project: `delete_file` could then remove `server.py`, `pyproject.toml` and `.venv`.
+
 In **Claude Code**, from your server's project folder:
 
 ```sh
-claude mcp add files -- uv run python server.py
+mkdir -p "$HOME/scratch"
+claude mcp add files -e FILES_ROOT="$HOME/scratch" -- uv run python server.py
 ```
-
-The tools only act inside `FILES_ROOT` (default: the folder the server starts in), so set it to the folder you mean, for example `claude mcp add files -e FILES_ROOT=$HOME/scratch -- uv run python server.py`.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
@@ -65,7 +66,11 @@ The tools only act inside `FILES_ROOT` (default: the folder the server starts in
 ```json
 {
   "mcpServers": {
-    "files": { "command": "uv", "args": ["run", "--directory", "/absolute/path/to/project", "python", "server.py"] }
+    "files": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/project", "python", "server.py"],
+      "env": { "FILES_ROOT": "/absolute/path/to/scratch" }
+    }
   }
 }
 ```
@@ -75,7 +80,12 @@ The tools only act inside `FILES_ROOT` (default: the folder the server starts in
 ```json
 {
   "servers": {
-    "files": { "type": "stdio", "command": "uv", "args": ["run", "--directory", "${workspaceFolder}", "python", "server.py"] }
+    "files": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "${workspaceFolder}", "python", "server.py"],
+      "env": { "FILES_ROOT": "/absolute/path/to/scratch" }
+    }
   }
 }
 ```
@@ -117,8 +127,8 @@ After approval, the call returns a receipt:
 ```text
 ✓ Move docs/report.pdf to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
   result:
-    file: /Users/me/project/docs/report.pdf
-    trashedAs: /Users/me/project/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
+    file: /Users/me/scratch/docs/report.pdf
+    trashedAs: /Users/me/scratch/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
 ```
 
 The plan refuses anything that isn't a regular file, such as a directory, since `revert` couldn't put it back. `undo(receipt="r_Ny6CTkeKuDVI")` puts the file back, within the window. Undo doesn't ask, because it restores what the person already approved changing. Any job call also takes `"preview": true`, which returns the plans and does nothing.
@@ -164,6 +174,7 @@ The policy is only as strong as the place where your **private** principal key l
 
    ```sh
    claude mcp add files \
+     -e FILES_ROOT="$HOME/scratch" \
      -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
      -e YEA_POLICY="$HOME/.config/yea/files.policy" \
      -- uv run python server.py
