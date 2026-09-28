@@ -15,6 +15,7 @@ import { calendar } from './examples/calendar.js';
 import { shop } from './examples/shop.js';
 import { issueGrant } from './grants.js';
 import { est } from './lens.js';
+import { printable } from './text.js';
 import {
   type Approver,
   createToolHost,
@@ -150,9 +151,11 @@ async function throwawayClients(): Promise<Client[]> {
 
 /** Ask the person at the terminal; without a TTY nothing is approved. */
 function terminalApprover(rl: Interface): Approver {
-  return async ({ service, shown, reason }) => {
+  // `shown` starts with `at <service>:`; it and `reason` come escaped, and escaping is
+  // idempotent, so `printable` here only guards against another caller.
+  return async ({ shown, reason }) => {
     console.log(
-      `\n${k('👤 you', c.yel)} are asked to approve, at ${service}:\n${indent(shown)}\n   ${k(reason, c.dim)}`,
+      `\n${k('👤 you', c.yel)} are asked to approve:\n${indent(shown)}\n   ${k(printable(reason), c.dim)}`,
     );
 
     if (!process.stdin.isTTY) {

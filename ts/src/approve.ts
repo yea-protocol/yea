@@ -5,7 +5,7 @@
  */
 import { type KeyPair, proposalHash, sha256 } from './crypto.js';
 import { consentGrant, consentRecipient, decodeConsentCode } from './grants.js';
-import { fmtTime, proposalsLines } from './lens.js';
+import { fmtTime, untrustedLens } from './lens.js';
 import { printable } from './text.js';
 import type { ConsentRequest, Proposal } from './types.js';
 import { isUses } from './uses.js';
@@ -27,11 +27,24 @@ export const keyFingerprint = async (key: string) =>
 
 /**
  * A proposal as a person is shown it before consenting (SPEC.md §6.6): its Lens without the
- * header line, so its summary, effects, uses, risk, undo and expiry. The text comes from the
- * service, so each line is escaped with `printable`, a newline inside a field included.
+ * header line, so its summary, effects, uses, risk, undo and expiry. Never its `data`, which
+ * the hash doesn't cover (§5.1). The text comes from the service, so it's re-rendered with
+ * `untrustedLens` and each line escaped with `printable`.
  */
-export const proposalLens = (p: Proposal): string[] =>
-  proposalsLines([p]).slice(1).map(printable);
+export function consentView(p: Proposal): string[] {
+  const { data: _unbound, ...bound } = p;
+
+  return untrustedLens({
+    yea: 1,
+    id: '-',
+    re: '-',
+    kind: 'PROPOSALS',
+    proposals: [bound],
+  })
+    .split('\n')
+    .slice(1)
+    .map(printable);
+}
 
 /**
  * Why a proposal can't be bound by a consent, or null if it can (SPEC.md §5.1): its `uses`
@@ -82,34 +95,55 @@ export async function checkConsentRequest(
   return mismatch ? mismatch[1] : checkProposal(p);
 }
 
-/** What a code asks for, as lines to show; or why it can't be shown (its detail doesn't hash). */
+/**
+ * What to show a person asked to consent to request `k`, or why it must not be shown
+ * (SPEC.md §6.6). `p` is the proposal it's for: the one the agent got from `service`, or the
+ * detail a consent code carries. Without `p` only the service's summary can be shown, with a
+ * warning.
+ */
 export async function consentLines(
-  consent: ConsentRequest & { detail?: Proposal },
+  k: ConsentRequest,
+  p: Proposal | undefined,
+  service?: string,
 ): Promise<{ lines: string[] } | { why: string }> {
-  const d = consent.detail;
-
-  if (!d) {
+  if (!p) {
     return {
       lines: [
         "⚠ no proposal details in this code; only the service's summary:",
-        printable(consent.summary),
+        printable(k.summary),
         printable(
-          `  service: ${consent.service} · ${consent.capability} · proposal ${consent.proposal}`,
+          `  service: ${k.service} · ${k.capability} · proposal ${k.proposal}`,
         ),
       ],
     };
   }
 
-  const why = await checkConsentRequest(consent, d);
+  const why = await checkConsentRequest(k, p, service);
 
   if (why) {
-    return { why: `this consent code can't be approved: ${why}` };
+    return { why };
   }
 
-  return {
-    lines: [`at ${printable(consent.service)}:`, ...proposalLens(d)],
-  };
+  return { lines: [`at ${printable(k.service)}:`, ...consentView(p)] };
 }
+
+/**
+ * The consent request to sign for `p`, built from the proposal rather than the service's
+ * request: only the service and principal come from `k`, and the expiry is the earlier of the
+ * two. Call it only after `checkConsentRequest(k, p)` passes.
+ */
+export const consentFrom = (
+  k: ConsentRequest,
+  p: Proposal,
+): ConsentRequest => ({
+  proposal: p.id,
+  hash: p.hash,
+  service: k.service,
+  capability: p.capability,
+  principal: k.principal,
+  summary: p.summary,
+  expires: Math.min(k.expires, p.expires),
+});
 
 /** Who the consent is for, or why none can be chosen (with the code's suggestion, fingerprinted). */
 async function recipientOf(
@@ -161,13 +195,20 @@ export async function approveConsentCode(o: {
     return { ok: false, why: agent.why };
   }
 
-  const shown = await consentLines(consent);
+  const shown = await consentLines(consent, consent.detail);
 
   if ('why' in shown) {
-    return { ok: false, why: shown.why };
+    return {
+      ok: false,
+      why: `this consent code can't be approved: ${shown.why}`,
+    };
   }
 
-  return signIfApproved(o, { consent, agent: agent.key, shown: shown.lines });
+  return signIfApproved(o, {
+    consent: consent.detail ? consentFrom(consent, consent.detail) : consent,
+    agent: agent.key,
+    shown: shown.lines,
+  });
 }
 
 /** Show the proposal and the agent, ask, then sign and save. */

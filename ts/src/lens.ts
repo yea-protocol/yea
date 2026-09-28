@@ -3,6 +3,7 @@
  * Deterministic: two conforming implementations produce byte-identical output.
  */
 import { quote } from './canonical.js';
+import { printable } from './text.js';
 import type {
   Brief,
   Clarify,
@@ -274,11 +275,7 @@ function attrLine(attrs: typeof ATTRS, p: Proposal): string {
     .join(' · ');
 }
 
-/**
- * The PROPOSALS body as lines, header first. A line can hold a newline from a service's
- * string, so callers showing untrusted text escape per line rather than splitting the Lens.
- */
-export function proposalsLines(ps: Proposal[]): string[] {
+function proposalsLines(ps: Proposal[]): string[] {
   // Attributes identical across all (N ≥ 2) proposals are stated once, in the header.
   const shared =
     ps.length >= 2
@@ -427,3 +424,47 @@ export function lens(r: Reply): string {
 const TOKENISH = /[A-Za-z]+|[0-9]{1,3}|\n {2,}|[^ \t\n\r\f\vA-Za-z0-9]/gu;
 
 export const est = (text: string) => text.match(TOKENISH)?.length ?? 0;
+
+/** Lens renders these as lean values (strings quoted), so they keep their own text. */
+const VALUES = new Set(['data', 'result']);
+
+/**
+ * `v` with every string (and key) made one line by `printable`, except under `data` and
+ * `result`, which Lens quotes. For showing a service's fields without letting a summary forge
+ * a line.
+ */
+export function oneLine(v: unknown): unknown {
+  if (typeof v === 'string') {
+    return printable(v);
+  }
+
+  if (Array.isArray(v)) {
+    return v.map(oneLine);
+  }
+
+  if (typeof v !== 'object' || v === null) {
+    return v;
+  }
+
+  return Object.fromEntries(
+    Object.entries(v).map(([k, x]) => [
+      printable(k),
+      VALUES.has(k) ? x : oneLine(x),
+    ]),
+  );
+}
+
+/** Lens renders line separators inside quoted values literally; nothing but `\n` breaks a line. */
+const noSeparators = (s: string) =>
+  s.replace(/[\u2028\u2029]/g, (c) => printable(c));
+
+/**
+ * A service's reply as Lens, for a model or a person: re-rendered from its fields after
+ * `oneLine`, never the service's own `lens`, so every line break is ours. Quoted values escape
+ * only C0, so a terminal still wants `printable` on each line.
+ */
+export function untrustedLens(reply: Reply): string {
+  const { lens: _ignored, ...rest } = reply;
+
+  return noSeparators(lens(oneLine(rest) as Reply));
+}

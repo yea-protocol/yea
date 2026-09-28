@@ -4,17 +4,21 @@
  * instead; it lives in `@yea-protocol/mcp/bridge`.)
  */
 
-import { checkConsentRequest, proposalLens } from './approve.js';
+import { consentFrom, consentLines } from './approve.js';
 import type { Client } from './client.js';
 import { keyPair } from './crypto.js';
 import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
+import { printable } from './text.js';
 import { INSTRUCTIONS } from './tooldefs.js';
 import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
 
 export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
-/** Ask the human to approve `shown` (the proposal's Lens). Resolve true only on explicit approval. */
+/**
+ * Ask the human to approve `shown`: `at <service>:` and the proposal's Lens, escaped, as are
+ * `service` and `reason`. Resolve true only on explicit approval.
+ */
 export type Approver = (req: {
   service: string;
   shown: string;
@@ -206,18 +210,25 @@ async function commitTool(
   let r = await c.commit(p, { grants: loadGrants('consents'), onEvent });
 
   if (r.kind === 'ERROR' && r.code === 'consent_required') {
-    const consent = await consentFor(r, c, p);
+    const asked = await consentFor(r, c, p);
 
-    if ('why' in consent) {
+    if ('why' in asked) {
       return {
         text:
           r.lens +
-          `\n  → the service's consent request doesn't match this proposal (${consent.why}); not asking the user to sign it.`,
+          `\n  → the service's consent request doesn't match this proposal (${asked.why}); not asking the user to sign it.`,
         isError: true,
       };
     }
 
-    const token = await askHuman({ approve: s.approve, consent, err: r, c, p });
+    const { consent, shown } = asked;
+    const token = await askHuman({
+      approve: s.approve,
+      consent,
+      shown,
+      err: r,
+      c,
+    });
 
     if (!token) {
       return {
@@ -237,44 +248,37 @@ async function commitTool(
   };
 }
 
-/** Build the consent only from the proposal we showed, never from the service's error. */
+/**
+ * Check the service's consent request against the proposal we showed, and build the consent
+ * from that proposal, never from the service's error; with the lines to show the person.
+ */
 async function consentFor(
   err: ErrorReply,
   c: Client,
   p: Proposal,
-): Promise<ConsentRequest | { why: string }> {
+): Promise<{ consent: ConsentRequest; shown: string[] } | { why: string }> {
   const k = err.consent;
 
   if (!k) {
     return { why: 'the service sent none' };
   }
 
-  const why = await checkConsentRequest(k, p, await c.audience());
+  const view = await consentLines(k, p, await c.audience());
 
-  if (why) {
-    return { why };
-  }
-
-  return {
-    proposal: p.id,
-    hash: p.hash,
-    service: k.service,
-    capability: p.capability,
-    principal: k.principal,
-    summary: p.summary,
-    expires: Math.min(k.expires, p.expires),
-  };
+  return 'why' in view
+    ? view
+    : { consent: consentFrom(k, p), shown: view.lines };
 }
 
 /** Route a consent to the human; returns the signed consent grant, or null if not approved. */
 async function askHuman(o: {
   approve?: Approver;
   consent: ConsentRequest;
+  shown: string[];
   err: ErrorReply;
   c: Client;
-  p: Proposal;
 }): Promise<string | null> {
-  const { approve, consent, c, p } = o;
+  const { approve, consent, c } = o;
   const principal = await principalKey();
 
   if (
@@ -286,13 +290,11 @@ async function askHuman(o: {
     return null;
   }
 
-  const shown = proposalLens(p).join('\n');
-
   if (
     !(await approve({
-      service: consent.service,
-      shown,
-      reason: o.err.message,
+      service: printable(consent.service),
+      shown: o.shown.join('\n'),
+      reason: printable(o.err.message),
     }))
   ) {
     return null;

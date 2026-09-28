@@ -24,11 +24,8 @@ export {
   type ApproveIO,
   type ApproveOutcome,
   approveConsentCode,
-  checkConsentRequest,
   checkProposal,
-  consentLines,
   keyFingerprint,
-  proposalLens,
 } from './approve.js';
 
 export {
@@ -120,7 +117,9 @@ export {
   fmtTime,
   lean,
   lens,
+  oneLine,
   scalar,
+  untrustedLens,
 } from './lens.js';
 
 export {
