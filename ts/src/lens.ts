@@ -424,13 +424,9 @@ const TOKENISH = /[A-Za-z]+|[0-9]{1,3}|\n {2,}|[^ \t\n\r\f\vA-Za-z0-9]/gu;
 
 export const est = (text: string) => text.match(TOKENISH)?.length ?? 0;
 
-/** Lens renders these as lean values (strings quoted), so they keep their own text. */
-const VALUES = new Set(['data', 'result']);
-
 /**
- * `v` with every string (and key) made one line by `printable`, except under `data` and
- * `result`, which Lens quotes. For showing a service's fields without letting a summary forge
- * a line.
+ * `v` with every string (and key) made one line by `printable`. For showing a service's fields
+ * without letting a summary forge a line.
  */
 export function oneLine(v: unknown): unknown {
   if (typeof v === 'string') {
@@ -446,11 +442,69 @@ export function oneLine(v: unknown): unknown {
   }
 
   return Object.fromEntries(
-    Object.entries(v).map(([k, x]) => [
-      printable(k),
-      VALUES.has(k) ? x : oneLine(x),
-    ]),
+    Object.entries(v).map(([k, x]) => [printable(k), oneLine(x)]),
   );
+}
+
+/**
+ * `safe` (`orig` after `oneLine`) with `keys` put back from `orig`, and each of its `effects`'
+ * `from` and `to`: values Lens quotes itself, which `printable` first would only escape twice.
+ */
+function keepQuoted(orig: unknown, safe: unknown, keys: string[]): unknown {
+  if (!isObject(orig) || !isObject(safe)) {
+    return safe;
+  }
+
+  const out: Record<string, unknown> = { ...safe };
+
+  for (const k of keys) {
+    if (Object.hasOwn(orig, k)) {
+      out[k] = orig[k];
+    }
+  }
+
+  const effects = orig.effects;
+
+  if (Array.isArray(effects) && Array.isArray(safe.effects)) {
+    out.effects = safe.effects.map((e, i) =>
+      keepQuoted(effects[i], e, ['from', 'to']),
+    );
+  }
+
+  return out;
+}
+
+/**
+ * `safe` (`r` after `oneLine`) with the values Lens renders quoted put back: an ANSWER's
+ * `data`, a proposal's `data` and a receipt's `result` (lean, SPEC §9.1), and effects' `from`
+ * and `to` (scalars). Only where Lens renders them: a `data` key elsewhere, such as a
+ * capability's param, is shown bare and stays escaped.
+ */
+function quotedBack(r: Reply, safe: unknown): unknown {
+  if (!isObject(safe)) {
+    return safe;
+  }
+
+  switch (r.kind) {
+    case 'ANSWER':
+      return keepQuoted(r, safe, ['data']);
+    case 'PROPOSALS':
+      return {
+        ...safe,
+        proposals: Array.isArray(safe.proposals)
+          ? safe.proposals.map((p, i) =>
+              keepQuoted(r.proposals[i], p, ['data']),
+            )
+          : safe.proposals,
+      };
+    case 'RECEIPT':
+      return {
+        ...safe,
+        receipt: keepQuoted(r.receipt, safe.receipt, ['result']),
+      };
+    default:
+      return safe;
+  }
 }
 
 /** Lens renders line separators inside quoted values literally; nothing but `\n` breaks a line. */
@@ -465,5 +519,5 @@ const noSeparators = (s: string) =>
 export function untrustedLens(reply: Reply): string {
   const { lens: _ignored, ...rest } = reply;
 
-  return noSeparators(lens(oneLine(rest) as Reply));
+  return noSeparators(lens(quotedBack(reply, oneLine(rest)) as Reply));
 }

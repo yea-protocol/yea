@@ -228,10 +228,24 @@ async function client(url: string): Promise<Client> {
   });
 }
 
-const show = (r: { lens: string }) =>
-  console.log(
-    o.json ? JSON.stringify({ ...r, lens: undefined }, null, 2) : r.lens,
-  );
+/**
+ * A service's reply for the terminal: re-rendered from its fields, never the service's own
+ * `lens`, and each line escaped, so terminal escapes can't hide or fake a prompt.
+ */
+const safeLens = (r: Reply) =>
+  untrustedLens(r).split('\n').map(printable).join('\n');
+
+/** Print a service's reply (`yea do`, and every command that shows one). */
+const say = (r: Reply) => console.log(safeLens(r));
+
+/** A service's reply as `--json` (without its `lens`), or as escaped Lens. */
+const show = (r: Reply) =>
+  o.json
+    ? console.log(JSON.stringify({ ...r, lens: undefined }, null, 2))
+    : say(r);
+
+/** A reply's progress events, on stderr and escaped like the reply itself. */
+const onEvent = (e: Reply) => console.error(safeLens(e));
 
 /** A command that works locally (keys, grants, setup, servers). */
 type Command = (rest: string[]) => Promise<void>;
@@ -475,7 +489,11 @@ async function cmdApprove(rest: string[]) {
   const consent = decodeConsentCode(code);
 
   if (consent.principal !== p.public) {
-    die(`this consent is for principal ${consent.principal}, not ${p.public}`);
+    die(
+      printable(
+        `this consent is for principal ${consent.principal}, not ${p.public}`,
+      ),
+    );
   }
 
   if (isJobCode(code)) {
@@ -537,7 +555,7 @@ async function approveJob(p: KeyPair, code: string) {
   try {
     j = await readJobConsent(code, now);
   } catch (e) {
-    die(`✗ ${(e as Error).message}: refusing`);
+    die(`✗ ${printable((e as Error).message)}: refusing`);
   }
 
   console.log(printable(`at server ${j.consent.service}, tool ${j.job.tool}:`));
@@ -724,13 +742,16 @@ async function cmdAdd(rest: string[]) {
   c.close();
 
   if (b.kind !== 'BRIEF') {
-    return die(b.lens);
+    return die(safeLens(b));
   }
 
   addService(url);
   console.log(
-    `✓ added ${b.service.name} (${b.service.id}) · ${b.capabilities.length} capabilities\n  restart your AI tool to pick it up`,
+    printable(
+      `✓ added ${b.service.name} (${b.service.id}) · ${b.capabilities.length} capabilities`,
+    ),
   );
+  console.log('  restart your AI tool to pick it up');
 }
 
 async function cmdRemove(rest: string[]) {
@@ -969,12 +990,12 @@ async function checkServices() {
       c.close();
 
       if (b.kind === 'BRIEF') {
-        ok(`${u}: ${b.service.name} (${Date.now() - t0} ms)`);
+        ok(printable(`${u}: ${b.service.name} (${Date.now() - t0} ms)`));
       } else {
-        bad(`${u}: ${b.lens}`);
+        bad(`${printable(u)}: ${safeLens(b)}`);
       }
     } catch (e) {
-      bad(`${u}: ${(e as Error).message}`);
+      bad(printable(`${u}: ${(e as Error).message}`));
     }
   }
 }
@@ -1018,23 +1039,16 @@ async function cmdIntent(c: Client, [capability, ...params]: string[]) {
 }
 
 async function cmdCommit(c: Client, [id, hash]: string[]) {
-  show(await c.commit({ id, hash }, { onEvent: (e) => console.error(e.lens) }));
+  show(await c.commit({ id, hash }, { onEvent }));
 }
 
 async function cmdUndo(c: Client, [receipt]: string[]) {
-  show(await c.undo(receipt, { onEvent: (e) => console.error(e.lens) }));
+  show(await c.undo(receipt, { onEvent }));
 }
 
 async function cmdExpand(c: Client, [handle]: string[]) {
   show(await c.expand(handle, { budget: budgetFlag() }));
 }
-
-/**
- * Print a service's reply at the terminal (`yea do`): re-rendered from its fields, never the
- * service's own `lens`, and each line escaped, so terminal escapes can't hide or fake a prompt.
- */
-const say = (r: Reply) =>
-  console.log(untrustedLens(r).split('\n').map(printable).join('\n'));
 
 /** `yea do`: intent → choose → commit, answering questions and consent prompts at the terminal. */
 async function interactive(
