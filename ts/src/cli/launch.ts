@@ -80,6 +80,7 @@ async function reexecWithAnthropicSdk(argv: string[]): Promise<never> {
   // Keep @yea-protocol/sdk dependency-free: fetch the SDK only for this command.
   const { spawnSync } = await import('node:child_process');
   const { createRequire } = await import('node:module');
+  const { constants } = await import('node:os');
   const pkg: PackageInfo = createRequire(import.meta.url)('../../package.json');
 
   console.error(
@@ -97,13 +98,9 @@ async function reexecWithAnthropicSdk(argv: string[]): Promise<never> {
     );
   }
 
-  if (r.status !== 0) {
-    die(
-      `yea test-drive through npx failed (${r.signal ?? `exit ${r.status}`}); if npx could not fetch @anthropic-ai/sdk, install it instead: ${INSTALL_HINT}`,
-    );
-  }
-
-  process.exit(0);
+  // A failed re-run may be the test drive's own failure (an API error, Ctrl-C): pass its exit
+  // code on as is, or 128 + the signal's number when a signal ended it, as a shell would.
+  process.exit(r.status ?? (r.signal ? 128 + constants.signals[r.signal] : 1));
 }
 
 export async function cmdTestDrive(rest: string[], o: Options, argv: string[]) {

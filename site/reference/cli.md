@@ -70,7 +70,7 @@ Checks your node version, the agent key, **whether the principal key is readable
 
 ## Try it
 
-- `yea test-drive ["task"] [--model <id>]` runs a real Claude model (default `claude-opus-5`) against the example calendar and shop in your terminal, with a throwaway policy. Anything outside it asks you to approve. Without `@anthropic-ai/sdk` installed, it re-runs itself once through npx with `@yea-protocol/cli` at the same version and the Anthropic SDK at the range it supports; npx asks before installing when you're at a terminal. `YEA_TEST_DRIVE_REEXEC` marks that run, which stops with install advice (`npm install @anthropic-ai/sdk`) rather than re-running again, as does a failed npx. `@yea-protocol/sdk` itself has no runtime dependencies.
+- `yea test-drive ["task"] [--model <id>]` runs a real Claude model (default `claude-opus-5`) against the example calendar and shop in your terminal, with a throwaway policy. Anything outside it asks you to approve. Without `@anthropic-ai/sdk` installed, it re-runs itself once through npx with `@yea-protocol/cli` at the same version and the Anthropic SDK at the range it supports; npx asks before installing when you're at a terminal. `YEA_TEST_DRIVE_REEXEC` marks that run, which stops with install advice (`npm install @anthropic-ai/sdk`) rather than re-running again, as `yea` does when npx can't start. `@yea-protocol/sdk` itself has no runtime dependencies.
 - `yea demo` is a narrated, scripted run with no API key needed.
 - `yea examples [--port 7447] [--host 0.0.0.0]` serves the example calendar, shop and billing services (calendar on the port, shop on port + 2, billing on port + 4). Use `--host 0.0.0.0` inside containers.
 

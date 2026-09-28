@@ -147,13 +147,13 @@ describe.skipIf(process.platform === 'win32')(
       expect(existsSync(join(box.root, 'npx-args'))).toBe(false);
     });
 
-    it('gives install advice when npx fails', () => {
+    it("passes a failed re-run's exit code on, without install advice", () => {
       const r = testDrive(sandbox(7));
 
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(
-        /through npx failed \(exit 7\).*npm install @anthropic-ai\/sdk/,
-      );
+      expect(r.status).toBe(7);
+      expect(r.stderr).not.toMatch(/failed/);
+      // Only the "fetching…" line mentions installing.
+      expect(r.stderr.match(/npm install/g)).toHaveLength(1);
     });
 
     it('gives install advice when there is no npx', () => {
