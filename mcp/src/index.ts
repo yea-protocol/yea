@@ -230,7 +230,23 @@ export function yea(o: YeaOptions): Approvals {
     },
   };
 
+  logServiceId(y, o.name);
+
   return approvalsFor(y);
+}
+
+/**
+ * One stderr line at start-up with the id `yea grant --to` needs, so the person can find it
+ * without reading the key file (SPEC-docs, step 5). stdout belongs to the stdio transport.
+ */
+function logServiceId(y: Yea, name: string) {
+  y.serviceId().then(
+    (id) => console.error(`yea: service id ${id} (name ${name})`),
+    (e: unknown) =>
+      warnOnce(
+        `can't derive the service id: ${e instanceof Error ? e.message : String(e)}`,
+      ),
+  );
 }
 
 function approvalsFor(y: Yea): Approvals {
