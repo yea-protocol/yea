@@ -9,7 +9,7 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
     ignore:
-      # The types must match the lowest supported Node (engines: >=22).
+      # The types must match the oldest Node the SDK supports (ts/package.json engines).
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: pip
