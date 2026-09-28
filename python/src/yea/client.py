@@ -23,7 +23,8 @@ OnEvent = Callable[["Reply"], Any]
 
 class Reply:
     """A reply frame. Body fields are attributes (``r.data``, ``r.proposals``…);
-    ``r.lens`` is the text a model should read."""
+    ``r.lens`` is the reply's Lens as the service sent it (or rendered from it); to show a
+    service's reply to a person or a model safely, use ``yea.lens.untrusted_lens(r.frame)``."""
 
     def __init__(self, frame: dict, events: list[Reply] | None = None):
         self.frame = frame

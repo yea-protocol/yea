@@ -85,7 +85,7 @@ def receipt_result(receipt: dict, auto: bool) -> t.CallToolResult:
 def clarify_result(c: Clarification) -> t.CallToolResult:
     """A plan's question back to the model, with what to call again with for each answer."""
     lines = [f"? {printable(c.question)}"]
-    lines += [printable(f"  {i}. {printable(str(o.get('label', '')))} → {', '.join(lean(o.get('params', {})).splitlines())}")
+    lines += [printable(f"  {i}. {printable(str(o.get('label', '')))} → {', '.join(lean(o.get('params', {})).split(chr(10)))}")
               for i, o in enumerate(c.options, 1)]
     return t.CallToolResult(content=_text(lines),
                             structured_content={"clarify": {"question": c.question, "options": c.options}})
