@@ -54,6 +54,7 @@ export interface StripeApi {
   /**
    * A write. `o` carries a fresh random idempotency key, which the call passes to the SDK, and
    * which only the SDK's own retries of that request reuse: a second call is a second write.
+   * Stripe ignores the key on a DELETE, so a DELETE also passes `maxNetworkRetries: 0`.
    */
   write<T>(
     call: (s: Stripe, o: { idempotencyKey: string }) => Promise<T>,
@@ -81,25 +82,56 @@ interface Settling {
 
 const { errors } = Stripe;
 
-/** No answer came back: a connection failure or timeout, or a failure outside Stripe's errors. */
-function noAnswer(e: unknown, o: Settling): StripeError {
-  const why = o.clean(e instanceof Error ? e.message : String(e));
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** What `write` adds when the result is unknown. */
+const MAY_HAVE_HAPPENED =
+  ', so the write may have happened; check the Stripe dashboard before trying again';
+
+/** The network's own reason for a connection failure, such as `ECONNRESET`. */
+function causeOf(detail: unknown): string {
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  const d = isObject(detail) ? detail : {};
+
+  if (typeof d.code === 'string') {
+    return d.code;
+  }
+
+  return typeof d.message === 'string' ? d.message : '';
+}
+
+/** No answer came back: the connection failed or timed out, after the SDK's retries. */
+function noAnswer(
+  e: InstanceType<typeof errors.StripeConnectionError>,
+  o: Settling,
+): StripeError {
+  const cause = causeOf(e.detail);
+  const why = o.clean(cause ? `${e.message} Cause: ${cause}` : e.message);
 
   return new StripeError(
-    o.write
-      ? `no answer from Stripe (${why}), so the write may have happened; check the Stripe dashboard before trying again`
-      : `no answer from Stripe (${why}); try again shortly`,
+    `no answer from Stripe (${why})${o.write ? MAY_HAVE_HAPPENED : '; try again shortly'}`,
     { status: 0, unknown: o.write },
   );
 }
 
 /** Stripe's error, said so an agent knows what to do next. */
 function failure(e: unknown, o: Settling): StripeError {
-  if (
-    !(e instanceof errors.StripeError) ||
-    e instanceof errors.StripeConnectionError
-  ) {
+  if (e instanceof errors.StripeConnectionError) {
     return noAnswer(e, o);
+  }
+
+  // Not one of Stripe's answers: on a write, it may still have been sent.
+  if (!(e instanceof errors.StripeError)) {
+    const why = o.clean(e instanceof Error ? e.message : String(e));
+
+    return new StripeError(
+      `the Stripe call failed (${why})${o.write ? MAY_HAVE_HAPPENED : ''}`,
+      { status: 0, unknown: o.write },
+    );
   }
 
   const status = e.statusCode ?? 0;
@@ -131,15 +163,10 @@ function failure(e: unknown, o: Settling): StripeError {
   const unknown = o.write && e instanceof errors.StripeAPIError;
 
   return new StripeError(
-    unknown
-      ? `Stripe failed (${said}), and the write may have happened; check the Stripe dashboard before trying again`
-      : `Stripe: ${said}`,
+    unknown ? `Stripe failed (${said})${MAY_HAVE_HAPPENED}` : `Stripe: ${said}`,
     { status, code, unknown },
   );
 }
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Every object in an answer that says which mode it's in. */
 function modesIn(answer: unknown): boolean[] {

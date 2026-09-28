@@ -113,7 +113,7 @@ describe("Stripe-backed billing (the guide's full example)", () => {
       throw new Error(r.kind);
     }
 
-    // Every answer is lost; the SDK's own retries (half a second apart) reuse the key.
+    // Every answer is lost; the SDK's own retries reuse the key.
     stripe.fail({ path: '/refunds', network: true, times: 3 });
 
     const out = await client.commit(r.proposals[0]);

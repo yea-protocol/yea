@@ -1,8 +1,8 @@
-import type Stripe from 'stripe';
 import { describe, expect, it } from 'vitest';
+import type { Stripe } from '../src/api.js';
 import { changeJob, cheaperOrSame } from '../src/change.js';
 import { parseForm, price } from './fake-stripe.js';
-import { D, NOW, plansOf, setup } from './helpers.js';
+import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
 
 const toBasic = { customer: 'Chen', price: 'price_basic' };
 const today = NOW - 10 * 3600;
@@ -98,6 +98,7 @@ describe('change_plan plans', () => {
       proration_date: String(today),
       payment_behavior: 'pending_if_incomplete',
     });
+    expectOwnFreshKeys(s.stripe);
     expect(s.stripe.state.prorations).toEqual([
       { subscription: 'sub_chen', at: today, total: 2403 },
     ]);
@@ -172,6 +173,7 @@ describe('change_plan plans', () => {
     );
     expect(s.stripe.subs[0].schedule).toBeNull();
     expect(s.stripe.subs[0].items.data[0].price.id).toBe('price_pro');
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('a failed second write releases the schedule, and says nothing changed', async () => {
@@ -198,6 +200,7 @@ describe('change_plan plans', () => {
       '/v1/subscription_schedules/sub_sched_1/release',
     );
     expect(s.stripe.subs[0].schedule).toBeNull();
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('a second write with no answer is released too', async () => {

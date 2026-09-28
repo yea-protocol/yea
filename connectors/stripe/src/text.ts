@@ -4,7 +4,7 @@
  * (`printable`), so a name can't forge a line, a fake `[test]`, or a closing quote.
  */
 import { printable } from '@yea-protocol/sdk';
-import type Stripe from 'stripe';
+import type { Stripe } from './api.js';
 
 /** What a summary shows of a customer. */
 type Named = Pick<Stripe.Customer, 'id' | 'name' | 'email'>;

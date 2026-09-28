@@ -4,8 +4,7 @@
  * phases with `from_subscription`), so a failure between them is cleaned up here.
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
-import type Stripe from 'stripe';
-import { idOf, StripeError } from './api.js';
+import { idOf, type Stripe, StripeError } from './api.js';
 import { applying, type Ctx } from './context.js';
 
 type Phase = Stripe.SubscriptionSchedule.Phase;

@@ -3,8 +3,13 @@
  * Stripe can't reverse a refund, so no plan has an undo window, and a refund always asks.
  */
 import { create, type JobPlan, update } from '@yea-protocol/sdk';
-import type Stripe from 'stripe';
-import { idOf, period, recentCharges, subscriptionPage } from './api.js';
+import {
+  idOf,
+  period,
+  recentCharges,
+  type Stripe,
+  subscriptionPage,
+} from './api.js';
 import {
   applying,
   type Ctx,

@@ -5,8 +5,7 @@
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
 import { create, type JobPlan, type Risk, update } from '@yea-protocol/sdk';
-import type Stripe from 'stripe';
-import { idOf, period } from './api.js';
+import { idOf, period, type Stripe } from './api.js';
 import {
   applying,
   type Ctx,

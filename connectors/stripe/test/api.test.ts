@@ -121,8 +121,24 @@ describe('the Stripe client', () => {
     expect((e as StripeError).unknown).toBe(true);
     expect((e as StripeError).status).toBe(0);
     expect((e as StripeError).message).toMatch(
-      /^no answer from Stripe \(.+\), so the write may have happened; check the Stripe dashboard/,
+      /^no answer from Stripe \(.+ Cause: fetch failed\), so the write may have happened; check the Stripe dashboard/,
     );
+  });
+
+  it('a failure that isn’t Stripe’s says the call failed, and on a write that it may have happened', async () => {
+    const { api } = client();
+    const boom = () => Promise.reject(new Error(`boom with ${TEST_KEY}`));
+    const read = (await api.read(boom).catch((x: unknown) => x)) as StripeError;
+    const write = (await api
+      .write(boom)
+      .catch((x: unknown) => x)) as StripeError;
+
+    expect(read.message).toBe('the Stripe call failed (boom with sk_test_…)');
+    expect(read.unknown).toBe(false);
+    expect(write.message).toMatch(
+      /^the Stripe call failed \(boom with sk_test_…\), so the write may have happened/,
+    );
+    expect(write.unknown).toBe(true);
   });
 
   it('a read with no answer is just a failure', async () => {

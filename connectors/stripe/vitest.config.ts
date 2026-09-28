@@ -12,4 +12,5 @@ export default defineConfig({
       '@yea-protocol/stripe/currency': src('currency.ts'),
     },
   },
+  test: { setupFiles: ['./test/setup.ts'] },
 });

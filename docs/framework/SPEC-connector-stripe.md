@@ -112,12 +112,16 @@ the hashes: the same within a day, and a new ask ("plans changed") after midnigh
 
 Each `apply()` makes a fresh random `Idempotency-Key` for each of its writes, and passes it to
 the SDK call as `idempotencyKey`. Only the SDK's own network retries of that request reuse it,
-never another call. Every write passes one explicitly, `DELETE` included (the SDK only makes
-its own for POSTs). Stripe replays
-a saved response for any repeat of a key within 24 hours, so a key derived from the plan
-would turn a deliberate second refund, or a cancel after an undo, into a silent no-op.
-`revert` makes its own fresh keys. The approval core already stops an approved plan running
-twice.
+never another call. Stripe replays a saved response for any repeat of a key within 24 hours,
+so a key derived from the plan would turn a deliberate second refund, or a cancel after an
+undo, into a silent no-op. `revert` makes its own fresh keys. The approval core already stops
+an approved plan running twice.
+
+Keys only protect POSTs: Stripe ignores them on `DELETE`. So the one `DELETE` ("cancel now")
+is sent with `maxNetworkRetries: 0`, and a lost answer is reported as a write whose result is
+unknown, rather than retried into a failure that reads as "nothing changed". (The SDK still
+retries once after a connection closed before any answer, `ECONNRESET` or `EPIPE`, whatever
+the setting.)
 
 ### What it spends
 
@@ -438,21 +442,28 @@ After the switch to Stripe's SDK (#80):
 - **Retries** are the SDK's: two after the first try (three in all), with backoff from half a
   second, on network failures, timeouts, 409 and 5xx, and as `Stripe-Should-Retry` says. A 429
   isn't retried unless Stripe says to; it reaches the agent as "rate limiting; try again
-  shortly". Each try times out after 30 s.
+  shortly". A try times out after 30 s without progress; with the retries, a call can take up
+  to about 90 s in all.
 - **Errors** are mapped from the SDK's classes to one `StripeError` (status, code, `unknown`,
   `permission`): `StripePermissionError` names the missing permission;
   `StripeAuthenticationError` points at the key file; `StripeRateLimitError` says to wait. A
-  `StripeConnectionError`, or any failure that isn't Stripe's, is "no answer". On a write, that
-  and a `StripeAPIError` (a 5xx, a conflict, an answer that couldn't be read) mean the write may
-  have happened. The SDK's messages don't carry the key; the key and anything like one is still
+  `StripeConnectionError` is "no answer", with the network's cause; any other failure that
+  isn't Stripe's is "the Stripe call failed". On a write, those and a `StripeAPIError` (a 5xx, a
+  conflict, an answer that couldn't be read) mean the write may have happened. The SDK's messages don't carry the key; the key and anything like one is still
   taken out of every message, since Stripe's own can echo a masked key.
 - **The invoice preview** now carries an idempotency key: the SDK adds its own to every POST.
   It writes nothing, so that changes nothing.
 - **Telemetry is off.** With it on, the SDK writes a machine id to `~/.config/stripe` and sends
-  it, with the platform, on every request.
+  it, with the platform, on every request. That doesn't stop everything: when `CLAUDECODE` or
+  `CLAUDE_CODE_CHILD_SESSION` is set, the SDK prints a `claude-code-hint` line to stderr when
+  it's imported, and adds `AIAgent/<name>` to the User-Agent (and `ai_agent` to
+  `X-Stripe-Client-User-Agent`); and it turns `Stripe-Notice` headers into process warnings.
 - **The fake** stays a `fetch`: the SDK is pointed at it with `Stripe.createFetchHttpClient`
   rather than `host`/`port`/`protocol`, so no server is started and everything but the socket
-  is the SDK's code. The example's test moved to `connectors/stripe/test/`, so `ts/` doesn't
+  is the SDK's code. The fake refuses an `idempotencyKey` sent as a parameter, as Stripe does,
+  and every job's write test checks each key is the connector's own UUIDv4, not the SDK's
+  `stripe-node-retry-…`. The tests stub the SDK's retry delays (two undocumented methods) to 0;
+  its retry logic still runs. The example's test moved to `connectors/stripe/test/`, so `ts/` doesn't
   resolve `stripe`.
 
 ## Decisions

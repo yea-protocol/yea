@@ -386,8 +386,12 @@ async function cancelPlans(
       update(`subscription/${sub.id}`, 'status', sub.status, 'canceled'),
     ],
     risk: 'medium',
-    // No inverse call exists, so no revert.
-    apply: () => stripe.write((s, o) => s.subscriptions.cancel(sub.id, {}, o)),
+    // No inverse call exists, so no revert. Stripe ignores idempotency keys
+    // on DELETE, so it isn't retried: a lost answer is reported as unknown.
+    apply: () =>
+      stripe.write((s, o) =>
+        s.subscriptions.cancel(sub.id, {}, { ...o, maxNetworkRetries: 0 }),
+      ),
   };
 
   if (sub.cancel_at_period_end) {

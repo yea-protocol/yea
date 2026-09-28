@@ -3,11 +3,11 @@
  * a clarification whose options carry the ids to call again with.
  */
 import { type Clarification, clarify } from '@yea-protocol/sdk';
-import type Stripe from 'stripe';
 import {
   currentSubscription,
   currentSubscriptions,
   findCustomers,
+  type Stripe,
 } from './api.js';
 import type { Ctx } from './context.js';
 import { formatMoney } from './currency.js';

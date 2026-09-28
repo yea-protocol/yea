@@ -4,8 +4,7 @@
  * manages its cancellation there.
  */
 import { type Effect, type JobPlan, update } from '@yea-protocol/sdk';
-import type Stripe from 'stripe';
-import { idOf, period } from './api.js';
+import { idOf, period, type Stripe } from './api.js';
 import {
   applying,
   type Ctx,
@@ -131,8 +130,10 @@ function now(ctx: Ctx, t: Target): JobPlan {
     data: { confirm: confirmPhrase(t.c) },
     apply: () =>
       applying(async () => {
+        // Stripe ignores idempotency keys on DELETE, so a retry isn't safe: a lost answer is
+        // reported as unknown rather than retried into a plain failure.
         await ctx.stripe.write((s, o) =>
-          s.subscriptions.cancel(t.sub.id, {}, o),
+          s.subscriptions.cancel(t.sub.id, {}, { ...o, maxNetworkRetries: 0 }),
         );
 
         return { plan: 'cancel_now', subscription: t.sub.id };

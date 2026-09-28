@@ -8,12 +8,12 @@ import {
   type McpServer,
 } from '@modelcontextprotocol/server';
 import { lean } from '@yea-protocol/sdk';
-import type Stripe from 'stripe';
 import {
   findCustomers,
   idOf,
   period,
   recentCharges,
+  type Stripe,
   subscriptionPage,
 } from './api.js';
 import { type Ctx, day } from './context.js';

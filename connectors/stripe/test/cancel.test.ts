@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cancelJob } from '../src/cancel.js';
 import { price, type Schedule, subscription } from './fake-stripe.js';
-import { D, NOW, plansOf, setup } from './helpers.js';
+import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
 
 const chen = { customer: 'chen@wei.studio' };
 
@@ -101,7 +101,7 @@ describe('cancel_subscription plans', () => {
       ['POST', '/v1/subscriptions/sub_chen', 'cancel_at_period_end=false'],
     ]);
     // Undo makes its own fresh key.
-    expect(s.stripe.writes()[0].key).not.toBe(s.stripe.writes()[1].key);
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('now is one DELETE', async () => {
@@ -116,6 +116,7 @@ describe('cancel_subscription plans', () => {
       ['DELETE', '/v1/subscriptions/sub_chen'],
     ]);
     expect(s.stripe.subs[0].status).toBe('canceled');
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('a subscription already cancelling only gets "now"', async () => {
@@ -136,6 +137,26 @@ describe('cancel_subscription plans', () => {
 
     expect(atEnd.summary).toContain('at period end');
     expect(atEnd.undoWindow).toBeUndefined();
+  });
+
+  it('now is never retried, since Stripe ignores keys on DELETE: a lost answer is unknown', async () => {
+    const s = setup();
+    const [, now] = await plansOf(cancelJob(s.ctx), chen);
+
+    s.stripe.fail({
+      method: 'DELETE',
+      path: '/subscriptions/sub_chen',
+      after: true,
+    });
+
+    const e = (await Promise.resolve(now.apply()).catch(
+      (x: unknown) => x,
+    )) as Error & { partial?: boolean };
+
+    expect(s.stripe.writes()).toHaveLength(1);
+    expect(s.stripe.subs[0].status).toBe('canceled');
+    expect(e.partial).toBe(true);
+    expect(e.message).toMatch(/^no answer from Stripe .*may have happened/);
   });
 
   it('on a schedule, at period end sets the schedule to cancel, and undo sets it back to release', async () => {
@@ -174,6 +195,7 @@ describe('cancel_subscription plans', () => {
     expect(
       s.stripe.writes().some((w) => w.path.startsWith('/v1/subscriptions/')),
     ).toBe(false);
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('on a schedule with a later phase, or already cancelling, only "now"', async () => {

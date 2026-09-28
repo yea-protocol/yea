@@ -803,13 +803,14 @@ export function fakeStripe(
     return json(body, r.status);
   }
 
-  /** Replays a key's saved response, as Stripe does for 24 hours. */
+  /** Replays a key's saved response, as Stripe does for 24 hours, except on DELETE, which it ignores keys on. */
   async function respond(
     u: URL,
     method: string,
     body: string,
-    key: string | null,
+    header: string | null,
   ) {
+    const key = method === 'DELETE' ? null : header;
     const saved = key ? replays.get(key) : undefined;
 
     if (saved) {
@@ -841,6 +842,15 @@ export function fakeStripe(
       version: headers.get('stripe-version'),
       auth: headers.get('authorization'),
     });
+
+    // A request option sent as a parameter by mistake: Stripe refuses what it doesn't know.
+    if (`${u.search}&${body}`.includes('idempotencyKey')) {
+      return stripeError(
+        400,
+        'Received unknown parameter: idempotencyKey',
+        'parameter_unknown',
+      );
+    }
 
     const f = failureFor(method, path);
 
