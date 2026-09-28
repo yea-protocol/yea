@@ -25,13 +25,9 @@ import {
 import { defaultFileStore, serverKeyPath } from '@yea-protocol/sdk/node';
 import type { JobDef, RevertFn, Yea } from './call/context.js';
 import { runJob } from './call.js';
-import {
-  type GuardConfig,
-  guardTool,
-  jobAnnotations,
-  jobMeta,
-} from './guard.js';
+import { type GuardConfig, guardTool } from './guard.js';
 import { pinnedPrincipal } from './policy.js';
+import { jobAnnotations, jobMeta } from './result.js';
 import { previewSchema, takePreview } from './schema.js';
 import { checkName, loadServerSeed } from './serverkey.js';
 import { registerUndo, undoFree } from './undo.js';

@@ -1,11 +1,13 @@
 /**
  * Tool results and annotations the job plugin and the bridge share (SPEC-mcp-ts, "Results and
- * annotations"). `textResult` and `errorResult` are public, for a server's own read tools.
+ * annotations"), and a job tool's risk metadata. `textResult` and `errorResult` are public, for a
+ * server's own read tools.
  */
 import type {
   CallToolResult,
   ToolAnnotations,
 } from '@modelcontextprotocol/server';
+import type { Risk } from '@yea-protocol/sdk';
 import type { Obj } from './util.js';
 
 /** A job changes things: destructive, so clients shouldn't auto-approve it. Hints only. */
@@ -20,6 +22,19 @@ export const UNDO_ANNOTATIONS = Object.freeze({
   ...JOB_ANNOTATIONS,
   idempotentHint: true,
 }) satisfies ToolAnnotations;
+
+/** The tool's risk metadata (SPEC-mcp-ts, "Risk metadata"). */
+export const jobMeta = (risk: Risk | undefined, undoable: boolean) => ({
+  'dev.yea/job': { risk: risk ?? 'medium', undoable },
+});
+
+/** A job changes things: destructive unless the author says otherwise. Hints, not enforcement. */
+export const jobAnnotations = (
+  a: ToolAnnotations | undefined,
+): ToolAnnotations => ({
+  ...JOB_ANNOTATIONS,
+  ...a,
+});
 
 /** A read never changes anything. */
 export const READ_ANNOTATIONS = Object.freeze({

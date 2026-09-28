@@ -11,9 +11,8 @@ import {
 import { isReceiptId, undoJob, unixNow } from '@yea-protocol/sdk';
 import { isPartial } from './call/apply.js';
 import { callerOf, type RevertFn, type Yea } from './call/context.js';
-import { registryOf } from './guard.js';
 import { errorResult, textResult, UNDO_ANNOTATIONS } from './result.js';
-import { errorMessage } from './util.js';
+import { errorMessage, registryOf } from './util.js';
 
 /** Throw before registering anything if the server has an `undo` tool that isn't ours. */
 export function undoFree(server: McpServer, ours: WeakMap<McpServer, unknown>) {
