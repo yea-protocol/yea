@@ -34,6 +34,7 @@ import {
   getSchedule,
   onlyCurrentPhase,
   releaseSchedule,
+  uncopied,
 } from './schedule.js';
 import { confirmPhrase, quoted, who } from './text.js';
 
@@ -76,7 +77,13 @@ interface Change {
 /** The price asked for: by id, or by lookup key among active prices. */
 async function findPrice(ctx: Ctx, ref: string): Promise<Price> {
   if (/^price_[A-Za-z0-9_]+$/.test(ref)) {
-    return ctx.stripe.get<Price>(`/prices/${ref}`);
+    const price = await ctx.stripe.get<Price>(`/prices/${ref}`);
+
+    if (price.active !== true) {
+      throw new Error(`${ref} isn't an active price`);
+    }
+
+    return price;
   }
 
   const found = await ctx.stripe.get<{ data: Price[] }>('/prices', {
@@ -183,27 +190,47 @@ function atRenewal(ctx: Ctx, ch: Change): JobPlan {
 }
 
 interface Preview {
+  /** The proration's net: positive is a charge, negative a credit. */
   total: number;
+  /** What's charged after the customer's credit balance. */
+  amount_due: number;
   currency: string;
 }
 
-/** What "now" charges or credits, in words and as `spend` (only a credit leaves the business). */
-function proration(net: number, cur: string) {
-  const money = formatMoney(Math.abs(net), cur);
+/** A prorated charge: what's due after the customer's balance, which is what's charged. */
+function charge(p: Preview, from: string) {
+  const net = formatMoney(p.total, p.currency);
+  const due = formatMoney(p.amount_due, p.currency);
+  const says =
+    p.amount_due === p.total
+      ? `Stripe charges ${due} today`
+      : p.amount_due > 0
+        ? `Stripe charges ${due} today (${net}, less their credit balance)`
+        : `${net}, paid from their credit balance`;
 
-  if (net > 0) {
-    return {
-      says: `Stripe charges ${money} today (prorated)`,
-      effect: create('invoice', `${money}, charged today`),
-      uses: undefined,
-    };
+  return {
+    says: `${says} (prorated)`,
+    effect: create(
+      'invoice',
+      `${net} prorated, ${due} charged today; if the payment fails, the subscription stays on ${from}`,
+    ),
+    uses: undefined,
+  };
+}
+
+/** What "now" charges or credits, in words and as `spend` (only a credit leaves the business). */
+function proration(p: Preview, from: string) {
+  if (p.total > 0) {
+    return charge(p, from);
   }
 
-  if (net < 0) {
+  if (p.total < 0) {
+    const money = formatMoney(-p.total, p.currency);
+
     return {
       says: `${money} goes to their Stripe credit balance (prorated)`,
       effect: create('credit', `${money} to the customer's balance`),
-      uses: { spend: toQuantity(-net, cur) },
+      uses: { spend: toQuantity(-p.total, p.currency) },
     };
   }
 
@@ -224,7 +251,7 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
       },
     },
   );
-  const p = proration(preview.total, preview.currency);
+  const p = proration(preview, priceName(ch.item.price));
 
   return {
     summary: `${moving(ctx, ch)} now; ${p.says}`,
@@ -243,13 +270,30 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
     data: { confirm: confirmPhrase(ch.c) },
     apply: () =>
       applying(async () => {
-        await ctx.stripe.write('POST', `/subscriptions/${ch.sub.id}`, {
-          items,
-          proration_behavior: 'always_invoice',
-          proration_date: date,
-        });
+        // A declined payment leaves the update pending, not the new price on an unpaid invoice.
+        const sub = await ctx.stripe.write<{ pending_update?: unknown }>(
+          'POST',
+          `/subscriptions/${ch.sub.id}`,
+          {
+            items,
+            proration_behavior: 'always_invoice',
+            proration_date: date,
+            payment_behavior: 'pending_if_incomplete',
+          },
+        );
+        const pending = (sub.pending_update ?? null) !== null;
 
-        return { plan: 'change_now', subscription: ch.sub.id, price: ch.to.id };
+        return {
+          plan: 'change_now',
+          subscription: ch.sub.id,
+          price: ch.to.id,
+          ...(pending
+            ? {
+                pending:
+                  "the payment didn't go through, so the change waits for it; the subscription stays on its old price until it's paid",
+              }
+            : {}),
+        };
       }),
   };
 }
@@ -264,7 +308,10 @@ async function whatFits(ctx: Ctx, ch: Change) {
     ch.sub.cancel_at_period_end || (ch.sub.cancel_at ?? null) !== null;
 
   if (!ch.sub.schedule) {
-    return { renewal: !ends && !discounted(ch), now: true };
+    return {
+      renewal: !ends && !discounted(ch) && uncopied(ch.sub).length === 0,
+      now: true,
+    };
   }
 
   const s = await getSchedule(ctx, ch.sub.schedule);
@@ -323,7 +370,9 @@ async function revertChange(ctx: Ctx, result: unknown) {
     throw new Error("this plan change can't be undone");
   }
 
-  return releaseSchedule(ctx, r.schedule);
+  const schedule = r.schedule;
+
+  return applying(() => releaseSchedule(ctx, schedule));
 }
 
 export function changeJob(ctx: Ctx): JobSpec<ChangeInput> {

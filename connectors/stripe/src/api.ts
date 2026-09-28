@@ -155,7 +155,7 @@ function stripeMessage(json: unknown, status: number): string {
   const e = isObject(json) && isObject(json.error) ? json.error : {};
 
   return typeof e.message === 'string' && e.message
-    ? redactKeys(e.message)
+    ? e.message
     : `Stripe returned HTTP ${status}`;
 }
 
@@ -166,8 +166,13 @@ const stripeCode = (json: unknown): string | undefined => {
 };
 
 /** Stripe's error, said so an agent knows what to do next. */
-function teach(status: number, json: unknown, write: boolean): StripeError {
-  const said = stripeMessage(json, status);
+function teach(
+  status: number,
+  json: unknown,
+  o: { write: boolean; clean: (s: string) => string },
+): StripeError {
+  const said = o.clean(stripeMessage(json, status));
+  const write = o.write;
   const code = stripeCode(json);
 
   if (status === 403) {
@@ -238,22 +243,60 @@ async function tryOnce(
   }
 }
 
-/** The final outcome as a value, or the error that says what to do. */
-function settle<T>(last: Outcome, write: boolean): T {
-  if (last.kind === 'network') {
+/** Every object in a response that says which mode it's in. */
+function modesIn(json: unknown): boolean[] {
+  if (!isObject(json)) {
+    return [];
+  }
+
+  const items = Array.isArray(json.data) ? json.data : [json];
+
+  return items.flatMap((x) =>
+    isObject(x) && typeof x.livemode === 'boolean' ? [x.livemode] : [],
+  );
+}
+
+interface Settling {
+  write: boolean;
+  /** Whether the key looks live. */
+  live: boolean;
+  /** Takes the key, and anything like one, out of a message. */
+  clean(s: string): string;
+}
+
+/**
+ * A response from the other mode than the key looks like fails closed: the `[test]` or `[LIVE]`
+ * a person approved would be wrong.
+ */
+function checkMode(json: unknown, o: Settling) {
+  if (modesIn(json).some((m) => m !== o.live)) {
     throw new StripeError(
-      write
-        ? `no answer from Stripe (${last.message}), so the write may have happened; check the Stripe dashboard before trying again`
-        : `no answer from Stripe (${last.message}); try again shortly`,
-      { status: 0, unknown: write },
+      `Stripe answered in ${o.live ? 'test' : 'live'} mode, but the key looks like a ${o.live ? 'live' : 'test'} key; refusing to go on${o.write ? '. The write may have happened: check the Stripe dashboard' : ''}`,
+      { status: 0, unknown: o.write },
+    );
+  }
+}
+
+/** The final outcome as a value, or the error that says what to do. */
+function settle<T>(last: Outcome, o: Settling): T {
+  if (last.kind === 'network') {
+    const why = o.clean(last.message);
+
+    throw new StripeError(
+      o.write
+        ? `no answer from Stripe (${why}), so the write may have happened; check the Stripe dashboard before trying again`
+        : `no answer from Stripe (${why}); try again shortly`,
+      { status: 0, unknown: o.write },
     );
   }
 
   if (last.status >= 200 && last.status < 300) {
+    checkMode(last.json, o);
+
     return last.json as T;
   }
 
-  throw teach(last.status, last.json, write);
+  throw teach(last.status, last.json, o);
 }
 
 /** Create the client. The key is only ever sent to Stripe, in the Authorization header. */
@@ -287,8 +330,15 @@ export function stripeApi(o: StripeOptions): Stripe {
     return last;
   };
 
+  const live = isLiveKey(o.key);
+  const clean = (text: string) =>
+    o.key ? redactKeys(text).split(o.key).join('…') : redactKeys(text);
   const send = async <T>(a: Attempt): Promise<T> =>
-    settle<T>(await tryAll(a), a.idempotencyKey !== undefined);
+    settle<T>(await tryAll(a), {
+      write: a.idempotencyKey !== undefined,
+      live,
+      clean,
+    });
 
   return {
     get: (path, query) =>
@@ -330,6 +380,7 @@ export interface Charge {
 
 export interface Price {
   id: string;
+  active?: boolean;
   nickname: string | null;
   currency: string;
   unit_amount: number | null;
@@ -455,16 +506,54 @@ export async function recentCharges(
 /** Subscriptions still in force: active, trialing or past due. */
 const LIVE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
-/** A customer's subscriptions that are still in force. */
+/** The most subscriptions one customer's list reads. */
+const MAX_SUBSCRIPTIONS = 100;
+
+/**
+ * A customer's subscriptions that are still in force. Stripe's default list leaves out
+ * cancelled ones, so they can't hide a live one; a list that doesn't fit in one page is refused
+ * rather than read in part.
+ */
 export async function currentSubscriptions(
   s: Stripe,
   customer: string,
 ): Promise<Subscription[]> {
   const all = await s.get<List<Subscription>>('/subscriptions', {
     customer,
-    status: 'all',
-    limit: '10',
+    limit: String(MAX_SUBSCRIPTIONS),
   });
 
+  if (all.has_more) {
+    throw new StripeError(
+      `${customer} has more than ${MAX_SUBSCRIPTIONS} subscriptions; pass the sub_ id of the one you mean`,
+      { status: 0 },
+    );
+  }
+
   return all.data.filter((x) => LIVE_STATUSES.has(x.status));
+}
+
+/** One subscription by id, if it's this customer's and still in force. */
+export async function currentSubscription(
+  s: Stripe,
+  customer: string,
+  id: string,
+): Promise<Subscription | null> {
+  if (!/^sub_[A-Za-z0-9]+$/.test(id)) {
+    return null;
+  }
+
+  try {
+    const sub = await s.get<Subscription>(`/subscriptions/${id}`);
+
+    return sub.customer === customer && LIVE_STATUSES.has(sub.status)
+      ? sub
+      : null;
+  } catch (e) {
+    if (e instanceof StripeError && e.status === 404) {
+      return null;
+    }
+
+    throw e;
+  }
 }

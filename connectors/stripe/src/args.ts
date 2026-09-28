@@ -20,7 +20,12 @@ const PORT = /^\d{1,5}$/;
 
 /** A port number, or throw. */
 function port(value: string | undefined): number {
-  if (!value || !PORT.test(value) || Number(value) > 65_535) {
+  if (
+    !value ||
+    !PORT.test(value) ||
+    Number(value) < 1 ||
+    Number(value) > 65_535
+  ) {
     throw new Error(
       `--http needs a port, got ${JSON.stringify(value)}\n${USAGE}`,
     );

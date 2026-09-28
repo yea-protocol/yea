@@ -31,6 +31,11 @@ function unsafe(path: string, fd: number, owner: number): string | null {
   }
 
   if (typeof process.getuid !== 'function') {
+    // Windows: no uid or mode bits to check. Say so rather than pass silently.
+    console.error(
+      `yea-stripe: warning: can't check who owns ${path} or who can read it on this platform; keep it private yourself`,
+    );
+
     return null;
   }
 

@@ -9,7 +9,7 @@ your approval, and can be undone where Stripe allows it.
 | Tool | Kind | What it does |
 |---|---|---|
 | `customer` | read | Finds a customer by name, email or `cus_` id: their plan, renewal date, recent payments and what's refundable, in one call. |
-| `refund` | job | Refunds a payment: all of it, what's unused of their subscription, or an amount. It can't be undone, so it always asks. |
+| `refund` | job | Refunds a payment: all of it, an estimate of what's unused of their subscription, or an amount. By default it's their latest successful payment, never an older one. It can't be undone, so it always asks. |
 | `cancel_subscription` | job | At period end (undoable until a day before it), or now (not undoable). |
 | `change_plan` | job | At renewal (undoable until a day before it), or now with proration (not undoable). |
 
@@ -61,7 +61,8 @@ $EDITOR ~/.config/yea/stripe.key        # paste rk_test_… or rk_live_…
 `STRIPE_SECRET_KEY_FILE` must name a regular file owned by the user the server runs as, with
 mode `0600` (or `0400`). The server refuses a symlink, a file another user owns, or one that
 group or others can read, and it doesn't fall back to anything else when the file is refused.
-`STRIPE_SECRET_KEY` also works, for places where a file is awkward.
+`STRIPE_SECRET_KEY` also works, for places where a file is awkward. On Windows, which has no
+file owner or mode bits to check, the server warns and leaves keeping the file private to you.
 
 The key is only ever sent to `api.stripe.com`, and never appears in a tool's output.
 
@@ -69,7 +70,8 @@ The key is only ever sent to `api.stripe.com`, and never appears in a tool's out
 
 A key containing `_test_` is test mode. **Any other key is live**, so an unfamiliar format
 fails toward caution. Every plan's summary starts with `[test]` or `[LIVE]`, and live mode
-raises every plan's risk one level (see [Risk](#risk)).
+raises every plan's risk one level (see [Risk](#risk)). If Stripe's answer says the other mode
+(its `livemode`), the server stops rather than go on under the wrong label.
 
 ### Your approvals
 
@@ -162,7 +164,8 @@ What the server does enforce, whoever calls it:
   second refund is never silently skipped;
 - customer names and emails are shown quoted, capped at 80 characters, with control and
   direction-changing characters escaped, so a customer can't forge what you approve;
-- the Stripe API version is pinned (`2026-08-26.dahlia`).
+- the Stripe API version is pinned (`2026-08-26.dahlia`);
+- the key, and anything that looks like a Stripe key, is taken out of every error message.
 
 ## Over HTTP
 
@@ -174,25 +177,29 @@ YEA_HTTP_TOKEN=$(openssl rand -hex 32) YEA_SUB=me@example.com \
 
 Streamable HTTP serves one person. Every request must carry `Authorization: Bearer
 $YEA_HTTP_TOKEN`, and a request that does is `YEA_SUB`. On loopback the `Host` header is
-checked too. Approvals live in memory, where `yea approve` can't reach them, so **live `high`
+checked too. **The server speaks plain HTTP:** off loopback, put TLS in front of it (a reverse
+proxy such as Caddy or nginx), or the bearer token crosses the network in the clear. Approvals live in memory, where `yea approve` can't reach them, so **live `high`
 plans (refunds, immediate changes) can't run over HTTP at all**: use stdio for those.
 
 ## What it does in Stripe
 
 | Plan | Requests |
 |---|---|
-| refund | `POST /v1/refunds` with `payment_intent` and `amount` |
+| refund | `POST /v1/refunds` with `payment_intent` and `amount`. Without `payment`, the latest successful payment; if that's fully refunded, the call is refused rather than moving to an older one. "What's unused" is an estimate from the subscription's period, and says so. |
 | cancel at period end | `POST /v1/subscriptions/:id` `cancel_at_period_end=true`; undo sets it back. On a scheduled subscription, the schedule's `end_behavior` becomes `cancel`; undo sets it back to `release`. |
 | cancel now | `DELETE /v1/subscriptions/:id` |
-| change now | `POST /v1/subscriptions/:id` with the new price and `proration_behavior=always_invoice`, at the proration date the plan previewed with `POST /v1/invoices/create_preview` |
+| change now | `POST /v1/subscriptions/:id` with the new price, `proration_behavior=always_invoice` and `payment_behavior=pending_if_incomplete`, at the proration date the plan previewed with `POST /v1/invoices/create_preview`. The plan shows what's charged after the customer's credit balance. If the payment fails, the change stays pending and the old price stays on. |
 | change at renewal | `POST /v1/subscription_schedules` from the subscription, then its phases: the current one as it is, and the new price from the renewal date. If the second write fails, the schedule is released; if that fails too, the error names the schedule left behind. Undo releases it. |
 
 Plans only read (and preview); every write happens after approval. A plan measures time from
 the start of today (UTC), so it stays the same while you decide, and changes at midnight.
 
 **Not in this version:** subscriptions with more than one item, price changes that alter the
-billing interval or currency, subscriptions with discounts "at renewal", and "at renewal" on a
-subscription that already has a schedule.
+billing interval or currency, inactive prices, customers with more than 100 subscriptions
+(unless you name the `sub_` id), and "at renewal" on a subscription that already has a
+schedule, has discounts, or has any of automatic tax, custom invoice settings, billing
+thresholds, `on_behalf_of`, `transfer_data`, an application fee or pending invoice items
+(the schedule copy can't carry those yet).
 
 ## As a library
 

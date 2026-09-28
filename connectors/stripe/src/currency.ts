@@ -82,7 +82,7 @@ export function toQuantity(api: number, currency: string): Quantity {
 export const formatMoney = (api: number, currency: string) =>
   fmtQuantity(toQuantity(api, currency));
 
-/** The number alone, as a person types it to approve: `12.50`, `500`. */
+/** The number alone, as a person types it to approve, or as a major-unit amount: `12.50`, `500`. */
 export const formatNumber = (api: number, currency: string) =>
   formatMoney(api, currency).split(' ')[0] ?? '';
 

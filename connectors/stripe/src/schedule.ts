@@ -115,6 +115,56 @@ function nextPhase(
   };
 }
 
+/** Whether an invoice_settings value holds anything besides the defaults. */
+function customInvoiceSettings(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) {
+    return false;
+  }
+
+  const o = v as Record<string, unknown>;
+  const issuer = o.issuer as { type?: unknown } | null | undefined;
+
+  return (
+    (Array.isArray(o.account_tax_ids) && o.account_tax_ids.length > 0) ||
+    (o.days_until_due ?? null) !== null ||
+    (issuer !== null && issuer !== undefined && issuer.type !== 'self')
+  );
+}
+
+/** Whether a setting is on: present, not empty, and for automatic tax, enabled. */
+function isSet(k: string, v: unknown): boolean {
+  if (k === 'automatic_tax') {
+    return (v as { enabled?: unknown } | null)?.enabled === true;
+  }
+
+  if (k === 'invoice_settings') {
+    return customInvoiceSettings(v);
+  }
+
+  return Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined;
+}
+
+const UNCOPIED = [
+  'automatic_tax',
+  'invoice_settings',
+  'billing_thresholds',
+  'on_behalf_of',
+  'transfer_data',
+  'application_fee_percent',
+  'add_invoice_items',
+];
+
+/**
+ * Settings a subscription or phase can carry that the phase copy doesn't. Their schedule
+ * semantics aren't confirmed, so "at renewal" is refused when any is set, rather than risk
+ * dropping one.
+ */
+export function uncopied(o: object): string[] {
+  const r = o as Record<string, unknown>;
+
+  return UNCOPIED.filter((k) => isSet(k, r[k]));
+}
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Release a schedule: the subscription stays as it is, and pending phases are dropped. */
@@ -164,6 +214,14 @@ export async function changeAtRenewal(
       throw new StripeError(`${made.id} came back with no phases`, {
         status: 0,
       });
+    }
+
+    const extra = uncopied(current);
+
+    if (extra.length) {
+      throw new Error(
+        `its current phase has ${extra.join(', ')}, which a change at renewal can't copy yet`,
+      );
     }
 
     await ctx.stripe.write('POST', `/subscription_schedules/${made.id}`, {

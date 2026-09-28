@@ -12,9 +12,9 @@ describe('refund plans', () => {
     const plans = await plansOf(refundJob(s.ctx), chen);
 
     expect(plans.map((p) => p.summary)).toEqual([
-      '[test] Refund 49.00 USD of ch_2 to "Chen Wei" (all of it)',
+      '[test] Refund 49.00 USD of ch_2 (paid 2026-09-11) to "Chen Wei" (all of it)',
       // 14 days 10 hours of 30 are left, from the start of today: 4900 × 1245600 / 2592000.
-      '[test] Refund 23.54 USD of ch_2 to "Chen Wei" (unused 15 days)',
+      '[test] Refund 23.54 USD of ch_2 (paid 2026-09-11) to "Chen Wei" (estimated unused 15 days of the current period)',
     ]);
     expect(plans[0]).toMatchObject({
       effects: [
@@ -81,7 +81,8 @@ describe('refund plans', () => {
 
     expect(plans).toHaveLength(1);
     expect(plans[0]).toMatchObject({
-      summary: '[test] Refund 10.00 USD of ch_2 to "Chen Wei" (partial)',
+      summary:
+        '[test] Refund 10.00 USD of ch_2 (paid 2026-09-11) to "Chen Wei" (partial)',
       data: { confirm: '10.00' },
     });
   });
@@ -107,7 +108,7 @@ describe('refund plans', () => {
       const plans = await plansOf(refundJob(s.ctx), { ...chen, payment });
 
       expect(plans.map((p) => p.summary)).toEqual([
-        '[test] Refund 49.00 USD of ch_1 to "Chen Wei" (all of it)',
+        '[test] Refund 49.00 USD of ch_1 (paid 2026-08-12) to "Chen Wei" (all of it)',
       ]);
     }
   });
@@ -119,16 +120,66 @@ describe('refund plans', () => {
     await expect(
       refundJob(s.ctx).plan({ ...chen, payment: 'ch_2' }),
     ).rejects.toThrow(
-      /"ch_2" isn't one of "Chen Wei"'s recent payments with something left to refund. Recent payments: ch_2 \(49.00 USD, 0.00 USD left, succeeded\); ch_1/,
+      /"ch_2" isn't one of "Chen Wei"'s recent payments with something left to refund. Recent payments: ch_2 \(2026-09-11, 49.00 USD, 0.00 USD left, succeeded\); ch_1/,
     );
     await expect(
       refundJob(s.ctx).plan({ ...chen, payment: 'ch_nope' }),
     ).rejects.toThrow(/isn't one of/);
+  });
 
-    // With the latest refunded, the default is the next one.
-    const [only] = await plansOf(refundJob(s.ctx), chen);
+  it('with the latest payment fully refunded, refuses rather than falling back to an older one', async () => {
+    const s = setup();
 
-    expect(only.summary).toContain('of ch_1');
+    s.stripe.charges[0].amount_refunded = 4900;
+    await expect(refundJob(s.ctx).plan(chen)).rejects.toThrow(
+      /^"Chen Wei"'s latest payment, ch_2, is fully refunded; to refund an older one, pass its id as payment. Recent payments: ch_2 .*; ch_1 \(2026-08-12, 49.00 USD, 49.00 USD left, succeeded\)$/,
+    );
+
+    // Asked for by id, the older one is fine.
+    expect(
+      await plansOf(refundJob(s.ctx), { ...chen, payment: 'ch_1' }),
+    ).toHaveLength(1);
+  });
+
+  it('the latest payment that failed is skipped for the latest that succeeded', async () => {
+    const s = setup({
+      state: (b) => ({
+        charges: [
+          {
+            ...b.charges[0],
+            id: 'ch_3',
+            payment_intent: 'pi_3',
+            status: 'failed',
+            created: NOW - D,
+          },
+          ...b.charges,
+        ],
+      }),
+    });
+    const [full] = await plansOf(refundJob(s.ctx), chen);
+
+    expect(full.summary).toContain('of ch_2 (paid 2026-09-11)');
+  });
+
+  it('a retry after a refund whose result was unknown never moves to another payment', async () => {
+    const s = setup();
+    const [full] = await plansOf(refundJob(s.ctx), chen);
+
+    // The refund reaches Stripe, but every answer is lost.
+    s.stripe.fail({ path: '/refunds', after: true, times: 3 });
+
+    const e = (await Promise.resolve(full.apply()).catch(
+      (x: unknown) => x,
+    )) as Error & { partial?: boolean };
+
+    expect(e.partial).toBe(true);
+    expect(s.stripe.charges[0].amount_refunded).toBe(4900);
+
+    // Calling again doesn't offer ch_1, the same amount under the same phrase.
+    await expect(refundJob(s.ctx).plan(chen)).rejects.toThrow(
+      /latest payment, ch_2, is fully refunded/,
+    );
+    expect(s.stripe.state.refunds).toHaveLength(1);
   });
 
   it('no unused plan when the period has barely started, or the payment is older than it', async () => {

@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { readKeyFile, readSecretKey } from '../src/key.js';
 import { TEST_KEY, tmp } from './helpers.js';
@@ -72,6 +72,31 @@ describe('STRIPE_SECRET_KEY_FILE', () => {
   });
 });
 
+it('where the platform can’t check owners or modes (Windows), warns instead of passing silently', () => {
+  const getuid = Object.getOwnPropertyDescriptor(process, 'getuid');
+  const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  Object.defineProperty(process, 'getuid', {
+    value: undefined,
+    configurable: true,
+  });
+
+  try {
+    expect(readKeyFile(keyFile(0o644))).toBe(TEST_KEY);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /warning: can't check who owns .* on this platform/,
+      ),
+    );
+  } finally {
+    if (getuid) {
+      Object.defineProperty(process, 'getuid', getuid);
+    }
+
+    warn.mockRestore();
+  }
+});
+
 describe('STRIPE_SECRET_KEY', () => {
   it('works, trimmed, when there is no key file', () => {
     expect(readSecretKey({ STRIPE_SECRET_KEY: ` ${TEST_KEY}\n` })).toBe(
@@ -114,6 +139,7 @@ describe('the command line', () => {
     ['--http'],
     ['--http', 'x'],
     ['--http', '70000'],
+    ['--http', '0'],
     ['--nope'],
     ['--host'],
   ])('refuses %j', (...argv) => {

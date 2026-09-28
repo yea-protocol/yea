@@ -199,14 +199,22 @@ async function revertCancel(ctx: Ctx, result: unknown) {
       throw new Error("this cancellation's schedule id is malformed");
     }
 
-    return ctx.stripe.write('POST', `/subscription_schedules/${r.schedule}`, {
-      end_behavior: 'release',
-    });
+    const schedule = r.schedule;
+
+    return applying(() =>
+      ctx.stripe.write('POST', `/subscription_schedules/${schedule}`, {
+        end_behavior: 'release',
+      }),
+    );
   }
 
-  return ctx.stripe.write('POST', `/subscriptions/${r.subscription}`, {
-    cancel_at_period_end: false,
-  });
+  const sub = r.subscription;
+
+  return applying(() =>
+    ctx.stripe.write('POST', `/subscriptions/${sub}`, {
+      cancel_at_period_end: false,
+    }),
+  );
 }
 
 export function cancelJob(ctx: Ctx): JobSpec<CancelInput> {

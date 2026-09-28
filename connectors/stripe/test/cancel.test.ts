@@ -220,11 +220,11 @@ describe('cancel_subscription plans', () => {
       clarify: {
         question: '"Chen Wei" has 2 subscriptions. Which one?',
         options: [
+          { params: { subscription: 'sub_chen2' } },
           {
             label: 'sub_chen: pro (49.00 USD/month) (active)',
             params: { customer: 'cus_chen', subscription: 'sub_chen' },
           },
-          { params: { subscription: 'sub_chen2' } },
         ],
       },
     });

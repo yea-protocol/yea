@@ -375,6 +375,37 @@ What the build (#71) found, and where it chose the closest safe behaviour:
 - **`@yea-protocol/sdk` is a peer dependency,** as in `@yea-protocol/mcp`, so a server has one
   copy of it.
 
+After review (#76):
+
+- **A refund's default payment** is the latest *successful* one. If it's fully refunded, the
+  call is refused with the recent payments listed, never moved to an older one: after a refund
+  whose result was unknown, a retry would otherwise refund a different payment of the same
+  amount under the same phrase. Summaries name the payment's date.
+- **"What's unused" is labelled an estimate.** The charge isn't matched to the subscription's
+  invoice (since basil, charges no longer name their invoice).
+- **Subscriptions** are listed with Stripe's default status filter (no cancelled ones) and
+  `limit=100`; a customer with more is refused unless the call names the `sub_` id, which is
+  then fetched directly.
+- **"At renewal" is also refused** when the subscription, or the phase Stripe makes, has any of
+  `automatic_tax` (enabled), custom `invoice_settings`, `billing_thresholds`, `on_behalf_of`,
+  `transfer_data`, `application_fee_percent` or `add_invoice_items`: the phase copy doesn't carry
+  them, and their schedule semantics aren't confirmed. A phase found with one after the first
+  write is released.
+- **"Now" shows `amount_due`** (after the customer's credit balance), not only the net, and the
+  update sends `payment_behavior=pending_if_incomplete`, so a declined payment leaves the old
+  price on. The smoke test checks that an `always_invoice` preview holds proration lines only;
+  `pending_if_incomplete` with a declining card, and `DELETE` on a scheduled subscription, are
+  smoke-test items to check by hand.
+- **Prices must be `active`,** by id as well as by lookup key.
+- **Every response's `livemode`** is checked against the key: a mismatch fails closed.
+- **The key itself** is taken out of every error message, whatever its format.
+- **Reverts** go through the same unknown-result handling as writes, and `undo` reports a
+  `PartialApplyError` as failing part-way (SPEC-mcp-ts).
+- **`--http 0`** is refused, and on Windows the key file's owner and mode can't be checked, so
+  the server warns.
+- **The example** reports a write of unknown outcome as a non-retryable `conflict`, since a
+  retry with a fresh key would refund twice, and formats amounts by the currency table.
+
 ## Decisions
 
 Adopted for v0 under the standing go-ahead; any can be reopened.

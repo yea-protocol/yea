@@ -95,7 +95,11 @@ describe('change_plan plans', () => {
       items: [{ id: 'si_chen', price: 'price_team', quantity: '1' }],
       proration_behavior: 'always_invoice',
       proration_date: String(today),
+      payment_behavior: 'pending_if_incomplete',
     });
+    expect(s.stripe.state.prorations).toEqual([
+      { subscription: 'sub_chen', at: today, total: 2403 },
+    ]);
   });
 
   it('the proration date is never before the period started', async () => {
@@ -334,6 +338,125 @@ describe('change_plan plans', () => {
         /can't be undone/,
       );
     }
+  });
+});
+
+describe('change_plan, what the customer pays and what can be copied', () => {
+  const toTeam = { customer: 'Chen', price: 'price_team' };
+
+  it('shows what is charged after the customer’s credit balance', async () => {
+    const s = setup({
+      state: (b) => ({
+        customers: b.customers.map((c) =>
+          c.id === 'cus_chen' ? { ...c, balance: -1000 } : c,
+        ),
+      }),
+    });
+    const [, now] = await plansOf(changeJob(s.ctx), toTeam);
+
+    expect(now.summary).toMatch(
+      /now; Stripe charges 14.03 USD today \(24.03 USD, less their credit balance\) \(prorated\)$/,
+    );
+    expect(now.effects[1]).toEqual({
+      op: 'create',
+      target: 'invoice',
+      detail:
+        '24.03 USD prorated, 14.03 USD charged today; if the payment fails, the subscription stays on pro',
+    });
+  });
+
+  it('a charge the balance covers says so', async () => {
+    const s = setup({
+      state: (b) => ({
+        customers: b.customers.map((c) =>
+          c.id === 'cus_chen' ? { ...c, balance: -5000 } : c,
+        ),
+      }),
+    });
+    const [, now] = await plansOf(changeJob(s.ctx), toTeam);
+
+    expect(now.summary).toMatch(
+      /now; 24.03 USD, paid from their credit balance \(prorated\)$/,
+    );
+  });
+
+  it('a declined payment leaves the change pending and the old price on, and says so', async () => {
+    const s = setup({ declines: true });
+    const [, now] = await plansOf(changeJob(s.ctx), toTeam);
+    const result = (await now.apply()) as { pending?: string };
+
+    expect(result.pending).toMatch(/the change waits for it/);
+    expect(s.stripe.subs[0].items.data[0].price.id).toBe('price_pro');
+  });
+
+  it.each([
+    ['by id', 'price_basic'],
+    ['by lookup key', 'basic'],
+  ])('refuses an inactive price %s', async (_how, ref) => {
+    const s = setup();
+
+    s.stripe.state.prices[1].active = false;
+    await expect(
+      changeJob(s.ctx).plan({ customer: 'Chen', price: ref }),
+    ).rejects.toThrow(/isn't an active price|no single active price/);
+  });
+
+  it.each([
+    ['automatic_tax', { enabled: true }],
+    [
+      'invoice_settings',
+      { account_tax_ids: ['txi_1'], issuer: { type: 'self' } },
+    ],
+    [
+      'invoice_settings',
+      { account_tax_ids: null, issuer: { type: 'account' } },
+    ],
+    ['billing_thresholds', { amount_gte: 10000 }],
+    ['on_behalf_of', 'acct_1'],
+    ['transfer_data', { destination: 'acct_1' }],
+    ['application_fee_percent', 5],
+  ])('a subscription with %s set gets no "at renewal"', async (k, v) => {
+    const s = setup();
+
+    Object.assign(s.stripe.subs[0], { [k]: v });
+
+    const plans = await plansOf(changeJob(s.ctx), toBasic);
+
+    expect(plans.map((p) => p.summary)).toEqual([
+      expect.stringMatching(/ now; /),
+    ]);
+  });
+
+  it('defaults don’t count as set', async () => {
+    const s = setup();
+
+    Object.assign(s.stripe.subs[0], {
+      automatic_tax: { enabled: false },
+      invoice_settings: { account_tax_ids: null, issuer: { type: 'self' } },
+      billing_thresholds: null,
+      add_invoice_items: [],
+    });
+    expect(await plansOf(changeJob(s.ctx), toBasic)).toHaveLength(2);
+  });
+
+  it('a schedule whose phase carries a setting the copy would drop is released, and nothing changes', async () => {
+    const s = setup();
+    const [renewal] = await plansOf(changeJob(s.ctx), toBasic);
+
+    // Stripe puts something on the phase it makes that the subscription didn't show.
+    s.stripe.onSchedule((sched) => {
+      Object.assign(sched.phases[0], {
+        add_invoice_items: [{ price: 'price_setup' }],
+      });
+    });
+    await expect(Promise.resolve(renewal.apply())).rejects.toThrow(
+      /its current phase has add_invoice_items, which a change at renewal can't copy yet\); schedule sub_sched_1 was released/,
+    );
+    expect(s.stripe.state.schedules[0].status).toBe('released');
+    expect(s.stripe.writes().map((w) => w.path)).toEqual([
+      '/v1/subscription_schedules',
+      '/v1/subscription_schedules/sub_sched_1/release',
+    ]);
   });
 });
 

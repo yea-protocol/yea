@@ -5,6 +5,7 @@
 import { type Clarification, clarify } from '@yea-protocol/sdk';
 import {
   type Customer,
+  currentSubscription,
   currentSubscriptions,
   findCustomers,
   type Price,
@@ -79,10 +80,8 @@ export async function oneSubscription<I extends { subscription?: string }>(
   c: Customer,
   input: I,
 ): Promise<Found<Subscription>> {
-  const subs = await currentSubscriptions(ctx.stripe, c.id);
-
   if (input.subscription !== undefined) {
-    const s = subs.find((x) => x.id === input.subscription);
+    const s = await currentSubscription(ctx.stripe, c.id, input.subscription);
 
     if (!s) {
       throw new Error(
@@ -93,6 +92,7 @@ export async function oneSubscription<I extends { subscription?: string }>(
     return { found: s };
   }
 
+  const subs = await currentSubscriptions(ctx.stripe, c.id);
   const [first] = subs;
 
   if (!first) {

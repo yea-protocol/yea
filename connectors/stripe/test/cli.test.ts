@@ -38,7 +38,7 @@ describe.skipIf(!existsSync(bin))('yea-stripe', () => {
   });
 
   it('refuses --http without a token and a sub', async () => {
-    const r = await run(['--http', '0'], {
+    const r = await run(['--http', '8787'], {
       YEA_HOME: tmp(),
       STRIPE_SECRET_KEY: 'sk_test_51abcDEF',
     });

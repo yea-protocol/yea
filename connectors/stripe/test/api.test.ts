@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  currentSubscription,
+  currentSubscriptions,
   encodeForm,
   findCustomers,
   isLiveKey,
@@ -8,8 +10,8 @@ import {
   StripeError,
   stripeApi,
 } from '../src/api.js';
-import { fakeStripe } from './fake-stripe.js';
-import { NOW, TEST_KEY } from './helpers.js';
+import { fakeStripe, price, subscription } from './fake-stripe.js';
+import { D, NOW, TEST_KEY } from './helpers.js';
 
 const client = (
   f = fakeStripe({ now: NOW }),
@@ -270,4 +272,122 @@ describe('finding customers', () => {
       `/v1/customers/search?${new URLSearchParams({ query: 'name:"Ana" OR email:"Ana"', limit: '5' })}`,
     );
   });
+});
+
+describe('reading subscriptions', () => {
+  const sub = (id: string, status: string) =>
+    subscription(id, 'cus_chen', price('price_pro', 4900), {
+      start: NOW - D,
+      end: NOW + 29 * D,
+      status,
+    });
+
+  it('newer cancelled subscriptions can’t hide an active one', async () => {
+    const f = fakeStripe({
+      now: NOW,
+      state: (b) => ({
+        subs: [
+          ...b.subs,
+          ...Array.from({ length: 12 }, (_, i) =>
+            sub(`sub_old${i}`, 'canceled'),
+          ),
+        ],
+      }),
+    });
+    const { api } = client(f);
+
+    expect(
+      (await currentSubscriptions(api, 'cus_chen')).map((s) => s.id),
+    ).toEqual(['sub_chen']);
+    expect(f.calls[0].path).toBe(
+      '/v1/subscriptions?customer=cus_chen&limit=100',
+    );
+  });
+
+  it('more than a page of them is refused, not read in part', async () => {
+    const f = fakeStripe({
+      now: NOW,
+      state: () => ({
+        subs: Array.from({ length: 101 }, (_, i) => sub(`sub_${i}`, 'active')),
+      }),
+    });
+
+    await expect(
+      currentSubscriptions(client(f).api, 'cus_chen'),
+    ).rejects.toThrow(
+      'cus_chen has more than 100 subscriptions; pass the sub_ id of the one you mean',
+    );
+  });
+
+  it('one named by id is fetched, and must be the customer’s and in force', async () => {
+    const f = fakeStripe({
+      now: NOW,
+      state: (b) => ({ subs: [...b.subs, sub('sub_gone', 'canceled')] }),
+    });
+    const { api } = client(f);
+
+    expect((await currentSubscription(api, 'cus_chen', 'sub_chen'))?.id).toBe(
+      'sub_chen',
+    );
+    expect(await currentSubscription(api, 'cus_ana1', 'sub_chen')).toBeNull();
+    expect(await currentSubscription(api, 'cus_chen', 'sub_gone')).toBeNull();
+    expect(await currentSubscription(api, 'cus_chen', 'sub_nope')).toBeNull();
+    expect(await currentSubscription(api, 'cus_chen', '../refunds')).toBeNull();
+  });
+});
+
+describe('the mode Stripe answers in', () => {
+  it('a test key answered in test mode is fine', async () => {
+    const f = fakeStripe({ now: NOW, livemode: false });
+
+    expect(await client(f).api.get('/customers/cus_chen')).toMatchObject({
+      livemode: false,
+    });
+  });
+
+  it('a test key answered in live mode fails closed, on reads and lists', async () => {
+    const { api } = client(fakeStripe({ now: NOW, livemode: true }));
+
+    await expect(api.get('/customers/cus_chen')).rejects.toThrow(
+      /Stripe answered in live mode, but the key looks like a test key; refusing to go on$/,
+    );
+    await expect(findCustomers(api, 'Ana')).rejects.toThrow(
+      /answered in live mode/,
+    );
+  });
+
+  it('a write answered in the other mode may have happened, and says so', async () => {
+    const f = fakeStripe({ now: NOW, livemode: false });
+    const api = stripeApi({
+      key: 'sk_live_51abc',
+      fetch: f.fetch,
+      sleep: async () => {},
+    });
+    const e = (await api
+      .write('POST', '/subscriptions/sub_chen', { cancel_at_period_end: true })
+      .catch((x: unknown) => x)) as StripeError;
+
+    expect(e.unknown).toBe(true);
+    expect(e.message).toMatch(
+      /answered in test mode.*The write may have happened/,
+    );
+  });
+});
+
+it('the key itself is taken out of any message, whatever its format', async () => {
+  const f = fakeStripe({ now: NOW });
+  const key = 'weird0key0format0123';
+  const api = stripeApi({ key, fetch: f.fetch, sleep: async () => {} });
+
+  f.fail({
+    path: '/customers/cus_chen',
+    status: 400,
+    message: `bad key ${key} here`,
+  });
+
+  const e = (await api
+    .get('/customers/cus_chen')
+    .catch((x: unknown) => x)) as Error;
+
+  expect(e.message).toBe('Stripe: bad key … here');
 });

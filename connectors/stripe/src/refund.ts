@@ -15,6 +15,7 @@ import {
   applying,
   type Ctx,
   DAY,
+  day,
   type JobSpec,
   riskFor,
   startOfDay,
@@ -58,28 +59,29 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
-/** The payment asked for, or else the latest one with something left to refund. */
+const paymentLine = (x: Charge) =>
+  `${x.id} (${day(x.created)}, ${formatMoney(x.amount, x.currency)}, ${formatMoney(x.amount - x.amount_refunded, x.currency)} left, ${x.status})`;
+
+/**
+ * The payment asked for, or else the latest one that succeeded. Never an older one when the
+ * latest is fully refunded: a retry after a refund whose result was unknown would then refund a
+ * different payment of the same amount, under the same phrase.
+ */
 function pickCharge(chs: Charge[], c: Customer, payment?: string): Charge {
-  const left = (x: Charge) =>
-    x.status === 'succeeded' && x.amount_refunded < x.amount;
   const ch = payment
     ? chs.find((x) => x.id === payment || x.payment_intent === payment)
-    : chs.find(left);
+    : chs.find((x) => x.status === 'succeeded');
 
-  if (ch && left(ch)) {
+  if (ch && ch.status === 'succeeded' && ch.amount_refunded < ch.amount) {
     return ch;
   }
 
-  const listed = chs
-    .slice(0, 5)
-    .map(
-      (x) =>
-        `${x.id} (${formatMoney(x.amount, x.currency)}, ${formatMoney(x.amount - x.amount_refunded, x.currency)} left, ${x.status})`,
-    )
-    .join('; ');
+  const listed = chs.slice(0, 5).map(paymentLine).join('; ');
   const what = payment
     ? `${quoted(payment)} isn't one of ${who(c)}'s recent payments with something left to refund`
-    : `${who(c)} has no recent payment with something left to refund`;
+    : ch
+      ? `${who(c)}'s latest payment, ${ch.id}, is fully refunded; to refund an older one, pass its id as payment`
+      : `${who(c)} has no recent payment that succeeded`;
 
   throw new Error(`${what}${listed ? `. Recent payments: ${listed}` : ''}`);
 }
@@ -99,9 +101,10 @@ function partialAmount(text: string, ch: Charge): number {
 }
 
 /**
- * What's unused of the period this payment paid for, measured from the start of today (UTC),
- * so it's the same all day. Only for the latest payment, made in the current period of a
- * one-item subscription.
+ * An estimate of what's unused of the period this payment paid for, measured from the start of
+ * today (UTC), so it's the same all day. Only for the latest payment, made in the current
+ * period of a one-item subscription. It's an estimate: the charge isn't checked against the
+ * subscription's invoice, and the plan says so.
  */
 function unusedPart(
   ctx: Ctx,
@@ -152,7 +155,7 @@ function refundPlan(
     : { charge: ch.id };
 
   return {
-    summary: `${tag(ctx)} Refund ${money} of ${ch.id} to ${who(c)} (${refund.why})`,
+    summary: `${tag(ctx)} Refund ${money} of ${ch.id} (paid ${day(ch.created)}) to ${who(c)} (${refund.why})`,
     effects: [
       create(
         'refund',
@@ -216,7 +219,7 @@ async function refundPlans(ctx: Ctx, input: RefundInput) {
     plans.push(
       refundPlan(ctx, c, ch, {
         amount: unused.amount,
-        why: `unused ${unused.days} days`,
+        why: `estimated unused ${unused.days} days of the current period`,
       }),
     );
   }

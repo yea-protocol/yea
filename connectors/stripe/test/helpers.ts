@@ -48,10 +48,15 @@ export interface Setup {
 
 /** A fake Stripe and the jobs' context over it, at `NOW`. */
 export function setup(
-  o: { live?: boolean; state?: (s: FakeState) => Partial<FakeState> } = {},
+  o: {
+    live?: boolean;
+    declines?: boolean;
+    state?: (s: FakeState) => Partial<FakeState>;
+  } = {},
 ): Setup {
   const stripe = fakeStripe({
     now: NOW,
+    declines: o.declines ?? false,
     ...(o.state ? { state: o.state } : {}),
   });
   const clock = { now: NOW };

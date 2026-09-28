@@ -18,6 +18,8 @@ export interface FakeState {
   prices: Price[];
   schedules: Schedule[];
   refunds: { id: string; amount: number; charge: string }[];
+  /** Every prorated price change, with the date it was prorated from. */
+  prorations: { subscription: string; at: number; total: number }[];
 }
 
 export interface Call {
@@ -56,6 +58,7 @@ export function price(
 
   return {
     id,
+    active: true,
     nickname: id.replace(/^price_/, ''),
     currency: 'usd',
     unit_amount,
@@ -152,6 +155,7 @@ export function defaultState(now: number): FakeState {
     prices,
     schedules: [],
     refunds: [],
+    prorations: [],
   };
 }
 
@@ -193,11 +197,20 @@ function arrays(v: unknown): unknown {
     : mapped;
 }
 
-const json = (x: unknown, status = 200) =>
-  new Response(JSON.stringify(x), {
+/** Each fake response's body, so it can be read again without awaiting. */
+const syncText = new WeakMap<Response, string>();
+
+function json(x: unknown, status = 200): Response {
+  const text = JSON.stringify(x);
+  const r = new Response(text, {
     status,
     headers: { 'content-type': 'application/json' },
   });
+
+  syncText.set(r, text);
+
+  return r;
+}
 
 const stripeError = (status: number, message: string, code?: string) =>
   json(
@@ -218,8 +231,17 @@ export type FakeStripe = ReturnType<typeof fakeStripe>;
 
 /** The fake. `now` sets the default data's dates; `state` replaces parts of it. */
 export function fakeStripe(
-  o: { now?: number; state?: (s: FakeState) => Partial<FakeState> } = {},
+  o: {
+    now?: number;
+    state?: (s: FakeState) => Partial<FakeState>;
+    /** Stamp every object with this `livemode`, as Stripe does. Default: leave it off. */
+    livemode?: boolean;
+    /** Decline every card: a price change that charges stays pending. */
+    declines?: boolean;
+  } = {},
 ) {
+  const declines = o.declines ?? false;
+  let scheduled: ((s: Schedule) => void) | undefined;
   const now = o.now ?? Math.floor(Date.now() / 1000);
   const base = defaultState(now);
   const state: FakeState = { ...base, ...o.state?.(base) };
@@ -272,39 +294,90 @@ export function fakeStripe(
     return c ? json(c) : missing('customer', id);
   }
 
+  /** One page of a list, as Stripe pages it: at most `limit`, and whether there is more. */
+  const page = <T>(all: T[], limit: string | null) => {
+    const n = Number(limit ?? 10);
+
+    return { object: 'list', data: all.slice(0, n), has_more: all.length > n };
+  };
+
   function lists(u: URL, p: string): Response | null {
     const q = (k: string) => u.searchParams.get(k);
 
     if (p === '/charges') {
-      return json({
-        data: state.charges
-          .filter((c) => c.customer === q('customer'))
-          .sort((a, b) => b.created - a.created)
-          .slice(0, Number(q('limit') ?? 10)),
-      });
+      return json(
+        page(
+          state.charges
+            .filter((c) => c.customer === q('customer'))
+            .sort((a, b) => b.created - a.created),
+          q('limit'),
+        ),
+      );
     }
 
     if (p === '/subscriptions') {
       const status = q('status');
 
-      return json({
-        data: state.subs.filter(
-          (s) =>
-            s.customer === q('customer') &&
-            (status === 'all' ||
-              (status ? s.status === status : s.status !== 'canceled')),
+      // Newest first, and by default without cancelled ones, as Stripe lists them.
+      return json(
+        page(
+          state.subs
+            .filter(
+              (s) =>
+                s.customer === q('customer') &&
+                (status === 'all' ||
+                  (status ? s.status === status : s.status !== 'canceled')),
+            )
+            .reverse(),
+          q('limit'),
         ),
-      });
+      );
     }
 
     if (p === '/prices') {
       const key = q('lookup_keys[0]');
 
-      return json({ data: state.prices.filter((x) => x.lookup_key === key) });
+      return json(
+        page(
+          state.prices.filter(
+            (x) =>
+              x.lookup_key === key &&
+              (q('active') !== 'true' || x.active === true),
+          ),
+          q('limit'),
+        ),
+      );
     }
 
     return null;
   }
+
+  /** The net of prorating `item` onto `to` from `at`, or why Stripe would refuse. */
+  function prorate(
+    item: Subscription['items']['data'][number],
+    to: Price,
+    o: { at: number; quantity: number },
+  ): number | string {
+    const { current_period_start: start, current_period_end: end } = item;
+
+    if (!(o.at >= start && o.at < end)) {
+      return 'proration_date must be within the current period';
+    }
+
+    const share = (amount: number) =>
+      Math.round((amount * o.quantity * (end - o.at)) / (end - start));
+
+    return share(to.unit_amount ?? 0) - share(item.price.unit_amount ?? 0);
+  }
+
+  /** A customer's credit balance (negative, as Stripe keeps it), applied to what's due. */
+  const due = (customer: string, total: number) => {
+    const c = state.customers.find((x) => x.id === customer) as
+      | (Customer & { balance?: number })
+      | undefined;
+
+    return Math.max(0, total + Math.min(0, c?.balance ?? 0));
+  };
 
   function preview(form: Form): Response {
     const sub = subById(form.subscription);
@@ -318,26 +391,28 @@ export function fakeStripe(
       return stripeError(400, 'bad preview');
     }
 
-    const { current_period_start: start, current_period_end: end } = item;
+    const total = prorate(item, to, {
+      at,
+      quantity: Number(items[0]?.quantity ?? item.quantity ?? 1),
+    });
 
-    if (!(at >= start && at < end)) {
-      return stripeError(
-        400,
-        'proration_date must be within the current period',
-      );
+    if (typeof total === 'string') {
+      return stripeError(400, total);
     }
-
-    const q = Number(items[0]?.quantity ?? item.quantity ?? 1);
-    const share = (amount: number) =>
-      Math.round((amount * q * (end - at)) / (end - start));
-    const total =
-      share(to.unit_amount ?? 0) - share(item.price.unit_amount ?? 0);
 
     return json({
       object: 'invoice',
       total,
-      amount_due: Math.max(0, total),
+      amount_due: due(sub.customer, total),
       currency: to.currency,
+      lines: {
+        data: [
+          {
+            amount: total,
+            parent: { subscription_item_details: { proration: true } },
+          },
+        ],
+      },
     });
   }
 
@@ -388,18 +463,47 @@ export function fakeStripe(
     const items = form.items as Form[] | undefined;
 
     if (items?.[0]) {
-      const item = sub.items.data.find((i) => i.id === items[0].id);
-      const to = priceById(items[0].price);
-
-      if (!item || !to) {
-        return stripeError(400, 'bad item');
-      }
-
-      item.price = to;
-      item.quantity = Number(items[0].quantity ?? item.quantity);
+      return changeItem(sub, items[0], form);
     }
 
     return json(sub);
+  }
+
+  /**
+   * A price change, prorated from `proration_date`. With `pending_if_incomplete`, a declined
+   * payment leaves the change pending and the old price on.
+   */
+  function changeItem(sub: Subscription, wanted: Form, form: Form): Response {
+    const item = sub.items.data.find((i) => i.id === wanted.id);
+    const to = priceById(wanted.price);
+
+    if (!item || !to) {
+      return stripeError(400, 'bad item');
+    }
+
+    const quantity = Number(wanted.quantity ?? item.quantity ?? 1);
+    const at =
+      form.proration_date === undefined ? now : Number(form.proration_date);
+    const total = prorate(item, to, { at, quantity });
+
+    if (typeof total === 'string') {
+      return stripeError(400, total);
+    }
+
+    state.prorations.push({ subscription: sub.id, at, total });
+
+    if (
+      declines &&
+      form.payment_behavior === 'pending_if_incomplete' &&
+      due(sub.customer, total) > 0
+    ) {
+      return json({ ...sub, pending_update: { subscription_items: [wanted] } });
+    }
+
+    item.price = to;
+    item.quantity = quantity;
+
+    return json({ ...sub, pending_update: null });
   }
 
   function createSchedule(form: Form): Response {
@@ -448,6 +552,7 @@ export function fakeStripe(
 
     state.schedules.push(s);
     sub.schedule = s.id;
+    scheduled?.(s);
 
     return json(s);
   }
@@ -579,6 +684,24 @@ export function fakeStripe(
         (typeof f.path === 'string' ? path === f.path : f.path.test(path)),
     );
 
+  /** Every object in a response gets `livemode`, when the fake is told which mode it's in. */
+  function stamp(r: Response): Response {
+    const mode = o.livemode;
+
+    if (mode === undefined || r.status >= 400) {
+      return r;
+    }
+
+    const body = JSON.parse(syncText.get(r) ?? '{}') as Form;
+    const items = Array.isArray(body.data) ? (body.data as Form[]) : [body];
+
+    for (const x of items) {
+      x.livemode = mode;
+    }
+
+    return json(body, r.status);
+  }
+
   /** Replays a key's saved response, as Stripe does for 24 hours. */
   async function respond(
     u: URL,
@@ -592,7 +715,7 @@ export function fakeStripe(
       return new Response(saved.body, { status: saved.status });
     }
 
-    const r = route(u, method, body);
+    const r = stamp(route(u, method, body));
 
     if (key) {
       replays.set(key, { status: r.status, body: await r.clone().text() });
@@ -646,6 +769,10 @@ export function fakeStripe(
     state,
     charges: state.charges,
     subs: state.subs,
+    /** Change each schedule the fake makes, as Stripe might. */
+    onSchedule: (f: (s: Schedule) => void) => {
+      scheduled = f;
+    },
     /** Make the next matching request(s) fail. */
     fail: (f: Failure) => {
       failures.push(f);

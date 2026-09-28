@@ -139,7 +139,7 @@ describe.each<Kind>(['2026', '2025'])(
         ['/v1/refunds', 'payment_intent=pi_2&amount=1000'],
       ]);
       expect(textOf(r)).toMatch(
-        /Refund 10.00 USD of ch_2 to "Chen Wei" \(partial\)/,
+        /Refund 10.00 USD of ch_2 \(paid 2026-09-11\) to "Chen Wei" \(partial\)/,
       );
       expect(r.structuredContent).toMatchObject({
         receipt: {
