@@ -5,5 +5,14 @@
  */
 import Stripe from 'stripe';
 
-Stripe.prototype.getInitialNetworkRetryDelay = () => 0;
-Stripe.prototype.getMaxNetworkRetryDelay = () => 0;
+for (const name of [
+  'getInitialNetworkRetryDelay',
+  'getMaxNetworkRetryDelay',
+] as const) {
+  // Loudly, so a rename in the SDK can't quietly bring the waits back.
+  if (typeof Stripe.prototype[name] !== 'function') {
+    throw new Error(`stripe no longer has ${name}; update test/setup.ts`);
+  }
+
+  Stripe.prototype[name] = () => 0;
+}

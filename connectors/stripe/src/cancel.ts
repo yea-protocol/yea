@@ -4,7 +4,7 @@
  * manages its cancellation there.
  */
 import { type Effect, type JobPlan, update } from '@yea-protocol/sdk';
-import { idOf, period, type Stripe } from './api.js';
+import { idOf, period, type Stripe, StripeError } from './api.js';
 import {
   applying,
   type Ctx,
@@ -120,6 +120,37 @@ function atPeriodEnd(ctx: Ctx, t: Target): JobPlan {
   };
 }
 
+/**
+ * Cancel at once. Stripe ignores idempotency keys on DELETE, so it isn't retried: a lost answer
+ * is reported as unknown. The SDK still retries once after a reset connection, and if the first
+ * try went through, that retry fails; so a plain failure is checked against the subscription,
+ * and one that's cancelled counts as done.
+ */
+/** Whether Stripe says the subscription is cancelled; a failed read says no. */
+const isCancelled = (ctx: Ctx, id: string) =>
+  ctx.stripe
+    .read((s) => s.subscriptions.retrieve(id))
+    .then(
+      (sub) => sub.status === 'canceled',
+      () => false,
+    );
+
+async function cancelNow(ctx: Ctx, id: string) {
+  try {
+    await ctx.stripe.write((s, o) =>
+      s.subscriptions.cancel(id, {}, { ...o, maxNetworkRetries: 0 }),
+    );
+  } catch (e) {
+    if (
+      !(e instanceof StripeError) ||
+      e.unknown ||
+      !(await isCancelled(ctx, id))
+    ) {
+      throw e;
+    }
+  }
+}
+
 function now(ctx: Ctx, t: Target): JobPlan {
   return {
     summary: `${tag(ctx)} Cancel ${whose(t)} now; access ends immediately, with no refund`,
@@ -130,11 +161,7 @@ function now(ctx: Ctx, t: Target): JobPlan {
     data: { confirm: confirmPhrase(t.c) },
     apply: () =>
       applying(async () => {
-        // Stripe ignores idempotency keys on DELETE, so a retry isn't safe: a lost answer is
-        // reported as unknown rather than retried into a plain failure.
-        await ctx.stripe.write((s, o) =>
-          s.subscriptions.cancel(t.sub.id, {}, { ...o, maxNetworkRetries: 0 }),
-        );
+        await cancelNow(ctx, t.sub.id);
 
         return { plan: 'cancel_now', subscription: t.sub.id };
       }),

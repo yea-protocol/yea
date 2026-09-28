@@ -122,6 +122,8 @@ export interface Failure {
   network?: boolean;
   /** Apply the request first, then lose the response (a write whose result is unknown). */
   after?: boolean;
+  /** The lost connection's code, such as `ECONNRESET`, which the SDK retries even with retries off. */
+  code?: string;
   times?: number;
 }
 
@@ -539,6 +541,13 @@ export function fakeStripe(
 
   function updateSub(sub: Subscription, form: Form, method: string): Response {
     if (method === 'DELETE') {
+      if (sub.status === 'canceled') {
+        return stripeError(
+          400,
+          `The subscription ${sub.id} has already been canceled.`,
+        );
+      }
+
       sub.status = 'canceled';
 
       return json(sub);
@@ -862,7 +871,7 @@ export function fakeStripe(
       }
 
       if (f.network || f.after) {
-        throw new TypeError('fetch failed');
+        throw Object.assign(new TypeError('fetch failed'), { code: f.code });
       }
 
       return stripeError(

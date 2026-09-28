@@ -159,6 +159,51 @@ describe('cancel_subscription plans', () => {
     expect(e.message).toMatch(/^no answer from Stripe .*may have happened/);
   });
 
+  it('now, applied but reset and retried by the SDK into a 4xx, is checked and counts as done', async () => {
+    const s = setup();
+    const [, now] = await plansOf(cancelJob(s.ctx), chen);
+
+    s.stripe.fail({
+      method: 'DELETE',
+      path: '/subscriptions/sub_chen',
+      after: true,
+      code: 'ECONNRESET',
+    });
+
+    expect(await now.apply()).toEqual({
+      plan: 'cancel_now',
+      subscription: 'sub_chen',
+    });
+    expect(s.stripe.writes().map((w) => w.method)).toEqual([
+      'DELETE',
+      'DELETE',
+    ]);
+    expect(s.stripe.calls.at(-1)).toMatchObject({
+      method: 'GET',
+      path: '/v1/subscriptions/sub_chen',
+    });
+  });
+
+  it('now refused by Stripe, on a subscription still active, stays a plain failure', async () => {
+    const s = setup();
+    const [, now] = await plansOf(cancelJob(s.ctx), chen);
+
+    s.stripe.fail({
+      method: 'DELETE',
+      path: '/subscriptions/sub_chen',
+      status: 400,
+      message: 'nope',
+    });
+
+    const e = (await Promise.resolve(now.apply()).catch(
+      (x: unknown) => x,
+    )) as Error & { partial?: boolean };
+
+    expect(e.message).toBe('Stripe: nope');
+    expect(e.partial).toBeUndefined();
+    expect(s.stripe.subs[0].status).toBe('active');
+  });
+
   it('on a schedule, at period end sets the schedule to cancel, and undo sets it back to release', async () => {
     const s = scheduled();
     const job = cancelJob(s.ctx);

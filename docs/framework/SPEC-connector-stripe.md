@@ -119,9 +119,10 @@ an approved plan running twice.
 
 Keys only protect POSTs: Stripe ignores them on `DELETE`. So the one `DELETE` ("cancel now")
 is sent with `maxNetworkRetries: 0`, and a lost answer is reported as a write whose result is
-unknown, rather than retried into a failure that reads as "nothing changed". (The SDK still
-retries once after a connection closed before any answer, `ECONNRESET` or `EPIPE`, whatever
-the setting.)
+unknown, rather than retried into a failure that reads as "nothing changed". The SDK still
+retries once after a connection is reset (`ECONNRESET` or `EPIPE`), whatever the setting; if
+the first try went through, that retry fails. So when the `DELETE` fails with an answer from
+Stripe, the job reads the subscription again, and one that's cancelled counts as done.
 
 ### What it spends
 
@@ -448,23 +449,25 @@ After the switch to Stripe's SDK (#80):
   `permission`): `StripePermissionError` names the missing permission;
   `StripeAuthenticationError` points at the key file; `StripeRateLimitError` says to wait. A
   `StripeConnectionError` is "no answer", with the network's cause; any other failure that
-  isn't Stripe's is "the Stripe call failed". On a write, those and a `StripeAPIError` (a 5xx, a
-  conflict, an answer that couldn't be read) mean the write may have happened. The SDK's messages don't carry the key; the key and anything like one is still
-  taken out of every message, since Stripe's own can echo a masked key.
+  isn't Stripe's is "the Stripe call failed". On a write, those and a `StripeAPIError` (a 5xx,
+  a conflict, an answer that couldn't be read) mean the write may have happened. The SDK's
+  messages don't carry the key; the key and anything like one is still taken out of every
+  message, since Stripe's own can echo a masked key.
 - **The invoice preview** now carries an idempotency key: the SDK adds its own to every POST.
   It writes nothing, so that changes nothing.
 - **Telemetry is off.** With it on, the SDK writes a machine id to `~/.config/stripe` and sends
-  it, with the platform, on every request. That doesn't stop everything: when `CLAUDECODE` or
+  it, with the platform, on every request. Some things stay on. When `CLAUDECODE` or
   `CLAUDE_CODE_CHILD_SESSION` is set, the SDK prints a `claude-code-hint` line to stderr when
-  it's imported, and adds `AIAgent/<name>` to the User-Agent (and `ai_agent` to
-  `X-Stripe-Client-User-Agent`); and it turns `Stripe-Notice` headers into process warnings.
+  it's imported. When the environment names an AI coding tool (Claude Code, Codex, Cursor,
+  Gemini CLI, Cline and others), it adds `AIAgent/<name>` to the User-Agent and `ai_agent` to
+  `X-Stripe-Client-User-Agent`. And it turns `Stripe-Notice` headers into process warnings.
 - **The fake** stays a `fetch`: the SDK is pointed at it with `Stripe.createFetchHttpClient`
   rather than `host`/`port`/`protocol`, so no server is started and everything but the socket
-  is the SDK's code. The fake refuses an `idempotencyKey` sent as a parameter, as Stripe does,
-  and every job's write test checks each key is the connector's own UUIDv4, not the SDK's
-  `stripe-node-retry-…`. The tests stub the SDK's retry delays (two undocumented methods) to 0;
-  its retry logic still runs. The example's test moved to `connectors/stripe/test/`, so `ts/` doesn't
-  resolve `stripe`.
+  is the SDK's code. The fake refuses an `idempotencyKey` sent as a parameter, as Stripe
+  does, and every job's write test checks each key is the connector's own UUIDv4, not the
+  SDK's `stripe-node-retry-…`. The tests stub the SDK's retry delays (two undocumented
+  methods) to 0, and fail if they're gone; its retry logic still runs. The example's test
+  moved to `connectors/stripe/test/`, so `ts/` doesn't resolve `stripe`.
 
 ## Decisions
 

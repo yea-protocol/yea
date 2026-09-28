@@ -162,13 +162,16 @@ What the server does enforce, whoever calls it:
   approval runs once;
 - every write carries a fresh idempotency key, so a retry never refunds twice and a deliberate
   second refund is never silently skipped; an immediate cancel, which Stripe can't key, isn't
-  retried, and a lost answer is reported as "may have happened";
+  retried, a lost answer is reported as "may have happened", and a failure is checked against
+  the subscription;
 - customer names and emails are shown quoted, capped at 80 characters, with control and
   direction-changing characters escaped, so a customer can't forge what you approve;
-- Stripe is called through Stripe's official Node SDK ([`stripe`](https://www.npmjs.com/package/stripe)),
-  with the API version pinned (`2026-08-26.dahlia`) and the SDK's telemetry off. (Under an AI
-  coding tool such as Claude Code, the SDK still names that tool in its User-Agent and prints
-  a hint line to stderr; it also turns Stripe's notices into process warnings.)
+- Stripe is called through Stripe's official Node SDK
+  ([`stripe`](https://www.npmjs.com/package/stripe)), with the API version pinned
+  (`2026-08-26.dahlia`) and the SDK's telemetry off. Even so, when the environment names an AI
+  coding tool (Claude Code, Codex, Cursor, Gemini CLI and others), the SDK names it in its
+  User-Agent; when `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` is set, it also prints a hint
+  line to stderr; and it turns Stripe's notices into process warnings.
 - the key, and anything that looks like a Stripe key, is taken out of every error message.
 
 ## Over HTTP
