@@ -19,6 +19,7 @@ from yea.approval import (
     load_policy, new_receipt_id, new_state, plan_hash, release_all, reserve_all, settle_all, spent,
 )
 from yea.service import Clarification
+from yea.risk import resolve_risk
 from yea.store import ApprovalStore, Reservation
 from yea.text import printable
 from yea.uses import check_uses
@@ -140,10 +141,18 @@ def hash_plans(job: JobDef, input: dict, plans: list[Any]) -> list[HashedPlan]:
     for p in plans:
         if not isinstance(p, Plan):
             raise TypeError("a job's plan function must return a list of yea.Plan, or clarify(...)")
-        risk = p.risk or job.risk or "medium"
+        risk = resolve_risk("medium", p.risk, job.risk)  # an unknown risk refuses the call
         undoable = p.undo_window is not None and job.revert is not None
         out.append(HashedPlan(job.name, p, plan_hash(job.name, input, p, risk), risk, undoable))
     return out
+
+
+def described_risk(d: dict) -> Any:
+    """A guard's ``describe`` risk: absent means the default, but an explicit None is a value, and
+    refused like any unknown risk (as TS refuses null)."""
+    if "risk" in d and d["risk"] is None:
+        raise ValueError("plan has an unknown risk: None")
+    return d.get("risk")
 
 
 def _phrase_for(call: Call) -> Callable[[HashedPlan], str]:

@@ -2,7 +2,11 @@
 
 Text from a service or a consent code is untrusted: control characters could rewrite what the
 person reads before approving, and invisible ones could make two targets look the same or
-smuggle text to a model, so they're shown as escapes. Mirrors ts/src/text.ts."""
+smuggle text to a model, so they're shown as escapes. Mirrors ts/src/text.ts.
+
+What counts follows the interpreter's Unicode version (``unicodedata``): Python 3.10 has Unicode
+13, so format characters added later (U+0890–0891, U+13439–1343F) aren't escaped there. That's
+display only, never wire bytes, as in TS."""
 
 from __future__ import annotations
 
