@@ -4,7 +4,7 @@
  * ts/test/security.test.ts.
  */
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type Caveat,
@@ -37,6 +37,37 @@ import { connect, textOf } from './helpers.js';
 afterEach(() => {
   delete process.env.YEA_HOME;
 });
+
+/**
+ * Every source file the bridge can run: all of src/bridge/ at any depth, plus every module
+ * src/bridge.ts reaches through relative imports (policy.ts, result.ts, util.ts, …).
+ */
+function bridgeSources(src: string): string[] {
+  const nested = readdirSync(join(src, 'bridge'), {
+    recursive: true,
+    encoding: 'utf8',
+  })
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => join(src, 'bridge', f));
+  const seen = new Set<string>();
+  const queue = [join(src, 'bridge.ts'), ...nested];
+
+  for (let f = queue.pop(); f !== undefined; f = queue.pop()) {
+    if (seen.has(f)) {
+      continue;
+    }
+
+    seen.add(f);
+
+    for (const m of readFileSync(f, 'utf8').matchAll(
+      /from '(\.\.?\/[^']+)\.js'/g,
+    )) {
+      queue.push(join(dirname(f), `${m[1]}.ts`));
+    }
+  }
+
+  return [...seen].sort();
+}
 
 const consentsIn = (k: Keys) => {
   try {
@@ -284,10 +315,15 @@ describe('bridge security', () => {
   it('nothing in the bridge can sign with a principal key', () => {
     const src = fileURLToPath(new URL('../src', import.meta.url));
     const files = [
-      join(src, 'bridge.ts'),
-      ...readdirSync(join(src, 'bridge')).map((f) => join(src, 'bridge', f)),
+      ...bridgeSources(src),
       fileURLToPath(new URL('../../cli/bin/mcp.js', import.meta.url)),
     ];
+
+    // The scan reaches nested bridge modules and the shared ones the bridge imports.
+    expect(files).toContain(join(src, 'bridge', 'job', 'pending.ts'));
+    expect(files).toContain(join(src, 'bridge', 'tools', 'generic.ts'));
+    expect(files).toContain(join(src, 'policy.ts'));
+    expect(files).toContain(join(src, 'result.ts'));
 
     for (const f of files) {
       const text = readFileSync(f, 'utf8');

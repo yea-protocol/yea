@@ -5,7 +5,7 @@
 import { type Brief, est, untrustedLens } from '@yea-protocol/sdk';
 import type { Service } from './greet.js';
 import { clip } from './lens.js';
-import { isGeneric, type ToolMode } from './tools.js';
+import { isGeneric, type ToolMode } from './tools/generic.js';
 import type { ToolSpec } from './types.js';
 
 const HEADER = `YEA acts for the user under a policy they signed. Each capability of the services below is its own tool.

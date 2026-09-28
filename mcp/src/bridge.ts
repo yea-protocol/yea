@@ -15,16 +15,17 @@ import { Client, unixNow } from '@yea-protocol/sdk';
 import { type ConsentStore, homeConsents } from './bridge/consent.js';
 import { greet } from './bridge/greet.js';
 import { instructionsFor } from './bridge/instructions.js';
-import type { Bridge } from './bridge/job.js';
 import { passThrough } from './bridge/params.js';
 import { PendingProposals } from './bridge/pending.js';
-import { buildTools, errorOf, type ToolMode } from './bridge/tools.js';
+import type { Bridge } from './bridge/state.js';
+import type { ToolMode } from './bridge/tools/generic.js';
+import { buildTools, errorOf } from './bridge/tools.js';
 import type { ToolSpec } from './bridge/types.js';
 import { utilityTools } from './bridge/utility-tools.js';
 import type { Obj } from './util.js';
 
 export type { ConsentStore } from './bridge/consent.js';
-export type { ToolMode } from './bridge/tools.js';
+export type { ToolMode } from './bridge/tools/generic.js';
 
 const VERSION = '0.1.0';
 
