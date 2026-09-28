@@ -181,3 +181,13 @@ async def test_a_revert_that_fails_part_way_says_so(world):
         rid = (await c.call_tool("move", {"event": "e1"})).structured_content["receipt"]["id"]
         r = await c.call_tool("undo", {"receipt": rid})
     assert r.is_error and text(r) == "✗ undo failed part-way: no answer; check the dashboard"
+
+
+def test_the_default_store_reads_yea_store_before_yea_home(tmp_path, monkeypatch):
+    """As mcp-ts's defaultFileStore: YEA_STORE, else $YEA_HOME/store, so `yea approve` and the
+    server agree on where consents go (#148)."""
+    monkeypatch.setenv("YEA_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("YEA_STORE", str(tmp_path / "shared"))
+    assert str(yea(name="s", transport="stdio")._y.store.root) == str(tmp_path / "shared")
+    monkeypatch.setenv("YEA_STORE", "")  # empty counts as unset
+    assert str(yea(name="s", transport="stdio")._y.store.root) == str(tmp_path / "home" / "store")

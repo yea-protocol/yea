@@ -722,3 +722,44 @@ def test_an_event_that_cant_be_serialized_is_dropped_and_apply_runs_once():
 
     run(go())
     assert ran == [1, 1]  # once per transport, never re-run
+
+
+def test_a_whole_number_float_budget_counts_like_the_integer():
+    """JSON can't tell 300.0 from 300, and TS accepts both; so does Python (#148)."""
+    from yea.lens import lens
+
+    async def go():
+        svc = shop()
+        for budget in (300.0, 3e2):
+            r = await svc.handle({"yea": 1, "id": "a1", "verb": "ASK", "capability": "shop.catalog", "budget": budget})
+            assert r["kind"] == "ANSWER" and est(lens(r)) <= 300 and r.get("more"), budget
+        for ignored in (True, 0.5, -300.0, float("inf")):  # the default budget (2000) applies
+            r = await svc.handle({"yea": 1, "id": "a1", "verb": "ASK", "capability": "shop.catalog", "budget": ignored})
+            assert est(lens(r)) > 300, ignored
+
+    run(go())
+
+
+def test_the_http_budget_query_reads_like_a_frame_budget():
+    """?budget= follows the frame rule: 800.0 counts; -5, 0x10 and a non-ASCII digit get the
+    default instead of a crash or a surprise (#148)."""
+    from yea.transport import _query_budget
+
+    assert [_query_budget(t) for t in ("800", "800.0", "1e3")] == [800, 800, 1000]
+    assert [_query_budget(t) for t in ("", "-5", "0.5", "inf", "nan", "0x10", "٣", "²")] == [None] * 8
+
+    async def go():
+        http = await serve_http(shop(), "127.0.0.1", 0)
+        port = http.sockets[0].getsockname()[1]
+        try:
+            def brief(q):
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/yea{q}") as r:
+                    b = {k: v for k, v in json.loads(r.read()).items() if k != "id"}  # ids and handles are random
+                    return {**b, "more": [{k: v for k, v in m.items() if k != "handle"} for m in b.get("more", [])]}
+            small, same, default = await asyncio.gather(*(asyncio.to_thread(brief, q) for q in (
+                "?budget=40", "?budget=40.0", "?budget=%C2%B2")))
+            assert small == same and small != default  # ² used to close the connection with no response
+        finally:
+            http.close()
+
+    run(go())

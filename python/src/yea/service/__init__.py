@@ -115,8 +115,7 @@ class Service:
         try:
             if not isinstance(frame, dict) or frame.get("yea") != 1 or not isinstance(frame.get("id"), str):
                 raise YeaError("bad_frame", 'frames need "yea": 1 and a string "id"')
-            b = frame.get("budget")
-            budget = b if type(b) is int and b > 0 else self.default_budget
+            budget = _positive_int(frame.get("budget")) or self.default_budget
             verb = frame.get("verb")
             if verb == "HELLO":
                 return self.brief(budget, re)
@@ -133,6 +132,14 @@ class Service:
             raise YeaError("bad_frame", f"unknown verb {_json_str(verb)}", fix=[fix("use one of " + ", ".join(VERBS))])
         except Exception as e:  # noqa: BLE001 — every failure becomes an ERROR reply
             return error_reply(re, e)
+
+
+def _positive_int(v: Any) -> int | None:
+    """A whole number above 0, as TS's ``Number.isInteger`` sees it: ``800.0`` and ``1e3`` count,
+    since JSON can't tell them from ``800`` and ``1000``. Booleans don't."""
+    if type(v) is float and v.is_integer():
+        v = int(v)
+    return v if type(v) is int and v > 0 else None
 
 
 def service(id: str, name: str, summary: str = "", **kw: Any) -> Service:

@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from ._json import dumps, loads
-from .service import Service
+from .service import Service, _positive_int
 
 log = logging.getLogger("yea")
 
@@ -39,6 +39,15 @@ def _event_line(event: dict) -> str | None:
         return dumps(event) + "\n"
     except Exception:  # noqa: BLE001
         log.warning("dropped an EVENT that could not be serialized (re=%s)", event.get("re"))
+        return None
+
+
+def _query_budget(text: str) -> int | None:
+    """``?budget=`` read by the same rule as a frame's ``budget``: a whole number above 0 (``800.0``
+    counts); anything else, including non-ASCII digits, gets the default."""
+    try:
+        return _positive_int(float(text)) if text.isascii() else None
+    except ValueError:
         return None
 
 
@@ -167,8 +176,7 @@ async def _http_conn(service: Service, path: str, reader: asyncio.StreamReader, 
         target, _, query = target.partition("?")
 
         if method == "GET" and target in (path, "/.well-known/yea"):
-            budget = parse_qs(query).get("budget", [""])[0]
-            brief = service.brief(int(budget) if budget.isdigit() and int(budget) > 0 else None)
+            brief = service.brief(_query_budget(parse_qs(query).get("budget", [""])[0]))
             await respond(200, "application/json", dumps({**brief, "endpoint": path}).encode("utf-8"))
         elif method == "POST" and target == path:
             length = int(headers.get("content-length", "0") or 0)
