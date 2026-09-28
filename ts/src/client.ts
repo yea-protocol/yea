@@ -1,10 +1,14 @@
-/** YEA client: what an agent (or its harness) uses to talk to a service. */
+/**
+ * YEA client: what an agent (or its harness) uses to talk to a service.
+ * The Client and its reply types live here; the transports, grant scoping and the SPEC §5.1
+ * reply check live in client/.
+ */
+import { grantCovers } from './client/grant-scope.js';
+import { rejectMalformed } from './client/reply-check.js';
+import type { Transport } from './client/transport.js';
 import { randomId } from './crypto.js';
-import { type Caveat, decodeGrant } from './grants.js';
 import { lens } from './lens.js';
 import { autoTarget, makeProof } from './proof.js';
-import { isRisk } from './risk.js';
-import type { Service } from './service.js';
 import type {
   Answer,
   Brief,
@@ -14,20 +18,14 @@ import type {
   FinalReply,
   Proposal,
   Proposals,
-  Receipt,
   ReceiptReply,
-  Reply,
   Request,
   Verb,
 } from './types.js';
-import { isUses } from './uses.js';
 
-const MAX_REPLY = 16 << 20;
-
-export interface Transport {
-  request(frame: Request, onEvent?: (e: Event) => void): Promise<FinalReply>;
-  close(): void;
-}
+export { http } from './client/http-transport.js';
+export { lines } from './client/line-transport.js';
+export { local, type Transport } from './client/transport.js';
 
 /** Every reply the client returns carries its Lens: the text to show a model. */
 export type WithLens<T> = T & { lens: string };
@@ -45,63 +43,6 @@ export interface ClientOptions {
 }
 
 type Dist<T> = T extends unknown ? Omit<T, 'yea' | 'id'> : never;
-
-const hasSvc = (c: Caveat): c is { svc: string[] } =>
-  Boolean((c as { svc?: unknown }).svc);
-
-/** Whether a grant may be sent to `aud`: its `svc` caveat, if any, lists it. Undecodable grants may not. */
-function grantCovers(token: string, aud: string): boolean {
-  try {
-    const scope = decodeGrant(token)
-      .flatMap((b) => b.p.caveats)
-      .find(hasSvc);
-
-    return !scope || scope.svc.includes(aud);
-  } catch {
-    return false;
-  }
-}
-
-/** What is malformed about a proposal or receipt (SPEC §5.1), or null if nothing is. */
-function malformedPart(x: Proposal | Receipt, isProposal: boolean) {
-  if (x.uses !== undefined && !isUses(x.uses)) {
-    return 'a malformed uses';
-  }
-
-  // Only a proposal carries a risk.
-  return isProposal && !isRisk((x as Proposal).risk) ? 'an unknown risk' : null;
-}
-
-/**
- * SPEC §5.1: a proposal with a malformed `uses` or an unknown `risk`, or a receipt with a
- * malformed `uses`, is invalid, so the reply becomes a local `bad_frame` error instead of
- * something a model or a person might act on.
- */
-function rejectMalformed(reply: FinalReply): FinalReply {
-  const isProposal = reply.kind === 'PROPOSALS';
-  const items: (Proposal | Receipt)[] = isProposal
-    ? reply.proposals
-    : reply.kind === 'RECEIPT'
-      ? [reply.receipt]
-      : [];
-
-  for (const x of items) {
-    const why = malformedPart(x, isProposal);
-
-    if (why) {
-      return {
-        yea: 1,
-        id: reply.id,
-        re: reply.re,
-        kind: 'ERROR',
-        code: 'bad_frame',
-        message: `${isProposal ? 'proposal' : 'receipt'} ${x.id} from the service has ${why}, so it was ignored`,
-      };
-    }
-  }
-
-  return reply;
-}
 
 export class Client {
   private serviceId?: string;
@@ -298,188 +239,4 @@ export class Client {
   close() {
     this.transport.close();
   }
-}
-
-/** In-process transport: call a Service directly (tests, embedding, MCP bridge). */
-export function local(svc: Service): Transport {
-  return {
-    request: (frame, onEvent) =>
-      svc.handle(JSON.parse(JSON.stringify(frame)), onEvent),
-    close() {
-      // nothing to release: the service runs in this process
-    },
-  };
-}
-
-/** Split off the complete lines in `buf`: the trimmed non-empty ones, and the unterminated rest. */
-function completeLines(buf: string): { complete: string[]; rest: string } {
-  const end = buf.lastIndexOf('\n') + 1;
-
-  return {
-    complete: buf
-      .slice(0, end)
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean),
-    rest: buf.slice(end),
-  };
-}
-
-/** Pass EVENT lines to `onEvent` until the final reply, which is returned (undefined if none yet). */
-function firstFinal(
-  lines: string[],
-  onEvent?: (e: Event) => void,
-): FinalReply | undefined {
-  for (const line of lines) {
-    const f = JSON.parse(line) as Reply;
-
-    if (f.kind === 'EVENT') {
-      onEvent?.(f);
-    } else {
-      return f;
-    }
-  }
-
-  return undefined;
-}
-
-/** Read an NDJSON reply stream up to its final reply. */
-async function readFinal(
-  body: NonNullable<Response['body']>,
-  onEvent?: (e: Event) => void,
-): Promise<FinalReply> {
-  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
-  let buf = '';
-
-  for (;;) {
-    const { value, done } = await reader.read();
-
-    if (value) {
-      buf += value;
-    }
-
-    if (buf.length > MAX_REPLY) {
-      throw new Error('reply exceeds 16 MiB without a newline');
-    }
-
-    const { complete, rest } = completeLines(buf);
-
-    buf = rest;
-
-    const final = firstFinal(complete, onEvent);
-
-    if (final) {
-      return final;
-    }
-
-    if (done) {
-      break;
-    }
-  }
-
-  if (buf.trim()) {
-    return JSON.parse(buf);
-  }
-
-  throw new Error('HTTP bridge closed without a final reply');
-}
-
-/** HTTP bridge transport (SPEC §2.4). Works anywhere `fetch` exists. */
-export function http(
-  endpoint: string,
-  init: { headers?: Record<string, string> } = {},
-): Transport {
-  return {
-    async request(frame, onEvent) {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...init.headers },
-        body: JSON.stringify(frame),
-      });
-
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status} from ${endpoint}`);
-      }
-
-      return readFinal(res.body, onEvent);
-    },
-    close() {
-      // each request is its own fetch; there is no connection to close
-    },
-  };
-}
-
-/** Line-framed stream transport over any duplex (TCP, TLS, child stdio). */
-export function lines(
-  write: (line: string) => void,
-  close: () => void,
-): Transport & { feed(chunk: string): void; fail(err: Error): void } {
-  const pending = new Map<
-    string,
-    {
-      resolve: (r: FinalReply) => void;
-      reject: (e: Error) => void;
-      onEvent?: (e: Event) => void;
-    }
-  >();
-  let buf = '';
-  /** Route one reply line to the request it answers; unparseable or unmatched lines are dropped. */
-  const deliver = (line: string) => {
-    let f: Reply;
-
-    try {
-      f = JSON.parse(line);
-    } catch {
-      return;
-    }
-
-    const p = pending.get(f.re);
-
-    if (!p) {
-      return;
-    }
-
-    if (f.kind === 'EVENT') {
-      p.onEvent?.(f);
-    } else {
-      pending.delete(f.re);
-      p.resolve(f);
-    }
-  };
-
-  return {
-    request(frame, onEvent) {
-      return new Promise((resolve, reject) => {
-        pending.set(frame.id, { resolve, reject, onEvent });
-        write(`${JSON.stringify(frame)}\n`);
-      });
-    },
-    feed(chunk) {
-      buf += chunk;
-
-      if (buf.length > MAX_REPLY && buf.indexOf('\n') < 0) {
-        buf = '';
-        this.fail(new Error('reply exceeds 16 MiB without a newline'));
-        close();
-
-        return;
-      }
-
-      const { complete, rest } = completeLines(buf);
-
-      buf = rest;
-
-      for (const line of complete) {
-        deliver(line);
-      }
-    },
-    fail(err) {
-      for (const p of pending.values()) {
-        p.reject(err);
-      }
-
-      pending.clear();
-    },
-    close,
-  };
 }
