@@ -1,9 +1,10 @@
 /**
- * The docs site theme: VitePress's default theme plus the site's fonts,
- * styles, and the Landing and Playground components.
+ * The YEA theme: VitePress's default theme without its bundled Inter (the variable Inter from
+ * @fontsource is loaded here instead), the brand layer in style.css, and the landing and
+ * playground components.
  */
 import type { Theme } from 'vitepress';
-import DefaultTheme from 'vitepress/theme';
+import DefaultTheme from 'vitepress/theme-without-fonts';
 import '@fontsource-variable/space-grotesk';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';

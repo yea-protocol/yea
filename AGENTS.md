@@ -10,6 +10,7 @@ Guidance for AI coding agents (and humans) working in this repo.
 - `mcp/`: `@yea-protocol/mcp`, job tools for the TypeScript MCP SDK, and the bridge behind `yea mcp` (`mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`).
 - `python/`: second implementation (PyPI `yea-sdk`, import `yea`).
 - `examples/`, `bench/`, `site/` (VitePress docs and playground), `deploy/demo/` (Cloudflare Worker).
+- `.agents/context/`: PRODUCT.md and DESIGN.md, the design context for `site/` (read by the impeccable skill); update DESIGN.md when theme tokens change.
 
 ## Rules
 1. **Spec first.** Anything that changes bytes on the wire or Lens output needs a SPEC.md edit, regenerated vectors (`cd ts && npm run build && node scripts/vectors.mjs`), and passing TS and Python suites. CI fails if the vectors drift.
