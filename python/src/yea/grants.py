@@ -153,22 +153,22 @@ def _is_int(v: Any) -> bool:
 def decode_grant(token: str) -> Grant:
     """Decode and structurally validate a token. Does not check signatures. Raises ValueError."""
     if not isinstance(token, str) or not token.startswith(TOKEN_PREFIX):
-        raise ValueError("grant tokens start with pg1.")
+        raise ValueError("not a pg1 grant")
     try:
         blocks = loads(b64url_decode(token[len(TOKEN_PREFIX):]).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError) as e:
-        raise ValueError(f"grant token is not valid b64url JSON: {e}") from None
+    except (ValueError, UnicodeDecodeError):
+        raise ValueError("not valid b64url JSON") from None
     if not isinstance(blocks, list) or not blocks:
-        raise ValueError("a grant is a non-empty list of blocks")
+        raise ValueError("grant has no blocks")
     for i, b in enumerate(blocks):
         if not isinstance(b, dict) or not isinstance(b.get("p"), dict) or not isinstance(b.get("s"), str):
-            raise ValueError(f"block {i} must be {{p, s}}")
+            raise ValueError("malformed block")
         p = b["p"]
         need = ("iss", "sub", "nonce") if i == 0 else ("prev", "sub")
         if not all(isinstance(p.get(k), str) for k in need):
-            raise ValueError(f"block {i} payload is missing {', '.join(need)}")
+            raise ValueError("malformed block")
         if not isinstance(p.get("caveats"), list) or not _is_int(p.get("iat")):
-            raise ValueError(f"block {i} payload needs caveats[] and an integer iat")
+            raise ValueError("malformed block")
     return Grant(tuple(blocks))
 
 
@@ -203,6 +203,7 @@ class Verification:
     message: str = ""
     grant: Grant | None = None
     failed: list[dict] = field(default_factory=list)  # caveats that were not satisfied
+    reason: str = ""  # the same words as the TypeScript core's check (pinned by conformance)
 
     @property
     def need(self) -> list[dict] | None:
@@ -295,38 +296,41 @@ def check_caveat(caveat: Any, bid: str, ctx: GrantContext) -> bool:
 
 
 def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> Denial | None:
-    """Why one caveat fails, or None when it is satisfied."""
+    """Why one caveat fails, or None when it is satisfied. Unknown or malformed caveats fail hard."""
+    if not isinstance(caveat, dict) or len(caveat) != 1 or next(iter(caveat)) not in _WELL_FORMED:
+        kind = "malformed" if not isinstance(caveat, dict) else "unknown"
+        return Denial(f"{kind} caveat {compact(caveat)}", hard=True)
     if not well_formed(caveat):
-        return Denial(compact(caveat), hard=True)
+        return Denial(f"malformed caveat {compact(caveat)}", hard=True)
     (name, arg), = caveat.items()
-    if name in LIMITS:
-        if ctx.verb != "COMMIT":
-            return None
-        return limit_denial(name, arg, ctx.proposal or {}, int(ctx.used.get((bid, arg["of"]), 0)))
-    if _satisfied(name, arg, ctx):
-        return None
-    return Denial(compact(caveat), hard=name not in CONSENT_CAVEATS)
-
-
-def _satisfied(name: str, arg: Any, ctx: GrantContext) -> bool:
     if name in COMMIT_ONLY and ctx.verb != "COMMIT":
-        return True  # known, and ignored outside COMMIT (§6.3)
-    if name == "svc":
-        return isinstance(arg, list) and ctx.service in arg
-    if name == "verbs":
-        return isinstance(arg, list) and ctx.verb in arg
-    if name == "can":
-        return isinstance(arg, list) and ctx.capability is not None and any(_matches(p, ctx.capability) for p in arg)
-    if name == "exp":
-        return _is_int(arg) and ctx.now < arg
-    if name == "nbf":
-        return _is_int(arg) and ctx.now >= arg
+        return None  # known, and ignored outside COMMIT (§6.3)
+    if name in LIMITS:
+        return limit_denial(name, arg, ctx.proposal or {}, int(ctx.used.get((bid, arg["of"]), 0)))
+    why = _denial(name, arg, ctx)
+    return Denial(why, hard=name not in CONSENT_CAVEATS) if why else None
+
+
+def _denial(name: str, arg: Any, ctx: GrantContext) -> str | None:
+    """Why a well-formed, non-limit caveat denies the request, or None."""
     prop = ctx.proposal or {}
+    if name == "svc":
+        return None if ctx.service in arg else f"not valid for service {ctx.service}"
+    if name == "verbs":
+        return None if ctx.verb in arg else f"does not allow {ctx.verb}"
+    if name == "can":
+        ok = ctx.capability is not None and any(_matches(p, ctx.capability) for p in arg)
+        return None if ok else f"does not cover {ctx.capability}"
+    if name == "exp":
+        return None if ctx.now < arg else "grant has expired"
+    if name == "nbf":
+        return None if ctx.now >= arg else "grant is not valid yet"
     if name == "risk":
-        return arg in RISK_ORDER and prop.get("risk") in RISK_ORDER and RISK_ORDER[prop["risk"]] <= RISK_ORDER[arg]
+        risk = prop.get("risk")
+        return f"risk {risk} exceeds ceiling {arg}" if RISK_ORDER.get(risk, 3) > RISK_ORDER[arg] else None
     if name == "only":
-        return isinstance(arg, str) and prop.get("hash") == arg
-    return False
+        return None if prop.get("hash") == arg else "grant is bound to a different proposal"
+    return f"unknown caveat {compact({name: arg})}"
 
 
 def _trusts(trusted: Trusted, key: str) -> bool:
@@ -342,25 +346,29 @@ def verify_grant(
     try:
         g = token if isinstance(token, Grant) else decode_grant(token)
     except ValueError as e:
-        return Verification(False, "unauthorized", str(e))
+        return Verification(False, "unauthorized", str(e), reason=f"malformed grant: {e}")
 
     for i, b in enumerate(g.blocks):
         p = b["p"]
         signer = p["iss"] if i == 0 else g.blocks[i - 1]["p"]["sub"]
         if i > 0 and p["prev"] != block_id(g.blocks[i - 1]):
-            return Verification(False, "unauthorized", f"block {i} does not chain to block {i - 1}", g)
+            return Verification(False, "unauthorized", f"block {i} does not chain to block {i - 1}", g,
+                                reason=f"block {i} is not chained to block {i - 1}")
         try:
             parse_public_key(p["sub"])
             msg = canonical_bytes(p)
         except (ValueError, CanonicalError) as e:
-            return Verification(False, "unauthorized", f"block {i} is malformed: {e}", g)
+            return Verification(False, "unauthorized", f"block {i} is malformed: {e}", g, reason=f"malformed grant: {e}")
         if not verify(signer, msg, b["s"]):
-            return Verification(False, "unauthorized", f"block {i} signature does not verify", g)
+            return Verification(False, "unauthorized", f"block {i} signature does not verify", g,
+                                reason=f"bad signature on block {i}")
 
     if not _trusts(trusted, g.principal):
-        return Verification(False, "unauthorized", "the grant's principal is not trusted by this service", g)
+        return Verification(False, "unauthorized", "the grant's principal is not trusted by this service", g,
+                            reason="grant is issued by a principal this service does not trust")
     if g.holder != proof_key:
-        return Verification(False, "unauthorized", "the proof key is not the grant's holder", g)
+        return Verification(False, "unauthorized", "the proof key is not the grant's holder", g,
+                            reason="proof key is not the grant holder")
 
     denials = [(c, d) for b in g.blocks for c in b["p"]["caveats"] if (d := caveat_denial(c, block_id(b), ctx))]
     if not denials:
@@ -368,6 +376,8 @@ def verify_grant(
     hard = [(c, d) for c, d in denials if d.hard]
     if hard:
         shown = ", ".join(d.why for _, d in hard[:3])
-        return Verification(False, "forbidden", f"the grant does not allow this request ({shown})", g, [c for c, _ in hard])
+        return Verification(False, "forbidden", f"the grant does not allow this request ({shown})", g, [c for c, _ in hard],
+                            reason="; ".join(d.why for _, d in hard))
     shown = ", ".join(d.why for _, d in denials[:3])
-    return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g, [c for c, _ in denials])
+    return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g,
+                        [c for c, _ in denials], reason="; ".join(d.why for _, d in denials))
