@@ -1,5 +1,6 @@
 export {
   atLeast,
+  checkJobConsent,
   type Decision,
   decide,
   type HashedPlan,
@@ -26,7 +27,9 @@ export {
   CONSENT_TTL,
   checkState,
   DEFAULT_PHRASE,
+  effectivePhrase,
   inputHashOf,
+  type JobConsent,
   type JudgeContext,
   jobConsentCode,
   judgeAnswer,
@@ -35,7 +38,9 @@ export {
   normalizePhrase,
   type PhraseFor,
   phraseMatches,
+  readJobConsent,
   STATE_TTL,
+  signJobConsent,
   type Verdict,
 } from './ask.js';
 

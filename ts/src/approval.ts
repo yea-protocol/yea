@@ -5,7 +5,7 @@
  */
 import { canonical } from './canonical.js';
 import { randomId, sha256 } from './crypto.js';
-import { checkGrant, type TotalLimit, usedOf } from './grants.js';
+import { checkGrant, decodeGrant, type TotalLimit, usedOf } from './grants.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -13,7 +13,7 @@ import type {
   Reservation,
 } from './store.js';
 import type { Effect, Risk } from './types.js';
-import { exact, type Uses } from './uses.js';
+import { exact, isLimit, type Uses } from './uses.js';
 
 /** What a job tool's handler returns for each way it could do the job (SPEC-approval §1). */
 export interface JobPlan {
@@ -114,7 +114,7 @@ export const atLeast = (r: Risk, floor: Risk) =>
 function assertIntegers(v: unknown, path = 'input'): void {
   if (typeof v === 'number' && !Number.isSafeInteger(v)) {
     throw new TypeError(
-      `${path} is ${v}: job inputs can't hold non-integer numbers; use a string or an integer`,
+      `${path} is ${v}: job inputs can only hold safe integers; use a string for other numbers`,
     );
   }
 
@@ -177,7 +177,7 @@ export function hashPlans(
 export async function decide(
   plans: HashedPlan[],
   policy: Policy,
-  used: (k: LedgerKey) => bigint,
+  used: (k: LedgerKey) => bigint | Promise<bigint>,
   now?: number,
 ): Promise<Decision> {
   const first = plans[0];
@@ -204,11 +204,52 @@ export async function decide(
   return allowedToRun(first, policy, used, now);
 }
 
+/** A grant's blocks with their ids, or null if it can't be decoded (the grant check says why). */
+async function blocksOf(
+  grant: string,
+): Promise<{ id: string; caveats: unknown[] }[] | null> {
+  try {
+    return await Promise.all(
+      decodeGrant(grant).map(async (b) => ({
+        id: await sha256(b.s),
+        caveats: b.p.caveats,
+      })),
+    );
+  } catch {
+    return null;
+  }
+}
+
+const caveatOf = (c: unknown, k: string): unknown =>
+  c && typeof c === 'object' && Object.hasOwn(c, k)
+    ? (c as Record<string, unknown>)[k]
+    : undefined;
+
+/** What the grant's `total` limits have used so far, read ahead so the check stays synchronous. */
+async function usedByTotals(
+  blocks: { id: string; caveats: unknown[] }[],
+  used: (k: LedgerKey) => bigint | Promise<bigint>,
+): Promise<Map<string, bigint>> {
+  const out = new Map<string, bigint>();
+
+  for (const b of blocks) {
+    for (const c of b.caveats) {
+      const l = caveatOf(c, 'total');
+
+      if (isLimit(l)) {
+        out.set(`${b.id} ${l.of}`, await used({ block: b.id, of: l.of }));
+      }
+    }
+  }
+
+  return out;
+}
+
 /** Whether the signed policy grant lets this plan run as a COMMIT at this server. */
 async function allowedToRun(
   hp: HashedPlan,
   policy: Policy,
-  used: (k: LedgerKey) => bigint,
+  used: (k: LedgerKey) => bigint | Promise<bigint>,
   now?: number,
 ): Promise<Decision> {
   if (!policy.grant) {
@@ -218,6 +259,22 @@ async function allowedToRun(
     };
   }
 
+  const blocks = await blocksOf(policy.grant);
+
+  // A policy must name the tools it lets run; a grant without `can` covers every tool.
+  if (
+    blocks &&
+    !blocks.some((b) => b.caveats.some((c) => caveatOf(c, 'can') !== undefined))
+  ) {
+    return {
+      kind: 'ask',
+      why: `the signed policy names no tools, so it doesn't let ${hp.tool} run without asking`,
+    };
+  }
+
+  const sofar = blocks
+    ? await usedByTotals(blocks, used)
+    : new Map<string, bigint>();
   const check = await checkGrant(policy.grant, {
     service: policy.server,
     verb: 'COMMIT',
@@ -226,7 +283,7 @@ async function allowedToRun(
     proposal: { hash: hp.planHash, uses: hp.plan.uses, risk: hp.risk },
     trusted: [policy.principal],
     proofKey: policy.server,
-    used: (block, of) => used({ block, of }),
+    used: (block, of) => sofar.get(`${block} ${of}`) ?? 0n,
   });
 
   if (!check.ok) {
@@ -270,20 +327,69 @@ export async function reserveAll(
   wanted: ReserveFor[],
 ): Promise<Reservation[] | null> {
   const made: Reservation[] = [];
+  const undo = () => Promise.all(made.map((m) => store.release(m)));
 
-  for (const w of wanted) {
-    const r = await store.reserve(w.key, w.amount, w.max);
+  try {
+    for (const w of wanted) {
+      const r = await store.reserve(w.key, w.amount, w.max);
 
-    if (!r) {
-      await Promise.all(made.map((m) => store.release(m)));
+      if (!r) {
+        await undo();
 
-      return null;
+        return null;
+      }
+
+      made.push(r);
     }
+  } catch (e) {
+    await undo();
 
-    made.push(r);
+    throw e;
   }
 
   return made;
+}
+
+/**
+ * Whether a stored consent may run this plan (SPEC-approval §6): it must be a consent grant for
+ * exactly this plan (`only` and `exp` present), signed by the pinned principal and issued to
+ * the server. A copied policy grant fails the `only` test. `id` is what to consume it by.
+ */
+export async function checkJobConsent(
+  grant: string,
+  o: {
+    hp: HashedPlan;
+    policy: Pick<Policy, 'principal' | 'server'>;
+    now?: number;
+  },
+): Promise<{ ok: true; id: string } | { ok: false; why: string }> {
+  const blocks = await blocksOf(grant);
+  const has = (k: string, want?: unknown) =>
+    !!blocks?.some((b) =>
+      b.caveats.some((c) => {
+        const v = caveatOf(c, k);
+
+        return v !== undefined && (want === undefined || v === want);
+      }),
+    );
+
+  if (!blocks || !has('only', o.hp.planHash) || !has('exp')) {
+    return { ok: false, why: 'not a consent for this plan' };
+  }
+
+  const check = await checkGrant(grant, {
+    service: o.policy.server,
+    verb: 'COMMIT',
+    capability: o.hp.tool,
+    ...(o.now === undefined ? {} : { now: o.now }),
+    proposal: { hash: o.hp.planHash, uses: o.hp.plan.uses, risk: o.hp.risk },
+    trusted: [o.policy.principal],
+    proofKey: o.policy.server,
+  });
+
+  return check.ok
+    ? { ok: true, id: check.id }
+    : { ok: false, why: check.reason };
 }
 
 /** Receipt ids are `r_` and 8 to 32 b64url characters; anything else never reaches the store. */

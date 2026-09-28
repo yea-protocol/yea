@@ -53,6 +53,10 @@ export interface ApprovalStore {
 /** Keys a ledger entry by its block and measure (a block id never contains a space). */
 export const ledgerId = (k: LedgerKey) => `${k.block} ${k.of}`;
 
+/** An undo claimed but never finished (the process died) can be claimed again after this. */
+const STALE_CLAIM_MS = 600_000;
+const PRUNE_AT = 1024;
+
 interface Ledger {
   settled: bigint;
   reserved: Map<string, bigint>;
@@ -65,7 +69,8 @@ const total = (l: Ledger) =>
 export class MemoryStore implements ApprovalStore {
   private consumed = new Map<string, number>();
   private receipts = new Map<string, JobReceipt>();
-  private undo = new Map<string, 'claimed' | 'done'>();
+  /** 'done', or the time (ms) the undo was claimed. */
+  private undo = new Map<string, 'done' | number>();
   private ledgers = new Map<string, Ledger>();
   private consents = new Map<string, string>();
 
@@ -74,6 +79,7 @@ export class MemoryStore implements ApprovalStore {
       return Promise.resolve(false);
     }
 
+    this.prune();
     this.consumed.set(id, expiresAt);
 
     return Promise.resolve(true);
@@ -92,17 +98,20 @@ export class MemoryStore implements ApprovalStore {
   }
 
   claimUndo(id: string): Promise<boolean> {
-    if (this.undo.has(id)) {
+    const was = this.undo.get(id);
+    const stale = typeof was === 'number' && Date.now() - was > STALE_CLAIM_MS;
+
+    if (was !== undefined && !stale) {
       return Promise.resolve(false);
     }
 
-    this.undo.set(id, 'claimed');
+    this.undo.set(id, Date.now());
 
     return Promise.resolve(true);
   }
 
   releaseUndo(id: string): Promise<void> {
-    if (this.undo.get(id) === 'claimed') {
+    if (typeof this.undo.get(id) === 'number') {
       this.undo.delete(id);
     }
 
@@ -161,6 +170,21 @@ export class MemoryStore implements ApprovalStore {
 
   getConsent(planHash: string): Promise<string | null> {
     return Promise.resolve(this.consents.get(planHash) ?? null);
+  }
+
+  /** Forget consumed ids past their expiry, so a long-running server doesn't grow forever. */
+  private prune() {
+    if (this.consumed.size < PRUNE_AT) {
+      return;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+
+    for (const [id, exp] of this.consumed) {
+      if (exp <= now) {
+        this.consumed.delete(id);
+      }
+    }
   }
 
   private ledger(key: LedgerKey): Ledger {

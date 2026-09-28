@@ -1,15 +1,9 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as P from '../src/index.js';
-import { checkKeyFile, FileStore, readPinnedKey } from '../src/node.js';
+import { FileStore } from '../src/node.js';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'yea-approval-'));
 const now = 1790000000;
@@ -144,115 +138,5 @@ describe('undo (SPEC-approval §7)', () => {
       (await P.undoJob(store, { id: 'r_AAAAAAAAAAAA', sub: '', now, revert }))
         .kind,
     ).toBe('undone');
-  });
-});
-
-describe('approval security', () => {
-  it('[A1] undo ids outside the generated format never reach the store', async () => {
-    const dir = tmp();
-    const store = new FileStore(dir);
-
-    for (const id of [
-      '../../x',
-      'r_../../../etc',
-      'r_short',
-      'x_AAAAAAAAAAAA',
-      42,
-    ]) {
-      expect(
-        await P.undoJob(store, { id, sub: '', now, revert: () => null }),
-      ).toEqual({ kind: 'refused', why: 'no such receipt' });
-    }
-
-    expect(readdirSync(dir)).toEqual([]);
-    await expect(store.getReceipt('../x')).rejects.toThrow('unsafe store name');
-  });
-
-  it('[A2] a partly failed reservation releases the ones already made', async () => {
-    const store = new P.MemoryStore();
-    const got = await P.reserveAll(store, [
-      { key: { block: 'B', of: 'emails' }, amount: 1n, max: 5n },
-      { key: { block: 'B', of: 'spend' }, amount: 10n, max: 5n },
-    ]);
-
-    expect(got).toBeNull();
-    expect(await store.used({ block: 'B', of: 'emails' })).toBe(0n);
-  });
-
-  it('[A3] a principal key file this user owns, or reaches through its own directory, is refused', () => {
-    const dir = tmp();
-    const file = join(dir, 'principal.pub');
-
-    writeFileSync(file, 'ed25519:AAAA');
-    expect(checkKeyFile(file)).toMatch(/can be changed by this user/);
-
-    const link = join(dir, 'link.pub');
-
-    symlinkSync('/etc/hosts', link);
-    expect(checkKeyFile(link)).toMatch(/can be changed by this user/);
-    expect(checkKeyFile(join(dir, 'missing'))).toMatch(/can't be read/);
-    expect(readPinnedKey(undefined)).toEqual({
-      why: 'YEA_PRINCIPAL_PUB is not set',
-    });
-    expect('why' in readPinnedKey(file)).toBe(true);
-  });
-
-  it.skipIf(process.getuid?.() === 0)(
-    '[A3] a key file the user can neither own nor write is accepted',
-    () => {
-      expect(checkKeyFile('/etc/hosts')).toBeNull();
-    },
-  );
-
-  it('[A4] a non-integer input never gets a plan hash', async () => {
-    await expect(
-      P.hashPlans({ name: 'refund', revert: true }, { amount: 1.5 }, [
-        { summary: 'x', effects: [], apply: () => null },
-      ]),
-    ).rejects.toThrow('non-integer');
-  });
-
-  it('[A5] a decline, a stale state or another input never runs anything', async () => {
-    const policy = { outOfBand: 'high' as const, deny: [] };
-    const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
-      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
-    ]);
-    const state = P.newState({
-      tool: 'refund',
-      inputHash: await P.inputHashOf({ who: 'Chen' }),
-      sub: '',
-      plans: [hp.planHash],
-      round: 1,
-      now,
-    });
-
-    expect(
-      P.judgeAnswer(
-        state,
-        { action: 'decline', content: { confirm: 'approve' } },
-        {
-          recomputed: [hp],
-          policy,
-          phraseFor: () => 'approve',
-        },
-      ).kind,
-    ).toBe('not-approved');
-    expect(
-      P.checkState(state, {
-        tool: 'refund',
-        inputHash: await P.inputHashOf({ who: 'Ana' }),
-        sub: '',
-        now,
-      }),
-    ).toBeNull();
-    expect(
-      P.checkState(state, {
-        tool: 'refund',
-        inputHash: state.inputHash,
-        sub: '',
-        now: state.exp,
-      }),
-    ).toBeNull();
-    expect(existsSync(join(tmpdir(), 'never'))).toBe(false);
   });
 });

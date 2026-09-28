@@ -6,6 +6,7 @@
 import {
   accessSync,
   constants,
+  linkSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -28,12 +29,18 @@ import type {
 const LOCK_WAIT_MS = 2000;
 const LOCK_RETRY_MS = 10;
 const STALE_LOCK_MS = 30_000;
+/** An undo claimed but never finished (the process died) can be claimed again after this. */
+const STALE_CLAIM_MS = 600_000;
+const PRIVATE = 0o700;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const mkdirFor = (path: string) =>
+  mkdirSync(dirname(path), { recursive: true, mode: PRIVATE });
+
 /** Create `path` only if it doesn't exist (O_EXCL); false if it did. */
 function createOnce(path: string, text = ''): boolean {
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirFor(path);
 
   try {
     writeFileSync(path, text, { flag: 'wx' });
@@ -48,11 +55,11 @@ function createOnce(path: string, text = ''): boolean {
   }
 }
 
-/** Write via `<name>.tmp` and rename, so a reader never sees half a file. */
+/** Write via a uniquely named temp file and rename, so a reader never sees half a file. */
 function writeAtomic(path: string, text: string) {
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirFor(path);
 
-  const tmp = `${path}.tmp`;
+  const tmp = `${path}.${randomId('t')}.tmp`;
 
   writeFileSync(tmp, text);
   renameSync(tmp, path);
@@ -68,6 +75,47 @@ function readOrNull(path: string): string | null {
 
     throw e;
   }
+}
+
+/**
+ * Remove `path` if it's older than `ageMs`, without ever removing a fresh file someone else
+ * just created: move it aside, then check it's the same old file before deleting it.
+ */
+function breakIfStale(path: string, ageMs: number) {
+  let seen: { ino: number; mtimeMs: number };
+
+  try {
+    seen = statSync(path);
+  } catch {
+    return; // already gone
+  }
+
+  if (Date.now() - seen.mtimeMs <= ageMs) {
+    return;
+  }
+
+  const aside = `${path}.${randomId('s')}.stale`;
+
+  try {
+    renameSync(path, aside);
+  } catch {
+    return; // someone else moved it first
+  }
+
+  if (statSync(aside).ino === seen.ino) {
+    rmSync(aside, { force: true });
+
+    return;
+  }
+
+  // We moved a fresh file: put it back unless another has taken its place, then drop ours.
+  try {
+    linkSync(aside, path);
+  } catch {
+    // a newer one exists; the moved-aside file's owner will see it lost and fail closed
+  }
+
+  rmSync(aside, { force: true });
 }
 
 interface LedgerFile {
@@ -103,9 +151,19 @@ export class FileStore implements ApprovalStore {
   }
 
   async claimUndo(id: string): Promise<boolean> {
-    const done = readOrNull(this.undoPath(id, 'done')) !== null;
+    if (readOrNull(this.undoPath(id, 'done')) !== null) {
+      return false;
+    }
 
-    return !done && createOnce(this.undoPath(id, 'claim'));
+    const claim = this.undoPath(id, 'claim');
+
+    if (createOnce(claim)) {
+      return true;
+    }
+
+    breakIfStale(claim, STALE_CLAIM_MS);
+
+    return createOnce(claim);
   }
 
   async releaseUndo(id: string): Promise<void> {
@@ -198,18 +256,25 @@ export class FileStore implements ApprovalStore {
     change: (l: LedgerFile) => T,
   ): Promise<T> {
     const lock = this.ledgerPath(key, 'lock');
-
-    await acquire(lock);
+    const token = await acquire(lock);
 
     try {
       const l = this.readLedger(key);
       const out = change(l);
 
+      if (readOrNull(lock) !== token) {
+        throw new Error(
+          `lost the approval store lock (${lock}); nothing was written`,
+        );
+      }
+
       writeAtomic(this.ledgerPath(key, 'json'), JSON.stringify(l));
 
       return out;
     } finally {
-      rmSync(lock, { force: true });
+      if (readOrNull(lock) === token) {
+        rmSync(lock, { force: true });
+      }
     }
   }
 }
@@ -223,12 +288,13 @@ function safeName(s: string): string {
   return s;
 }
 
-/** Take a lock file (O_EXCL), retrying for up to 2 s; a lock older than 30 s is stale. */
-async function acquire(lock: string) {
+/** Take a lock file (O_EXCL) holding a fresh token, retrying for up to 2 s; returns the token. */
+async function acquire(lock: string): Promise<string> {
+  const token = randomId('k');
   const until = Date.now() + LOCK_WAIT_MS;
 
-  while (!createOnce(lock, String(process.pid))) {
-    removeIfStale(lock);
+  while (!createOnce(lock, token)) {
+    breakIfStale(lock, STALE_LOCK_MS);
 
     if (Date.now() > until) {
       throw new Error(`the approval store is busy (${lock})`);
@@ -236,16 +302,8 @@ async function acquire(lock: string) {
 
     await sleep(LOCK_RETRY_MS);
   }
-}
 
-function removeIfStale(lock: string) {
-  try {
-    if (Date.now() - statSync(lock).mtimeMs > STALE_LOCK_MS) {
-      rmSync(lock, { force: true });
-    }
-  } catch {
-    // gone already
-  }
+  return token;
 }
 
 // ---- the pinned principal key (§2) ----
@@ -273,6 +331,14 @@ function changeable(path: string): boolean {
  * above it may be owned or writable by the server's OS user, or the agent could swap the key.
  */
 export function checkKeyFile(path: string): string | null {
+  if (typeof process.getuid !== 'function') {
+    return "can't check who owns the principal key file on this platform";
+  }
+
+  if (process.getuid() === 0) {
+    return 'refusing to trust a principal key file while running as root: run the server as its own user';
+  }
+
   let real: string;
 
   try {

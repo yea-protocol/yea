@@ -2,8 +2,12 @@
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
-import { planHashOf } from './approval.js';
-import { phraseMatches } from './ask.js';
+import {
+  type JobConsent,
+  phraseMatches,
+  readJobConsent,
+  signJobConsent,
+} from './ask.js';
 import type { Client } from './client.js';
 import type { KeyPair } from './crypto.js';
 import { proposalHash } from './crypto.js';
@@ -28,7 +32,7 @@ import {
   listServices,
   removeService,
 } from './setup.js';
-import type { ConsentRequest, Effect, Proposal, Risk, Verb } from './types.js';
+import type { ConsentRequest, Proposal, Risk, Verb } from './types.js';
 import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
 
 const HELP = `yea — the protocol agents speak
@@ -401,16 +405,15 @@ async function cmdApprove(rest: string[]) {
   const p =
     (await principalKey()) ??
     die('no principal key here: approve on the machine that holds it');
-  const consent = decodeConsentCode(
-    rest[0] ?? die('usage: yea approve <pc1.… code>'),
-  );
+  const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
+  const consent = decodeConsentCode(code);
 
   if (consent.principal !== p.public) {
     die(`this consent is for principal ${consent.principal}, not ${p.public}`);
   }
 
-  if (isJobDetail(consent.detail)) {
-    return approveJob(p, consent, consent.detail);
+  if (isJobCode(code)) {
+    return approveJob(p, code);
   }
 
   const agent = o.to ?? (await agentKey())?.public ?? die('no agent key');
@@ -436,70 +439,91 @@ async function cmdApprove(rest: string[]) {
   );
 }
 
-/** A job tool's consent code carries the whole plan and the phrase to type (SPEC-approval §6). */
-interface JobDetail {
-  job: Record<string, unknown> & { summary: string; effects: Effect[] };
-  phrase: string;
+/**
+ * Text from a consent code is untrusted: control characters (C0, C1, DEL) and bidi overrides
+ * could rewrite what the person reads before signing, so they're shown as escapes.
+ */
+/** C0 (except tab and newline), DEL, C1, and the bidi marks and overrides. */
+function unsafeChar(cp: number): boolean {
+  return (
+    (cp < 0x20 && cp !== 0x09 && cp !== 0x0a) ||
+    (cp >= 0x7f && cp <= 0x9f) ||
+    cp === 0x200e ||
+    cp === 0x200f ||
+    (cp >= 0x202a && cp <= 0x202e) ||
+    (cp >= 0x2066 && cp <= 0x2069)
+  );
 }
 
-function isJobDetail(d: unknown): d is JobDetail {
-  const j = (d as Partial<JobDetail> | null)?.job;
+const printable = (s: string) =>
+  [...s]
+    .map((c) => {
+      const cp = c.codePointAt(0) ?? 0;
 
-  return (
-    !!j &&
-    typeof j === 'object' &&
-    typeof j.summary === 'string' &&
-    Array.isArray(j.effects) &&
-    typeof (d as JobDetail).phrase === 'string'
-  );
+      return unsafeChar(cp) ? `\\u{${cp.toString(16)}}` : c;
+    })
+    .join('');
+
+/** Whether a consent code carries a job (an MCP tool's plan) rather than a proposal. */
+function isJobCode(code: string): boolean {
+  try {
+    const d = decodeConsentCode(code).detail as unknown as
+      | { job?: unknown }
+      | undefined;
+
+    return d?.job !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Approve one job plan for an MCP server (SPEC-approval §6): re-check the plan hash, show the
  * plan, have the person type its phrase, and store a consent signed to the server's key.
  */
-async function approveJob(p: KeyPair, consent: ConsentRequest, d: JobDetail) {
-  const hash = await planHashOf(d.job);
+async function approveJob(p: KeyPair, code: string) {
+  const now = Math.floor(Date.now() / 1000);
+  let j: JobConsent;
 
-  if (
-    hash !== consent.hash ||
-    hash !== consent.proposal ||
-    (d.job.uses !== undefined && !isUses(d.job.uses))
-  ) {
-    die("✗ this consent code's plan doesn't match its hash: refusing");
+  try {
+    j = await readJobConsent(code, now);
+  } catch (e) {
+    die(`✗ ${(e as Error).message}: refusing`);
   }
 
-  console.log(`at server ${consent.service}, tool ${consent.capability}:`);
-  console.log(jobLines(d.job).join('\n'));
-  console.log(`  approval expires: ${fmtTime(consent.expires)}`);
+  console.log(printable(`at server ${j.consent.service}, tool ${j.job.tool}:`));
+  console.log(jobLines(j.job).map(printable).join('\n'));
+  console.log(`  approval expires: ${fmtTime(j.consent.expires)}`);
 
   if (!process.stdin.isTTY) {
     die('✗ approval needs an interactive terminal: a human has to confirm');
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const typed = await rl.question(`\nto approve, type: ${d.phrase}\n› `);
+  const typed = await rl.question(
+    `\nto approve, type: ${printable(j.phrase)}\n› `,
+  );
 
   rl.close();
 
-  if (!phraseMatches(typed, d.phrase)) {
+  if (!phraseMatches(typed, j.phrase)) {
     die('not approved');
   }
 
-  const grant = await consentGrant({
-    principal: p,
-    agent: consent.service,
-    consent,
-  });
-
-  await new FileStore().putConsent(hash, grant);
+  await jobStore().putConsent(j.planHash, await signJobConsent(p, j));
   console.log(
     '✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.',
   );
 }
 
+/** The store the MCP server reads consents from: YEA_STORE, else ~/.yea/store. */
+const jobStore = () =>
+  process.env.YEA_STORE
+    ? new FileStore(process.env.YEA_STORE)
+    : new FileStore();
+
 /** The plan as the person reads it: summary, effects, then what it uses, risk and undo. */
-function jobLines(job: JobDetail['job']): string[] {
+function jobLines(job: JobConsent['job']): string[] {
   const uses =
     isUses(job.uses) && Object.keys(job.uses).length
       ? `uses: ${fmtUses(job.uses)} · `
@@ -521,7 +545,9 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
 
   if (!d) {
     console.log(
-      `⚠ no proposal details in this code; only the service's summary:\n${consent.summary}\n  service: ${consent.service} · ${consent.capability} · proposal ${consent.proposal}`,
+      printable(
+        `⚠ no proposal details in this code; only the service's summary:\n${consent.summary}\n  service: ${consent.service} · ${consent.capability} · proposal ${consent.proposal}`,
+      ),
     );
 
     return;
@@ -537,7 +563,7 @@ async function showConsent(consent: ConsentRequest & { detail?: Proposal }) {
     die("✗ this consent code's proposal doesn't match its hash: refusing");
   }
 
-  console.log(`at ${consent.service}:\n${proposalLens(d)}`);
+  console.log(printable(`at ${consent.service}:\n${proposalLens(d)}`));
 }
 
 // ---- try it ----

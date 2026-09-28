@@ -1,6 +1,6 @@
 // Regression tests for the security audit findings (see docs/design.md).
 
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +9,13 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { shop } from '../../examples/shop.ts';
 import * as P from '../src/index.js';
 import { runMcpBridge } from '../src/mcp.js';
-import { listen, serveHttp } from '../src/node.js';
+import {
+  checkKeyFile,
+  FileStore,
+  listen,
+  readPinnedKey,
+  serveHttp,
+} from '../src/node.js';
 
 const closers: (() => void)[] = [];
 
@@ -576,5 +582,215 @@ describe('security regressions', () => {
     }
 
     expect((await c.commit(r.proposals[0])).kind).toBe('RECEIPT');
+  });
+});
+
+const A = await P.keyPair(); // a server
+const B = await P.keyPair(); // a principal
+const now = 1790000000;
+const tmp = () => mkdtempSync(join(tmpdir(), 'yea-approval-'));
+
+describe('approval security (SPEC-approval)', () => {
+  it('[A1] undo ids outside the generated format never reach the store', async () => {
+    const dir = tmp();
+    const store = new FileStore(dir);
+
+    for (const id of [
+      '../../x',
+      'r_../../../etc',
+      'r_short',
+      'x_AAAAAAAAAAAA',
+      42,
+    ]) {
+      expect(
+        await P.undoJob(store, { id, sub: '', now, revert: () => null }),
+      ).toEqual({ kind: 'refused', why: 'no such receipt' });
+    }
+
+    expect(readdirSync(dir)).toEqual([]);
+    await expect(store.getReceipt('../x')).rejects.toThrow('unsafe store name');
+  });
+
+  it('[A2] a partly failed reservation releases the ones already made', async () => {
+    const store = new P.MemoryStore();
+    const got = await P.reserveAll(store, [
+      { key: { block: 'B', of: 'emails' }, amount: 1n, max: 5n },
+      { key: { block: 'B', of: 'spend' }, amount: 10n, max: 5n },
+    ]);
+
+    expect(got).toBeNull();
+    expect(await store.used({ block: 'B', of: 'emails' })).toBe(0n);
+  });
+
+  it('[A3] a principal key file this user owns, or reaches through its own directory, is refused', () => {
+    const dir = tmp();
+    const file = join(dir, 'principal.pub');
+
+    writeFileSync(file, 'ed25519:AAAA');
+    expect(checkKeyFile(file)).toMatch(/can be changed by this user/);
+
+    const link = join(dir, 'link.pub');
+
+    symlinkSync('/etc/hosts', link);
+    expect(checkKeyFile(link)).toMatch(/can be changed by this user/);
+    expect(checkKeyFile(join(dir, 'missing'))).toMatch(/can't be read/);
+    expect(readPinnedKey(undefined)).toEqual({
+      why: 'YEA_PRINCIPAL_PUB is not set',
+    });
+    expect('why' in readPinnedKey(file)).toBe(true);
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    '[A3] a key file the user can neither own nor write is accepted',
+    () => {
+      expect(checkKeyFile('/etc/hosts')).toBeNull();
+    },
+  );
+
+  it('[A4] a non-integer input never gets a plan hash', async () => {
+    await expect(
+      P.hashPlans({ name: 'refund', revert: true }, { amount: 1.5 }, [
+        { summary: 'x', effects: [], apply: () => null },
+      ]),
+    ).rejects.toThrow('only hold safe integers');
+  });
+
+  it('[A5] a decline, a stale state or another input never runs anything', async () => {
+    const policy = { outOfBand: 'high' as const, deny: [] };
+    const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
+      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const state = P.newState({
+      tool: 'refund',
+      inputHash: await P.inputHashOf({ who: 'Chen' }),
+      sub: '',
+      plans: [hp.planHash],
+      round: 1,
+      now,
+    });
+
+    expect(
+      P.judgeAnswer(
+        state,
+        { action: 'decline', content: { confirm: 'approve' } },
+        {
+          recomputed: [hp],
+          policy,
+          phraseFor: () => 'approve',
+        },
+      ).kind,
+    ).toBe('not-approved');
+    expect(
+      P.checkState(state, {
+        tool: 'refund',
+        inputHash: await P.inputHashOf({ who: 'Ana' }),
+        sub: '',
+        now,
+      }),
+    ).toBeNull();
+    expect(
+      P.checkState(state, {
+        tool: 'refund',
+        inputHash: state.inputHash,
+        sub: '',
+        now: state.exp,
+      }),
+    ).toBeNull();
+  });
+
+  it('[A6] yea approve refuses a job consent code whose plan, tool or expiry was tampered with', async () => {
+    const [hp] = await P.hashPlans(
+      { name: 'refund', revert: true },
+      { who: 'Chen' },
+      [
+        {
+          summary: 'Refund 20.00 USD',
+          effects: [],
+          risk: 'low',
+          undoWindow: 60,
+          apply: () => null,
+        },
+      ],
+    );
+    const code = (
+      over: Record<string, unknown> = {},
+      job: Record<string, unknown> = {},
+    ) => {
+      const good = P.decodeConsentCode(
+        P.jobConsentCode({
+          server: A.public,
+          principal: B.public,
+          input: { who: 'Chen' },
+          hp,
+          phrase: 'approve',
+          now,
+        }),
+      ) as unknown as Record<string, unknown> & {
+        detail: { job: Record<string, unknown>; phrase: string };
+      };
+      const c = {
+        ...good,
+        ...over,
+        detail: { ...good.detail, job: { ...good.detail.job, ...job } },
+      };
+
+      return `pc1.${P.b64u(new TextEncoder().encode(P.canonical(c)))}`;
+    };
+
+    await expect(
+      P.readJobConsent(code({}, { summary: 'Refund 20 USD (edited)' }), now),
+    ).rejects.toThrow("doesn't match its hash");
+    await expect(
+      P.readJobConsent(code({ capability: 'delete_customer' }), now),
+    ).rejects.toThrow("doesn't match its hash");
+    await expect(P.readJobConsent(code(), now + 600)).rejects.toThrow(
+      'expired',
+    );
+
+    const long = await P.readJobConsent(code({ expires: now + 10 ** 8 }), now);
+
+    expect(long.consent.expires).toBe(now + P.CONSENT_TTL);
+  });
+
+  it('[A7] a job consent is signed by the principal, to the server, for that one plan', async () => {
+    const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
+      {
+        summary: 'Refund',
+        effects: [],
+        risk: 'low',
+        undoWindow: 60,
+        apply: () => null,
+      },
+    ]);
+    const j = await P.readJobConsent(
+      P.jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: '  ',
+        now,
+      }),
+      now,
+    );
+    const g = await P.inspectGrant(await P.signJobConsent(B, j));
+
+    expect(j.phrase).toBe('approve');
+    expect(g.iss).toBe(B.public);
+    expect(g.holder).toBe(A.public);
+    expect(g.blocks[0].caveats).toEqual([
+      { svc: [A.public] },
+      { verbs: ['COMMIT'] },
+      { can: ['refund'] },
+      { only: hp.planHash },
+      { exp: j.consent.expires },
+    ]);
+    expect(
+      await P.checkJobConsent(await P.signJobConsent(B, j), {
+        hp,
+        policy: { principal: B.public, server: A.public },
+        now,
+      }),
+    ).toMatchObject({ ok: true });
   });
 });

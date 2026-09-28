@@ -1,6 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as P from '../src/index.js';
+import { FileStore } from '../src/node.js';
 
 const load = (n: string) =>
   JSON.parse(
@@ -117,9 +120,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.decide) {
       const used = (k: P.LedgerKey) =>
-        k.block === v.policyBlockId && c.used[k.of]
-          ? P.exact(c.used[k.of])
-          : 0n;
+        c.used[k.of] ? P.exact(c.used[k.of]) : 0n;
       const d = await P.decide(c.plans.map(asHashed), c.policy, used, c.now);
       const got = {
         kind: d.kind,
@@ -178,6 +179,16 @@ describe('conformance vectors', () => {
       expect(P.readTightening(c.file), c.name).toEqual(c.expect);
     }
 
+    for (const c of v.consents.cases) {
+      const r = await P.checkJobConsent(c.grant, {
+        hp: asHashed(v.consents.plan),
+        policy: { principal: v.keys.principal, server: v.keys.server },
+        now: c.now,
+      });
+
+      expect(r, c.name).toEqual(c.expect);
+    }
+
     const cc = v.consentCode;
 
     expect(
@@ -190,6 +201,39 @@ describe('conformance vectors', () => {
         now: cc.now,
       }),
     ).toBe(cc.code);
+  });
+  it('approval FileStore layout', async () => {
+    const v = load('approval');
+    const dir = mkdtempSync(join(tmpdir(), 'yea-conf-'));
+    const store = new FileStore(dir);
+    const key = { block: v.policyBlockId, of: 'emails' };
+    const r = await store.reserve(key, 5n, 10n);
+
+    await store.consumeOnce('n_1', v.now + 600);
+
+    if (r) {
+      await store.settle(r);
+    }
+
+    await store.putConsent(v.consents.plan.planHash, 'pg1.example');
+    await store.claimUndo('r_AAAAAAAAAAAA');
+    await store.markUndone('r_AAAAAAAAAAAA');
+
+    const files: Record<string, string> = {};
+    const walk = (d: string) => {
+      for (const name of readdirSync(d)) {
+        const p = join(d, name);
+
+        if (statSync(p).isDirectory()) {
+          walk(p);
+        } else {
+          files[relative(dir, p)] = readFileSync(p, 'utf8');
+        }
+      }
+    };
+
+    walk(dir);
+    expect(files).toEqual(v.fileStore.files);
   });
   it('estimate', () => {
     for (const c of load('estimate')) {

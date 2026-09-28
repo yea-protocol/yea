@@ -130,6 +130,25 @@ const plans = {
       undoWindow: 60,
     },
   },
+  refundEur: {
+    tool: { name: 'refund', revert: true },
+    plan: {
+      summary: 'Refund 10.00 EUR to Chen',
+      effects: [{ op: 'create', target: 'refund', detail: '10.00 EUR' }],
+      uses: { spend: { amount: 1000, scale: 2, unit: 'EUR' } },
+      risk: 'low',
+      undoWindow: 60,
+    },
+  },
+  noRevert: {
+    tool: { name: 'reschedule' },
+    plan: {
+      summary: 'Move standup (the tool has no revert)',
+      effects: [{ op: 'update', target: 'event/e1' }],
+      risk: 'low',
+      undoWindow: 60,
+    },
+  },
   unrated: {
     tool: { name: 'reschedule', revert: true },
     plan: {
@@ -211,6 +230,35 @@ const strangerGrant = await P.issueGrant({
   nonce: 'pol2',
   caveats: [{ can: ['*'] }],
 });
+const policyFor = (nonce, caveats, to = server.public) =>
+  P.issueGrant({ principal, to, iat: now, nonce, caveats });
+const grants = {
+  noCan: await policyFor('pol3', [{ risk: 'low' }]),
+  otherSvc: await policyFor('pol4', [
+    { can: ['reschedule'] },
+    { svc: [other.public] },
+  ]),
+  intentOnly: await policyFor('pol5', [
+    { can: ['reschedule'] },
+    { verbs: ['INTENT'] },
+  ]),
+  otherHolder: await policyFor('pol6', [{ can: ['reschedule'] }], other.public),
+  lowCeiling: await policyFor('pol7', [
+    { can: ['reschedule'] },
+    { risk: 'low' },
+  ]),
+  repeated: await policyFor('pol8', [
+    { can: ['send_email'] },
+    { total: { of: 'emails', max: 3 } },
+    { total: { of: 'emails', max: 2 } },
+  ]),
+  malformedTotal: await policyFor('pol9', [
+    { can: ['send_email'] },
+    { total: { of: 'emails', max: -1 } },
+  ]),
+  garbage: 'pg1.bm9wZQ',
+};
+const repeatedId = await P.sha256(P.decodeGrant(grants.repeated)[0].s);
 const base = {
   grant: policyGrant,
   principal: principal.public,
@@ -352,6 +400,96 @@ const decideCases = [
     { kind: 'ask', why: "send_email can't be undone" },
   ],
   ['no plans', [], {}, {}, { kind: 'nothing' }],
+  [
+    'a policy that names no tools asks',
+    ['move'],
+    { grant: grants.noCan },
+    {},
+    {
+      kind: 'ask',
+      why: "the signed policy names no tools, so it doesn't let reschedule run without asking",
+    },
+  ],
+  [
+    'an undecodable policy asks with the grant reason',
+    ['move'],
+    { grant: grants.garbage },
+    {},
+    { kind: 'ask' },
+  ],
+  [
+    'a policy for another server asks',
+    ['move'],
+    { grant: grants.otherSvc },
+    {},
+    { kind: 'ask' },
+  ],
+  [
+    'a policy for INTENT only asks',
+    ['move'],
+    { grant: grants.intentOnly },
+    {},
+    { kind: 'ask' },
+  ],
+  [
+    'a policy issued to another key asks',
+    ['move'],
+    { grant: grants.otherHolder },
+    {},
+    { kind: 'ask' },
+  ],
+  [
+    'over the risk ceiling asks',
+    ['unrated'],
+    { grant: grants.lowCeiling },
+    {},
+    { kind: 'ask', why: 'risk medium exceeds ceiling low' },
+  ],
+  [
+    'an undo window without a revert asks',
+    ['noRevert'],
+    {},
+    {},
+    { kind: 'ask', why: "reschedule can't be undone" },
+  ],
+  [
+    'a repeated total reserves once with the smallest max',
+    ['emailUndoable'],
+    { grant: grants.repeated },
+    { emails: { amount: 1 } },
+    {
+      kind: 'run',
+      planHash: 'emailUndoable',
+      reserve: [
+        {
+          key: { block: repeatedId, of: 'emails' },
+          amount: '1000000000000000000',
+          max: '2000000000000000000',
+        },
+      ],
+    },
+  ],
+  [
+    'a repeated total at its smallest max asks',
+    ['emailUndoable'],
+    { grant: grants.repeated },
+    { emails: { amount: 2 } },
+    { kind: 'ask' },
+  ],
+  [
+    'a unit mismatch asks',
+    ['refundEur'],
+    {},
+    {},
+    { kind: 'ask', why: 'spend is in EUR, but the limit is in USD' },
+  ],
+  [
+    'a malformed total in the policy asks',
+    ['emailUndoable'],
+    { grant: grants.malformedTotal },
+    {},
+    { kind: 'ask' },
+  ],
 ];
 const decideOut = [];
 
@@ -361,7 +499,7 @@ for (const [name, keys, policyChange, used, want, at = now] of decideCases) {
   const d = await P.decide(
     hps,
     policy,
-    (k) => (k.block === blockId && used[k.of] ? P.exact(used[k.of]) : 0n),
+    (k) => (used[k.of] ? P.exact(used[k.of]) : 0n),
     at,
   );
   const got = {
@@ -414,6 +552,13 @@ const phrases = [
   ['old nav', 'old-nav', false],
   [' approve', 'approve', false],
   ['', 'approve', false],
+  ['', '', false],
+  [' ', ' \t', false],
+  ['\u0085approve', 'approve', false],
+  ['approve\u001f', 'approve', false],
+  ['İSTANBUL', 'istanbul', false],
+  ['ΟΔΟΣ', 'οδος', true],
+  ['ὈΔΥΣΣΕΎΣ', 'ὀδυσσεύς', true],
 ].map(([typed, phrase, match]) => {
   must(
     `phrase ${JSON.stringify(typed)}`,
@@ -443,10 +588,29 @@ for (const [name, keys, why, policyChange] of [
     'spend over the per-commit limit of 25.00 USD',
     {},
   ],
+  [
+    'a denied plan is listed apart',
+    ['refund', 'customer'],
+    'spend over the per-commit limit of 25.00 USD',
+    {},
+  ],
+  [
+    'nothing to offer',
+    ['deleteHigh', 'customer'],
+    'risk is high, which needs approval outside the chat',
+    {},
+  ],
+  [
+    'an empty phrase falls back to approve',
+    ['deleteBranch'],
+    "delete_branch can't be undone",
+    {},
+  ],
 ]) {
   const hps = await Promise.all(keys.map(hashed));
   const policy = { ...base, ...policyChange };
-  const f = P.buildForm(hps, why, policy, phraseFor);
+  const phraseOf = forms.length >= 5 ? () => '  ' : phraseFor;
+  const f = P.buildForm(hps, why, policy, phraseOf);
 
   forms.push({
     name,
@@ -459,12 +623,18 @@ for (const [name, keys, why, policyChange] of [
     })),
     why,
     policy: { outOfBand: policy.outOfBand, deny: policy.deny },
-    phrases: Object.fromEntries(hps.map((hp) => [hp.planHash, phraseFor(hp)])),
+    phrases: Object.fromEntries(hps.map((hp) => [hp.planHash, phraseOf(hp)])),
     expect: f,
   });
 }
 
 must('held back', forms[1].expect.offered.length, 1);
+must('nothing to offer', forms[4].expect, null);
+must(
+  'empty phrase',
+  forms[5].expect.requestedSchema.properties.confirm.description,
+  'Type "approve" to approve.',
+);
 
 // ---- state (§4) ----
 const inputHash = await P.inputHashOf(input);
@@ -507,6 +677,7 @@ for (const [
   answer,
   policyChange,
   want,
+  phraseOverride,
 ] of [
   [
     'the right phrase runs',
@@ -625,6 +796,26 @@ for (const [
     { outOfBand: 'low' },
     { kind: 'out-of-band', plan: 'refund' },
   ],
+  [
+    'an empty phrase falls back to approve: an empty answer asks again',
+    ['refund'],
+    ['refund'],
+    1,
+    { action: 'accept', content: { confirm: '' } },
+    {},
+    { kind: 'ask-again', why: 'type "approve" exactly to approve', round: 2 },
+    () => ' ',
+  ],
+  [
+    'an empty phrase falls back to approve: approve runs',
+    ['refund'],
+    ['refund'],
+    1,
+    { action: 'accept', content: { confirm: 'approve' } },
+    {},
+    { kind: 'run', plan: 'refund' },
+    () => ' ',
+  ],
 ]) {
   const offered = await Promise.all(offeredKeys.map(hashed));
   const recomputed = await Promise.all(recomputedKeys.map(hashed));
@@ -644,7 +835,12 @@ for (const [
       }
     : answer;
   const policy = { ...base, ...policyChange };
-  const v = P.judgeAnswer(state, ans, { recomputed, policy, phraseFor });
+  const phraseOf = phraseOverride ?? phraseFor;
+  const v = P.judgeAnswer(state, ans, {
+    recomputed,
+    policy,
+    phraseFor: phraseOf,
+  });
   const got = {
     ...v,
     ...(v.plan
@@ -666,7 +862,7 @@ for (const [
     })),
     policy: { outOfBand: policy.outOfBand, deny: policy.deny },
     phrases: Object.fromEntries(
-      recomputed.map((hp) => [hp.planHash, phraseFor(hp)]),
+      recomputed.map((hp) => [hp.planHash, phraseOf(hp)]),
     ),
     expect: { ...v, ...(v.plan ? { plan: v.plan.planHash } : {}) },
   });
@@ -736,6 +932,67 @@ must(
   refundHp.planHash,
 );
 
+// A stored consent may run only its own plan: a consent grant with `only` and `exp`, signed by
+// the pinned principal and issued to the server.
+const consentFor = (hash, by = principal, exp = now + 600) =>
+  P.issueGrant({
+    principal: by,
+    to: server.public,
+    iat: now,
+    nonce: `c-${hash.slice(0, 6)}-${exp}`,
+    caveats: [
+      { svc: [server.public] },
+      { verbs: ['COMMIT'] },
+      { can: ['refund'] },
+      { only: hash },
+      { exp },
+    ],
+  });
+const consents = [];
+
+for (const [name, grant, at, want] of [
+  ['a consent for this plan', await consentFor(refundHp.planHash), now, true],
+  [
+    'the policy grant copied into the store',
+    policyGrant,
+    now,
+    'not a consent for this plan',
+  ],
+  [
+    'a consent for another plan',
+    await consentFor('OTHER'),
+    now,
+    'not a consent for this plan',
+  ],
+  [
+    'an expired consent',
+    await consentFor(refundHp.planHash),
+    now + 600,
+    'grant has expired',
+  ],
+  [
+    'a consent from another principal',
+    await consentFor(refundHp.planHash, other),
+    now,
+    'grant is issued by a principal this service does not trust',
+  ],
+  ['not a grant at all', 'pg1.bm9wZQ', now, 'not a consent for this plan'],
+]) {
+  const r = await P.checkJobConsent(grant, {
+    hp: { ...refundHp, plan: { ...refundHp.plan, apply: () => null } },
+    policy: { principal: principal.public, server: server.public },
+    now: at,
+  });
+
+  must(name, r.ok ? true : r.why, want);
+  consents.push({
+    name,
+    grant,
+    now: at,
+    expect: r.ok ? { ok: true, id: r.id } : { ok: false, why: r.why },
+  });
+}
+
 // ---- FileStore layout (§8) ----
 const dir = mkdtempSync(join(tmpdir(), 'yea-store-'));
 const store = new FileStore(dir);
@@ -778,6 +1035,16 @@ export const approval = {
   states,
   judge,
   tightening,
+  consents: {
+    plan: {
+      tool: refundHp.tool,
+      plan: refundHp.plan,
+      planHash: refundHp.planHash,
+      risk: refundHp.risk,
+      undoable: refundHp.undoable,
+    },
+    cases: consents,
+  },
   consentCode: {
     server: server.public,
     principal: principal.public,

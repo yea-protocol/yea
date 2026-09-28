@@ -7,31 +7,44 @@ import {
   atLeast,
   type HashedPlan,
   type Policy,
+  planHashOf,
   planPreimage,
 } from './approval.js';
 import { b64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
-import { randomId, sha256 } from './crypto.js';
+import { type KeyPair, randomId, sha256 } from './crypto.js';
+import { consentGrant, decodeConsentCode } from './grants.js';
 import { effectLine, fmtDuration } from './lens.js';
-import type { ConsentRequest } from './types.js';
-import { fmtUses } from './uses.js';
+import type { ConsentRequest, Effect } from './types.js';
+import { fmtUses, isUses } from './uses.js';
 
 // ---- the confirmation phrase (§3) ----
 
 /** Exactly these are stripped from both ends; not trim()/strip(), which disagree. */
-const EDGE = /^[\t\n\v\f\r  ﻿]+|[\t\n\v\f\r  ﻿]+$/g;
+const EDGE = /^[\t\n\v\f\r \u00a0\ufeff]+|[\t\n\v\f\r \u00a0\ufeff]+$/g;
 
 export const normalizePhrase = (s: string) =>
   s.normalize('NFC').replace(EDGE, '').toLowerCase();
 
+/** An empty phrase never matches, so an empty or auto-filled answer can't approve. */
 export const phraseMatches = (typed: unknown, phrase: string) =>
   typeof typed === 'string' &&
+  normalizePhrase(phrase) !== '' &&
   normalizePhrase(typed) === normalizePhrase(phrase);
 
 /** The phrase a person types to approve this plan: the tool's, or `approve`. */
 export type PhraseFor = (hp: HashedPlan) => string;
 
 export const DEFAULT_PHRASE = 'approve';
+
+/** A phrase that is empty once normalized falls back to `approve`. */
+export const effectivePhrase = (phrase: string) =>
+  normalizePhrase(phrase) === '' ? DEFAULT_PHRASE : phrase;
+
+const withFallback =
+  (phraseFor: PhraseFor): PhraseFor =>
+  (hp) =>
+    effectivePhrase(phraseFor(hp));
 
 // ---- the form (§3) ----
 
@@ -65,35 +78,54 @@ function planText(n: number, hp: HashedPlan, phrase: string | null): string[] {
   ];
 }
 
-/** The form-mode elicitation for these plans; plans at or above `outOfBand` aren't offered. */
+/** `[n], [m]` for the listed plans, numbered as in the message. */
+const numbers = (plans: HashedPlan[], some: HashedPlan[]) =>
+  some.map((hp) => `[${plans.indexOf(hp) + 1}]`).join(', ');
+
+/**
+ * The form-mode elicitation for these plans (§3). Denied plans and plans at or above
+ * `outOfBand` are listed but not offered. Null when nothing can be offered: the caller then
+ * fails closed with consent codes (§6).
+ */
 export function buildForm(
   plans: HashedPlan[],
   why: string,
   policy: Pick<Policy, 'outOfBand' | 'deny'>,
   phraseFor: PhraseFor,
-): ApprovalForm {
-  const offered = plans.filter(
-    (hp) =>
-      !atLeast(hp.risk, policy.outOfBand) && !policy.deny.includes(hp.tool),
+): ApprovalForm | null {
+  const phrase = withFallback(phraseFor);
+  const denied = plans.filter((hp) => policy.deny.includes(hp.tool));
+  const outside = plans.filter(
+    (hp) => !denied.includes(hp) && atLeast(hp.risk, policy.outOfBand),
   );
-  const held = plans.filter((hp) => !offered.includes(hp));
+  const offered = plans.filter(
+    (hp) => !denied.includes(hp) && !outside.includes(hp),
+  );
+
+  if (!offered.length) {
+    return null;
+  }
+
   const message = [
     `Approval needed: ${why}.`,
     '',
     ...plans.flatMap((hp, i) =>
-      planText(i + 1, hp, offered.includes(hp) ? phraseFor(hp) : null),
+      planText(i + 1, hp, offered.includes(hp) ? phrase(hp) : null),
     ),
-    ...(held.length
+    ...(outside.length
       ? [
           '',
-          `Not offered here (approve outside the chat): ${held.map((hp) => `[${plans.indexOf(hp) + 1}]`).join(', ')}`,
+          `Not offered here (approve outside the chat): ${numbers(plans, outside)}`,
         ]
+      : []),
+    ...(denied.length
+      ? ['', `Never allowed by your policy: ${numbers(plans, denied)}`]
       : []),
   ].join('\n');
 
   return {
     message,
-    requestedSchema: formSchema(offered, phraseFor),
+    requestedSchema: formSchema(offered, phrase),
     offered: offered.map((hp) => hp.planHash),
   };
 }
@@ -258,6 +290,8 @@ export function judgeAnswer(
   answer: ApprovalAnswer,
   { recomputed, policy, phraseFor }: JudgeContext,
 ): Verdict {
+  const phrase = withFallback(phraseFor);
+
   if (answer.action !== 'accept') {
     return { kind: 'not-approved' };
   }
@@ -282,9 +316,9 @@ export function judgeAnswer(
     return { kind: 'out-of-band', plan: hp };
   }
 
-  return phraseMatches(answer.content?.confirm, phraseFor(hp))
+  return phraseMatches(answer.content?.confirm, phrase(hp))
     ? { kind: 'run', plan: hp }
-    : again(state, `type "${phraseFor(hp)}" exactly to approve`);
+    : again(state, `type "${phrase(hp)}" exactly to approve`);
 }
 
 // ---- consent codes for `yea approve` (§6) ----
@@ -312,8 +346,81 @@ export function jobConsentCode(o: {
   };
   const detail = {
     job: planPreimage(o.hp.tool, o.input, o.hp.plan, o.hp.risk),
-    phrase: o.phrase,
+    phrase: effectivePhrase(o.phrase),
   };
 
   return `pc1.${b64u(utf8(canonical({ ...consent, detail })))}`;
 }
+
+/** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */
+export interface JobConsent {
+  consent: ConsentRequest;
+  job: Record<string, unknown> & {
+    tool: string;
+    summary: string;
+    effects: Effect[];
+  };
+  phrase: string;
+  planHash: string;
+}
+
+function isJob(j: unknown): j is JobConsent['job'] {
+  const o = j as Partial<JobConsent['job']> | null;
+
+  return (
+    !!o &&
+    typeof o.tool === 'string' &&
+    typeof o.summary === 'string' &&
+    Array.isArray(o.effects) &&
+    (o.uses === undefined || isUses(o.uses))
+  );
+}
+
+/**
+ * Read a job consent code for signing (§6). Everything shown or signed is checked: the plan
+ * hash is recomputed from the plan, the tool must be the plan's, and it must not have expired.
+ * The expiry is capped at `CONSENT_TTL` from now, whatever the code asks for.
+ */
+export async function readJobConsent(
+  code: string,
+  now: number,
+): Promise<JobConsent> {
+  const c = decodeConsentCode(code);
+  const d = c.detail as unknown as
+    | { job?: unknown; phrase?: unknown }
+    | undefined;
+  const job = d?.job;
+
+  if (!isJob(job) || typeof d?.phrase !== 'string') {
+    throw new Error('not a job consent code');
+  }
+
+  const planHash = await planHashOf(job);
+
+  if (
+    planHash !== c.hash ||
+    planHash !== c.proposal ||
+    job.tool !== c.capability
+  ) {
+    throw new Error("this consent code's plan doesn't match its hash");
+  }
+
+  if (now >= c.expires) {
+    throw new Error(
+      'this consent code has expired; call the tool again for a fresh one',
+    );
+  }
+
+  const { detail: _d, ...consent } = c;
+
+  return {
+    consent: { ...consent, expires: Math.min(c.expires, now + CONSENT_TTL) },
+    job,
+    phrase: effectivePhrase(d.phrase),
+    planHash,
+  };
+}
+
+/** The consent grant for a read job consent: signed by the principal, issued to the server. */
+export const signJobConsent = (principal: KeyPair | string, j: JobConsent) =>
+  consentGrant({ principal, agent: j.consent.service, consent: j.consent });
