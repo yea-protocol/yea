@@ -83,12 +83,12 @@ def sign_proof(key: KeyPair, aud: str, verb: str, target: str, ts: int) -> dict:
 def verify_proof(proof: object, aud: str, verb: str, target: str, now: int) -> str | None:
     """Check a proof. Returns None if valid, else a one-sentence reason."""
     if not isinstance(proof, dict):
-        return "`proof` is missing"
+        return "missing or malformed proof"
     key, ts, sig = proof.get("key"), proof.get("ts"), proof.get("sig")
     if not isinstance(key, str) or not isinstance(sig, str) or type(ts) is not int:
-        return "`proof` needs key, ts and sig"
+        return "missing or malformed proof"
     if abs(now - ts) > PROOF_SKEW:
-        return f"proof timestamp is {abs(now - ts)}s from server time (max {PROOF_SKEW}s)"
+        return f"proof timestamp is outside the {PROOF_SKEW}s window"
     if not verify(key, proof_message(aud, verb, target, ts), sig):
-        return "proof signature does not verify"
+        return "proof signature is invalid"
     return None

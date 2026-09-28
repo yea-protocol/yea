@@ -42,7 +42,7 @@ async def authorize(
             raise YeaError(
                 "unauthorized",
                 f"{verb} needs a grant from your principal",
-                fix=[fix("ask your principal to issue a grant and send it in `grants` with a `proof`")],
+                fix=[fix("ask your principal to issue a grant (yea grant) and send it in `grants` with a `proof`")],
             )
         return None
     if not isinstance(grants, list) or not all(isinstance(g, str) for g in grants):
@@ -62,7 +62,8 @@ async def authorize(
     for g in grants:
         c = verify_grant(g, svc.trust, frame["proof"]["key"], ctx)
         if principal and c.principal and c.principal != principal:
-            checks.append(Verification(False, "forbidden", "grant is from a different principal than this proposal's", c.grant))
+            why = "grant is from a different principal than this proposal's"
+            checks.append(Verification(False, "forbidden", why, c.grant, reason=why))
             continue
         if c.ok:
             return c
@@ -75,10 +76,15 @@ async def authorize(
     if consent and proposal:
         raise YeaError(
             "consent_required",
-            f"{consent.message}; your principal must approve this exact proposal",
+            f"{_why(consent)}; your principal must approve this exact proposal",
             consent=consent_request(svc, proposal, consent.principal),
         )
     forbidden = next((c for c in checks if c.code == "forbidden"), None)
     if forbidden:
-        raise YeaError("forbidden", forbidden.message, need=forbidden.need)
-    raise YeaError("unauthorized", checks[0].message)
+        raise YeaError("forbidden", _why(forbidden), need=forbidden.need)
+    raise YeaError("unauthorized", _why(checks[0]))
+
+
+def _why(c: Verification) -> str:
+    """A failed check in the TS core's words (``reason``, pinned by the conformance vectors)."""
+    return c.reason or c.message

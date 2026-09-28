@@ -183,6 +183,8 @@ def test_consent_flow_and_spend_accounting():
         big = (await c.intent("shop.order", {"sku": "m002", "qty": 4})).proposals[0]  # 6000 > per 5000
         r = await c.commit(big)
         assert r.code == "consent_required"
+        assert r.message.endswith("; your principal must approve this exact proposal")
+        assert not r.message.startswith("the proposal exceeds")  # the TS core's reason, not Python's summary
         assert r.consent["hash"] == big["hash"] and r.consent["principal"] == PRINCIPAL.public
         assert f"  consent: principal must approve {big['hash']}" in r.lens
         ok = await c.commit(big, grants=[consent_grant(PRINCIPAL, AGENT.public, r.consent)])
@@ -631,11 +633,14 @@ def test_oversized_frames_and_inflight_cap_over_tcp():
             await writer.drain()
             r1, r2 = [json.loads(await reader.readline()) for _ in range(2)]
             assert r1["code"] == "bad_frame" and r2["re"] == "after" and r2["kind"] == "BRIEF"  # still usable
+            assert (r1["id"], r1["message"]) == ("s_err", "frame exceeds 1 MiB")  # as ts/src/node.ts
             for i in range(65):
                 writer.write(json.dumps({"yea": 1, "id": f"q{i}", "verb": "ASK", "capability": "x.slow"}).encode() + b"\n")
             await writer.drain()
             over = json.loads(await reader.readline())
             assert over["re"] == "q64" and over["code"] == "limit"
+            assert (over["id"], over["message"], over["retry"]) == (
+                "s_busy", "more than 64 requests in flight on this connection", 1)
             gate.set()
             done = [json.loads(await reader.readline()) for _ in range(64)]
             assert {d["re"] for d in done} == {f"q{i}" for i in range(64)}
@@ -763,3 +768,34 @@ def test_the_http_budget_query_reads_like_a_frame_budget():
             http.close()
 
     run(go())
+
+
+def test_proof_failures_read_as_in_ts():
+    """verify_proof's reasons are the TS core's strings (ts/src/proof.ts), as agents see them (#145)."""
+    from yea.keys import sign_proof, verify_proof
+
+    now = 1_790_000_000
+    good = sign_proof(AGENT, "s", "ASK", "x", now)
+    assert verify_proof(good, "s", "ASK", "x", now) is None
+    assert verify_proof(None, "s", "ASK", "x", now) == "missing or malformed proof"
+    assert verify_proof({**good, "ts": "1"}, "s", "ASK", "x", now) == "missing or malformed proof"
+    assert verify_proof(good, "s", "ASK", "x", now + 301) == "proof timestamp is outside the 300s window"
+    assert verify_proof(good, "s", "ASK", "y", now) == "proof signature is invalid"
+
+
+def test_an_in_flight_total_refusal_names_its_measure():
+    """As ts/src/service/execute.ts: "<measure> would pass a total limit (other commits are in flight)" (#145)."""
+    from yea.grants import GrantContext, verify_grant
+    from yea.service.execute import reserve
+
+    svc = shop()
+    g = grant({"total": {"of": "spend", "max": 100, "scale": 2, "unit": "USD"}})
+    from yea.uses import spend
+
+    proposal = {"hash": "h", "risk": "low", "uses": {"spend": spend("0.60", "USD")}}
+    auth = verify_grant(g, [PRINCIPAL.public], AGENT.public, GrantContext("shop.example", "COMMIT", "shop.order", 1, proposal))
+    assert auth.ok, auth.message
+    held, over = reserve(svc, proposal, auth)
+    assert held and over is None
+    held, over = reserve(svc, proposal, auth)  # 0.60 + 0.60 > 1.00
+    assert held is None and over == "spend"
