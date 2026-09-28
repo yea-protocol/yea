@@ -1,1 +1,1 @@
-{ "name": "yea-bench", "private": true, "type": "module", "dependencies": { "@yea-protocol/sdk": "*" }, "devDependencies": { "gpt-tokenizer": "^3" } }
+{ "name": "yea-bench", "private": true, "type": "module", "dependencies": { "@yea-protocol/sdk": "*" }, "devDependencies": { "gpt-tokenizer": "^4" } }
