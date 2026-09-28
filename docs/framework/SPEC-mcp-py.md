@@ -64,7 +64,7 @@ assume it.
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
-| `sub` | stdio: `lambda ctx: ""`; HTTP: required | Who is calling, from the request context. Used for the state binding and for undo. |
+| `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. It always gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly). Used for the state binding and for undo. |
 
 **Start-up refusals.** `yea()` raises, so nothing is served, when `transport="http"` has no
 `sub`; a `state_key` is passed with a `MemoryStore`; HTTP runs on a `MemoryStore` without
@@ -103,7 +103,8 @@ refuses the call.
 Registers the decorated function as a job tool. The function is the **plan** function: its
 parameters are the tool's input (as for `@server.tool()`), and it returns `list[Plan]`, a
 `clarify(...)` question, or raises. It **must not change anything**: it runs on preview, on
-every retry, and again on each round. It may declare a `Context` parameter, which it gets.
+every retry, and again on each round. It may declare a `Context` parameter: the wrapper reuses
+it (rather than adding a second one) and leaves it out of `input`.
 
 | Field | Meaning |
 |---|---|
@@ -123,13 +124,15 @@ keyword-only `ctx: Context`, with matching `__annotations__` (the SDK finds the 
 parameter through `typing.get_type_hints`, so both are needed) and the return annotation
 `CallToolResult`. The listed schema then shows `preview`, the SDK validates the rest, and the
 wrapper takes `preview` off before calling the plan function. A plan function with its own
-`preview` parameter, or with `*args`/`**kwargs`, fails registration.
+`preview` parameter, or with `*args`/`**kwargs`, fails registration. A tool with background
+tasks enabled (FastMCP `task=True`) is refused too, until that path is checked.
 
 **What `input` is.** The SDK hands the wrapper validated Python objects (a pydantic model, a
 `date`, an enum). The approval core needs JSON, for the plan hash, the consent code, the
 receipt and `revert`. So `input` is each validated argument dumped in JSON mode, with the
-argument's own type (`TypeAdapter(annotation).dump_python(value, mode="json")`), keyed by
-name. A `float` stays a JSON number, which canonical JSON refuses, so such a call fails closed
+argument's own type (`TypeAdapter(annotation).dump_python(value, mode="json", by_alias=True)`),
+keyed by the parameter's name, so `revert` sees the wire shape. Canonical JSON takes integral
+floats (`5.0` hashes as `5`) but refuses non-integral ones, so a call with `5.5` fails closed
 with the core's "use a string or an integer" message (SPEC-approval §1).
 
 ### `approvals.guard(server, name, **config)`
@@ -144,25 +147,35 @@ attached to the wrong server: the middleware only acts on `server`, and only for
 on it.
 
 - It runs inside the request-state boundary (the SDK puts its own middleware first), so it sees
-  plaintext state. It runs before argument validation, on the raw `tools/call` params.
+  plaintext `params["requestState"]` and the raw `params["inputResponses"]`. It runs before
+  params are validated: a non-object `arguments`, or a `preview` that isn't a JSON boolean, is an
+  `is_error` result, and the answer is checked with `ElicitResult.model_validate`.
 - It takes `preview` off the arguments (`call_next(replace(ctx, params=...))`), so the original
-  tool never sees it. `preview` must be a JSON boolean; anything else is an error.
-- On `tools/list` it adds `preview` to each guarded tool's listed schema.
+  tool never sees it.
+- On `tools/list` it adds `preview` to each guarded tool's listed schema, on a copy of the
+  result.
+- **What it learns from the listing.** On the first `tools/list` or guarded call it reads the
+  server's public `await server.list_tools()`: a guarded tool whose own schema has a `preview`
+  property is refused (the call fails closed), and a tool with an `outputSchema` gets decision
+  6's error results.
 - `describe` gets the raw arguments with `preview` taken off, before the tool validates them,
   and must treat them as untrusted. The plan hash binds that raw input, so what the person
   approves is exactly what the tool then receives (the SDK may coerce `"2"` to `2`, which
   doesn't change what was approved, but a `describe` that doesn't coerce the same way can show
   a misleading summary). Validating through the tool's own argument model would fix that, but
   it's a private SDK API (ask first).
-- The original handler runs through `call_next`, which returns a `CallToolResult`. That is the
-  plan's `apply`: its result is returned unchanged, with the receipt in
-  `_meta["dev.yea/receipt"]`. `is_error: true` or an `InputRequiredResult` counts as a failure:
-  reservations are released and no receipt is written.
-- **Tools that ask their own questions** (through `Resolve`/`Elicit` or their own
-  `InputRequiredResult`) are not supported under `guard` in v0: their state has no `yea` key, so
-  the next round would be refused, and once the handler has run, "nothing changed" can't be
-  promised. `guard()` raises for a tool that has resolver parameters; a tool that returns its own
-  `InputRequiredResult` at run time counts as a failure.
+- The original handler runs through `call_next`, which returns the **wire mapping** for
+  `tools/call`, not a `CallToolResult` (`{"content", "isError", "structuredContent", "_meta",
+  …}`, plus `"resultType"` on 2026). That is the plan's `apply`. A result with `isError: true`,
+  or one that `mcp_types.methods.is_input_required` recognises, counts as a failure:
+  reservations are released and no receipt is written. Otherwise its result is returned
+  unchanged, as a copy with the receipt added under `_meta["dev.yea/receipt"]`.
+- **Tools that ask their own questions** are not supported under `guard` in v0. On 2026 a
+  tool's own `InputRequiredResult` (its resolvers run before its body) counts as a failure at
+  run time, since its state would have no `yea` key and "nothing changed" can't be promised once
+  it ran. On 2025 a `Resolve` asks in the call after our approval and completes, which is
+  acceptable. There's no public way to see resolver parameters at `guard()` time, so there's no
+  registration check.
 
 `server.middleware` is marked provisional in `mcp` 2.x, so it is a seam (below). The SDK's
 `Extension.intercept_tool_call` was the alternative, but extensions are fixed when the server is
@@ -221,14 +234,14 @@ and §6, and the same order as `mcp-ts`):
     - `out-of-band`: step 9 for that plan;
     - `denied`, `refuse`, `not-approved`: a plain result saying so.
 11. **Run.** Call `apply()`.
-    - If it raises (for `guard`: or returns an error or an `InputRequiredResult`): `release_all`
-      and say the approval was used and nothing changed.
+    - If it raises (for `guard`: or returns a mapping with `isError: true` or an input-required
+      result): `release_all` and say the approval was used and nothing changed.
     - If it succeeds: `settle_all`, then `put_receipt` a job receipt with `id =
       new_receipt_id()`, `service`, `proposal = planHash`, `capability = tool`, `summary`,
       `at`, `effects`, `uses`, `undo = {"until": now + undo_window}` when undoable (else
       `None`), `tool`, `input`, `planHash`, `sub` and `result`. Return the receipt as Lens
-      text with `structured_content: {"receipt", "result"}`, or for `guard`, the original
-      result with the receipt in `_meta`.
+      text with `structured_content: {"receipt", "result"}`, or for `guard`, a copy of the
+      original result mapping with the receipt in `_meta`.
     - If `settle_all` or `put_receipt` fails after `apply()` succeeded: say the action happened
       and that undo isn't available.
 
@@ -281,9 +294,12 @@ seam:
 - Capabilities come from `session.client_capabilities`, as above (not `client_params`, which is
   `None` on 2026 when a client omits `clientInfo`).
 - **Transforms and tasks.** A transformed tool calls its parent's `run` directly and skips
-  middleware, and a server-level transform can rename a tool. `guard()` and `job()` refuse a
-  tool that is transformed, or reached through a transform, and a tool with background tasks
-  (`task=True`) enabled, until those paths are checked.
+  middleware, and a transform (added later, or by a parent server that mounts this one) can
+  rename a tool. So `on_call_tool` resolves the called tool and refuses it when it is a
+  `TransformedTool` whose `parent_tool` chain reaches a guarded tool. `job()` needs no such
+  check: its routine is inside the tool function, which `parent_tool.run` still calls. A tool
+  with background tasks enabled (`task_config`, readable at registration) is refused by `job()`
+  and `guard()` until that path is checked.
 
 ## Results and annotations
 
@@ -309,7 +325,8 @@ Each gets its own test and a note in the code:
 - the synthesized `__signature__`/`__annotations__` that `func_metadata` and
   `find_context_parameter` read, and the JSON-mode dump of validated arguments;
 - `server.middleware` (provisional in `mcp` 2.x): appended after construction, running inside
-  the request-state boundary, rewriting params, and post-processing `tools/list`;
+  the request-state boundary, rewriting params, post-processing `tools/list`, and `call_next`
+  returning the wire mapping for `tools/call`;
 - the boundary's binding and plaintext hand-off (`ctx.request_state`, `params["requestState"]`);
 - `session.elicit_form` on 2025 clients, `NoBackChannelError`, and the 2025 rejection of
   `InputRequiredResult`;
@@ -357,14 +374,16 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
   from another server sharing the store;
 - `guard` wraps an existing tool: the original runs only once approved, its result passes
   through with the receipt in `_meta`, and an output-schema tool's own results are errors. The
-  original never sees `preview`;
-- a job whose input holds a pydantic model, a `date` and an enum gets a stable plan hash, and
-  one with a `float` fails closed;
+  original never sees `preview`. An original that returns `is_error` writes no receipt and
+  releases its reservations, and a tool with its own `preview` argument is refused;
+- a job whose input holds a pydantic model (with aliases), a `date` and an enum gets a stable
+  plan hash, and one with `5.5` fails closed;
 - `token_subject` returns `""` for a token with no subject;
 - the 2025 in-call path takes step 9 on `NoBackChannelError`;
 - the start-up and per-call refusals listed under `yea()`;
 - a legacy stateless HTTP request takes the consent-code path;
-- FastMCP: a transformed or task-enabled tool is refused by `job()` and `guard()`.
+- FastMCP: a transform over a guarded tool is refused at call time, and a task-enabled tool is
+  refused by `job()` and `guard()`.
 
 Security cases in `test_security.py`, the approval core's list from the MCP side; any fix that
 lands in the SDK core also gets its regression test in the core's security tests (repo rule 3):
