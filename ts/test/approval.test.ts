@@ -175,3 +175,23 @@ describe('undo (SPEC-approval §7)', () => {
     ).toBe('undone');
   });
 });
+
+describe('assertIntegers (SPEC-approval §1)', () => {
+  it('passes integer-only inputs and names the first other number', () => {
+    expect(() =>
+      P.assertIntegers({ n: 3, deep: [{ ok: -2 }], s: '1.5' }),
+    ).not.toThrow();
+    expect(() => P.assertIntegers({ deep: [{ x: 1.5 }] })).toThrow(
+      'input.deep.0.x is 1.5: job inputs can only hold safe integers',
+    );
+  });
+});
+
+describe('isMemoryStore', () => {
+  it('reads the brand, not the class, so another SDK copy’s MemoryStore still counts', () => {
+    expect(P.isMemoryStore(new P.MemoryStore())).toBe(true);
+    expect(P.isMemoryStore({ yeaStore: 'memory' })).toBe(true);
+    expect(P.isMemoryStore(new FileStore(tmp()))).toBe(false);
+    expect(P.isMemoryStore(null)).toBe(false);
+  });
+});

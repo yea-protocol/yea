@@ -1,4 +1,5 @@
 export {
+  assertIntegers,
   atLeast,
   checkJobConsent,
   type Decision,
@@ -126,6 +127,7 @@ export {
 
 export {
   type ApprovalStore,
+  isMemoryStore,
   type JobReceipt,
   type LedgerKey,
   ledgerId,

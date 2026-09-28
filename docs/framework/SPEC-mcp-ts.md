@@ -66,10 +66,10 @@ while keys, store and codec live in the one `yea()` context.
 |---|---|---|
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file and appears in consent codes. |
 | `transport` | required | `'stdio'` or `'http'`. Picks the defaults below. |
-| `store` | `FileStore` for stdio, `MemoryStore` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
+| `store` | `FileStore` for stdio (`YEA_STORE`, else `~/.yea/store`, the store `yea approve` writes to), `MemoryStore` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `singleProcess` | `false` | HTTP only: a promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
-| `serverKey` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run with `O_EXCL`, mode `0600`, in a `0700` directory. A key file that is a symlink, or readable by others, is refused. Its public key is the service id, and the holder of policy and consent grants. |
-| `principal` | `readPinnedKey()` (`YEA_PRINCIPAL_PUB`) | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
+| `serverKey` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run, mode `0600`, in a `0700` directory: written to a temp file and linked into place (which fails if the key exists, like `O_EXCL`), so a concurrent reader never sees an empty key. It is opened with `O_NOFOLLOW` and checked on the open file: a symlink, a file another user owns, or one readable by others is refused, and so is a key directory another user owns or others can write. Its public key is the service id, and the holder of policy and consent grants. |
+| `principal` | `readPinnedKey()` (`YEA_PRINCIPAL_PUB`) | The pinned principal public key (`ed25519:…`). Passed as an option, it's taken as the author's code gives it, without the file check. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed: the consent-code result then carries no codes and says why. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call, so a new grant applies without a restart. |
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `readTightening`: `deny` is the union of both, and `outOfBand` the lower (stricter) of the two. |
 | `codec` | created from `stateKey` | An existing `createRequestStateCodec` result, for a server that already uses one. |
@@ -83,11 +83,21 @@ while keys, store and codec live in the one `yea()` context.
   the same nonce once;
 - HTTP runs on a `MemoryStore` without `singleProcess: true`;
 - `name` is invalid;
-- the key file is unsafe.
+- the key file is unsafe;
+- both `codec` and `stateKey` are passed.
 
-**Per-call refusals.** `sub` returning `''` on HTTP refuses the call. A policy with a `total`
-on a `MemoryStore` with `singleProcess: false` refuses too. The policy is read on every call,
-so so is this check.
+**Per-call refusals.** `sub` returning `''` on HTTP refuses the call. A `total` on a
+`MemoryStore` needs every request in one process: stdio is one process (the totals last as long
+as it does), and HTTP promises it with `singleProcess: true`, which the start-up refusal above
+requires, so there is no per-call check.
+
+**MemoryStore and consent codes.** `yea approve` writes consents to a `FileStore`, which a
+`MemoryStore` never reads. So on a `MemoryStore` (HTTP's default) the consent-code result
+carries no codes and says why, as it does without a pinned principal.
+
+A store is recognised as a `MemoryStore` by its brand (`isMemoryStore`, reading
+`yeaStore === 'memory'`), not `instanceof`, so a second copy of the SDK can't slip one past these
+refusals.
 
 **HTTP serves one person in v0.** There is one pinned principal. `sub` must return that
 person's identity from the transport's authentication (for example a subject the
@@ -95,7 +105,8 @@ authorization server puts in `authInfo.extra`). An OAuth `clientId` names an app
 person, and doesn't qualify.
 
 `approvals.serverOptions()` returns `{ requestState: { verify: codec.verify } }` for
-`new McpServer`. `codec` is `createRequestStateCodec({ key, ttlSeconds: 600, bind })` with
+`new McpServer`. `approvals.serviceId()` resolves to the server's public key, the service id
+that `yea grant --to` issues policy grants to. `codec` is `createRequestStateCodec({ key, ttlSeconds: 600, bind })` with
 ``bind = ctx => `${ctx.mcpReq.method}\0${sub(ctx)}` ``. The SDK has one `requestState`
 verifier per server, so a server whose other tools use `requestState` passes its own codec
 with `yea({ codec })`, and our state lives under the `yea` key of the payload.
@@ -131,11 +142,25 @@ the callback, so the symbol survives, and canonical JSON ignores symbol keys. `j
 `guard` call the wrapper's `jsonSchema.input` once when registering, because the SDK only
 converts it later, when it lists tools; a schema that can't convert fails registration.
 
-### `approvals.guard(tool, config)`
+### `approvals.guard(server, tool, config)`
 
 Turns a tool that's already registered into a job, without rewriting it. `tool` is the
-`RegisteredTool` that `registerTool` returned. `config` has `describe(input)`, which returns
-`{ summary, effects, uses?, risk?, undoWindow? }`, plus the optional `revert` and `confirmWith`.
+`RegisteredTool` that `registerTool` returned, and `server` the `McpServer` it's registered
+on. `config` has `describe(input)`, which returns `{ summary, effects, uses?, risk?,
+undoWindow? }`, plus the optional `risk` (the tool's default plan risk and its `_meta` risk, as
+in `job()`), `revert` and `confirmWith`.
+
+`guard` needs the server as well as the tool: a `RegisteredTool` doesn't carry its name, and
+the name is what plans hash, `deny` lists and `can` caveats match. The server is also where the
+2025-era capabilities and the `undo` tool live. The SDK keeps its registry private, so `guard`
+finds the tool's name there through a narrow cast (an SDK seam), and throws if the tool isn't
+registered on that server.
+
+Like `job()`, `guard` throws for a tool whose input schema already has a `preview` property, or
+whose root isn't a plain object: the wrapper schema would shadow the tool's own argument. It
+throws when called, and the tool stays disabled. It also throws, before touching the tool, for
+a tool that is already a job (guarded before, or registered by `job()`): the wrapper would wrap
+itself. The name is read once, when guarding, so renaming a guarded tool isn't supported.
 
 The SDK has no tool-call middleware (typescript-sdk PR #2820 is still a draft), so `guard`
 replaces the handler:
@@ -150,12 +175,21 @@ replaces the handler:
 The original callback becomes the plan's `apply`. Its result is returned unchanged, so an
 `outputSchema` still holds. The receipt goes in `_meta['dev.yea/receipt']`. If the original
 returns `isError: true` or an `input_required` result, that counts as a failure: reservations
-are released, no receipt is written, and the result is returned as is.
+are released, no receipt is written, and the result is returned as is. The check reads the value
+the original callback returned, structurally (`isError === true`, or `resultType ===
+'input_required'`), and assumes no class: handlers often return plain literals.
+
+**A guarded tool with an `outputSchema`.** A client rejects any success result whose
+`structuredContent` doesn't match the tool's `outputSchema`; `isError: true` results are
+exempt, in both eras. So on such a tool every result the plugin itself produces is
+`isError: true`: the preview, the consent-code result, refusals and not-approved results. Only
+the original callback's own result is returned as a success.
 
 ### The `undo` tool
 
 `undo({ receipt: string })` is registered once per server, the first time a job with `revert`
-is added. It calls the core's `undoJob` with this server's service id, `sub(ctx)` and the
+is added. If the server already has a tool named `undo` that isn't ours, `job()` or `guard()`
+throws before registering anything. It calls the core's `undoJob` with this server's service id, `sub(ctx)` and the
 job's `revert`:
 
 - A receipt from another server sharing the store, or for a tool with no `revert` here, is
@@ -203,7 +237,9 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
    `round` is 1 on a first ask, and the verdict's round on an ask-again.
 9. **Fail closed.** Return `isError: true` with the plans in Lens, a `jobConsentCode` for each
    plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their terminal,
-   then call again.* The result carries `structuredContent: { plans, codes }`.
+   then call again.* The result carries `structuredContent: { plans, codes }`. Without a pinned
+   principal key, or on a `MemoryStore`, no consent can be accepted, so there are no codes, and
+   the result says why.
 10. **Answer.**
     - `checkState(state.yea, { tool, inputHash, sub, now })`, then
       `consumeOnce(state.yea.nonce, state.yea.exp)`. Any failure refuses, with one message.
@@ -219,7 +255,9 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
     - **If it throws** (for `guard`: or returns an error or `input_required`): `release` the
       reservations and say the approval was used and nothing changed (SPEC-approval §5
       step 8).
-    - **If it succeeds:** `settle`, then `putReceipt` a `JobReceipt`:
+    - **If it succeeds:** first make the result JSON-safe (a JSON round trip; one that fails,
+      such as a circular or `bigint` result, becomes `null` with a note, so the response can
+      always be sent). Then `settle`, then `putReceipt` a `JobReceipt`:
       - `id = newReceiptId()`, `service` = this server's service id;
       - `proposal = planHash`, `capability = tool`, `summary`, `at = now`, `effects`, `uses`;
       - `undo = { until: now + undoWindow }` when undoable, else `null`;
@@ -227,16 +265,22 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
 
       Return the receipt as Lens text with `structuredContent: { receipt, result }`, or for
       `guard`, the original result with the receipt in `_meta`.
-    - **If `settle` or `putReceipt` fails after `apply()` succeeded:** say the action
-      happened and that undo isn't available.
+    - **Anything after `apply()` succeeded** runs in its own `try`: a failure there (`settle`,
+      `putReceipt`, a result that couldn't be serialized) never says "nothing was run". It
+      says the action happened, and whether undo is available (the receipt was saved, and the
+      plan is undoable) or not.
 
-**Can the client ask?** This follows the SDK's own check, so we never return an
-`inputRequired` the SDK would then refuse with a `-32021` error:
-- If `ctx.mcpReq.envelope` is present (a 2026-07-28 request), use only its
+**Can the client ask?** This follows the SDK's own check (`_inputRequestCapabilityView`), so
+we never return an `inputRequired` the SDK would then refuse with a `-32021` error or a shim
+failure. The era is the server instance's negotiated revision
+(`server.server.getNegotiatedProtocolVersion()`, deprecated but what the SDK branches on), not
+whether the request carries an envelope, which a 2025 client can spoof:
+- On the 2026-07-28 era, use only the envelope's
   `['io.modelcontextprotocol/clientCapabilities']`, read through a narrow cast because 2.1.0
   types the envelope as `{}`. A missing key means no.
-- Otherwise (2025 era), use `server.server.getClientCapabilities()`, the capabilities from
-  `initialize`. It's deprecated, but it's the SDK's own source for that era.
+- On the 2025 era, use `server.server.getClientCapabilities()`, the capabilities from
+  `initialize`, whatever the request's envelope claims. It's deprecated, but it's the SDK's own
+  source for that era.
 - `elicitation.form`, or a bare `elicitation: {}`, means yes.
 - No capabilities at all (a legacy stateless HTTP request, which never saw `initialize`)
   means no.
@@ -258,6 +302,9 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
     data.
   - Refusals and failures are `isError: true` results, so the model sees the reason and the
     fix.
+  - On a guarded tool with an `outputSchema`, the plugin's own results (the preview too) are
+    `isError: true`, because clients validate success results against that schema (see
+    `guard`).
   - The one exception is a `requestState` the codec rejects: the SDK answers that with a
     JSON-RPC `-32602` error before our callback runs.
 - **Annotations.**
@@ -275,6 +322,7 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
 
 - `RegisteredTool.disable`/`update`/`enable` for `guard`. If the SDK adds middleware (PR
   #2820), `guard` moves to it.
+- The private tool registry `guard` reads a tool's name from.
 - The wrapper Standard Schema's `validate` and `jsonSchema.input`.
 - The capability lookups, including the envelope key's cast.
 - The legacy shim re-running the callback.
@@ -282,9 +330,13 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
 ## Package
 
 - `mcp/` is a new workspace, `@yea-protocol/mcp`.
-- It depends on `@yea-protocol/sdk`, with `@modelcontextprotocol/server ^2.1` as a peer
-  dependency.
+- `@yea-protocol/sdk` and `@modelcontextprotocol/server ^2.1` are peer dependencies (and dev
+  dependencies in the workspace), so a server has one copy of each.
+- It is packed and published with the SDK and the CLI, after the SDK (`release.yml`).
 - There's no zod dependency: schemas are Standard Schema.
+- From the SDK core it uses the approval exports, plus small ones added for it:
+  `assertIntegers` (step 1's check, before planning), `home` from `@yea-protocol/sdk/node`
+  (where `~/.yea` is, honouring `YEA_HOME`), and `isMemoryStore` with `MemoryStore`'s brand.
 - Node ≥ 20 (the SDK's floor), ESM only.
 - `yea mcp` (the 2025-era bridge) moves onto this package in `bridge` (#40), not here.
 
@@ -317,8 +369,13 @@ can't elicit. For each:
   from another server sharing the store;
 - `guard` wraps an existing tool. The original callback runs only once approved, its result
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
-- the start-up and per-call refusals listed under `yea()`;
-- a legacy stateless HTTP request takes the consent-code path.
+- the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
+- after `apply()`: a result that can't be serialized applies once and says so, and a store
+  failure says the action happened;
+- a 2025 client that can't elicit, spoofing an envelope that says it can, gets consent codes;
+- a legacy stateless HTTP request takes the consent-code path;
+- the objective's shape: `serveStdio` (over an in-memory transport) with one `yea()` context,
+  on both eras.
 
 Security cases in `mcp/test/security.test.ts`, the approval core's list from the MCP side.
 Any fix that lands in the SDK core also gets its regression test in `ts/test/security.test.ts`
@@ -329,7 +386,10 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - an irreversible plan never auto-runs;
 - a consent for one plan never runs another;
 - a stored copy of the policy grant never counts as a consent;
-- a `requestState` the codec didn't verify is refused.
+- a `requestState` the codec didn't verify is refused;
+- a verified state without our `yea` key, a state from another job on the same server, and an
+  HTTP state replayed by another `sub` (through the codec's bind, and through `checkState` when
+  an author's codec doesn't bind `sub`) run nothing.
 
 ## Boundaries
 

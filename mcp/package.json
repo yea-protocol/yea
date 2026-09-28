@@ -1,0 +1,64 @@
+{
+  "name": "@yea-protocol/mcp",
+  "version": "0.1.0",
+  "description": "YEA job tools for the TypeScript MCP SDK: previews, typed approval, a signed policy, consent codes and undo.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p tsconfig.test.json && vitest run",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/server": "^2.1.0",
+    "@yea-protocol/sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.1.0",
+    "@modelcontextprotocol/server": "2.1.0",
+    "@types/node": "^22",
+    "@yea-protocol/sdk": "0.1.0",
+    "typescript": "^7.0",
+    "vitest": "^5.0.1",
+    "zod": "^4.2.0"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "mcp",
+    "model-context-protocol",
+    "approval",
+    "consent",
+    "undo",
+    "tool-use"
+  ],
+  "author": "James Solomon",
+  "homepage": "https://yea-protocol.github.io/yea/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yea-protocol/yea.git",
+    "directory": "mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/yea-protocol/yea/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

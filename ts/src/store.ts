@@ -67,8 +67,19 @@ interface Ledger {
 const total = (l: Ledger) =>
   [...l.reserved.values()].reduce((a, b) => a + b, l.settled);
 
+/**
+ * Whether `s` is a MemoryStore, by its brand rather than `instanceof`, so a second copy of the SDK
+ * in a dependency tree can't slip one past a check that refuses it.
+ */
+export const isMemoryStore = (s: unknown): boolean =>
+  typeof s === 'object' &&
+  s !== null &&
+  (s as { yeaStore?: unknown }).yeaStore === 'memory';
+
 /** The default store for a single process (SPEC-approval §8). */
 export class MemoryStore implements ApprovalStore {
+  /** The brand `isMemoryStore` reads: this store lives and dies with one process. */
+  readonly yeaStore = 'memory' as const;
   private consumed = new Map<string, number>();
   private receipts = new Map<string, JobReceipt>();
   /** 'done', or the time (ms) the undo was claimed. */

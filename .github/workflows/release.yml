@@ -19,14 +19,15 @@ jobs:
       - run: npm install -g npm@latest
       - run: npm ci && npm run build && npm test
         env: { SKIP_INTEROP: "1" }
-      # Both npm packages share one version: bump ts/ and cli/ (and cli's sdk dependency) together.
-      - run: mkdir npm-dist && npm pack -w @yea-protocol/sdk -w @yea-protocol/cli --pack-destination npm-dist
+      # The npm packages share one version: bump ts/, cli/ and mcp/ (and their sdk dependency) together.
+      - run: mkdir npm-dist && npm pack -w @yea-protocol/sdk -w @yea-protocol/cli -w @yea-protocol/mcp --pack-destination npm-dist
       - uses: actions/attest-build-provenance@v4
         with: { subject-path: "npm-dist/*.tgz" }
-      # The SDK first: the CLI depends on it.
+      # The SDK first: the CLI and the MCP plugin depend on it.
       - run: |
           npm publish npm-dist/yea-protocol-sdk-*.tgz --provenance --access public
           npm publish npm-dist/yea-protocol-cli-*.tgz --provenance --access public
+          npm publish npm-dist/yea-protocol-mcp-*.tgz --provenance --access public
         env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
       - uses: actions/upload-artifact@v7
         with: { name: npm, path: "npm-dist/*.tgz" }

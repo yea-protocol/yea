@@ -342,3 +342,5 @@ export async function connect(
 }
 
 export { checkKeyFile, FileStore, readPinnedKey } from './filestore.js';
+
+export { home } from './home.js';
