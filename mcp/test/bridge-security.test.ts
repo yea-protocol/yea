@@ -15,6 +15,7 @@ import {
   keyPair,
   proposalHash,
   service,
+  unixNow,
 } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -28,7 +29,6 @@ import {
   EACH_40,
   type Keys,
   keys,
-  nowS,
   proposalsOf,
   recorded,
 } from './bridge-helpers.js';
@@ -405,7 +405,7 @@ describe('yea_consent refuses, and writes nothing', () => {
       await consentGrant({
         principal: k.principal,
         agent: k.agent.public,
-        consent: { ...request, expires: nowS() - 1 },
+        consent: { ...request, expires: unixNow() - 1 },
       }),
       /expired/,
     );

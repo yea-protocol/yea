@@ -56,7 +56,7 @@ describe('customer', () => {
   it('answers in one call, as Lens: plan, renewal, payments and what’s refundable', async () => {
     const w = await world();
     const conn = await connect('2025', w.factory);
-    const r = await conn.call('customer', { customer: 'Chen' });
+    const r = await conn.call({ customer: 'Chen' }, 'customer');
 
     expect(r.isError).toBeFalsy();
     expect(textOf(r)).toBe(
@@ -88,7 +88,7 @@ describe('customer', () => {
       }),
     });
     const conn = await connect('2026', w.factory);
-    const r = await conn.call('customer', { customer: 'Chen' });
+    const r = await conn.call({ customer: 'Chen' }, 'customer');
 
     expect(r.isError).toBeFalsy();
     expect(textOf(r)).toMatch(
@@ -100,7 +100,7 @@ describe('customer', () => {
     const w = await world();
     const conn = await connect('2026', w.factory);
 
-    expect(textOf(await conn.call('customer', { customer: 'Ana' }))).toBe(
+    expect(textOf(await conn.call({ customer: 'Ana' }, 'customer'))).toBe(
       [
         '? 2 customers match "Ana". Call again with one of these ids:',
         '  "Ana Ruiz" "ana.ruiz@acme.co" (cus_ana1)',
@@ -108,7 +108,7 @@ describe('customer', () => {
       ].join('\n'),
     );
 
-    const none = await conn.call('customer', { customer: 'Nobody' });
+    const none = await conn.call({ customer: 'Nobody' }, 'customer');
 
     expect(none.isError).toBe(true);
   });
@@ -124,7 +124,7 @@ describe('customer', () => {
         "The provided key 'rk_test_***1234' does not have the required permissions for this endpoint. Having the 'rak_customer_read' permission would allow this request to continue.",
     });
 
-    const r = await conn.call('customer', { customer: 'Chen' });
+    const r = await conn.call({ customer: 'Chen' }, 'customer');
 
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(
@@ -148,7 +148,7 @@ describe.each<Kind>(['2026', '2025'])(
 
       conn.answers.push(accept(conn, 'approve'), accept(conn, ' 10.00 '));
 
-      const r = await conn.call('refund', { ...chen, amount: '10' });
+      const r = await conn.call({ ...chen, amount: '10' }, 'refund');
 
       expect(r.isError).toBeFalsy();
       expect(conn.elicited).toHaveLength(2);
@@ -178,7 +178,7 @@ describe.each<Kind>(['2026', '2025'])(
       await suggestedGrant(w);
 
       const conn = await connect(kind, w.factory);
-      const r = await conn.call('cancel_subscription', chen);
+      const r = await conn.call(chen, 'cancel_subscription');
 
       expect(r.isError).toBeFalsy();
       expect(conn.elicited).toHaveLength(0);
@@ -190,7 +190,7 @@ describe.each<Kind>(['2026', '2025'])(
 
       expect(receipt.undo).not.toBeNull();
 
-      const undo = await conn.call('undo', { receipt: receipt.id });
+      const undo = await conn.call({ receipt: receipt.id }, 'undo');
 
       expect(undo.isError).toBeFalsy();
       expect(w.stripe.subs[0].cancel_at_period_end).toBe(false);
@@ -206,7 +206,7 @@ describe.each<Kind>(['2026', '2025'])(
       await suggestedGrant(w);
 
       const conn = await connect(kind, w.factory);
-      const r = await conn.call('change_plan', { ...chen, price: 'basic' });
+      const r = await conn.call({ ...chen, price: 'basic' }, 'change_plan');
 
       expect(r.isError).toBeFalsy();
       expect(conn.elicited).toHaveLength(0);
@@ -215,7 +215,7 @@ describe.each<Kind>(['2026', '2025'])(
       const { receipt } = r.structuredContent as { receipt: { id: string } };
 
       expect(
-        (await conn.call('undo', { receipt: receipt.id })).isError,
+        (await conn.call({ receipt: receipt.id }, 'undo')).isError,
       ).toBeFalsy();
       expect(w.stripe.subs[0].schedule).toBeNull();
       expect(w.stripe.state.schedules[0].status).toBe('released');
@@ -234,7 +234,7 @@ describe.each<Kind>(['2026', '2025'])(
         ['cancel_subscription', chen],
         ['change_plan', { ...chen, price: 'basic' }],
       ] as const) {
-        const r = await conn.call(tool, args);
+        const r = await conn.call(args, tool);
 
         expect(textOf(r)).toMatch(/not approved; nothing was run/);
       }
@@ -247,7 +247,7 @@ describe.each<Kind>(['2026', '2025'])(
     it('a live refund is high risk: never offered in the form, only as a consent code', async () => {
       const w = await world({ live: true });
       const conn = await connect(kind, w.factory);
-      const r = await conn.call('refund', { ...chen, amount: '10' });
+      const r = await conn.call({ ...chen, amount: '10' }, 'refund');
 
       expect(conn.elicited).toHaveLength(0);
       expect(r.isError).toBe(true);
@@ -274,7 +274,7 @@ describe.each<Kind>(['2026', '2025'])(
         { action: 'decline' },
       );
 
-      const r = await conn.call('cancel_subscription', chen);
+      const r = await conn.call(chen, 'cancel_subscription');
 
       expect(conn.elicited).toHaveLength(2);
       expect(conn.elicited[1].message).toMatch(
@@ -287,11 +287,14 @@ describe.each<Kind>(['2026', '2025'])(
     it('preview runs nothing', async () => {
       const w = await world();
       const conn = await connect(kind, w.factory);
-      const r = await conn.call('change_plan', {
-        ...chen,
-        price: 'basic',
-        preview: true,
-      });
+      const r = await conn.call(
+        {
+          ...chen,
+          price: 'basic',
+          preview: true,
+        },
+        'change_plan',
+      );
 
       expect(textOf(r)).toMatch(/^preview: nothing was run\n2 plans:/);
       expect(w.stripe.writes()).toEqual([]);
@@ -300,10 +303,13 @@ describe.each<Kind>(['2026', '2025'])(
     it('a plan that can’t be made is an error that says why, and nothing runs', async () => {
       const w = await world();
       const conn = await connect(kind, w.factory);
-      const r = await conn.call('change_plan', {
-        ...chen,
-        price: 'price_pro_yearly',
-      });
+      const r = await conn.call(
+        {
+          ...chen,
+          price: 'price_pro_yearly',
+        },
+        'change_plan',
+      );
 
       expect(r.isError).toBe(true);
       expect(textOf(r)).toMatch(
@@ -314,7 +320,7 @@ describe.each<Kind>(['2026', '2025'])(
     it('ambiguity comes back as a question with the ids to call again with', async () => {
       const w = await world();
       const conn = await connect(kind, w.factory);
-      const r = await conn.call('refund', { customer: 'Ana' });
+      const r = await conn.call({ customer: 'Ana' }, 'refund');
 
       expect(textOf(r)).toBe(
         [
@@ -334,7 +340,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       const w = await world();
       const conn = await connect(kind, w.factory);
       const input = { ...chen, amount: '10' };
-      const first = await conn.call('refund', input);
+      const first = await conn.call(input, 'refund');
 
       expect(first.isError).toBe(true);
       expect(textOf(first)).toMatch(/Ask the user to run `yea approve <code>`/);
@@ -347,27 +353,27 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
 
       expect(j.phrase).toBe('10.00');
 
-      const second = await conn.call('refund', input);
+      const second = await conn.call(input, 'refund');
 
       expect(second.isError).toBeFalsy();
       expect(w.stripe.writes()).toHaveLength(1);
 
       // The consent is used up: a third call asks again, and writes nothing.
-      expect((await conn.call('refund', input)).isError).toBe(true);
+      expect((await conn.call(input, 'refund')).isError).toBe(true);
       expect(w.stripe.writes()).toHaveLength(1);
     });
 
     it('a consent code from before midnight doesn’t run a plan that changed after it', async () => {
       const w = await world();
       const conn = await connect(kind, w.factory);
-      const first = await conn.call('cancel_subscription', chen);
+      const first = await conn.call(chen, 'cancel_subscription');
       const { codes } = first.structuredContent as {
         codes: { code: string }[];
       };
 
       await approve(w, codes[0].code);
       w.clock.now = NOW + D;
-      expect((await conn.call('cancel_subscription', chen)).isError).toBe(true);
+      expect((await conn.call(chen, 'cancel_subscription')).isError).toBe(true);
       expect(w.stripe.writes()).toEqual([]);
     });
   },
@@ -392,7 +398,7 @@ describe('a partial failure over MCP', () => {
       message: 'nope',
     });
 
-    const r = await conn.call('change_plan', { ...chen, price: 'basic' });
+    const r = await conn.call({ ...chen, price: 'basic' }, 'change_plan');
 
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(

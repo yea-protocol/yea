@@ -11,6 +11,7 @@ import {
   type Request,
   service,
   type Transport,
+  unixNow,
 } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -28,7 +29,6 @@ import {
   bridged,
   type Keys,
   keys,
-  nowS,
   proposalsOf,
   recorded,
   writePolicy,
@@ -98,7 +98,7 @@ describe('R1: proposals expire one by one, and only kept ones get codes', () => 
 
   it('a kept proposal near expiry loses its code, but a saved approval still commits it until it expires', async () => {
     const k = await keys();
-    let now = nowS();
+    let now = unixNow();
     const rec = recorded(twoTimes(k, 300, 900));
     const conn = await connect(
       '2026',
@@ -132,7 +132,7 @@ describe('R1: proposals expire one by one, and only kept ones get codes', () => 
 
   it('once only uncoded proposals are left and none is approved, the call starts over', async () => {
     const k = await keys();
-    let now = nowS();
+    let now = unixNow();
     const rec = recorded(twoTimes(k, 300, 300));
     const conn = await connect(
       '2026',
@@ -297,7 +297,7 @@ describe('O1–O2: what the bridge serves', () => {
 describe('O5: bounds', () => {
   it('the pending cache keeps at most 256 entries, dropping the oldest', () => {
     const cache = new PendingProposals();
-    const p = { id: 'p', expires: nowS() + 600 } as Proposal;
+    const p = { id: 'p', expires: unixNow() + 600 } as Proposal;
     const entry = (i: number): Pending => ({
       key: `k${i}`,
       tool: 't',
@@ -314,8 +314,8 @@ describe('O5: bounds', () => {
     }
 
     expect(cache.size).toBe(MAX_PENDING);
-    expect(cache.get('k0', nowS())).toBeUndefined();
-    expect(cache.get(`k${MAX_PENDING}`, nowS())).toBeDefined();
+    expect(cache.get('k0', unixNow())).toBeUndefined();
+    expect(cache.get(`k${MAX_PENDING}`, unixNow())).toBeDefined();
   });
 
   it('stops after 64 EXPANDs of a capability list that never ends', async () => {
