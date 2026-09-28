@@ -7,7 +7,7 @@ const emit = defineEmits<{ preset: [kind: PresetKind] }>();
 
 <template>
   <div class="presets" role="group" aria-label="Try a scenario">
-    <button v-for="p in PRESET_BUTTONS" :key="p.kind" type="button" @click="emit('preset', p.kind)">{{ p.label }}</button>
+    <button v-for="p in PRESET_BUTTONS" :key="p.kind" type="button" class="pill" @click="emit('preset', p.kind)">{{ p.label }}</button>
   </div>
 </template>
 

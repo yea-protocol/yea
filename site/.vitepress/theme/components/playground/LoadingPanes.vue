@@ -1,0 +1,52 @@
+<script setup lang="ts">
+/**
+ * What shows while the SDK and services load: the two panes' outlines, so the page doesn't
+ * jump when they arrive, and a status line for screen readers and anyone waiting.
+ */
+</script>
+
+<template>
+  <div class="loading-grid">
+    <p class="loading" role="status">Starting the services…</p>
+    <div class="ghost request" aria-hidden="true">
+      <span class="bar seg-bar" />
+      <span class="bar seg-bar" />
+      <span class="bar label" />
+      <span class="bar field" />
+      <span class="bar label" />
+      <span class="bar box" />
+      <span class="bar send" />
+    </div>
+    <div class="ghost reply" aria-hidden="true">
+      <span class="bar label" />
+      <span class="bar line" />
+      <span class="bar line short" />
+      <span class="bar line" />
+      <span class="bar line short" />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.loading-grid { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 20px; align-items: start; }
+.loading { grid-column: 1 / -1; margin: 0; color: var(--vp-c-text-2); }
+.ghost { display: flex; flex-direction: column; gap: 12px; padding: 18px; background: var(--vp-c-bg-elv); border: 1px solid var(--vp-c-divider); border-radius: 14px; }
+.bar { display: block; border-radius: 8px; background: var(--vp-c-bg-soft); animation: pulse 1.6s ease-in-out infinite; }
+.seg-bar { height: 40px; border-radius: 10px; }
+.label { height: 12px; width: 30%; }
+.field { height: 38px; }
+.box { height: 150px; }
+.send { height: 44px; border-radius: 9px; }
+.line { height: 14px; }
+.short { width: 60%; }
+
+@keyframes pulse {
+  50% { opacity: 0.5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar { animation: none; }
+}
+@media (max-width: 980px) {
+  .loading-grid { grid-template-columns: 1fr; }
+}
+</style>

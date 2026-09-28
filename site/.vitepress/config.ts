@@ -53,7 +53,8 @@ export default defineConfig({
     ['meta', { name: 'twitter:image', content: `${site}brand/social.png` }],
   ],
   themeConfig: {
-    logo: { light: '/brand/mark.svg', dark: '/brand/mark.svg', alt: 'YEA' },
+    // Decorative: the site title beside the mark already names it.
+    logo: { light: '/brand/mark.svg', dark: '/brand/mark.svg', alt: '' },
     nav: [
       { text: 'Why YEA', link: '/why' },
       { text: 'Guide', link: '/guide/quickstart', activeMatch: '/guide/' },

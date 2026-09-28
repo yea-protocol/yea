@@ -1,5 +1,10 @@
-/* Segmented controls (service, verb, and the Lens/Frames tabs), shared by the request and reply panes. */
-.seg, .verbs, .tabs { display: flex; gap: 4px; background: var(--vp-c-bg-soft); padding: 4px; border-radius: 10px; }
-.seg button, .verbs button, .tabs button { flex: 1; font: inherit; font-size: 0.82rem; font-weight: 600; padding: 7px 6px; border: 0; border-radius: 7px; background: none; color: var(--vp-c-text-2); cursor: pointer; }
-.verbs button { font-family: var(--vp-font-family-mono); font-size: 0.74rem; letter-spacing: 0.02em; }
-.seg button.on, .verbs button.on, .tabs button.on { background: var(--vp-c-bg-elv); color: var(--vp-c-text-1); box-shadow: 0 0 0 1px var(--vp-c-divider); }
+/* The segmented-control pattern: `.seg` holds equal buttons, the chosen one raised
+   (aria-checked in a radiogroup, aria-selected in a tablist). `.seg.mono` sets the labels in mono. */
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--vp-c-bg-soft); padding: 4px; border-radius: 10px; }
+.seg > button { flex: 1; font: inherit; font-size: 0.82rem; font-weight: 600; padding: 7px 6px; border: 0; border-radius: 7px; background: none; color: var(--vp-c-text-2); cursor: pointer; }
+.seg.mono > button { font-family: var(--vp-font-family-mono); font-size: 0.74rem; letter-spacing: 0.02em; }
+.seg > [aria-checked="true"], .seg > [aria-selected="true"] { background: var(--vp-c-bg-elv); color: var(--vp-c-text-1); box-shadow: 0 0 0 1px var(--vp-c-divider); }
+
+@media (max-width: 640px), (pointer: coarse) {
+  .seg > button { min-height: 44px; }
+}

@@ -13,7 +13,7 @@ const newestFirst = computed(() => [...props.log].reverse());
 <template>
   <ol class="history" aria-label="History">
     <li v-for="x in newestFirst" :key="x.n">
-      <button type="button" :class="{ on: x.n === active }" @click="emit('select', x.n)">
+      <button type="button" :class="{ on: x.n === active }" :aria-current="x.n === active ? 'true' : undefined" @click="emit('select', x.n)">
         <span :class="['dot', toneOf(x.reply)]" />
         <span class="h-req">{{ requestSummary(x.request) }}</span>
         <span class="h-rep">{{ replySummary(x.reply) }}</span>
@@ -34,4 +34,8 @@ const newestFirst = computed(() => [...props.log].reverse());
 .h-req { font-family: var(--vp-font-family-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h-rep { font-family: var(--vp-font-family-mono); font-size: 0.74rem; }
 .h-ms { font-size: 0.72rem; color: var(--vp-c-text-3); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px), (pointer: coarse) {
+  .history button { min-height: 44px; }
+}
 </style>
