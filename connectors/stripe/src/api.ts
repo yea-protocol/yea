@@ -68,6 +68,10 @@ export const redactKeys = (s: string) =>
 /** A key is live unless it says it's a test key, so an unknown format fails toward caution. */
 export const isLiveKey = (key: string) => !key.includes('_test_');
 
+/** What was thrown, as text: an Error's message, or anything else as a string. */
+export const errorMessage = (e: unknown) =>
+  e instanceof Error ? e.message : String(e);
+
 /** The id of a field Stripe may expand into an object. */
 export const idOf = (r: string | { id: string }) =>
   typeof r === 'string' ? r : r.id;
@@ -126,7 +130,7 @@ function failure(e: unknown, o: Settling): StripeError {
 
   // Not one of Stripe's answers: on a write, it may still have been sent.
   if (!(e instanceof errors.StripeError)) {
-    const why = o.clean(e instanceof Error ? e.message : String(e));
+    const why = o.clean(errorMessage(e));
 
     return new StripeError(
       `the Stripe call failed (${why})${o.write ? MAY_HAVE_HAPPENED : ''}`,
@@ -243,6 +247,10 @@ export function period(s: Stripe.Subscription): { start: number; end: number } {
   return { start: item.current_period_start, end: item.current_period_end };
 }
 
+/** Whether the subscription is set to end: at period end, or at a date. */
+export const cancelling = (s: Stripe.Subscription) =>
+  s.cancel_at_period_end || s.cancel_at !== null;
+
 /**
  * A customer read must say which mode it's in: one that doesn't can't be checked against the
  * key, so it fails closed. (Answers that do say are checked on every request.)
@@ -260,29 +268,35 @@ function withMode(customers: Stripe.Customer[]): Stripe.Customer[] {
   return customers;
 }
 
-/** Whether Stripe said it has no such object. */
-const missing = (e: unknown) => e instanceof StripeError && e.status === 404;
+/** A failed read: null when Stripe said it has no such object, else thrown on. */
+function nullIfMissing(e: unknown): null {
+  if (e instanceof StripeError && e.status === 404) {
+    return null;
+  }
+
+  throw e;
+}
 
 /** One customer by id; a deleted one counts as missing. */
 async function retrieveCustomer(
   api: StripeApi,
   id: string,
 ): Promise<Stripe.Customer | null> {
-  try {
-    const c = await api.read((s) => s.customers.retrieve(id));
+  const c = await api
+    .read((s) => s.customers.retrieve(id))
+    .catch(nullIfMissing);
 
-    return c.deleted ? null : (withMode([c])[0] ?? null);
-  } catch (e) {
-    if (missing(e)) {
-      return null;
-    }
-
-    throw e;
-  }
+  return !c || c.deleted ? null : (withMode([c])[0] ?? null);
 }
 
 const CUSTOMER_ID = /^cus_[A-Za-z0-9]+$/;
 const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+/** A subscription id, which a job checks before it acts on one. */
+export const SUB_ID = /^sub_[A-Za-z0-9]+$/;
+
+/** A subscription schedule id, which `revert` checks in what `apply()` returned. */
+export const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
 
 /**
  * Customers matching what a person said, at most `limit`: an id, an exact email (a list call,
@@ -379,21 +393,15 @@ export async function currentSubscription(
   customer: string,
   id: string,
 ): Promise<Stripe.Subscription | null> {
-  if (!/^sub_[A-Za-z0-9]+$/.test(id)) {
+  if (!SUB_ID.test(id)) {
     return null;
   }
 
-  try {
-    const sub = await api.read((s) => s.subscriptions.retrieve(id));
+  const sub = await api
+    .read((s) => s.subscriptions.retrieve(id))
+    .catch(nullIfMissing);
 
-    return idOf(sub.customer) === customer && LIVE_STATUSES.has(sub.status)
-      ? sub
-      : null;
-  } catch (e) {
-    if (missing(e)) {
-      return null;
-    }
-
-    throw e;
-  }
+  return sub && idOf(sub.customer) === customer && LIVE_STATUSES.has(sub.status)
+    ? sub
+    : null;
 }

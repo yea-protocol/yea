@@ -37,7 +37,7 @@ export interface JobSpec<I> {
 }
 
 /** The start of today, UTC: the one instant plans measure time from, so they stay the same all day. */
-export const startOfDay = (t: number) => t - (((t % DAY) + DAY) % DAY);
+export const today = (ctx: Ctx) => Math.floor(ctx.now() / DAY) * DAY;
 
 /** `2026-09-27`. */
 export const day = (unix: number) =>
@@ -56,26 +56,30 @@ export function riskFor(ctx: Ctx, base: 'low' | 'medium'): Risk {
 }
 
 /**
- * An undo window that ends at least a day before `end` (a renewal or period end), in whole
- * days from the start of today, so it's the same all day. Undefined when less than that is
- * left: the plan is then treated as irreversible.
+ * A plan's `undoWindow`, ending at least a day before `end` (a renewal or period end), in whole
+ * days from the start of today, so it's the same all day. None when less than that is left:
+ * the plan is then treated as irreversible.
  */
-export function undoWindowBefore(ctx: Ctx, end: number): number | undefined {
-  const days = Math.floor((end - startOfDay(ctx.now())) / DAY) - 1;
+export function undoWindowBefore(
+  ctx: Ctx,
+  end: number,
+): { undoWindow?: number } {
+  const days = Math.floor((end - today(ctx)) / DAY) - 1;
 
-  return days > 0 ? days * DAY : undefined;
+  return days > 0 ? { undoWindow: days * DAY } : {};
 }
 
 /** What a person types to approve a plan, carried in its `data`. */
-export const confirmOf = (hp: HashedPlan): string => {
+export function confirmOf(hp: HashedPlan): string {
   const d = hp.plan.data;
 
   return typeof d === 'object' &&
     d !== null &&
-    typeof (d as { confirm?: unknown }).confirm === 'string'
-    ? (d as { confirm: string }).confirm
+    'confirm' in d &&
+    typeof d.confirm === 'string'
+    ? d.confirm
     : '';
-};
+}
 
 /**
  * Run a write, and turn one whose result is unknown (no answer, or a 5xx) into a

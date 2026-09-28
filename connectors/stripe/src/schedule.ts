@@ -4,7 +4,7 @@
  * phases with `from_subscription`), so a failure between them is cleaned up here.
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
-import { idOf, type Stripe, StripeError } from './api.js';
+import { errorMessage, idOf, type Stripe, StripeError } from './api.js';
 import { applying, type Ctx } from './context.js';
 
 type Phase = Stripe.SubscriptionSchedule.Phase;
@@ -139,8 +139,6 @@ export function uncopied(o: object): string[] {
   return UNCOPIED.filter((k) => isSet(k, r[k]));
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
 /** Release a schedule: the subscription stays as it is, and pending phases are dropped. */
 export const releaseSchedule = (ctx: Ctx, id: string) =>
   ctx.stripe.write((s, o) => s.subscriptionSchedules.release(id, {}, o));
@@ -158,12 +156,12 @@ async function cleanUp(
     await releaseSchedule(ctx, s.schedule);
   } catch (e) {
     throw new PartialApplyError(
-      `adding the new phase failed (${message(failed)}), and releasing schedule ${s.schedule} failed too (${message(e)}). ${s.subscription} is left on subscription schedule ${s.schedule}: release it in the Stripe dashboard, or with POST /v1/subscription_schedules/${s.schedule}/release.`,
+      `adding the new phase failed (${errorMessage(failed)}), and releasing schedule ${s.schedule} failed too (${errorMessage(e)}). ${s.subscription} is left on subscription schedule ${s.schedule}: release it in the Stripe dashboard, or with POST /v1/subscription_schedules/${s.schedule}/release.`,
     );
   }
 
   throw new Error(
-    `adding the new phase failed (${message(failed)}); schedule ${s.schedule} was released, so the subscription is as it was`,
+    `adding the new phase failed (${errorMessage(failed)}); schedule ${s.schedule} was released, so the subscription is as it was`,
   );
 }
 

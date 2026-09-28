@@ -18,9 +18,7 @@ export {
   subscriptionPage,
 } from './api.js';
 
-export { cheaperOrSame } from './change.js';
-
-export { type Ctx, type JobSpec, riskFor, startOfDay } from './context.js';
+export type { Ctx } from './context.js';
 
 export {
   formatMoney,
@@ -42,5 +40,3 @@ export {
   stripeServer,
   VERSION,
 } from './server.js';
-
-export { quoted, safeText } from './text.js';

@@ -47,6 +47,13 @@ describe.skipIf(!existsSync(bin))('yea-stripe', () => {
     expect(r.stderr).toMatch(/--http needs YEA_HTTP_TOKEN/);
   });
 
+  it('refuses an empty --host, which would listen on every interface', async () => {
+    const r = await run(['--http', '8787', '--host', ''], { YEA_HOME: tmp() });
+
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/--host needs an address\nusage: yea-stripe/);
+  });
+
   it('serves the four tools and undo on stdio', async () => {
     const client = new Client({ name: 'c', version: '1' });
 

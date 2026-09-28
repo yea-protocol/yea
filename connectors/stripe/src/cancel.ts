@@ -4,7 +4,15 @@
  * manages its cancellation there.
  */
 import { type Effect, type JobPlan, update } from '@yea-protocol/sdk';
-import { idOf, period, type Stripe, StripeError } from './api.js';
+import {
+  cancelling,
+  idOf,
+  period,
+  SCHEDULE_ID,
+  type Stripe,
+  StripeError,
+  SUB_ID,
+} from './api.js';
 import {
   applying,
   type Ctx,
@@ -14,33 +22,22 @@ import {
   tag,
   undoWindowBefore,
 } from './context.js';
-import { oneCustomer, oneItem, oneSubscription, priceName } from './find.js';
+import {
+  inputSchema,
+  oneCustomerSubscription,
+  oneItem,
+  priceName,
+  SUBSCRIPTION_FIELD,
+} from './find.js';
 import { getSchedule, onlyCurrentPhase } from './schedule.js';
 import { confirmPhrase, who } from './text.js';
 
-export interface CancelInput {
+interface CancelInput {
   customer: string;
   subscription?: string;
 }
 
-const SCHEMA = {
-  type: 'object',
-  properties: {
-    customer: {
-      type: 'string',
-      description: "The customer's name, email or cus_ id.",
-    },
-    subscription: {
-      type: 'string',
-      description: 'The sub_ id, if the customer has more than one.',
-    },
-  },
-  required: ['customer'],
-  additionalProperties: false,
-};
-
-const SUB_ID = /^sub_[A-Za-z0-9]+$/;
-const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
+const SCHEMA = inputSchema({ subscription: SUBSCRIPTION_FIELD });
 
 interface Target {
   c: Stripe.Customer;
@@ -104,13 +101,12 @@ function periodEndChange(t: Target): {
 function atPeriodEnd(ctx: Ctx, t: Target): JobPlan {
   const { end } = period(t.sub);
   const change = periodEndChange(t);
-  const undoWindow = undoWindowBefore(ctx, end);
 
   return {
     summary: `${tag(ctx)} Cancel ${whose(t)} at period end, ${day(end)}; access until then`,
     effects: [change.effect],
     risk: riskFor(ctx, 'low'),
-    ...(undoWindow === undefined ? {} : { undoWindow }),
+    ...undoWindowBefore(ctx, end),
     data: { confirm: confirmPhrase(t.c) },
     apply: () =>
       applying(async () => ({
@@ -175,7 +171,7 @@ function now(ctx: Ctx, t: Target): JobPlan {
 function canEndAtPeriodEnd(t: Target): boolean {
   const s = t.schedule;
 
-  if (t.sub.cancel_at_period_end || t.sub.cancel_at !== null) {
+  if (cancelling(t.sub)) {
     return false;
   }
 
@@ -186,26 +182,20 @@ function canEndAtPeriodEnd(t: Target): boolean {
 }
 
 async function cancelPlans(ctx: Ctx, input: CancelInput) {
-  const c = await oneCustomer(ctx, input);
+  const found = await oneCustomerSubscription(ctx, input);
 
-  if ('clarify' in c) {
-    return c.clarify;
+  if ('clarify' in found) {
+    return found.clarify;
   }
 
-  const sub = await oneSubscription(ctx, c.found, input);
+  const { c, sub } = found.found;
 
-  if ('clarify' in sub) {
-    return sub.clarify;
-  }
-
-  oneItem(sub.found);
+  oneItem(sub);
 
   const t: Target = {
-    c: c.found,
-    sub: sub.found,
-    schedule: sub.found.schedule
-      ? await getSchedule(ctx, idOf(sub.found.schedule))
-      : null,
+    c,
+    sub,
+    schedule: sub.schedule ? await getSchedule(ctx, idOf(sub.schedule)) : null,
   };
 
   return canEndAtPeriodEnd(t)

@@ -17,8 +17,8 @@ import {
   day,
   type JobSpec,
   riskFor,
-  startOfDay,
   tag,
+  today,
 } from './context.js';
 import {
   formatMoney,
@@ -27,39 +27,34 @@ import {
   roundDown,
   toQuantity,
 } from './currency.js';
-import { oneCustomer } from './find.js';
+import { inputSchema, oneCustomer } from './find.js';
 import { quoted, who } from './text.js';
 
-export interface RefundInput {
+interface RefundInput {
   customer: string;
   payment?: string;
   amount?: string;
 }
 
-const SCHEMA = {
-  type: 'object',
-  properties: {
-    customer: {
-      type: 'string',
-      description: "The customer's name, email or cus_ id.",
-    },
-    payment: {
-      type: 'string',
-      description:
-        'The ch_ or pi_ id of the payment. Default: their latest payment with something left to refund.',
-    },
-    amount: {
-      type: 'string',
-      description:
-        'A partial refund, as a decimal string in the payment currency, like "12.50". Default: offer all of it, and what is unused.',
-    },
+const SCHEMA = inputSchema({
+  payment: {
+    type: 'string',
+    description:
+      'The ch_ or pi_ id of the payment. Default: their latest payment with something left to refund.',
   },
-  required: ['customer'],
-  additionalProperties: false,
-};
+  amount: {
+    type: 'string',
+    description:
+      'A partial refund, as a decimal string in the payment currency, like "12.50". Default: offer all of it, and what is unused.',
+  },
+});
 
 const paymentLine = (x: Stripe.Charge) =>
   `${x.id} (${day(x.created)}, ${formatMoney(x.amount, x.currency)}, ${formatMoney(x.amount - x.amount_refunded, x.currency)} left, ${x.status})`;
+
+/** The latest few payments, for a refusal to list. */
+const recentLines = (chs: Stripe.Charge[]) =>
+  chs.slice(0, 5).map(paymentLine).join('; ');
 
 /**
  * The payment asked for, or else the latest one that succeeded. Never an older one when the
@@ -83,12 +78,13 @@ function pickCharge(
     return ch;
   }
 
-  const listed = chs.slice(0, 5).map(paymentLine).join('; ');
   const what = payment
     ? `${quoted(payment)} isn't one of ${who(c)}'s recent payments that succeeded`
     : `${who(c)} has no recent payment that succeeded`;
 
-  throw new Error(`${what}${listed ? `. Recent payments: ${listed}` : ''}`);
+  throw new Error(
+    `${what}${chs.length ? `. Recent payments: ${recentLines(chs)}` : ''}`,
+  );
 }
 
 /** The refunds already made on a charge, newest first; none when nothing was refunded. */
@@ -117,7 +113,7 @@ function refuseRefunded(
   const refunds = o.earlier.map((r) => refundLine(r, ch.currency)).join('; ');
   const older = o.named
     ? ''
-    : `; to refund an older payment, pass its id as payment. Recent payments: ${o.chs.slice(0, 5).map(paymentLine).join('; ')}`;
+    : `; to refund an older payment, pass its id as payment. Recent payments: ${recentLines(o.chs)}`;
 
   throw new Error(
     `${who(c)}'s payment ${ch.id} (${day(ch.created)}) is fully refunded${refunds ? `, by ${refunds}` : ''}${older}`,
@@ -161,7 +157,7 @@ function unusedPart(
   }
 
   const { start, end } = period(sub);
-  const from = Math.max(startOfDay(ctx.now()), start);
+  const from = Math.max(today(ctx), start);
   const left = ch.amount - ch.amount_refunded;
 
   if (from >= end || end <= start) {
