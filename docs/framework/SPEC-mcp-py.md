@@ -57,7 +57,7 @@ assume it.
 |---|---|---|
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file, and is the request-state audience. |
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
-| `store` | `FileStore()` for stdio, `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
+| `store` | `FileStore()` for stdio (under `YEA_STORE` when set), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
 | `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run with `O_EXCL`, mode `0600`, in a `0700` directory; the same file format as `mcp-ts`. A key file that is a symlink, or readable by others, is refused. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
@@ -65,6 +65,9 @@ assume it.
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
 | `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. It always gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly). Used for the state binding and for undo. |
+
+`approvals.service_id()` returns the server key's public key, the value to pass to
+`yea grant --to` when issuing the policy.
 
 **Start-up refusals.** `yea()` raises, so nothing is served, when `transport="http"` has no
 `sub`; a `state_key` is passed with a `MemoryStore`; HTTP runs on a `MemoryStore` without
@@ -222,7 +225,8 @@ and §6, and the same order as `mcp-ts`):
    the verdict's round on an ask-again.
 9. **Fail closed.** Return `is_error: true` with the plans in Lens, a `job_consent_code` for
    each plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their
-   terminal, then call again.* `structured_content` carries `{"plans", "codes"}`.
+   terminal, then call again.* `structured_content` carries `{"plans", "codes"}`. With no
+   pinned principal there can be no valid consent, so the result has no codes and says why.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then
     `consume_once(nonce, exp)`; any failure refuses with one message. The answer is the `yea`
     entry of the input responses (`ctx.input_responses` in a job, `params["inputResponses"]`
@@ -232,7 +236,7 @@ and §6, and the same order as `mcp-ts`):
     - `run`: step 11;
     - `ask-again`: step 8 with the verdict's round;
     - `out-of-band`: step 9 for that plan;
-    - `denied`, `refuse`, `not-approved`: a plain result saying so.
+    - `denied`, `refuse`, `not-approved`: an `is_error` result saying so.
 11. **Run.** Call `apply()`.
     - If it raises (for `guard`: or returns a mapping with `isError: true` or an input-required
       result): `release_all` and say the approval was used and nothing changed.
