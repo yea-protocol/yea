@@ -2,7 +2,7 @@
  * Reading a secret that only this OS user may see: a server's Ed25519 seed or a connector's API
  * key. The file is opened once without following a symlink, and the checks run on that open
  * file, so it can't be swapped between the check and the read. It is the opposite of the pinned
- * principal key (`checkKeyFile`), which this user must *not* be able to change.
+ * principal key (`checkKeyFile`, pinned-key.ts), which this user must *not* be able to change.
  * Node only; exported from `@yea-protocol/sdk/node`.
  */
 import {

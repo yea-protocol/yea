@@ -41,7 +41,6 @@ export const LENGTH_EXEMPT = [
 export const RATCHET = {
   'mcp/src/bridge/job.ts': ['length'], // #108: split
   'mcp/src/bridge/tools.ts': ['length'], // #108: split
-  'mcp/src/serverkey.ts': ['name'], // #108: rename to server-key.ts
   'python/mcp/src/yea_mcp/call.py': ['length'], // #108: split
   'python/src/yea/client.py': ['length'], // #108: split
   'python/src/yea/grants.py': ['length'], // #108: split
@@ -52,13 +51,10 @@ export const RATCHET = {
   'ts/src/examples/billing.ts': ['length'], // #108: split
   'ts/src/examples/calendar.ts': ['length'], // #108: split
   'ts/src/examples/demo.ts': ['length'], // #108: split
-  'ts/src/keyfile.ts': ['name'], // #108: rename to key-file.ts
   'ts/src/lens.ts': ['length'], // #108: split
-  'ts/src/testdrive.ts': ['name'], // #108: rename to test-drive.ts
-  'ts/src/tooldefs.ts': ['name'], // #108: rename to tool-defs.ts
 };
 
-/** Names whose words run together (see the ratchet for the names they get). */
+/** Run-together names, since renamed to kebab-case (#108); they may not come back. */
 const JOINED = /^(servefetch|filestore|keyfile|serverkey|tooldefs|testdrive)\./;
 
 /** Never walked: VitePress output and caches, and build or dependency folders anywhere. */

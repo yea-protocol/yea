@@ -1,8 +1,7 @@
 /**
  * The approval store on disk (docs/framework/SPEC-approval.md §8), shared by TypeScript and
- * Python servers and the `yea` command, and the check on the pinned principal key (§2).
- * Node only; exported from `@yea-protocol/sdk/node`. The file operations, the lock and the key
- * check live in file-store/; this file holds the store.
+ * Python servers and the `yea` command. Node only; exported from `@yea-protocol/sdk/node`. The
+ * file operations and the lock live in file-store/; this file holds the store.
  */
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,8 +20,6 @@ import type {
   LedgerKey,
   Reservation,
 } from './store.js';
-
-export { checkKeyFile, readPinnedKey } from './file-store/pinned-key.js';
 
 /** An undo claimed but never finished (the process died) can be claimed again after this. */
 const STALE_CLAIM_MS = 600_000;
