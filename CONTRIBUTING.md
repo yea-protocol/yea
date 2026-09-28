@@ -105,7 +105,9 @@ This section covers files and folders; [Code style](#code-style) covers what goe
 
 - A feature with several files is a folder plus an entry file of the same name beside it:
   `cli.ts` + `cli/`, `call.ts` + `call/`, `bridge.ts` + `bridge/`.
-- The entry file wires the parts together and re-exports; the logic lives in the folder.
+- The entry file holds the top-level flow (orchestration, dispatch or the public class) or only
+  re-exports; the parts it uses live in the same-named folder. Code in the folder never imports
+  its entry file.
 - A package's public API is only what its `index` re-exports. Modules may export to their
   siblings freely.
 
@@ -125,8 +127,9 @@ index.
 - a CLI command module: one exported `cmdX` per command, sharing `cli/shared.ts`;
 - a bridge tool module: the spec, then the handler.
 
-**Tests** mirror sources: `test/<module>.test.ts` for `src/<module>.ts`. Security regressions
-stay in `security.test.ts`. Tests and benchmarks are exempt from the length rules.
+**Tests** are named after the module they cover (`test/refund.test.ts` for
+`src/jobs/refund.ts`). Security regressions stay in `security.test.ts`. Tests and benchmarks
+are exempt from the length rules.
 
 **Exempt:** the `examples/` walkthroughs the docs embed whole, generated files, and the
 `conformance/` vectors.
