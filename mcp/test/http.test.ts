@@ -88,6 +88,36 @@ async function listening(
   return { url: `http://127.0.0.1:${port}/mcp`, port, sockets };
 }
 
+/**
+ * Talk raw HTTP to `port`: send `head` and `body`, and collect the answer until it carries the
+ * 401's `invalid_token`, or for 2 s (so a server still waiting for the body fails the test).
+ */
+const raw = (port: number, o: { head: string; body?: Buffer }) =>
+  new Promise<string>((resolve) => {
+    const s = net.connect(port, '127.0.0.1');
+    let got = '';
+    const finish = () => {
+      s.destroy();
+      resolve(got);
+    };
+    const timer = setTimeout(finish, 2000);
+
+    s.on('error', () => {});
+    s.on('data', (c) => {
+      got += c.toString();
+
+      if (got.includes('invalid_token')) {
+        clearTimeout(timer);
+        finish();
+      }
+    });
+    s.write(o.head);
+
+    if (o.body) {
+      s.write(o.body);
+    }
+  });
+
 /** A body of `n` bytes, streamed in 64 KiB chunks (no Content-Length). */
 function streamOf(n: number) {
   let sent = 0;
@@ -254,29 +284,25 @@ describe('serveHttp', () => {
     const { app, seen } = whoami();
     const { url, port, sockets } = await listening(app);
     const tenMiB = 10 << 20;
-    // Declare 10 MiB, send 16 KiB of it, and wait: the 401 comes without the rest.
-    const answer = await new Promise<string>((resolve) => {
-      const s = net.connect(port, '127.0.0.1');
-      let got = '';
-
-      s.on('error', () => {});
-      s.on('data', (c) => {
-        got += c.toString();
-
-        if (got.includes('invalid_token')) {
-          s.destroy();
-          resolve(got);
-        }
-      });
-      s.write(
-        `POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: ${tenMiB}\r\n\r\n`,
-      );
-      s.write(Buffer.alloc(16 << 10).fill('x'));
+    // Declare 512 KiB (under the cap), send 16 KiB of it: the 401 comes without the rest. A
+    // server that read the body before checking the token would still be waiting.
+    const answer = await raw(port, {
+      head: `POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: ${512 << 10}\r\n\r\n`,
+      body: Buffer.alloc(16 << 10).fill('x'),
     });
 
     expect(answer).toMatch(/^HTTP\/1\.1 401 /);
     expect(answer).toMatch(/content-length: \d+/i);
     expect(sockets[0].bytesRead).toBeLessThan(64 << 10);
+
+    // Expect: 100-continue without the token: 401, and never the go-ahead to send the body.
+    const noContinue = await raw(port, {
+      head: 'POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nExpect: 100-continue\r\nContent-Length: 1000\r\n\r\n',
+    });
+
+    expect(noContinue).toMatch(/^HTTP\/1\.1 401 /);
+    expect(noContinue).not.toMatch(/100 Continue/);
+    expect(sockets[1].bytesRead).toBeLessThan(1000);
 
     // A client that sends the whole 10 MiB still reads the 401.
     const r = await fetch(url, {

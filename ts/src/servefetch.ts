@@ -65,6 +65,8 @@ interface Settings {
   tooLarge: string;
   headers: boolean;
   gate?: FetchGate;
+  /** The client sent `Expect: 100-continue` and waits for our go-ahead before its body. */
+  expectsContinue?: boolean;
 }
 
 /** `n` bytes, for a 413: "1 MiB", or a byte count when it isn't whole MiB. */
@@ -109,16 +111,19 @@ function drainThenClose(req: IncomingMessage, res: ServerResponse) {
 
   req.on('data', onData);
   req.once('end', () => res.end());
+  req.resume(); // readCapped paused it
 }
 
 /**
  * Send `answer` instead of running the app: framed by Content-Length, so the client can read it
- * whole before the request is, with `connection: close`; then drain, and hang up.
+ * whole before the request is, with `connection: close`; then drain, and hang up. Without
+ * `drain` (a client still waiting for 100 Continue, which hasn't sent its body), end at once.
  */
 async function refuse(
   req: IncomingMessage,
   res: ServerResponse,
   answer: Response,
+  drain = true,
 ) {
   const body = Buffer.from(await answer.arrayBuffer());
 
@@ -134,8 +139,17 @@ async function refuse(
     connection: 'close',
   });
   res.write(body);
-  drainThenClose(req, res);
+
+  if (drain) {
+    drainThenClose(req, res);
+  } else {
+    res.end();
+  }
 }
+
+/** The request declares a body over `max` bytes (Content-Length). */
+const declaredOver = (req: IncomingMessage, max: number) =>
+  Number(req.headers['content-length'] ?? 0) > max;
 
 /**
  * Collect a request body, at most `max` bytes of it: null once it's over, by its declared
@@ -146,14 +160,16 @@ function readCapped(
   req: IncomingMessage,
   max: number,
 ): Promise<Buffer<ArrayBuffer> | null> {
-  if (Number(req.headers['content-length'] ?? 0) > max) {
+  if (declaredOver(req, max)) {
     return Promise.resolve(null);
   }
 
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    // Pausing keeps what's read past the cap to the drain's exact bound.
     const done = () => {
+      req.pause();
       req.off('data', onData);
       req.off('end', onEnd);
       req.off('error', onFail);
@@ -282,8 +298,28 @@ async function runApp(app: FetchApp, request: Request, res: ServerResponse) {
 }
 
 /**
- * One request: the gate (before any body is read), the body (capped), then the app. A request
- * that can't be parsed is answered 400.
+ * For `Expect: 100-continue`, once the gate has passed: 413 a declared body over the cap, else
+ * send 100 Continue. True when the body may be read.
+ */
+async function goAhead(req: IncomingMessage, res: ServerResponse, o: Settings) {
+  if (!o.expectsContinue) {
+    return true;
+  }
+
+  if (declaredOver(req, o.max)) {
+    await refuse(req, res, text(413, o.tooLarge), false);
+
+    return false;
+  }
+
+  res.writeContinue();
+
+  return true;
+}
+
+/**
+ * One request: the gate (before any body is read, and before any 100 Continue), the body
+ * (capped), then the app. A request that can't be parsed is answered 400.
  */
 async function serveOne(
   app: FetchApp,
@@ -296,7 +332,7 @@ async function serveOne(
   try {
     head = headOf(req);
   } catch {
-    await refuse(req, res, text(400, 'bad request'));
+    await refuse(req, res, text(400, 'bad request'), !o.expectsContinue);
 
     return;
   }
@@ -304,8 +340,12 @@ async function serveOne(
   const stop = await gateOf(o.gate, head);
 
   if (stop) {
-    await refuse(req, res, stop);
+    await refuse(req, res, stop, !o.expectsContinue);
 
+    return;
+  }
+
+  if (!(await goAhead(req, res, o))) {
     return;
   }
 
@@ -348,6 +388,14 @@ export function serveCapped(
     headers: o.headers ?? false,
     gate: o.gate,
   };
+  const handle =
+    (extra: Partial<Settings>) =>
+    (req: IncomingMessage, res: ServerResponse) => {
+      req.on('error', () => {
+        // an aborted upload surfaces through the body read
+      });
+      void serveOne(app, req, res, { ...settings, ...extra });
+    };
   const server = createServer(
     {
       requestTimeout: timeout,
@@ -355,13 +403,11 @@ export function serveCapped(
       // How often Node checks those timeouts (its default, 30 s, would double a short one).
       connectionsCheckingInterval: Math.min(timeout, 1000),
     },
-    (req, res) => {
-      req.on('error', () => {
-        // an aborted upload surfaces through the body read
-      });
-      void serveOne(app, req, res, settings);
-    },
+    handle({}),
   );
+
+  // Expect: 100-continue: the gate runs before the client is told to send its body.
+  server.on('checkContinue', handle({ expectsContinue: true }));
 
   if (o.maxConnections !== undefined) {
     server.maxConnections = o.maxConnections;
@@ -375,7 +421,8 @@ export function serveCapped(
 /**
  * Serve a fetch handler on Node's http module; resolves once listening.
  *
- * Per request: `gate` runs on the headers, before any body is read. Then the body is read,
+ * Per request: `gate` runs on the headers, before any body is read (and, for
+ * `Expect: 100-continue`, before the client is told to send it). Then the body is read,
  * keeping at most `maxBody` bytes (a request in flight holds up to about twice that while it's
  * joined); a bigger one gets 413 and never reaches the app. A refused request's answer is framed
  * by Content-Length and `connection: close`; up to 1 MiB more of its body is read and discarded,

@@ -233,9 +233,12 @@ Bun, Deno and Workers with `nodejs_compat` have); `./http/node` has the Node ser
 
 **What `serveFetch` does with each request.**
 
-1. The gate runs on the method, URL and headers, before any of the body is read.
+1. The gate runs on the method, URL and headers, before any of the body is read. For
+   `Expect: 100-continue` it runs before `100 Continue` is sent: a refused client never gets the
+   go-ahead (and a declared body over the cap gets 413 instead).
 2. The body is read, keeping at most `maxBody` bytes. A body declared over it (Content-Length)
-   or streamed past it is answered 413, and the app never runs.
+   or streamed past it is answered 413, and the app never runs; reading pauses at the cap, so
+   the drain below is an exact bound.
 3. A refusal (the gate's, a 413, a 400 for a request fetch can't take) is framed by
    Content-Length with `connection: close`. The server then reads and discards up to 1 MiB more
    of the body, so a client that's nearly done sending reads the answer rather than a reset. Past
@@ -456,7 +459,8 @@ can't elicit. For each:
 - the HTTP front end (`mcp/test/http.test.ts`): no token, a wrong one or another scheme gets
   401 and a foreign Host on loopback 403, before MCP; a call with the token runs as `sub`; a body
   over the cap, declared or streamed, even past what's drained, gets a readable 413 and the app
-  never runs; a request without the token is refused before its body is read; a slow request is
+  never runs; a request without the token is refused before its body is read (declared under the cap,
+  so the test fails if the body is read first), and never gets `100 Continue`; a slow request is
   cut off. The core's regression tests are in `ts/test/security.test.ts` (H4, H5).
 
 Security cases in `mcp/test/security.test.ts`, the approval core's list from the MCP side.
