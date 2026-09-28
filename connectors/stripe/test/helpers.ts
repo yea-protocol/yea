@@ -57,6 +57,7 @@ export function setup(
   const stripe = fakeStripe({
     now: NOW,
     declines: o.declines ?? false,
+    livemode: o.live ?? false,
     ...(o.state ? { state: o.state } : {}),
   });
   const clock = { now: NOW };

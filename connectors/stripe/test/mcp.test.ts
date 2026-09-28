@@ -75,6 +75,27 @@ describe('customer', () => {
     expect(w.stripe.writes()).toEqual([]);
   });
 
+  it('a customer with more than 100 subscriptions is listed, with a note, not refused', async () => {
+    const w = await world({
+      state: (b) => ({
+        subs: [
+          ...Array.from({ length: 101 }, (_, i) => ({
+            ...b.subs[0],
+            id: `sub_x${i}`,
+          })),
+          ...b.subs,
+        ],
+      }),
+    });
+    const conn = await connect('2026', w.factory);
+    const r = await conn.call('customer', { customer: 'Chen' });
+
+    expect(r.isError).toBeFalsy();
+    expect(textOf(r)).toMatch(
+      /note: "?more than 100 subscriptions; only the newest 100 are listed/,
+    );
+  });
+
   it('several matches list their ids; none is an error', async () => {
     const w = await world();
     const conn = await connect('2026', w.factory);

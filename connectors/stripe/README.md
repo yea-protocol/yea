@@ -185,10 +185,10 @@ plans (refunds, immediate changes) can't run over HTTP at all**: use stdio for t
 
 | Plan | Requests |
 |---|---|
-| refund | `POST /v1/refunds` with `payment_intent` and `amount`. Without `payment`, the latest successful payment; if that's fully refunded, the call is refused rather than moving to an older one. "What's unused" is an estimate from the subscription's period, and says so. |
+| refund | `POST /v1/refunds` with `payment_intent` and `amount`. Without `payment`, the latest successful payment; if that's fully refunded, the call is refused, naming the refunds already made, rather than moving to an older one. On a payment already partly refunded, the plan says how much and when, and the phrase to type ends in "again". "What's unused" is an estimate from the subscription's period, of what was paid less what's already refunded, and says so. |
 | cancel at period end | `POST /v1/subscriptions/:id` `cancel_at_period_end=true`; undo sets it back. On a scheduled subscription, the schedule's `end_behavior` becomes `cancel`; undo sets it back to `release`. |
 | cancel now | `DELETE /v1/subscriptions/:id` |
-| change now | `POST /v1/subscriptions/:id` with the new price, `proration_behavior=always_invoice` and `payment_behavior=pending_if_incomplete`, at the proration date the plan previewed with `POST /v1/invoices/create_preview`. The plan shows what's charged after the customer's credit balance. If the payment fails, the change stays pending and the old price stays on. |
+| change now | `POST /v1/subscriptions/:id` with the new price, `proration_behavior=always_invoice` and `payment_behavior=pending_if_incomplete`, at the proration date the plan previewed with `POST /v1/invoices/create_preview`. The plan shows what's charged after the customer's credit balance. If the payment fails, the call says the change is pending, not made: Stripe discards it after about 23 hours if the invoice isn't paid, and the old price stays on. |
 | change at renewal | `POST /v1/subscription_schedules` from the subscription, then its phases: the current one as it is, and the new price from the renewal date. If the second write fails, the schedule is released; if that fails too, the error names the schedule left behind. Undo releases it. |
 
 Plans only read (and preview); every write happens after approval. A plan measures time from

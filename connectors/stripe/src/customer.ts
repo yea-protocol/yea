@@ -10,11 +10,11 @@ import {
 import { lean } from '@yea-protocol/sdk';
 import {
   type Charge,
-  currentSubscriptions,
   findCustomers,
   period,
   recentCharges,
   type Subscription,
+  subscriptionPage,
 } from './api.js';
 import { type Ctx, day } from './context.js';
 import { formatMoney } from './currency.js';
@@ -105,16 +105,19 @@ async function lookUp(ctx: Ctx, who: string): Promise<CallToolResult> {
     );
   }
 
-  const [chs, subs] = await Promise.all([
+  const [chs, page] = await Promise.all([
     recentCharges(ctx.stripe, c.id),
-    currentSubscriptions(ctx.stripe, c.id),
+    subscriptionPage(ctx.stripe, c.id),
   ]);
   const view = {
     mode: ctx.live ? 'LIVE' : 'test',
     id: c.id,
     name: c.name === null ? null : safeText(c.name),
     email: c.email === null ? null : safeText(c.email),
-    subscriptions: subs.map(subRow),
+    subscriptions: page.subs.map(subRow),
+    ...(page.more
+      ? { note: 'more than 100 subscriptions; only the newest 100 are listed' }
+      : {}),
     payments: chs.map(paymentRow),
   };
 

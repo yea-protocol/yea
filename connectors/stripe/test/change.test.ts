@@ -383,9 +383,15 @@ describe('change_plan, what the customer pays and what can be copied', () => {
   it('a declined payment leaves the change pending and the old price on, and says so', async () => {
     const s = setup({ declines: true });
     const [, now] = await plansOf(changeJob(s.ctx), toTeam);
-    const result = (await now.apply()) as { pending?: string };
+    const e = (await Promise.resolve(now.apply()).catch(
+      (x: unknown) => x,
+    )) as Error & { partial?: boolean };
 
-    expect(result.pending).toMatch(/the change waits for it/);
+    // Not a success: never "✓ … charges X today" as if paid.
+    expect(e.partial).toBe(true);
+    expect(e.message).toBe(
+      "Stripe invoiced the change, but the payment didn't go through, so the change is pending, not made. If the invoice isn't paid within about 23 hours, Stripe discards the change and sub_chen stays on pro.",
+    );
     expect(s.stripe.subs[0].items.data[0].price.id).toBe('price_pro');
   });
 

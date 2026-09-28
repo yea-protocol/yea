@@ -6,10 +6,10 @@ import { create, type JobPlan, update } from '@yea-protocol/sdk';
 import {
   type Charge,
   type Customer,
-  currentSubscriptions,
   period,
   recentCharges,
   type Subscription,
+  subscriptionPage,
 } from './api.js';
 import {
   applying,
@@ -72,18 +72,56 @@ function pickCharge(chs: Charge[], c: Customer, payment?: string): Charge {
     ? chs.find((x) => x.id === payment || x.payment_intent === payment)
     : chs.find((x) => x.status === 'succeeded');
 
-  if (ch && ch.status === 'succeeded' && ch.amount_refunded < ch.amount) {
+  if (ch && ch.status === 'succeeded') {
     return ch;
   }
 
   const listed = chs.slice(0, 5).map(paymentLine).join('; ');
   const what = payment
-    ? `${quoted(payment)} isn't one of ${who(c)}'s recent payments with something left to refund`
-    : ch
-      ? `${who(c)}'s latest payment, ${ch.id}, is fully refunded; to refund an older one, pass its id as payment`
-      : `${who(c)} has no recent payment that succeeded`;
+    ? `${quoted(payment)} isn't one of ${who(c)}'s recent payments that succeeded`
+    : `${who(c)} has no recent payment that succeeded`;
 
   throw new Error(`${what}${listed ? `. Recent payments: ${listed}` : ''}`);
+}
+
+interface PastRefund {
+  id: string;
+  amount: number;
+  created: number;
+  status: string;
+}
+
+/** The refunds already made on a charge, newest first; none when nothing was refunded. */
+async function pastRefunds(ctx: Ctx, ch: Charge): Promise<PastRefund[]> {
+  if (ch.amount_refunded <= 0) {
+    return [];
+  }
+
+  return (
+    await ctx.stripe.get<{ data: PastRefund[] }>('/refunds', {
+      charge: ch.id,
+      limit: '10',
+    })
+  ).data;
+}
+
+const refundLine = (r: PastRefund, cur: string) =>
+  `${r.id} (${formatMoney(r.amount, cur)}, ${day(r.created)}, ${r.status})`;
+
+/** A payment with nothing left is refused, naming the refunds already made. */
+function refuseRefunded(
+  c: Customer,
+  ch: Charge,
+  o: { earlier: PastRefund[]; chs: Charge[]; named: boolean },
+): never {
+  const refunds = o.earlier.map((r) => refundLine(r, ch.currency)).join('; ');
+  const older = o.named
+    ? ''
+    : `; to refund an older payment, pass its id as payment. Recent payments: ${o.chs.slice(0, 5).map(paymentLine).join('; ')}`;
+
+  throw new Error(
+    `${who(c)}'s payment ${ch.id} (${day(ch.created)}) is fully refunded${refunds ? `, by ${refunds}` : ''}${older}`,
+  );
 }
 
 /** A partial refund: a valid amount in this currency, no more than what's left. */
@@ -130,9 +168,10 @@ function unusedPart(
     return null;
   }
 
-  // BigInt keeps the share exact and the same on every machine.
-  const share = (BigInt(left) * BigInt(end - from)) / BigInt(end - start);
-  const amount = roundDown(Number(share), ch.currency);
+  // The unused share of what was PAID, less what's already been refunded, so asking again
+  // after a refund never offers more. BigInt keeps it exact and the same on every machine.
+  const share = (BigInt(ch.amount) * BigInt(end - from)) / BigInt(end - start);
+  const amount = roundDown(Number(share) - ch.amount_refunded, ch.currency);
 
   if (amount <= 0 || amount >= left) {
     return null;
@@ -141,13 +180,42 @@ function unusedPart(
   return { amount, days: Math.ceil((end - from) / DAY) };
 }
 
+/** The payment being refunded, and the refunds already made on it. */
+interface Paid {
+  c: Customer;
+  ch: Charge;
+  earlier: PastRefund[];
+}
+
+/**
+ * Where a summary names the payment: its date, and what's already been refunded and when, so
+ * a repeat after a refund whose result was unknown reads differently from a first refund.
+ */
+function paidLine(p: Paid): string {
+  const { ch } = p;
+  const last = p.earlier[0];
+
+  if (ch.amount_refunded <= 0) {
+    return `paid ${day(ch.created)}`;
+  }
+
+  return `paid ${day(ch.created)}; already refunded ${formatMoney(ch.amount_refunded, ch.currency)}${last ? ` on ${day(last.created)}` : ''}`;
+}
+
+/**
+ * What a person types: the amount, and for a payment already partly refunded, the amount then
+ * "again", so a repeat can't be approved by habit.
+ */
+const phraseFor = (p: Paid, amount: number) =>
+  `${formatNumber(amount, p.ch.currency)}${p.ch.amount_refunded > 0 ? ' again' : ''}`;
+
 /** One refund plan. Money leaves the business, so it reports `spend`. */
 function refundPlan(
   ctx: Ctx,
-  c: Customer,
-  ch: Charge,
+  p: Paid,
   refund: { amount: number; why: string },
 ): JobPlan {
+  const { c, ch } = p;
   const cur = ch.currency;
   const money = formatMoney(refund.amount, cur);
   const target = ch.payment_intent
@@ -155,7 +223,7 @@ function refundPlan(
     : { charge: ch.id };
 
   return {
-    summary: `${tag(ctx)} Refund ${money} of ${ch.id} (paid ${day(ch.created)}) to ${who(c)} (${refund.why})`,
+    summary: `${tag(ctx)} Refund ${money} of ${ch.id} (${paidLine(p)}) to ${who(c)} (${refund.why})`,
     effects: [
       create(
         'refund',
@@ -170,7 +238,7 @@ function refundPlan(
     ],
     uses: { spend: toQuantity(refund.amount, cur) },
     risk: riskFor(ctx, 'medium'),
-    data: { confirm: formatNumber(refund.amount, cur) },
+    data: { confirm: phraseFor(p, refund.amount) },
     apply: () =>
       applying(async () => {
         const r = await ctx.stripe.write<{ id: string; status: string }>(
@@ -190,7 +258,7 @@ function refundPlan(
   };
 }
 
-/** The refund plans: the amount asked for, or all of it and, when it applies, what's unused. */
+/** The refund plans: the amount asked for, or all that's left and, when it applies, what's unused. */
 async function refundPlans(ctx: Ctx, input: RefundInput) {
   const found = await oneCustomer(ctx, input);
 
@@ -201,23 +269,37 @@ async function refundPlans(ctx: Ctx, input: RefundInput) {
   const c = found.found;
   const [chs, subs] = await Promise.all([
     recentCharges(ctx.stripe, c.id),
-    currentSubscriptions(ctx.stripe, c.id),
+    subscriptionPage(ctx.stripe, c.id),
   ]);
   const ch = pickCharge(chs, c, input.payment);
+  const p: Paid = { c, ch, earlier: await pastRefunds(ctx, ch) };
+  const left = ch.amount - ch.amount_refunded;
+
+  if (left <= 0) {
+    refuseRefunded(c, ch, {
+      earlier: p.earlier,
+      chs,
+      named: input.payment !== undefined,
+    });
+  }
 
   if (input.amount !== undefined) {
     const amount = partialAmount(input.amount, ch);
 
-    return [refundPlan(ctx, c, ch, { amount, why: 'partial' })];
+    return [refundPlan(ctx, p, { amount, why: 'partial' })];
   }
 
-  const left = ch.amount - ch.amount_refunded;
-  const plans = [refundPlan(ctx, c, ch, { amount: left, why: 'all of it' })];
-  const unused = unusedPart(ctx, ch, chs[0], subs);
+  const plans = [
+    refundPlan(ctx, p, {
+      amount: left,
+      why: ch.amount_refunded > 0 ? "all of what's left" : 'all of it',
+    }),
+  ];
+  const unused = unusedPart(ctx, ch, chs[0], subs.subs);
 
   if (unused) {
     plans.push(
-      refundPlan(ctx, c, ch, {
+      refundPlan(ctx, p, {
         amount: unused.amount,
         why: `estimated unused ${unused.days} days of the current period`,
       }),

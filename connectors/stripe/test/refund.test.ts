@@ -113,26 +113,28 @@ describe('refund plans', () => {
     }
   });
 
-  it('a payment with nothing left, or not theirs, is refused with their recent payments', async () => {
+  it('a payment that isn’t theirs, or didn’t succeed, is refused with their recent payments', async () => {
     const s = setup();
 
-    s.stripe.charges[0].amount_refunded = 4900;
+    await expect(
+      refundJob(s.ctx).plan({ ...chen, payment: 'ch_nope' }),
+    ).rejects.toThrow(
+      /"ch_nope" isn't one of "Chen Wei"'s recent payments that succeeded. Recent payments: ch_2 \(2026-09-11, 49.00 USD, 49.00 USD left, succeeded\); ch_1/,
+    );
+  });
+
+  it('a fully refunded payment is refused, naming the refunds already made, never moved to an older one', async () => {
+    const s = setup();
+    const [full] = await plansOf(refundJob(s.ctx), chen);
+
+    await full.apply();
+    await expect(refundJob(s.ctx).plan(chen)).rejects.toThrow(
+      /^"Chen Wei"'s payment ch_2 \(2026-09-11\) is fully refunded, by re_1 \(49.00 USD, 2026-09-27, succeeded\); to refund an older payment, pass its id as payment. Recent payments: ch_2 .*; ch_1 \(2026-08-12, 49.00 USD, 49.00 USD left, succeeded\)$/,
+    );
     await expect(
       refundJob(s.ctx).plan({ ...chen, payment: 'ch_2' }),
     ).rejects.toThrow(
-      /"ch_2" isn't one of "Chen Wei"'s recent payments with something left to refund. Recent payments: ch_2 \(2026-09-11, 49.00 USD, 0.00 USD left, succeeded\); ch_1/,
-    );
-    await expect(
-      refundJob(s.ctx).plan({ ...chen, payment: 'ch_nope' }),
-    ).rejects.toThrow(/isn't one of/);
-  });
-
-  it('with the latest payment fully refunded, refuses rather than falling back to an older one', async () => {
-    const s = setup();
-
-    s.stripe.charges[0].amount_refunded = 4900;
-    await expect(refundJob(s.ctx).plan(chen)).rejects.toThrow(
-      /^"Chen Wei"'s latest payment, ch_2, is fully refunded; to refund an older one, pass its id as payment. Recent payments: ch_2 .*; ch_1 \(2026-08-12, 49.00 USD, 49.00 USD left, succeeded\)$/,
+      /^"Chen Wei"'s payment ch_2 \(2026-09-11\) is fully refunded, by re_1 \(49.00 USD, 2026-09-27, succeeded\)$/,
     );
 
     // Asked for by id, the older one is fine.
@@ -161,25 +163,68 @@ describe('refund plans', () => {
     expect(full.summary).toContain('of ch_2 (paid 2026-09-11)');
   });
 
-  it('a retry after a refund whose result was unknown never moves to another payment', async () => {
-    const s = setup();
-    const [full] = await plansOf(refundJob(s.ctx), chen);
-
-    // The refund reaches Stripe, but every answer is lost.
+  /** The refund reaches Stripe, but every answer is lost: a part-way failure. */
+  async function lost(s: ReturnType<typeof setup>, plan: { apply(): unknown }) {
     s.stripe.fail({ path: '/refunds', after: true, times: 3 });
 
-    const e = (await Promise.resolve(full.apply()).catch(
+    const e = (await Promise.resolve(plan.apply()).catch(
       (x: unknown) => x,
     )) as Error & { partial?: boolean };
 
     expect(e.partial).toBe(true);
-    expect(s.stripe.charges[0].amount_refunded).toBe(4900);
+  }
 
-    // Calling again doesn't offer ch_1, the same amount under the same phrase.
-    await expect(refundJob(s.ctx).plan(chen)).rejects.toThrow(
-      /latest payment, ch_2, is fully refunded/,
-    );
+  it('a retry after an unused refund whose answer was lost says it was refunded, asks for "again", and offers no more unused', async () => {
+    const s = setup();
+    const [, unused] = await plansOf(refundJob(s.ctx), chen);
+
+    await lost(s, unused);
+    expect(s.stripe.charges[0].amount_refunded).toBe(2354);
+
+    const again = await plansOf(refundJob(s.ctx), chen);
+
+    // The unused share is of what was paid, less what's refunded: nothing more to offer.
+    expect(again.map((p) => p.summary)).toEqual([
+      '[test] Refund 25.46 USD of ch_2 (paid 2026-09-11; already refunded 23.54 USD on 2026-09-27) to "Chen Wei" (all of what\'s left)',
+    ]);
+    expect(again[0].data).toEqual({ confirm: '25.46 again' });
     expect(s.stripe.state.refunds).toHaveLength(1);
+  });
+
+  it('a retry after an explicit amount whose answer was lost says so, and asks for "again"', async () => {
+    const s = setup();
+    const input = { ...chen, amount: '10' };
+    const [first] = await plansOf(refundJob(s.ctx), input);
+
+    expect(first.data).toEqual({ confirm: '10.00' });
+    await lost(s, first);
+
+    const [again] = await plansOf(refundJob(s.ctx), input);
+
+    expect(again.summary).toBe(
+      '[test] Refund 10.00 USD of ch_2 (paid 2026-09-11; already refunded 10.00 USD on 2026-09-27) to "Chen Wei" (partial)',
+    );
+    expect(again.data).toEqual({ confirm: '10.00 again' });
+  });
+
+  it('asking again after part of the unused share was refunded offers only the rest of it', async () => {
+    const s = setup();
+
+    s.stripe.charges[0].amount_refunded = 1000;
+    s.stripe.state.refunds.push({
+      id: 're_0',
+      amount: 1000,
+      charge: 'ch_2',
+      created: NOW - D,
+      status: 'succeeded',
+    });
+
+    const [full, unused] = await plansOf(refundJob(s.ctx), chen);
+
+    expect(full.summary).toContain('already refunded 10.00 USD on 2026-09-26');
+    // 23.54 of 49.00 paid is unused; 10.00 of it is already back.
+    expect(unused.summary).toMatch(/^\[test\] Refund 13.54 USD of ch_2/);
+    expect(unused.data).toEqual({ confirm: '13.54 again' });
   });
 
   it('no unused plan when the period has barely started, or the payment is older than it', async () => {

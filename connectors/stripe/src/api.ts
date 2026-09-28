@@ -431,6 +431,23 @@ export function period(s: Subscription): { start: number; end: number } {
   return { start: item.current_period_start, end: item.current_period_end };
 }
 
+/**
+ * A customer read must say which mode it's in: one that doesn't can't be checked against the
+ * key, so it fails closed. (Responses that do say are checked on every request.)
+ */
+function withMode<T extends object>(customers: T[]): T[] {
+  for (const c of customers) {
+    if (typeof (c as { livemode?: unknown }).livemode !== 'boolean') {
+      throw new StripeError(
+        "Stripe's customer came back without livemode, so its mode can't be checked; refusing to go on",
+        { status: 0 },
+      );
+    }
+  }
+
+  return customers;
+}
+
 const CUSTOMER_ID = /^cus_[A-Za-z0-9]+$/;
 const EMAIL = /^[^\s@]+@[^\s@]+$/;
 
@@ -442,7 +459,7 @@ export async function retrieveCustomer(
   try {
     const c = await s.get<Customer>(`/customers/${id}`);
 
-    return c.deleted ? null : c;
+    return c.deleted ? null : (withMode([c])[0] ?? null);
   } catch (e) {
     if (e instanceof StripeError && e.status === 404) {
       return null;
@@ -476,7 +493,7 @@ export async function findCustomers(
       limit: String(limit),
     });
 
-    return byEmail.data;
+    return withMode(byEmail.data);
   }
 
   // Stripe wants double-quoted, backslash-escaped strings.
@@ -486,7 +503,7 @@ export async function findCustomers(
     limit: String(limit),
   });
 
-  return found.data;
+  return withMode(found.data);
 }
 
 /** A customer's most recent charges, newest first. */
@@ -510,27 +527,43 @@ const LIVE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 const MAX_SUBSCRIPTIONS = 100;
 
 /**
- * A customer's subscriptions that are still in force. Stripe's default list leaves out
- * cancelled ones, so they can't hide a live one; a list that doesn't fit in one page is refused
- * rather than read in part.
+ * A customer's subscriptions that are still in force, from the first page of Stripe's default
+ * list, which leaves out cancelled ones so they can't hide a live one. `more` says the page
+ * wasn't the whole list.
  */
-export async function currentSubscriptions(
+export async function subscriptionPage(
   s: Stripe,
   customer: string,
-): Promise<Subscription[]> {
+): Promise<{ subs: Subscription[]; more: boolean }> {
   const all = await s.get<List<Subscription>>('/subscriptions', {
     customer,
     limit: String(MAX_SUBSCRIPTIONS),
   });
 
-  if (all.has_more) {
+  return {
+    subs: all.data.filter((x) => LIVE_STATUSES.has(x.status)),
+    more: all.has_more === true,
+  };
+}
+
+/**
+ * All of a customer's subscriptions in force, for a job that acts on one: a list that doesn't
+ * fit in one page is refused rather than read in part.
+ */
+export async function currentSubscriptions(
+  s: Stripe,
+  customer: string,
+): Promise<Subscription[]> {
+  const page = await subscriptionPage(s, customer);
+
+  if (page.more) {
     throw new StripeError(
       `${customer} has more than ${MAX_SUBSCRIPTIONS} subscriptions; pass the sub_ id of the one you mean`,
       { status: 0 },
     );
   }
 
-  return all.data.filter((x) => LIVE_STATUSES.has(x.status));
+  return page.subs;
 }
 
 /** One subscription by id, if it's this customer's and still in force. */

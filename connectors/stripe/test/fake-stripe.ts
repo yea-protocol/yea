@@ -17,7 +17,13 @@ export interface FakeState {
   subs: Subscription[];
   prices: Price[];
   schedules: Schedule[];
-  refunds: { id: string; amount: number; charge: string }[];
+  refunds: {
+    id: string;
+    amount: number;
+    charge: string;
+    created: number;
+    status: string;
+  }[];
   /** Every prorated price change, with the date it was prorated from. */
   prorations: { subscription: string; at: number; total: number }[];
 }
@@ -234,7 +240,7 @@ export function fakeStripe(
   o: {
     now?: number;
     state?: (s: FakeState) => Partial<FakeState>;
-    /** Stamp every object with this `livemode`, as Stripe does. Default: leave it off. */
+    /** The `livemode` every object is stamped with, as Stripe does. Default: false (test mode). */
     livemode?: boolean;
     /** Decline every card: a price change that charges stays pending. */
     declines?: boolean;
@@ -329,6 +335,15 @@ export function fakeStripe(
                   (status ? s.status === status : s.status !== 'canceled')),
             )
             .reverse(),
+          q('limit'),
+        ),
+      );
+    }
+
+    if (p === '/refunds') {
+      return json(
+        page(
+          state.refunds.filter((r) => r.charge === q('charge')).reverse(),
           q('limit'),
         ),
       );
@@ -434,7 +449,13 @@ export function fakeStripe(
       );
     }
 
-    const r = { id: nextId('re'), amount, charge: ch.id };
+    const r = {
+      id: nextId('re'),
+      amount,
+      charge: ch.id,
+      created: now,
+      status: 'succeeded',
+    };
 
     ch.amount_refunded += amount;
     state.refunds.push(r);
@@ -686,9 +707,9 @@ export function fakeStripe(
 
   /** Every object in a response gets `livemode`, when the fake is told which mode it's in. */
   function stamp(r: Response): Response {
-    const mode = o.livemode;
+    const mode = o.livemode ?? false;
 
-    if (mode === undefined || r.status >= 400) {
+    if (r.status >= 400) {
       return r;
     }
 

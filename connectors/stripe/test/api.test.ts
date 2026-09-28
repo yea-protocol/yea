@@ -9,9 +9,12 @@ import {
   STRIPE_VERSION,
   StripeError,
   stripeApi,
+  subscriptionPage,
 } from '../src/api.js';
+import { cancelJob } from '../src/cancel.js';
+import { refundJob } from '../src/refund.js';
 import { fakeStripe, price, subscription } from './fake-stripe.js';
-import { D, NOW, TEST_KEY } from './helpers.js';
+import { D, NOW, plansOf, setup, TEST_KEY } from './helpers.js';
 
 const client = (
   f = fakeStripe({ now: NOW }),
@@ -317,6 +320,23 @@ describe('reading subscriptions', () => {
     ).rejects.toThrow(
       'cus_chen has more than 100 subscriptions; pass the sub_ id of the one you mean',
     );
+
+    // Only jobs that act on a subscription refuse; a refund and the customer tool read the page.
+    const s = setup({
+      state: (b) => ({
+        subs: Array.from({ length: 101 }, (_, i) =>
+          sub(`sub_${i}`, 'active'),
+        ).concat(b.subs),
+      }),
+    });
+
+    expect(await plansOf(refundJob(s.ctx), { customer: 'Chen' })).toHaveLength(
+      2,
+    );
+    await expect(cancelJob(s.ctx).plan({ customer: 'Chen' })).rejects.toThrow(
+      /more than 100 subscriptions/,
+    );
+    expect((await subscriptionPage(client(f).api, 'cus_chen')).more).toBe(true);
   });
 
   it('one named by id is fetched, and must be the customer’s and in force', async () => {
@@ -390,4 +410,25 @@ it('the key itself is taken out of any message, whatever its format', async () =
     .catch((x: unknown) => x)) as Error;
 
   expect(e.message).toBe('Stripe: bad key … here');
+});
+
+it('a customer without livemode fails closed: its mode can’t be checked', async () => {
+  const f = fakeStripe({ now: NOW });
+  const { api } = client(f);
+  const plain = (c: object) => new Response(JSON.stringify(c), { status: 200 });
+  const bare = stripeApi({
+    key: TEST_KEY,
+    sleep: async () => {},
+    fetch: async (url) =>
+      String(url).includes('/customers/cus_chen')
+        ? plain({ id: 'cus_chen', name: 'Chen Wei', email: null })
+        : f.fetch(url),
+  });
+
+  expect((await findCustomers(api, 'cus_chen'))[0]).toMatchObject({
+    livemode: false,
+  });
+  await expect(findCustomers(bare, 'cus_chen')).rejects.toThrow(
+    /came back without livemode, so its mode can't be checked/,
+  );
 });

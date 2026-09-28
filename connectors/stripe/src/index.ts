@@ -21,6 +21,7 @@ export {
   type StripeOptions,
   type Subscription,
   stripeApi,
+  subscriptionPage,
 } from './api.js';
 
 export { cheaperOrSame } from './change.js';

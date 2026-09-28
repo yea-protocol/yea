@@ -3,6 +3,7 @@
  * undoable). "Now" is previewed with `create_preview` at a proration date fixed to the start of
  * today, and the update sends that same date, so the charge is the one the person approved.
  */
+import { PartialApplyError } from '@yea-protocol/mcp';
 import { create, type JobPlan, type Risk, update } from '@yea-protocol/sdk';
 import {
   type Customer,
@@ -281,19 +282,15 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
             payment_behavior: 'pending_if_incomplete',
           },
         );
-        const pending = (sub.pending_update ?? null) !== null;
 
-        return {
-          plan: 'change_now',
-          subscription: ch.sub.id,
-          price: ch.to.id,
-          ...(pending
-            ? {
-                pending:
-                  "the payment didn't go through, so the change waits for it; the subscription stays on its old price until it's paid",
-              }
-            : {}),
-        };
+        // Not a success: the invoice exists, but the change waits on its payment.
+        if ((sub.pending_update ?? null) !== null) {
+          throw new PartialApplyError(
+            `Stripe invoiced the change, but the payment didn't go through, so the change is pending, not made. If the invoice isn't paid within about 23 hours, Stripe discards the change and ${ch.sub.id} stays on ${priceName(ch.item.price)}.`,
+          );
+        }
+
+        return { plan: 'change_now', subscription: ch.sub.id, price: ch.to.id };
       }),
   };
 }

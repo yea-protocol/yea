@@ -406,6 +406,21 @@ After review (#76):
 - **The example** reports a write of unknown outcome as a non-retryable `conflict`, since a
   retry with a fresh key would refund twice, and formats amounts by the currency table.
 
+After the re-check (#76):
+
+- **A repeat refund reads differently.** On a payment already partly refunded, the summary says
+  "already refunded X on <date of the last refund>" (from `GET /v1/refunds?charge=`), and the
+  phrase to type is the amount then "again", so a retry after a lost answer can't be approved
+  by habit. A payment with nothing left is refused, naming the refunds already made.
+- **"What's unused"** is the unused share of the amount *paid*, less what's already refunded,
+  so asking again never offers more.
+- **A change left pending** by a declined payment is a `PartialApplyError`, not a receipt: it
+  says the change is pending, and that Stripe discards it after about 23 hours if the invoice
+  isn't paid.
+- **Customer reads must carry `livemode`;** one without it fails closed.
+- **Only the subscription jobs refuse** a customer with more than 100 subscriptions; a refund
+  and the `customer` tool read the first page (the tool says the list is cut).
+
 ## Decisions
 
 Adopted for v0 under the standing go-ahead; any can be reopened.
