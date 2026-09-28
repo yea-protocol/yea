@@ -19,3 +19,6 @@ export function warnOnce(message: string) {
     console.error(`yea: ${message}`);
   }
 }
+
+/** A Node error's `code`, such as `ENOENT`. */
+export const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;

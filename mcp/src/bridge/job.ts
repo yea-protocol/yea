@@ -21,7 +21,7 @@ import {
   type ReceiptReply,
   untrustedLens,
 } from '@yea-protocol/sdk';
-import { readTighteningFor } from '../keys.js';
+import { readTighteningFor } from '../policy.js';
 import { errorResult, NOTHING_RAN, refused, textResult } from '../result.js';
 import type { Obj } from '../util.js';
 import { type ConsentStore, checkConsent } from './consent.js';

@@ -4,9 +4,7 @@
  * then `job()` or `guard()` in the server factory.
  */
 import {
-  type CallToolResult,
   createRequestStateCodec,
-  fromJsonSchema,
   type McpServer,
   type RegisteredTool,
   type RequestStateCodec,
@@ -17,38 +15,31 @@ import {
 import {
   type ApprovalStore,
   type Clarification,
-  type Effect,
   type HashedPlan,
   isMemoryStore,
-  isReceiptId,
   type JobPlan,
   keyPair,
   MemoryStore,
   type Risk,
-  type Uses,
-  undoJob,
-  unixNow,
 } from '@yea-protocol/sdk';
 import { defaultFileStore, serverKeyPath } from '@yea-protocol/sdk/node';
+import type { JobDef, RevertFn, Yea } from './call/context.js';
+import { runJob } from './call.js';
 import {
-  callerOf,
-  isPartial,
-  type JobDef,
-  type RevertFn,
-  runJob,
-  type Yea,
-} from './call.js';
-import { checkName, loadServerSeed, pinnedPrincipal } from './keys.js';
-import {
-  errorResult,
-  JOB_ANNOTATIONS,
-  textResult,
-  UNDO_ANNOTATIONS,
-} from './result.js';
+  type GuardConfig,
+  guardTool,
+  jobAnnotations,
+  jobMeta,
+} from './guard.js';
+import { pinnedPrincipal } from './policy.js';
 import { previewSchema, takePreview } from './schema.js';
+import { checkName, loadServerSeed } from './serverkey.js';
+import { registerUndo, undoFree } from './undo.js';
 import { errorMessage, warnOnce } from './util.js';
 
-export type { RevertFn, RevertInput } from './call.js';
+export type { RevertFn, RevertInput } from './call/context.js';
+
+export type { Described, GuardConfig } from './guard.js';
 
 export { errorResult, textResult } from './result.js';
 
@@ -86,15 +77,6 @@ export interface YeaOptions {
   sub?: (ctx: ServerContext) => string;
 }
 
-/** What a guarded tool's `describe(input)` returns: a plan without `apply`. */
-export interface Described {
-  summary: string;
-  effects: Effect[];
-  uses?: Uses;
-  risk?: Risk;
-  undoWindow?: number;
-}
-
 export interface JobConfig<S extends StandardSchemaWithJSON> {
   title?: string;
   description?: string;
@@ -120,14 +102,6 @@ export interface JobConfig<S extends StandardSchemaWithJSON> {
     plan: HashedPlan,
     input: StandardSchemaWithJSON.InferOutput<S>,
   ): string;
-}
-
-export interface GuardConfig {
-  describe(input: Record<string, unknown>): Described | Promise<Described>;
-  /** The tool's default plan risk, and its `_meta` risk; `describe`'s own `risk` wins. Default `medium`. */
-  risk?: Risk;
-  revert?: RevertFn;
-  confirmWith?(plan: HashedPlan, input: Record<string, unknown>): string;
 }
 
 export interface Approvals {
@@ -285,26 +259,6 @@ function approvalsFor(y: Yea): Approvals {
   };
 }
 
-/** Throw before registering anything if the server has an `undo` tool that isn't ours. */
-function undoFree(server: McpServer, ours: WeakMap<McpServer, unknown>) {
-  if (!ours.has(server) && Object.hasOwn(registryOf(server), 'undo')) {
-    throw new Error(
-      "this server already has a tool named undo; a job with revert needs YEA's undo tool",
-    );
-  }
-}
-
-/** The tool's risk metadata (SPEC-mcp-ts, "Risk metadata"). */
-const jobMeta = (risk: Risk | undefined, undoable: boolean) => ({
-  'dev.yea/job': { risk: risk ?? 'medium', undoable },
-});
-
-/** A job changes things: destructive unless the author says otherwise. Hints, not enforcement. */
-const jobAnnotations = (a: ToolAnnotations | undefined): ToolAnnotations => ({
-  ...JOB_ANNOTATIONS,
-  ...a,
-});
-
 function registerJob<S extends StandardSchemaWithJSON>(
   y: Yea,
   server: McpServer,
@@ -339,211 +293,4 @@ function registerJob<S extends StandardSchemaWithJSON>(
       return runJob({ y, server, job: def, input, ctx }, preview);
     },
   );
-}
-
-/**
- * The server's tool registry. SDK seam: `RegisteredTool` doesn't carry its name and the registry
- * is private, so this reads it through a narrow cast; an empty object if it isn't there.
- */
-function registryOf(server: McpServer): Record<string, unknown> {
-  const registry = (server as unknown as { _registeredTools?: unknown })
-    ._registeredTools;
-
-  return registry && typeof registry === 'object'
-    ? (registry as Record<string, unknown>)
-    : {};
-}
-
-/** The name `server` registered `tool` under; refuses a tool it can't find there. */
-function registeredName(server: McpServer, tool: RegisteredTool): string {
-  const found = Object.entries(registryOf(server)).find(([, t]) => t === tool);
-
-  if (!found) {
-    throw new Error('guard(): this tool is not registered on this server');
-  }
-
-  return found[0];
-}
-
-/** The guarded callback: `describe` gives the one plan, and the original handler applies it. */
-function guardedCallback(
-  y: Yea,
-  server: McpServer,
-  def: Omit<JobDef, 'plan'> & Pick<GuardConfig, 'describe'>,
-  original: { handler: RegisteredTool['handler']; withArgs: boolean },
-) {
-  const call = original.handler as (...a: unknown[]) => unknown;
-  const run = (
-    input: Record<string, unknown>,
-    preview: boolean,
-    ctx: ServerContext,
-  ) => {
-    const apply = () => (original.withArgs ? call(input, ctx) : call(ctx));
-    const job: JobDef = {
-      ...def,
-      plan: async (i) => [{ ...(await def.describe(i)), apply }],
-    };
-
-    return runJob({ y, server, job, input, ctx }, preview);
-  };
-
-  // A tool registered without a schema is called as cb(ctx), and gets no preview.
-  return original.withArgs
-    ? (args: unknown, ctx: ServerContext) => {
-        const { input, preview } = takePreview(args);
-
-        return run(input, preview, ctx);
-      }
-    : (ctx: ServerContext) => run({}, false, ctx);
-}
-
-/**
- * The wrapper schema for a guarded tool. Like `job()`, it refuses a root that isn't a plain
- * object, or one that already has `preview`: the wrapper would shadow the tool's own argument.
- */
-function guardSchema(schema: StandardSchemaWithJSON): StandardSchemaWithJSON {
-  try {
-    return previewSchema(schema);
-  } catch (e) {
-    throw new TypeError(`guard(): ${errorMessage(e)}`);
-  }
-}
-
-/**
- * Turn a registered tool into a job without rewriting it (SPEC-mcp-ts `guard`). The SDK has no
- * tool-call middleware (typescript-sdk PR #2820), so this replaces the handler. SDK seam:
- * `RegisteredTool.disable`/`update`/`enable`.
- */
-function guardTool(
-  y: Yea,
-  server: McpServer,
-  tool: RegisteredTool,
-  config: GuardConfig,
-): string {
-  const name = registeredName(server, tool);
-
-  // Guarding twice would wrap the wrapper; a job() tool is already guarded.
-  if (tool._meta?.['dev.yea/job'] !== undefined) {
-    throw new Error(`guard(): ${name} is already a job tool`);
-  }
-
-  const wasEnabled = tool.enabled;
-
-  // Off first, so the original handler can't run in between; if anything below throws, it stays off.
-  tool.disable();
-
-  const withArgs = tool.inputSchema !== undefined;
-  const callback = guardedCallback(
-    y,
-    server,
-    {
-      name,
-      risk: config.risk,
-      describe: (input) => config.describe(input),
-      revert: config.revert,
-      confirmWith: config.confirmWith,
-      guarded: true,
-      ownResultsAreErrors: () => tool.outputSchema !== undefined,
-    },
-    { handler: tool.handler, withArgs },
-  );
-
-  tool.update({
-    callback: callback as never,
-    ...(tool.inputSchema
-      ? { paramsSchema: guardSchema(tool.inputSchema) }
-      : {}),
-    annotations: jobAnnotations(tool.annotations),
-    _meta: {
-      ...tool._meta,
-      ...jobMeta(config.risk, config.revert !== undefined),
-    },
-  });
-
-  if (wasEnabled) {
-    tool.enable();
-  }
-
-  return name;
-}
-
-const RECEIPT_SCHEMA = fromJsonSchema<{ receipt: string }>({
-  type: 'object',
-  properties: {
-    receipt: {
-      type: 'string',
-      description: 'The receipt id of the job to undo.',
-    },
-  },
-  required: ['receipt'],
-});
-
-/** The `undo` tool, registered once per server, the first time a job with `revert` is added. */
-function registerUndo(
-  y: Yea,
-  server: McpServer,
-  all: WeakMap<McpServer, Map<string, RevertFn>>,
-): Map<string, RevertFn> {
-  const known = all.get(server);
-
-  if (known) {
-    return known;
-  }
-
-  const reverts = new Map<string, RevertFn>();
-
-  all.set(server, reverts);
-  server.registerTool(
-    'undo',
-    {
-      description: 'Undo a job by its receipt id, within its undo window.',
-      inputSchema: RECEIPT_SCHEMA,
-      annotations: UNDO_ANNOTATIONS,
-    },
-    (args, ctx) => undoCall(y, reverts, args.receipt, ctx),
-  );
-
-  return reverts;
-}
-
-/** `undo({ receipt })`: the core's `undoJob`, for this server's receipts and tools only. */
-async function undoCall(
-  y: Yea,
-  reverts: Map<string, RevertFn>,
-  id: string,
-  ctx: ServerContext,
-): Promise<CallToolResult> {
-  try {
-    const sub = callerOf(y, ctx);
-
-    // A receipt for a tool with no revert here is unknown, like one from another server.
-    const found = isReceiptId(id) ? await y.store.getReceipt(id) : null;
-    const revert = found ? reverts.get(found.tool) : undefined;
-    const out = await undoJob(y.store, {
-      id: revert ? id : null,
-      service: await y.serviceId(),
-      sub,
-      now: unixNow(),
-      revert: (r) =>
-        revert?.(
-          { input: r.input, planHash: r.planHash, result: r.result },
-          ctx,
-        ),
-    });
-
-    return out.kind === 'undone'
-      ? textResult([`↶ undid ${out.receipt.id}: ${out.receipt.summary}`], {
-          undone: out.receipt.id,
-        })
-      : errorResult([`✗ ${out.why}; nothing was undone`]);
-  } catch (e) {
-    // A revert that may have half-happened says so, never "nothing was undone".
-    if (isPartial(e)) {
-      return errorResult([`✗ undo failed part-way: ${e.message}`]);
-    }
-
-    return errorResult([
-      `✗ undo failed: ${errorMessage(e)}; nothing was undone, and it can be tried again`,
-    ]);
-  }
 }
