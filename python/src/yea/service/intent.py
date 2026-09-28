@@ -13,10 +13,9 @@ from ..keys import verify_proof
 from ..risk import resolve_risk
 from ..uses import check_uses
 from ..validate import validate_params
-from .authorize import authorize
+from .authorize import _checked, authorize
 from .execute import execute
-from .plan import _UNSET, Clarification, Ctx, _checked
-from .records import _IntentDef, _StoredProposal
+from .plan import _UNSET, Clarification, Ctx
 from .replies import (
     error_reply,
     params_of,
@@ -24,10 +23,14 @@ from .replies import (
     unknown_capability,
     verified_key,
 )
-from .util import AUTO_MEMORY, DAY, Emit, _call, random_id
+from .state import _IntentDef, _StoredProposal
+from .util import Emit, _call, random_id
 
 if TYPE_CHECKING:
     from . import Service
+
+DAY = 86400
+AUTO_MEMORY = 900  # seconds past max(arrival, proof.ts) a (key, frame id) auto INTENT is remembered (§4.3.1)
 
 
 async def on_intent(svc: Service, frame: dict, budget: int, emit: Emit) -> dict:

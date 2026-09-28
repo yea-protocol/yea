@@ -10,8 +10,8 @@ from ..grants import Verification
 from ..uses import limit_value, same_unit, value
 from .authorize import consent_request
 from .plan import CommitCtx
-from .records import _StoredReceipt
 from .replies import error_reply, reply_frame
+from .state import _StoredReceipt
 from .util import Emit, _call, random_id
 
 if TYPE_CHECKING:

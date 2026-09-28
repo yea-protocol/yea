@@ -7,10 +7,17 @@ from typing import TYPE_CHECKING
 from ..errors import YeaError, fix
 from ..grants import GrantContext, Verification, verify_grant
 from ..keys import verify_proof
-from .plan import _checked
 
 if TYPE_CHECKING:
     from . import Service
+
+
+def _checked(proposal: dict) -> dict:
+    """The parts of a proposal that COMMIT caveats read (§6.3)."""
+    out = {"hash": proposal["hash"], "risk": proposal["risk"]}
+    if "uses" in proposal:
+        out["uses"] = proposal["uses"]
+    return out
 
 
 def consent_request(svc: Service, proposal: dict, principal: str | None) -> dict:

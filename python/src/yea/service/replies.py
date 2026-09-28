@@ -1,15 +1,19 @@
-"""Building reply frames: the frame itself, error replies, and reading a request's params and verified key."""
+"""Building reply frames: the frame itself, error replies, the unknown-capability error, and reading a request's
+params and verified key."""
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from ..errors import YeaError, fix
 from ..validate import closest
-from .util import _json_str, log, random_id
+from .util import _json_str, random_id
 
 if TYPE_CHECKING:
     from . import Service
+
+log = logging.getLogger("yea")
 
 
 def reply_frame(re: str, kind: str, body: dict) -> dict:

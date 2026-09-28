@@ -1,4 +1,5 @@
-"""What a service remembers: registered capabilities, the proposals it made and the receipts it gave."""
+"""What a service remembers: registered capabilities, the proposals it made and the receipts it gave (like
+ts/src/service/state.ts)."""
 
 from __future__ import annotations
 

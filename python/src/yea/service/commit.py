@@ -9,7 +9,7 @@ from ..budget import fit
 from ..errors import YeaError, fix
 from .authorize import authorize
 from .execute import execute
-from .records import _StoredProposal
+from .state import _StoredProposal
 from .util import Emit, _json_str, random_id
 
 if TYPE_CHECKING:

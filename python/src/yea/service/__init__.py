@@ -30,10 +30,12 @@ from .plan import (
     send,
     update,
 )
-from .records import _AskDef, _IntentDef, _StoredProposal, _StoredReceipt
 from .replies import error_reply, reply_frame
+from .state import _AskDef, _IntentDef, _StoredProposal, _StoredReceipt
 from .undo import on_undo
-from .util import VERBS, Emit, _json_str, random_id
+from .util import Emit, _json_str, random_id
+
+VERBS = ("HELLO", "ASK", "INTENT", "COMMIT", "UNDO", "EXPAND")
 
 
 class Service:

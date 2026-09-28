@@ -47,14 +47,6 @@ class Plan:
     undo_window: int | None = None  # seconds; default one day when revert is set
 
 
-def _checked(proposal: dict) -> dict:
-    """The parts of a proposal that COMMIT caveats read (§6.3)."""
-    out = {"hash": proposal["hash"], "risk": proposal["risk"]}
-    if "uses" in proposal:
-        out["uses"] = proposal["uses"]
-    return out
-
-
 @dataclass
 class Clarification:
     question: str
