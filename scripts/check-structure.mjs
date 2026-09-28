@@ -38,9 +38,7 @@ export const LENGTH_EXEMPT = [
  * until the PR that fixes it, which also removes the entry. The check fails
  * when a listed violation no longer occurs.
  */
-export const RATCHET = {
-  'site/.vitepress/theme/components/Landing.vue': ['length'], // #108: split
-};
+export const RATCHET = {};
 
 /** Run-together names, since renamed to kebab-case (#108); they may not come back. */
 const JOINED = /^(servefetch|filestore|keyfile|serverkey|tooldefs|testdrive)\./;
