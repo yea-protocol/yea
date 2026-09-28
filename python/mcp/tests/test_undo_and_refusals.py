@@ -197,6 +197,7 @@ def test_the_default_store_reads_yea_store_before_yea_home(tmp_path, monkeypatch
 async def test_a_memory_store_says_why_no_consent_code_and_what_to_do(tmp_path, monkeypatch):
     """The same words as mcp-ts: where `yea approve` can't reach, and the two ways out (#145)."""
     monkeypatch.setenv("YEA_HOME", str(tmp_path))
+    monkeypatch.delenv("YEA_POLICY", raising=False)  # no policy: the job asks, and this client can't
     mem = yea(name="m", transport="stdio", store=MemoryStore(), server_key=tmp_path / "m", principal=PRINCIPAL.public)
     srv = MCPServer("m", request_state_security=mem.request_state_security())
 
