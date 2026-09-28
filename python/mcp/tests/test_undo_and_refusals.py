@@ -6,15 +6,15 @@ import os
 import time
 
 import pytest
-from mcp import Client
-from mcp.server.mcpserver import MCPServer
-from mcp.shared.exceptions import NoBackChannelError
-from yea import Plan, create
-from yea.store import FileStore, MemoryStore
-
 import yea_mcp
 from conftest import MODES, PRINCIPAL, Person, text
+from mcp.server.mcpserver import MCPServer
+from mcp.shared.exceptions import NoBackChannelError
 from yea_mcp import token_subject, yea
+
+from mcp import Client
+from yea import Plan, create
+from yea.store import FileStore, MemoryStore
 
 pytestmark = pytest.mark.anyio
 
