@@ -10,6 +10,7 @@ import type {
   ParamSchema,
   ReceiptReply,
 } from '../types.js';
+import { isObject } from '../util.js';
 import { effectLine, fmtDuration, fmtTime } from './format.js';
 import { entry } from './notation.js';
 
@@ -62,9 +63,7 @@ export function receiptLines(r: ReceiptReply): string[] {
   const tag = `(receipt ${rc.id})${r.replay ? ' (replay)' : ''}`;
   const out = rc.undoes
     ? [`↶ undid ${rc.undoes}: ${rc.summary} ${tag}`]
-    : [
-        `✓ ${rc.summary} ${tag} · ${rc.undo ? `undo until ${fmtTime(rc.undo.until)}` : 'irreversible'}`,
-      ];
+    : [`✓ ${rc.summary} ${tag} · ${undoUntil(rc.undo)}`];
 
   // The model already saw the effects in the proposal, unless the service auto-committed.
   if (r.auto) {
@@ -76,6 +75,13 @@ export function receiptLines(r: ReceiptReply): string[] {
   }
 
   return out;
+}
+
+/** `undo until {time}` for an undo object with an `until`; anything else is `irreversible`. */
+function undoUntil(undo: unknown): string {
+  return isObject(undo) && 'until' in undo
+    ? `undo until ${fmtTime(undo.until)}`
+    : 'irreversible';
 }
 
 export function errorLines(r: ErrorReply): string[] {
@@ -104,9 +110,13 @@ export function errorLines(r: ErrorReply): string[] {
   return out;
 }
 
+/** The percentage is shown only for a `progress` in [0, 1]; any other value is left out. */
 export function eventLine(r: Event): string {
+  const p: unknown = r.progress;
   const progress =
-    typeof r.progress === 'number' ? ` (${Math.round(r.progress * 100)}%)` : '';
+    typeof p === 'number' && p >= 0 && p <= 1
+      ? ` (${Math.floor(p * 100 + 0.5)}%)`
+      : '';
 
   return `… ${r.message}${progress}`;
 }
