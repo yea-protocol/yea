@@ -426,7 +426,7 @@ def test_file_store_breaks_a_stale_lock_and_fails_closed_on_a_live_one(tmp_path)
         os.utime(lock, (0, 0))  # left by a crashed process long ago
         assert await s.reserve(k, 1, 10) is not None
         lock.write_text("1")  # held right now
-        import yea.store as st
+        import yea.store.lock as st
 
         old, st.LOCK_WAIT = st.LOCK_WAIT, 0.05
         try:
@@ -636,7 +636,7 @@ def test_consents_that_dont_count(store):
 
 
 def test_a_stale_lock_is_broken_but_a_fresh_one_is_not_removed_by_its_breaker(tmp_path):
-    import yea.store as st
+    import yea.store.lock as st
 
     lock = tmp_path / "x.lock"
     lock.write_text("someone:1")
