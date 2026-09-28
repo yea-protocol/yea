@@ -47,23 +47,36 @@ section. Both have the same steps. The five-minute claim covers steps 1–3 only
    by name, `approvals.guard(server, "delete_file", describe=…, confirm_with=…)`, and the
    same calls work on a `fastmcp.FastMCP` server (guard a mounted server's tool on the server
    that defines it).
-3. **Run it in your client.** `claude mcp add files -- node server.ts` for Claude Code, plus
-   the matching config for Cursor and VS Code. The page shows what the person then sees: the
-   plan, and a field that says *Type "report.pdf" to approve*. **This is the five-minute
-   point.**
-4. **Make it undoable.** A `job()` whose `apply` moves the file to a trash directory, with
-   `revert` putting it back, `undoWindow`, `risk: 'low'`, and the `undo` tool it adds.
-5. **Let safe things run on their own.** This takes three things, each explained:
-   - **Pin the person's public key where the server can't change it.** For example
-     `sudo install -o root -m 644 ~/.yea/principal.pub /etc/yea/principal.pub`, then
-     `YEA_PRINCIPAL_PUB=/etc/yea/principal.pub`. A key under your home directory is refused,
-     because an agent running as you could swap it. A key on another user or device is
-     stronger.
-   - **Grant the server a policy.** Get the server's id from the log line it prints at
-     start-up (`yea: service id ed25519:…`), or from `yea service-id <name>`. Then run
-     `yea grant --to <id> --can delete_file --risk low --exp 7d > ~/.yea/files.policy` and
-     set `YEA_POLICY=~/.yea/files.policy`.
-   - **Pass both variables in the client config.**
+3. **Run it in your client.** `claude mcp add files -- npx tsx server.ts` for Claude Code
+   (Node 22.18 or later can run `node server.ts` directly), plus the matching config for
+   Cursor and VS Code. The page shows what the person then sees: the plan, and a field that
+   says *Type "report.pdf" to approve*. **This is the five-minute point.** The page also says:
+   - a stderr warning that no principal key is pinned is expected at this stage;
+   - the client must support form elicitation (the client table says which do);
+   - a tool marked `risk: 'high'`, or an `outOfBand` in `~/.yea/policy.json`, sends it to
+     consent codes instead, which need step 5.
+4. **Make it undoable.** A `move_to_trash` `job()` whose `apply` moves the file to a trash
+   directory, with `revert` putting it back, `undoWindow`, `risk: 'low'`, and the `undo` tool
+   it adds.
+5. **Let safe things run on their own.** A signed policy lets undoable plans run without
+   asking. The page is plain that its strength depends on where the person's **private** key
+   lives: whoever can use it can sign policies. So it shows two setups.
+   - **The real setup: the key on another OS user or device.**
+     1. There, run `yea init`, then `yea whoami`, and copy the principal public key.
+     2. On the server's machine, pin it where the server's user can't change it:
+        `sudo mkdir -p /etc/yea && echo '<key>' | sudo tee /etc/yea/principal.pub`.
+     3. Get the server's id from its start-up log line
+        (`yea: service id ed25519:… (name files)`), or from `yea service-id files`.
+     4. On the key's side, run `yea grant --to <id> --can move_to_trash --risk low --exp 7d`.
+        It prints only the `pg1.` token on stdout. Copy it into a file on the server's
+        machine, for example `/Users/me/.config/yea/files.policy`.
+     5. In the client config, set `YEA_PRINCIPAL_PUB=/etc/yea/principal.pub` and
+        `YEA_POLICY=<absolute path>`. `~` isn't expanded there, so use a full path or
+        `$HOME` in a shell.
+   - **Trying it on one account (best effort).** The same steps, with `yea init` and
+     `yea grant` run on this account. The page says in a callout that an agent running as
+     you could then sign its own policy, so this is for trying YEA, not for protecting
+     anything.
 
    Only undoable plans run on their own, so the grant names the step-4 job. The step-2 guard
    never auto-runs unless its `describe` gives an `undoWindow` and it has a `revert`. The page
@@ -75,7 +88,7 @@ section. Both have the same steps. The five-minute claim covers steps 1–3 only
 
 This needs two small additions, done in this module:
 - **`@yea-protocol/mcp` and `yea-mcp`** log `yea: service id <id> (name <name>)` to stderr
-  on start-up.
+  on start-up (parley-80 for TypeScript, parley-05 for Python).
 - **`yea service-id <name>`** prints the id from `~/.yea/server/<name>.key`. The format is the
   same for both languages.
 
@@ -115,8 +128,9 @@ The README keeps what works, and adds the framework path.
 
 `site/.vitepress/theme/components/Landing.vue` gets a framework card next to the protocol
 content. The hero (the Lens exchange under the headline) stays unless James changes it. Its
-benchmark numbers are hand-typed constants; a check compares them with `bench/RESULTS.md`
-and fails on drift.
+benchmark numbers are hand-typed constants. A check compares the payload figures with
+`bench/RESULTS.md`, and the live-agent figures with `bench/agent-eval/RESULTS*.md`, and
+fails on drift.
 
 ### 4. "From REST to YEA" (updated)
 
@@ -165,7 +179,7 @@ with its worked example on the framework API:
     `<<< @/../python/mcp/examples/mcp_quickstart.py#name`.
 - **Drift checks** in CI:
   - the README snippet against the example's region;
-  - `Landing.vue`'s numbers against `bench/RESULTS.md`.
+  - `Landing.vue`'s numbers against `bench/RESULTS.md` and `bench/agent-eval/RESULTS*.md`.
 - **The site builds** (`npm run site`, already in CI). Relative links are ignored by the
   dead-link check today, so that check only covers site pages.
 - **Five minutes, measured honestly.**
