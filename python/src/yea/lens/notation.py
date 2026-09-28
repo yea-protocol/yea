@@ -1,4 +1,5 @@
-"""Lean notation (SPEC §9.1), and the shared token estimate every budget uses (SPEC §8)."""
+"""Lean notation (SPEC §9.1): any JSON value as compact, indented text, with scalars bare where that's
+unambiguous and quoted otherwise."""
 
 from __future__ import annotations
 
@@ -11,13 +12,6 @@ from .._json import compact, js_number, quote
 _BARE = re.compile(r"[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+")
 _JSON_NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
 _RESERVED = frozenset({"-", "true", "false", "null"})
-_EST = re.compile(r"[A-Za-z]+|[0-9]{1,3}|\n {2,}|[^ \t\n\r\f\vA-Za-z0-9]")
-
-
-def est(text: str) -> int:
-    """Shared token estimate (SPEC §8): letter runs, digit groups of up to three,
-    indentation runs, and each other visible code point."""
-    return sum(1 for _ in _EST.finditer(text))
 
 
 def _is_scalar(v: Any) -> bool:

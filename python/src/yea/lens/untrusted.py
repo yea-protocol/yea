@@ -1,12 +1,12 @@
-"""A service's reply as Lens for a person or a model: re-rendered from its fields, every line made printable
-(mirrors ts/src/lens.ts)."""
+"""Lens for untrusted text: a service's reply or effect re-rendered from its fields made one line, so its
+text can't forge a line or hide characters (mirrors ts/src/lens/untrusted.ts)."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .fields import effect_line
-from .replies import lens
+from .format import effect_line
+from .render import lens
 
 
 def safe_effect_line(e: dict) -> str:

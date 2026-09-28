@@ -1,4 +1,4 @@
-"""How single fields read in a Lens: times, durations, effects, parameter lists and "more" lines (SPEC §9.2)."""
+"""Lens formatting helpers (SPEC §9.2): times, durations, effect lines, parameter lists and "more" lines."""
 
 from __future__ import annotations
 
