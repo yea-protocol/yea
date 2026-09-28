@@ -42,8 +42,6 @@ export const RATCHET = {
   'python/mcp/src/yea_mcp/call.py': ['length'], // #108: split
   'python/src/yea/lens.py': ['length'], // #108: split
   'site/.vitepress/theme/components/Landing.vue': ['length'], // #108: split
-  'ts/src/ask.ts': ['length'], // #108: split
-  'ts/src/lens.ts': ['length'], // #108: split
 };
 
 /** Run-together names, since renamed to kebab-case (#108); they may not come back. */
