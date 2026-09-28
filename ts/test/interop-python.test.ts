@@ -14,10 +14,11 @@ const ready =
   !process.env.SKIP_INTEROP;
 
 /**
- * Wait for serve.py's "up" line on stderr and return the ports it bound. The
- * service binds port 0, so parallel runs never reach each other's process.
+ * Wait for serve.py's "up" line on stderr and return the `host:port` of its
+ * TCP and HTTP servers, as bound. The service binds port 0, so parallel runs
+ * never reach each other's process.
  */
-function boundPorts(proc: ChildProcess): Promise<[number, number]> {
+function boundAddresses(proc: ChildProcess): Promise<[string, string]> {
   return new Promise((resolve, reject) => {
     let log = '';
     const fail = (why: string) =>
@@ -28,11 +29,11 @@ function boundPorts(proc: ChildProcess): Promise<[number, number]> {
     proc.stderr?.on('data', (chunk: string) => {
       log += chunk;
 
-      const m = /yea:\/\/\S+:(\d+) http:\/\/\S+:(\d+)\/yea/.exec(log);
+      const m = /yea:\/\/(\S+) http:\/\/(\S+)\/yea/.exec(log);
 
       if (m) {
         clearTimeout(timer);
-        resolve([Number(m[1]), Number(m[2])]);
+        resolve([m[1], m[2]]);
       }
     });
     proc.on('exit', (code) => fail(`exited (${code})`));
@@ -57,9 +58,9 @@ describe.skipIf(!ready)('interop: TS client → Python service', async () => {
       stdio: ['ignore', 'ignore', 'pipe'],
     });
 
-    const [tcp, http] = await boundPorts(proc);
+    const [tcp, http] = await boundAddresses(proc);
 
-    urls.push(`yea://127.0.0.1:${tcp}`, `http://127.0.0.1:${http}/yea`);
+    urls.push(`yea://${tcp}`, `http://${http}/yea`);
   }, 30_000);
   afterAll(() => proc?.kill());
 

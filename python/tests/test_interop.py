@@ -37,7 +37,7 @@ if not NODE_OK and os.environ.get("YEA_REQUIRE_INTEROP"):
 pytestmark = pytest.mark.skipif(not NODE_OK, reason="needs node >= 22.18 and a built ts/dist")
 
 
-UP = re.compile(r"(\w+) yea://\S+:(\d+) http://\S+:(\d+)/yea")
+UP = re.compile(r"(\w+) yea://(\S+) http://(\S+)/yea")
 
 
 def _read_ports(proc: subprocess.Popen, found: queue.Queue) -> None:
@@ -47,7 +47,7 @@ def _read_ports(proc: subprocess.Popen, found: queue.Queue) -> None:
     for line in proc.stderr:
         log += line
         if "examples up" in line:
-            found.put({name: (int(tcp), int(http)) for name, tcp, http in UP.findall(line)})
+            found.put({name: (tcp, http) for name, tcp, http in UP.findall(line)})
     found.put(log)
 
 
@@ -119,7 +119,7 @@ def assert_same_lens(replies):
 @pytest.mark.parametrize("transport", ["tcp", "http"])
 def test_calendar_flow(ts_servers, transport):
     tcp, http = ts_servers["calendar"]
-    url = f"yea://127.0.0.1:{tcp}" if transport == "tcp" else f"http://127.0.0.1:{http}/yea"
+    url = f"yea://{tcp}" if transport == "tcp" else f"http://{http}/yea"
     g = issue_grant(PRINCIPAL, AGENT.public, [{"svc": ["calendar.example"]}, {"can": ["calendar.*"]}])
 
     async def go():
@@ -158,7 +158,7 @@ def test_shop_consent_flow(ts_servers):
     deliver = (date.today() + timedelta(days=2)).isoformat()
 
     async def go():
-        async with await connect(f"yea://127.0.0.1:{tcp}", key=AGENT, grants=[g]) as c:
+        async with await connect(f"yea://{tcp}", key=AGENT, grants=[g]) as c:
             props = await c.intent("shop.order", {"items": [{"sku": "m002", "qty": 4}], "deliver": deliver})
             assert props.kind == "PROPOSALS", props.lens
             p = props.proposals[0]

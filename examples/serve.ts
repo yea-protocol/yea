@@ -4,7 +4,7 @@
  *   shop     → yea://127.0.0.1:7449   and  http://127.0.0.1:8449/yea
  * Trusted principals come from YEA_TRUST (comma-separated "ed25519:…" keys).
  * YEA_PORT moves the calendar's yea:// port and the others with it. YEA_PORT=0
- * binds free ports; the line printed on stderr names the ports actually bound.
+ * binds free ports; the line printed on stderr names the addresses bound.
  */
 import type { Server } from 'node:net';
 import { listen, serveHttp } from '@yea-protocol/sdk/node';
@@ -20,11 +20,17 @@ const sh = shop({ trust });
 /** The port `offset` above the base, or 0 (any free port) when the base is 0. */
 const at = (offset: number) => (base === 0 ? 0 : base + offset);
 
-/** The port a listening server is bound to. */
+/** The `host:port` a listening server is bound to (`localhost` names one address). */
 const bound = (server: Server) => {
   const a = server.address();
 
-  return typeof a === 'object' && a ? a.port : 0;
+  if (typeof a !== 'object' || !a) {
+    throw new Error('server is not listening on TCP');
+  }
+
+  return a.family === 'IPv6'
+    ? `[${a.address}]:${a.port}`
+    : `${a.address}:${a.port}`;
 };
 
 const [calTcp, calHttp, shopTcp, shopHttp] = (
@@ -37,5 +43,5 @@ const [calTcp, calHttp, shopTcp, shopHttp] = (
 ).map(bound);
 
 console.error(
-  `yea examples up · calendar yea://${host}:${calTcp} http://${host}:${calHttp}/yea · shop yea://${host}:${shopTcp} http://${host}:${shopHttp}/yea · trusting ${trust.length} principal(s)`,
+  `yea examples up · calendar yea://${calTcp} http://${calHttp}/yea · shop yea://${shopTcp} http://${shopHttp}/yea · trusting ${trust.length} principal(s)`,
 );

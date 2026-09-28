@@ -19,6 +19,13 @@ from calendar_example import calendar
 from yea import serve_http, serve_stdio, serve_tcp
 
 
+def bound(server: asyncio.base_events.Server) -> str:
+    """``host:port`` of the server's first socket, as bound. With port 0 and a name like
+    ``localhost``, each address gets its own free port, so name the address, not ``HOST``."""
+    host, port = server.sockets[0].getsockname()[:2]
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
 async def main() -> None:
     trust = [k for k in os.environ.get("YEA_TRUST", "").split(",") if k]
     host = os.environ.get("HOST", "127.0.0.1")
@@ -29,9 +36,9 @@ async def main() -> None:
         await serve_stdio(cal)
         return
     servers = [await serve_tcp(cal, host, tcp_port), await serve_http(cal, host, http_port)]
-    tcp_port, http_port = (s.sockets[0].getsockname()[1] for s in servers)
+    tcp, http = (bound(s) for s in servers)
     print(
-        f"yea python example up · calendar yea://{host}:{tcp_port} http://{host}:{http_port}/yea"
+        f"yea python example up · calendar yea://{tcp} http://{http}/yea"
         f" · trusting {len(trust)} principal(s)",
         file=sys.stderr, flush=True,
     )
