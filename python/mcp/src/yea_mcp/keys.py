@@ -119,7 +119,7 @@ def pinned_principal(option: str | None) -> Pinned:
         return Pinned(why="the principal option is not an ed25519 public key")
     path = os.environ.get("YEA_PRINCIPAL_PUB")
     if not path:
-        return Pinned(why="YEA_PRINCIPAL_PUB is not set, so no principal key is pinned")
+        return Pinned(why="YEA_PRINCIPAL_PUB is not set")
     try:
         return Pinned(key=load_principal_key(path))
     except ValueError as e:

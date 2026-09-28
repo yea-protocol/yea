@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 import time
 import weakref
 from collections.abc import Callable
@@ -23,7 +24,7 @@ from yea.text import printable
 
 from .call import JobDef, Req, Yea, _maybe, caller_of, is_memory_store, run_job
 from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
-from .keys import check_name, default_key_path, load_server_key, pinned_principal
+from .keys import check_name, default_key_path, load_server_key, pinned_principal, warn_once
 from .render import error_result
 from .signature import job_wrapper
 
@@ -81,7 +82,16 @@ def yea(*, name: str, transport: str, store: ApprovalStore | None = None, single
             shared_memory=is_memory_store(chosen) and not single_process,
             principal=pinned_principal(principal), policy=policy, tighten=tighten, service_id=key.public,
             sub=sub if sub is not None else (lambda rctx: ""))
+    _announce(y)
     return Approvals(y, _state_key(state_key))
+
+
+def _announce(y: Yea) -> None:
+    """The start-up lines on stderr, as mcp-ts prints them: the service id to issue a policy to,
+    and why nothing will auto-run when no principal key is pinned."""
+    if y.principal.key is None:
+        warn_once(f"no pinned principal key ({y.principal.why}): nothing auto-runs and no consent is accepted")
+    print(f"yea: service id {y.service_id} (name {y.name})", file=sys.stderr)
 
 
 class Approvals:
