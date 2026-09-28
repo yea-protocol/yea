@@ -47,6 +47,7 @@ import {
 import { printable } from './text.js';
 import type { ConsentRequest, Proposal, Reply, Risk, Verb } from './types.js';
 import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
+import { unixNow } from './util.js';
 
 const HELP = `yea — the protocol agents speak
 
@@ -172,7 +173,7 @@ function caveats(): Caveat[] {
   }
 
   if (o.exp) {
-    c.push({ exp: Math.floor(Date.now() / 1000) + duration(o.exp) });
+    c.push({ exp: unixNow() + duration(o.exp) });
   }
 
   for (const l of o.each ?? []) {
@@ -524,7 +525,7 @@ function isJobCode(code: string): boolean {
  * plan, have the person type its phrase, and store a consent signed to the server's key.
  */
 async function approveJob(p: KeyPair, code: string) {
-  const now = Math.floor(Date.now() / 1000);
+  const now = unixNow();
   let j: JobConsent;
 
   try {
@@ -831,7 +832,7 @@ async function installDefaultPolicy(p: KeyPair, a: KeyPair) {
     { risk: 'low' },
     { each: { of: 'spend', max: 2500, scale: 2, unit: 'USD' } },
     { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
-    { exp: Math.floor(Date.now() / 1000) + 30 * 86400 },
+    { exp: unixNow() + 30 * 86400 },
   ];
   const token = await issueGrant({ principal: p, to: a.public, caveats });
 
@@ -899,12 +900,13 @@ async function cmdDoctor() {
     ok('principal key is not on this machine (recommended)');
   }
 
-  await checkGrants(a);
+  await reportGrants(a);
   await checkServices();
   checkRegistration();
 }
 
-async function checkGrants(a: KeyPair | null) {
+/** The doctor's report on each saved grant. */
+async function reportGrants(a: KeyPair | null) {
   const grants = loadGrants('grants');
 
   if (!grants.length) {
@@ -915,15 +917,15 @@ async function checkGrants(a: KeyPair | null) {
 
   for (const g of grants) {
     try {
-      checkGrant(await inspectGrant(g), a);
+      reportGrant(await inspectGrant(g), a);
     } catch {
       bad('a saved grant is unreadable');
     }
   }
 }
 
-function checkGrant(info: GrantInfo, a: KeyPair | null) {
-  const now = Math.floor(Date.now() / 1000);
+function reportGrant(info: GrantInfo, a: KeyPair | null) {
+  const now = unixNow();
   const cav = info.blocks.flatMap((b) => b.caveats);
   const exp = Math.min(
     ...cav.flatMap((c) => ('exp' in c && c.exp ? [c.exp] : [])),

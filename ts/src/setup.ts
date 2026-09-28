@@ -8,7 +8,7 @@ import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { home } from './home.js';
 
-export const BRIDGE = {
+const BRIDGE = {
   command: 'npx',
   args: ['-y', '@yea-protocol/cli', 'mcp'],
 };
@@ -55,7 +55,7 @@ Each YEA capability is its own tool (for example \`shop_order\`), plus \`yea_con
 ${END}
 `;
 
-export function writeBlock(file: string): string {
+function writeBlock(file: string): string {
   const cur = existsSync(file) ? readFileSync(file, 'utf8') : '';
   const re = new RegExp(`${START}[\\s\\S]*?${END}\\n?`);
   const head =
@@ -76,7 +76,7 @@ export function writeBlock(file: string): string {
   return file;
 }
 
-export function removeBlock(file: string): boolean {
+function removeBlock(file: string): boolean {
   if (!existsSync(file)) {
     return false;
   }

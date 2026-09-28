@@ -6,6 +6,7 @@
 import { b64u, fromUtf8, unb64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import { type KeyPair, keyPair, sha256, sign, verify } from './crypto.js';
+import { atLeast, isRisk } from './risk.js';
 import type { ConsentRequest, Proof, Proposal, Risk, Verb } from './types.js';
 import {
   exact,
@@ -17,6 +18,7 @@ import {
   sameUnit,
   type Uses,
 } from './uses.js';
+import { isObject, isStringList, unixNow } from './util.js';
 
 export type Caveat =
   | { svc: string[] }
@@ -34,16 +36,14 @@ export interface Block {
   s: string;
 }
 
-const PREFIX = 'pg1.';
-const RISK_ORDER: Record<Risk, number> = { low: 0, medium: 1, high: 2 };
-const now = () => Math.floor(Date.now() / 1000);
+const GRANT_PREFIX = 'pg1.';
 
 export function encodeGrant(blocks: Block[]): string {
-  return PREFIX + b64u(utf8(canonical(blocks)));
+  return GRANT_PREFIX + b64u(utf8(canonical(blocks)));
 }
 
 export function decodeGrant(token: string): Block[] {
-  if (!token.startsWith(PREFIX)) {
+  if (!token.startsWith(GRANT_PREFIX)) {
     throw new Error('not a pg1 grant');
   }
 
@@ -51,7 +51,7 @@ export function decodeGrant(token: string): Block[] {
   let blocks: unknown;
 
   try {
-    blocks = JSON.parse(fromUtf8(unb64u(token.slice(PREFIX.length))));
+    blocks = JSON.parse(fromUtf8(unb64u(token.slice(GRANT_PREFIX.length))));
   } catch {
     throw new Error('not valid b64url JSON');
   }
@@ -91,7 +91,7 @@ export async function issueGrant(opts: {
     iss: principal.public,
     sub: opts.to,
     caveats: opts.caveats ?? [],
-    iat: opts.iat ?? now(),
+    iat: opts.iat ?? unixNow(),
     nonce:
       opts.nonce ?? b64u(globalThis.crypto.getRandomValues(new Uint8Array(12))),
   };
@@ -119,10 +119,10 @@ export async function delegateGrant(
   }
 
   const p = {
-    prev: await sha256(last.s),
+    prev: await blockId(last),
     sub: opts.to,
     caveats: opts.caveats ?? [],
-    iat: opts.iat ?? now(),
+    iat: opts.iat ?? unixNow(),
   };
 
   return encodeGrant([
@@ -174,7 +174,7 @@ export function consentCode(
     ...(o.agent === undefined ? {} : { agent: o.agent }),
   };
 
-  return `pc1.${b64u(utf8(canonical(body)))}`;
+  return encodeConsentCode(body);
 }
 
 /** An Ed25519 public key as YEA writes it (SPEC §6.1). */
@@ -217,14 +217,21 @@ export function consentRecipient(o: {
       };
 }
 
+const CONSENT_PREFIX = 'pc1.';
+
+/** A consent request, with whatever rides along (`detail`, `agent`), as a `pc1.` code. */
+export const encodeConsentCode = (
+  body: ConsentRequest & { detail?: unknown; agent?: unknown },
+) => CONSENT_PREFIX + b64u(utf8(canonical(body)));
+
 export function decodeConsentCode(
   code: string,
 ): ConsentRequest & { detail?: Proposal; agent?: unknown } {
-  if (!code.startsWith('pc1.')) {
+  if (!code.startsWith(CONSENT_PREFIX)) {
     throw new Error('not a consent code (expected pc1.…)');
   }
 
-  const c = JSON.parse(fromUtf8(unb64u(code.slice(4))));
+  const c = JSON.parse(fromUtf8(unb64u(code.slice(CONSENT_PREFIX.length))));
 
   for (const k of [
     'proposal',
@@ -310,19 +317,16 @@ export interface TotalLimit {
 
 const CONSENTABLE = new Set(['each', 'total', 'risk']);
 
-const strList = (v: unknown) =>
-  Array.isArray(v) && v.every((x) => typeof x === 'string');
-
 /** Shape validators for each known caveat's value. */
 const VALID_CAVEAT: Record<string, (v: unknown) => boolean> = {
-  svc: strList,
-  verbs: strList,
-  can: strList,
+  svc: isStringList,
+  verbs: isStringList,
+  can: isStringList,
   exp: Number.isSafeInteger,
   nbf: Number.isSafeInteger,
   each: isLimit,
   total: isLimit,
-  risk: (v) => typeof v === 'string' && Object.hasOwn(RISK_ORDER, v),
+  risk: isRisk,
   only: (v) => typeof v === 'string',
 };
 
@@ -345,7 +349,7 @@ function malformed(k: string, v: unknown, env: CaveatEnv): string | null {
     : null;
 }
 
-export function matchCapability(pattern: string, cap: string): boolean {
+function matchCapability(pattern: string, cap: string): boolean {
   return (
     pattern === '*' ||
     pattern === cap ||
@@ -388,7 +392,7 @@ async function verifyChain(
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
 
-    if (i > 0 && b.p.prev !== (await sha256(blocks[i - 1].s))) {
+    if (i > 0 && b.p.prev !== (await blockId(blocks[i - 1]))) {
       return unauthorized(`block ${i} is not chained to block ${i - 1}`);
     }
 
@@ -443,8 +447,9 @@ const CAVEAT_CHECKS: Record<
       'would pass the total limit of',
     );
   },
+  // `v` is a known risk: malformed() rejects any other ceiling before this runs.
   risk: (v, { p }) =>
-    p && RISK_ORDER[p.risk] > RISK_ORDER[v as Risk]
+    p && !atLeast(v as Risk, p.risk)
       ? `risk ${p.risk} exceeds ceiling ${v}`
       : null,
   only: (v, { ctx, p }) =>
@@ -518,7 +523,7 @@ interface CaveatResults {
 
 /** Check one caveat, recording a denial (hard or soft) or the total it counts against. */
 function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
-  if (!c || typeof c !== 'object' || Array.isArray(c)) {
+  if (!isObject(c)) {
     out.hard.push({
       c: c as Caveat,
       why: `malformed caveat ${JSON.stringify(c)}`,
@@ -529,7 +534,7 @@ function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
 
   const keys = Object.keys(c);
   const k = keys.length === 1 ? keys[0] : '';
-  const v = (c as Record<string, unknown>)[k];
+  const v = c[k];
   const bad = malformed(k, v, env);
 
   if (bad) {
@@ -558,12 +563,12 @@ async function evaluateCaveats(
   blocks: Block[],
   ctx: CheckContext,
 ): Promise<CaveatResults> {
-  const t = ctx.now ?? now();
+  const t = ctx.now ?? unixNow();
   const p = ctx.verb === 'COMMIT' ? ctx.proposal : undefined;
   const out: CaveatResults = { hard: [], soft: [], totals: [] };
 
   for (const b of blocks) {
-    const env = { ctx, t, p, blockId: await sha256(b.s) };
+    const env = { ctx, t, p, blockId: await blockId(b) };
     const caveats: unknown[] = b.p.caveats; // decoded but not yet validated
 
     for (const c of caveats) {
@@ -637,7 +642,7 @@ async function checkGrantUnsafe(
 
   return {
     ok: true,
-    id: await sha256(blocks[0].s),
+    id: await blockId(blocks[0]),
     iss,
     holder: chain.holder,
     totals,
@@ -653,7 +658,7 @@ export interface ProofTarget {
 export async function makeProof(
   seed: string,
   t: ProofTarget,
-  ts = now(),
+  ts = unixNow(),
 ): Promise<Proof> {
   const kp = await keyPair(seed);
 
@@ -670,7 +675,7 @@ export async function makeProof(
 export async function checkProof(
   proof: Proof | undefined,
   t: ProofTarget,
-  at = now(),
+  at = unixNow(),
 ): Promise<string | null> {
   if (
     !proof ||

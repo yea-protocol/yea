@@ -37,6 +37,7 @@ import {
   type Reservation,
   type Risk,
   reserveAll,
+  unixNow,
 } from '@yea-protocol/sdk';
 import { canAsk } from './client.js';
 import { type Pinned, readPolicy, readTighteningFor } from './keys.js';
@@ -159,7 +160,7 @@ async function begin(
   return {
     ...base,
     sub,
-    now: Math.floor(Date.now() / 1000),
+    now: unixNow(),
     policy: await policyFor(base.y),
   };
 }

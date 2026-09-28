@@ -22,6 +22,7 @@ import {
   TOOLS,
   type ToolHost,
 } from './tools.js';
+import { unixNow } from './util.js';
 
 const c = {
   dim: '\x1b[2m',
@@ -44,7 +45,7 @@ const indent = (s: string) =>
 const day = (n: number) =>
   new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
 
-export const DEFAULT_PROMPT = () =>
+const DEFAULT_PROMPT = () =>
   `Move my 1:1 with Ana to a free slot on ${day(3)}. Then order me 4 vegan meals under 700 calories (2 each of two different meals) for delivery on ${day(2)}. Tell me exactly what happened.`;
 
 /** Models that accept the server-side `fallbacks: "default"` chain. */
@@ -140,7 +141,7 @@ async function throwawayClients(): Promise<Client[]> {
       { risk: 'low' },
       { each: { of: 'spend', max: 4000, scale: 2, unit: 'USD' } },
       { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
-      { exp: Math.floor(Date.now() / 1000) + 3600 },
+      { exp: unixNow() + 3600 },
     ],
   });
 

@@ -41,7 +41,8 @@ export function canonical(v: unknown): string {
   }
 }
 
-function byCodePoint(a: string, b: string): number {
+/** Orders strings by Unicode code point (SPEC §10), not by UTF-16 unit as `<` does. */
+export function byCodePoint(a: string, b: string): number {
   const A = codePoints(a);
   const B = codePoints(b);
 

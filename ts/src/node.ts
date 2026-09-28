@@ -15,27 +15,17 @@ import {
   lines,
   type Transport,
 } from './client.js';
-import { fetchHandler, frameId } from './http.js';
+import { errorLine, frameId } from './frames.js';
+import { fetchHandler } from './http.js';
 import type { Service } from './service.js';
 
 export const DEFAULT_PORT = 7447;
-export const DEFAULT_TLS_PORT = 7448;
+
+const DEFAULT_TLS_PORT = 7448;
 
 const MAX_FRAME = 1 << 20;
 
 const MAX_INFLIGHT = 64;
-
-interface ErrorFields {
-  id: string;
-  re: string;
-  code: string;
-  message: string;
-  retry?: number;
-}
-
-/** One NDJSON ERROR reply line. */
-const errorLine = ({ id, re, code, message, retry }: ErrorFields) =>
-  `${JSON.stringify({ yea: 1, id, re, kind: 'ERROR', code, message, retry })}\n`;
 
 const errFrame = (message: string, code = 'bad_frame') =>
   errorLine({ id: 's_err', re: '?', code, message });
@@ -138,7 +128,7 @@ function frameHandler(svc: Service, send: (s: string) => void) {
 }
 
 /** Serve NDJSON frames on a duplex stream. Requests are handled concurrently, up to MAX_INFLIGHT. */
-export function serveStream(
+function serveStream(
   svc: Service,
   input: NodeJS.ReadableStream,
   write: (s: string) => void,

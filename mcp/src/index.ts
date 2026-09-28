@@ -27,6 +27,7 @@ import {
   type Risk,
   type Uses,
   undoJob,
+  unixNow,
 } from '@yea-protocol/sdk';
 import { defaultFileStore, serverKeyPath } from '@yea-protocol/sdk/node';
 import {
@@ -522,7 +523,7 @@ async function undoCall(
       id: revert ? id : null,
       service: await y.serviceId(),
       sub,
-      now: Math.floor(Date.now() / 1000),
+      now: unixNow(),
       revert: (r) =>
         revert?.(
           { input: r.input, planHash: r.planHash, result: r.result },

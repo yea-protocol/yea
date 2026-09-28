@@ -5,6 +5,7 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
+  clip as clipText,
   oneLine,
   type Proposal,
   printable,
@@ -18,11 +19,7 @@ import type { Obj } from '../util.js';
 export const MAX_TEXT = 300;
 
 /** Untrusted text as one line, cut to `max` characters. */
-export function clip(s: string, max = MAX_TEXT): string {
-  const t = printable(s);
-
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
+export const clip = (s: string, max = MAX_TEXT) => clipText(printable(s), max);
 
 /** Proposals as the PROPOSALS Lens shows them, without its frame. */
 export const proposalsLens = (proposals: Proposal[]) =>

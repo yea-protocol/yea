@@ -4,26 +4,30 @@
  * consent code for `yea approve` when the client can't ask.
  */
 import {
-  atLeast,
   type HashedPlan,
   type Policy,
   planHashOf,
   planPreimage,
 } from './approval.js';
-import { b64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import { type KeyPair, randomId, sha256 } from './crypto.js';
-import { consentGrant, decodeConsentCode } from './grants.js';
+import {
+  consentGrant,
+  decodeConsentCode,
+  encodeConsentCode,
+} from './grants.js';
 import { effectLine, fmtDuration } from './lens.js';
+import { atLeast } from './risk.js';
 import type { ConsentRequest, Effect } from './types.js';
 import { fmtUses, isUses } from './uses.js';
+import { isStringList } from './util.js';
 
 // ---- the confirmation phrase (§3) ----
 
 /** Exactly these are stripped from both ends; not trim()/strip(), which disagree. */
 const EDGE = /^[\t\n\v\f\r \u00a0\ufeff]+|[\t\n\v\f\r \u00a0\ufeff]+$/g;
 
-export const normalizePhrase = (s: string) =>
+const normalizePhrase = (s: string) =>
   s.normalize('NFC').replace(EDGE, '').toLowerCase();
 
 /** An empty phrase never matches, so an empty or auto-filled answer can't approve. */
@@ -38,7 +42,7 @@ export type PhraseFor = (hp: HashedPlan) => string;
 export const DEFAULT_PHRASE = 'approve';
 
 /** A phrase that is empty once normalized falls back to `approve`. */
-export const effectivePhrase = (phrase: string) =>
+const effectivePhrase = (phrase: string) =>
   normalizePhrase(phrase) === '' ? DEFAULT_PHRASE : phrase;
 
 const withFallback =
@@ -207,9 +211,6 @@ export function newState(o: {
   };
 }
 
-const isStrings = (v: unknown): v is string[] =>
-  Array.isArray(v) && v.every((x) => typeof x === 'string');
-
 function isState(v: unknown): v is ApprovalState {
   const s = v as Partial<ApprovalState> | null;
 
@@ -219,7 +220,7 @@ function isState(v: unknown): v is ApprovalState {
     typeof s.tool === 'string' &&
     typeof s.inputHash === 'string' &&
     typeof s.sub === 'string' &&
-    isStrings(s.plans) &&
+    isStringList(s.plans) &&
     Number.isSafeInteger(s.round) &&
     typeof s.nonce === 'string' &&
     Number.isSafeInteger(s.exp)
@@ -349,7 +350,7 @@ export function jobConsentCode(o: {
     phrase: effectivePhrase(o.phrase),
   };
 
-  return `pc1.${b64u(utf8(canonical({ ...consent, detail })))}`;
+  return encodeConsentCode({ ...consent, detail });
 }
 
 /** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */

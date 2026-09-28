@@ -17,6 +17,7 @@ import type {
   Reply,
 } from './types.js';
 import { fmtUses } from './uses.js';
+import { isObject } from './util.js';
 
 const BARE = /^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$/;
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/;
@@ -28,8 +29,6 @@ const isScalar = (v: unknown): v is string | number | boolean | null =>
   typeof v === 'string' ||
   typeof v === 'number' ||
   typeof v === 'boolean';
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 export function scalar(v: unknown): string {
   if (v === null || v === undefined) {
@@ -230,7 +229,7 @@ export function effectLine(e: Effect): string {
   return s;
 }
 
-export function paramList(params: ParamSchema | undefined): string {
+function paramList(params: ParamSchema | undefined): string {
   if (!params) {
     return '()';
   }

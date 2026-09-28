@@ -28,3 +28,17 @@ export const printable = (s: string) =>
       return unsafeChar(cp) ? `\\u{${cp.toString(16)}}` : c;
     })
     .join('');
+
+/**
+ * `s` cut to `max` code points, the last one `…` when cut; a surrogate pair is never split.
+ * A `max` below 1 leaves no room even for the `…`, so it gives ''.
+ */
+export function clip(s: string, max: number): string {
+  if (max < 1) {
+    return '';
+  }
+
+  const chars = [...s];
+
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : s;
+}

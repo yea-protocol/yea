@@ -5,7 +5,14 @@
  */
 import { canonical } from './canonical.js';
 import { randomId, sha256 } from './crypto.js';
-import { checkGrant, decodeGrant, type TotalLimit, usedOf } from './grants.js';
+import {
+  blockId,
+  checkGrant,
+  decodeGrant,
+  type TotalLimit,
+  usedOf,
+} from './grants.js';
+import { atLeast, isRisk } from './risk.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -14,6 +21,7 @@ import type {
 } from './store.js';
 import type { Effect, Risk } from './types.js';
 import { exact, isLimit, isUses, type Uses } from './uses.js';
+import { isObject } from './util.js';
 
 /** What a job tool's handler returns for each way it could do the job (SPEC-approval §1). */
 export interface JobPlan {
@@ -63,8 +71,6 @@ export interface ReserveFor {
   max: bigint;
 }
 
-const RISKS: Risk[] = ['low', 'medium', 'high'];
-
 /** The unsigned part of a policy: it can only tighten (SPEC-approval §2). */
 export interface Tightening {
   deny: string[];
@@ -73,8 +79,6 @@ export interface Tightening {
   warnings: string[];
 }
 
-const isRisk = (v: unknown): v is Risk => RISKS.includes(v as Risk);
-
 /**
  * Read `~/.yea/policy.json` or server options. Unknown fields and bad values are ignored with
  * a warning, and the valid tightenings still apply; nothing here can make more run.
@@ -82,7 +86,7 @@ const isRisk = (v: unknown): v is Risk => RISKS.includes(v as Risk);
 export function readTightening(v: unknown): Tightening {
   const out: Tightening = { deny: [], outOfBand: 'high', warnings: [] };
 
-  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+  if (!isObject(v)) {
     out.warnings.push('the policy file is not a JSON object; ignored');
 
     return out;
@@ -106,9 +110,6 @@ export function readTightening(v: unknown): Tightening {
 
   return out;
 }
-
-export const atLeast = (r: Risk, floor: Risk) =>
-  RISKS.indexOf(r) >= RISKS.indexOf(floor);
 
 /**
  * Job inputs are hashed, and canonical JSON allows only integers (SPEC.md §10). Throws a
@@ -221,7 +222,7 @@ async function blocksOf(
   try {
     return await Promise.all(
       decodeGrant(grant).map(async (b) => ({
-        id: await sha256(b.s),
+        id: await blockId(b),
         caveats: b.p.caveats,
       })),
     );
