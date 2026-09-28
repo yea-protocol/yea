@@ -760,5 +760,5 @@ def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
 
 def test_read_tightening_warns_on_an_out_of_band_that_isnt_a_risk_name():
     """A list (unhashable) used to raise TypeError; it's a bad value, warned and ignored (#159)."""
-    t = read_tightening({"outOfBand": ["high"]})
-    assert t.out_of_band == "high" and any("outOfBand" in w for w in t.warnings)
+    t = read_tightening({"outOfBand": ["low"]})
+    assert t.out_of_band == "high" and any("outOfBand" in w for w in t.warnings)  # ignored: the default stays

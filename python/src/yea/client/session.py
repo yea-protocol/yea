@@ -28,7 +28,8 @@ class Client:
     With ``key`` (a KeyPair or a b64url seed) and grants, requests other than HELLO carry
     the grants that apply to this service (no ``svc`` caveat, or one naming it) plus a
     proof. The proof audience is the service id from HELLO, sent automatically if needed.
-    Every method returns a :class:`Reply`; ``reply.lens`` is what a model should read.
+    Every method returns a :class:`Reply`; ``reply.lens`` is what a model should read. A signed
+    request raises RuntimeError instead if HELLO never gave the service's id.
     """
 
     def __init__(
@@ -63,10 +64,11 @@ class Client:
         return _checked_reply(await self._t.request({"yea": 1, "id": _request_id(), **body}, on_event))
 
     async def audience(self) -> str:
-        """The service's id (learned from HELLO), which proofs are bound to."""
-        if self.service_id is None:
+        """The service's id (learned from HELLO), which proofs are bound to. Raises RuntimeError if
+        HELLO didn't give one: a signed call never signs for another audience, such as "" (§6.5)."""
+        if not self.service_id:
             await self.hello(200)
-        if self.service_id is None:  # never sign for another audience, such as "" (§6.5)
+        if not self.service_id:  # as TS's !this.serviceId
             raise RuntimeError("the service did not identify itself (HELLO failed)")
         return self.service_id
 
