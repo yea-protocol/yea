@@ -5,6 +5,7 @@
  *
  *   STRIPE_SECRET_KEY=sk_test_… npx tsx examples/stripe-jobs.ts
  */
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
@@ -92,8 +93,27 @@ export function connect(key: string, f: typeof fetch): Stripe {
   };
 }
 
+/** Currencies whose minor unit isn't a hundredth, or that Stripe treats as special cases. */
+const NOT_TWO_DECIMAL = new Set(
+  (
+    'bif clp djf gnf jpy kmf krw mga pyg rwf ugx vnd vuv xaf xof xpf ' +
+    'bhd jod kwd omr tnd isk huf twd'
+  ).split(' '),
+);
+
+/** This example assumes two decimals; it refuses other currencies rather than misstate them. */
+function twoDecimal(cur: string): string {
+  if (NOT_TWO_DECIMAL.has(cur.toLowerCase())) {
+    throw new Error(
+      `${cur.toUpperCase()} isn't a two-decimal currency, and this example only handles those; the @yea-protocol/stripe connector handles every Stripe currency`,
+    );
+  }
+
+  return cur.toUpperCase();
+}
+
 const amt = (minor: number, cur: string) =>
-  `${(minor / 100).toFixed(2)} ${cur.toUpperCase()}`;
+  `${(minor / 100).toFixed(2)} ${twoDecimal(cur)}`;
 const day = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 10);
 const label = (c: Customer) => `${c.name} <${c.email}>`;
 
@@ -160,11 +180,23 @@ async function subscription(stripe: Stripe, c: Customer) {
 // #region read
 /** One question, one call: replaces three GETs, and returns only what an agent needs. */
 async function customerOverview(stripe: Stripe, who: string) {
-  const [c] = await findCustomers(stripe, who);
+  const m = await findCustomers(stripe, who);
 
-  if (!c) {
-    throw new Error(`no customer matches ${JSON.stringify(who)}`);
+  if (m.length === 0) {
+    throw new Error(
+      `no customer matches ${JSON.stringify(who)}; try their email`,
+    );
   }
+
+  // Several matches: ask which one, rather than answer about the wrong person.
+  if (m.length > 1) {
+    return {
+      question: `${m.length} customers match "${who}". Which one? Call again with its id.`,
+      customers: m.map((c) => ({ id: c.id, name: c.name, email: c.email })),
+    };
+  }
+
+  const c = m[0];
 
   const [sub, chs] = await Promise.all([
     subscription(stripe, c),
@@ -208,15 +240,16 @@ function refundPlan(
       send(c.email, 'refund receipt; back on the card in 5–10 days'),
     ],
     uses: {
-      spend: quantity(amount, { scale: 2, unit: ch.currency.toUpperCase() }),
+      spend: quantity(amount, { scale: 2, unit: twoDecimal(ch.currency) }),
     },
-    // apply() runs at most once; the key covers a network retry.
+    // Stripe replays the saved response for a key it has seen, so each apply() gets its own:
+    // a later refund must never be mistaken for this one.
     apply: () =>
       stripe(
         'POST',
         '/refunds',
         { charge: ch.id, amount: String(amount) },
-        `yea-refund-${ch.id}-${ch.amount_refunded}-${amount}`,
+        `yea-refund-${randomUUID()}`,
       ),
     // No undoWindow: a refund can't be undone, so the person is always asked.
   };
@@ -236,6 +269,8 @@ async function refundPlans(stripe: Stripe, c: Customer): Promise<JobPlan[]> {
   if (!ch) {
     throw new Error(`${c.name} has no payment left to refund`);
   }
+
+  twoDecimal(ch.currency);
 
   const left = ch.amount - ch.amount_refunded;
   const plans = [
@@ -272,6 +307,7 @@ async function cancelPlans(stripe: Stripe, c: Customer): Promise<JobPlan[]> {
 
   const path = `/subscriptions/${sub.id}`;
   const end = sub.items.data[0].current_period_end;
+  const daysLeft = Math.floor((end - Date.now() / 1000) / 86_400);
   const now: JobPlan = {
     summary: `Cancel ${c.name} now; access ends immediately, no refund`,
     effects: [
@@ -291,8 +327,8 @@ async function cancelPlans(stripe: Stripe, c: Customer): Promise<JobPlan[]> {
     effects: [
       update(`subscription/${sub.id}`, 'cancel_at_period_end', false, true),
     ],
-    // Whole days, ending before the period does.
-    undoWindow: Math.floor((end - Date.now() / 1000) / 86_400) * 86_400,
+    // Whole days, ending before the period does; with less than a day left, no undo.
+    ...(daysLeft > 0 ? { undoWindow: daysLeft * 86_400 } : {}),
     apply: async () => {
       await stripe('POST', path, { cancel_at_period_end: 'true' });
 

@@ -4,7 +4,7 @@
  * undoable job run on its own, and a client that can't ask gets consent codes.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer } from '../../examples/mcp-quickstart.js';
 import {
@@ -22,21 +22,21 @@ afterEach(() => {
   delete process.env.YEA_HOME;
 });
 
-/** A folder with docs/report.pdf in it, and the example's server over it. */
+/** A folder with docs/report.pdf in it, and the example's server. */
 function files(w: Pick<World, 'approvals'>) {
   const root = tmp();
+  const report = join(root, 'docs', 'report.pdf');
 
   mkdirSync(join(root, 'docs'));
-  writeFileSync(join(root, 'docs', 'report.pdf'), 'q3');
+  writeFileSync(report, 'q3');
 
   return {
     root,
-    report: join(root, 'docs', 'report.pdf'),
-    factory: () => createServer(w.approvals, root),
+    report,
+    args: { path: report },
+    factory: () => createServer(w.approvals),
   };
 }
-
-const report = { path: 'docs/report.pdf' };
 
 describe.each<Kind>(['2026', '2025', 'stdio-2026'])(
   'on a %s client',
@@ -52,15 +52,15 @@ describe.each<Kind>(['2026', '2025', 'stdio-2026'])(
         content: { confirm: 'report.pdf' },
       });
 
-      const r = await conn.call(report, 'delete_file');
+      const r = await conn.call(f.args, 'delete_file');
 
       expect(r.isError).toBeFalsy();
-      expect(textOf(r)).toBe('deleted docs/report.pdf');
+      expect(textOf(r)).toBe(`deleted ${f.report}`);
       expect(existsSync(f.report)).toBe(false);
 
       // The wrong phrase asked again; the file's name ran it.
       expect(conn.elicited).toHaveLength(2);
-      expect(conn.elicited[0].message).toContain('Delete docs/report.pdf');
+      expect(conn.elicited[0].message).toContain(`Delete ${f.report}`);
       expect(conn.elicited[0].message).toContain("delete_file can't be undone");
       expect(conn.elicited[0].requestedSchema).toMatchObject({
         properties: {
@@ -75,7 +75,7 @@ describe.each<Kind>(['2026', '2025', 'stdio-2026'])(
       const conn = await connect(kind, f.factory);
 
       conn.answers.push({ action: 'decline' });
-      expect(textOf(await conn.call(report, 'delete_file'))).toMatch(
+      expect(textOf(await conn.call(f.args, 'delete_file'))).toMatch(
         /not approved/,
       );
       expect(existsSync(f.report)).toBe(true);
@@ -88,7 +88,7 @@ describe.each<Kind>(['2026', '2025', 'stdio-2026'])(
 
       conn.answers.push({ action: 'accept', content: { confirm: 'approve' } });
 
-      const r = await conn.call(report, 'move_to_trash');
+      const r = await conn.call(f.args, 'move_to_trash');
       const { receipt } = r.structuredContent as {
         receipt: { id: string; undo: { until: number } | null };
       };
@@ -113,7 +113,7 @@ describe('step 4: undo', () => {
 
     conn.answers.push({ action: 'accept', content: { confirm: 'approve' } });
 
-    const r = await conn.call(report, 'move_to_trash');
+    const r = await conn.call(f.args, 'move_to_trash');
     const { receipt } = r.structuredContent as { receipt: { id: string } };
 
     writeFileSync(f.report, 'new');
@@ -124,23 +124,16 @@ describe('step 4: undo', () => {
     expect(textOf(undone)).toMatch(/nothing was undone/);
   });
 
-  it('refuses a path outside the folder', async () => {
+  it('refuses a directory, which it could not put back', async () => {
     const w = await world({ name: 'files' });
     const f = files(w);
     const conn = await connect('2026', f.factory);
-
-    const outside = join(tmp(), 'outside.txt');
-
-    writeFileSync(outside, 'x');
-    conn.answers.push({ action: 'accept', content: { confirm: 'approve' } });
-
-    const r = await conn.call(
-      { path: relative(f.root, outside) },
-      'move_to_trash',
-    );
+    const r = await conn.call({ path: join(f.root, 'docs') }, 'move_to_trash');
 
     expect(r.isError).toBe(true);
-    expect(existsSync(outside)).toBe(true);
+    expect(textOf(r)).toMatch(/is not a regular file; nothing was run/);
+    expect(conn.elicited).toHaveLength(0);
+    expect(existsSync(f.report)).toBe(true);
   });
 });
 
@@ -153,7 +146,7 @@ describe('step 5: a signed policy', () => {
     await grantPolicy(w, [{ can: ['move_to_trash'] }, { risk: 'low' }]);
 
     const conn = await connect('2026', f.factory);
-    const moved = await conn.call(report, 'move_to_trash');
+    const moved = await conn.call(f.args, 'move_to_trash');
 
     expect(moved.isError).toBeFalsy();
     expect(conn.elicited).toHaveLength(0);
@@ -161,7 +154,7 @@ describe('step 5: a signed policy', () => {
 
     writeFileSync(f.report, 'q3 again');
     conn.answers.push({ action: 'decline' });
-    await conn.call(report, 'delete_file');
+    await conn.call(f.args, 'delete_file');
     expect(conn.elicited).toHaveLength(1);
     expect(existsSync(f.report)).toBe(true);
   });
@@ -174,7 +167,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       const w = await world({ name: 'files' });
       const f = files(w);
       const conn = await connect(kind, f.factory);
-      const r = await conn.call(report, 'delete_file');
+      const r = await conn.call(f.args, 'delete_file');
       const { codes } = r.structuredContent as { codes: { code: string }[] };
 
       expect(r.isError).toBe(true);
@@ -184,7 +177,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       expect(existsSync(f.report)).toBe(true);
 
       await approve(w, codes[0].code);
-      expect((await conn.call(report, 'delete_file')).isError).toBeFalsy();
+      expect((await conn.call(f.args, 'delete_file')).isError).toBeFalsy();
       expect(existsSync(f.report)).toBe(false);
     });
 
@@ -192,7 +185,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       const w = await world({ name: 'files', principal: undefined });
       const f = files(w);
       const conn = await connect(kind, f.factory);
-      const r = await conn.call(report, 'delete_file');
+      const r = await conn.call(f.args, 'delete_file');
 
       expect(r.isError).toBe(true);
       expect(r.structuredContent).toMatchObject({ codes: [] });
