@@ -1,6 +1,7 @@
 /**
- * The agent-facing tool surface shared by the MCP bridge and `yea test-drive`:
- * four tools whose results are Lens, with consent routed to a human through `approve`.
+ * The generic agent-facing tool surface of `yea test-drive`: four tools whose results are Lens,
+ * with consent routed to a human through `approve`. (`yea mcp` builds one tool per capability
+ * instead; it lives in `@yea-protocol/mcp/bridge`.)
  */
 
 import type { Client } from './client.js';
@@ -8,64 +9,11 @@ import { keyPair, proposalHash } from './crypto.js';
 import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
 import { lens } from './lens.js';
+import { INSTRUCTIONS } from './tooldefs.js';
 import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
 import { isUses } from './uses.js';
 
-const str = { type: 'string' };
-const obj = (properties: Record<string, unknown>, required: string[]) => ({
-  type: 'object',
-  properties,
-  required,
-});
-
-export const INSTRUCTIONS =
-  "YEA acts for the user under their signed policy. To do something, call yea_intent with the user's goal (names, days are fine: no lookups needed) " +
-  'and auto:true if they asked for exactly this; it finishes in one call when the policy allows. yea_ask is for questions. If approval is needed, tell the user.\n\n';
-
-export const TOOLS = [
-  {
-    name: 'yea_ask',
-    description:
-      'Read (never changes anything). Pass `handle` to expand an elided result.',
-    inputSchema: obj(
-      {
-        service: str,
-        capability: str,
-        params: { type: 'object' },
-        handle: str,
-        budget: { type: 'integer' },
-      },
-      ['service'],
-    ),
-  },
-  {
-    name: 'yea_intent',
-    description:
-      "Do something: the user's goal as params (names, days are fine). auto:true finishes now if their policy allows; else returns proposals (effects, uses, risk, undo) or a question.",
-    inputSchema: obj(
-      {
-        service: str,
-        capability: str,
-        params: { type: 'object' },
-        goal: str,
-        auto: { type: 'boolean' },
-        budget: { type: 'integer' },
-      },
-      ['service', 'capability'],
-    ),
-  },
-  {
-    name: 'yea_commit',
-    description:
-      'Execute a proposal by id, exactly as shown. Only what the user wants.',
-    inputSchema: obj({ service: str, proposal: str }, ['service', 'proposal']),
-  },
-  {
-    name: 'yea_undo',
-    description: 'Undo a receipt within its undo window.',
-    inputSchema: obj({ service: str, receipt: str }, ['service', 'receipt']),
-  },
-];
+export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
 /** Ask the human to approve `shown` (the proposal's Lens). Resolve true only on explicit approval. */
 export type Approver = (req: {

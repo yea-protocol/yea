@@ -343,4 +343,12 @@ export async function connect(
 
 export { checkKeyFile, FileStore, readPinnedKey } from './filestore.js';
 
-export { home } from './home.js';
+export {
+  agentKey,
+  home,
+  loadConsent,
+  loadGrants,
+  saveGrant,
+} from './home.js';
+
+export { listServices } from './setup.js';

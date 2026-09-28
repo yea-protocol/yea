@@ -104,14 +104,18 @@ CONSENT_PREFIX = "pc1."
 _CONSENT_STR_FIELDS = ("proposal", "hash", "service", "capability", "principal", "summary")
 
 
-def consent_code(consent: Mapping[str, Any], detail: Mapping[str, Any] | None = None) -> str:
+def consent_code(consent: Mapping[str, Any], detail: Mapping[str, Any] | None = None, agent: str | None = None) -> str:
     """Encode a consent request for out-of-band approval: ``pc1.`` + b64url(canonical(c)).
 
     Pass the proposal the agent received as ``detail`` (``data`` is dropped) so the
-    approver can show its real effects and re-check the hash (SPEC §6.6)."""
+    approver can show its real effects and re-check the hash (SPEC §6.6). ``agent`` is the
+    key the consent should be issued to, for approving on a machine without that agent's
+    key; it is unsigned, so the approver shows it and checks it against a local agent key."""
     body = dict(consent)
     if detail is not None:
         body["detail"] = {k: v for k, v in detail.items() if k != "data"}
+    if agent is not None:
+        body["agent"] = agent
     return CONSENT_PREFIX + b64url_encode(canonical_bytes(body))
 
 

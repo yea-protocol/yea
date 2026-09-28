@@ -15,6 +15,7 @@ import { FileStore } from './filestore.js';
 import {
   type Caveat,
   consentGrant,
+  consentRecipient,
   decodeConsentCode,
   delegateGrant,
   type GrantInfo,
@@ -23,7 +24,6 @@ import {
 } from './grants.js';
 import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
 import { effectLine, fmtDuration, fmtTime, lean, lens } from './lens.js';
-import { runMcpBridge } from './mcp.js';
 import { connect } from './node.js';
 import {
   addService,
@@ -52,7 +52,7 @@ identity
   yea grant-import <token>              save a grant issued to this machine's agent key (principal kept elsewhere)
   yea delegate <token> --to <key> [caveats]   attenuate a grant for a sub-agent
   yea inspect <token>                   decode a grant chain
-  yea approve <pc1.code>                review and sign a one-time consent for one proposal
+  yea approve <pc1.code> [--to <key>]   review and sign a one-time consent for one proposal
 
 talk to a service  (url: yea://host:port · yeas://… · http(s)://…/yea · "stdio:cmd args")
   yea hello  <url>
@@ -69,7 +69,8 @@ try it
   yea examples [--port 7447] [--host]            serve the example calendar (7447), shop (7449) and billing (7451), trusting your principal
 
 bridges
-  yea mcp <url> [<url> …]               run an MCP server (stdio) exposing YEA services
+  yea mcp <url> [<url> …] [--tools generic|per-capability]
+                                           run an MCP server (stdio): one tool per capability (@yea-protocol/cli)
   yea openapi <spec.json|url> [--base <url>] [--header "K: V"] [--port 7447] [--http 8080] [--preset github|petstore]
                                            serve any REST API as a YEA service (writes become proposals)
 
@@ -417,9 +418,10 @@ async function cmdApprove(rest: string[]) {
     return approveJob(p, code);
   }
 
-  const agent = o.to ?? (await agentKey())?.public ?? die('no agent key');
+  const agent = await recipient(consent.agent);
 
   await showConsent(consent);
+  console.log(`  consent issued to agent: ${agent}`);
   console.log(`  approval expires: ${fmtTime(consent.expires)}`);
 
   if (!process.stdin.isTTY) {
@@ -430,13 +432,37 @@ async function cmdApprove(rest: string[]) {
     die('not approved');
   }
 
-  saveGrant(
-    await consentGrant({ principal: p, agent, consent }),
-    'consents',
-    consent.hash,
-  );
-  console.log(
-    '✓ approved: a one-time consent for this proposal only. The agent can commit now.',
+  await saveConsent(await consentGrant({ principal: p, agent, consent }), {
+    agent,
+    hash: consent.hash,
+  });
+}
+
+/** The agent key a protocol consent is issued to (SPEC-bridge, `yea approve`), or die why not. */
+async function recipient(named: unknown): Promise<string> {
+  const r = consentRecipient({
+    code: named,
+    local: (await agentKey())?.public ?? null,
+    to: o.to,
+  });
+
+  return 'key' in r ? r.key : die(`✗ ${r.why}`);
+}
+
+/**
+ * Print the signed consent, so it can be pasted back to an agent elsewhere (its bridge takes it
+ * through `yea_consent`), and save it when this machine's agent is the one it is for.
+ */
+async function saveConsent(token: string, c: { agent: string; hash: string }) {
+  const local = await agentKey();
+
+  if (local?.public === c.agent) {
+    saveGrant(token, 'consents', c.hash);
+  }
+
+  console.log(token);
+  console.error(
+    '\n✓ approved: a one-time consent for this proposal only. Paste the consent above back to the agent (it passes it to yea_consent), then it can commit.',
   );
 }
 
@@ -676,23 +702,11 @@ const headerFlags = () =>
     ]),
   );
 
-async function cmdMcp(rest: string[]) {
-  // With no URLs, serve the services registered with `yea add` (~/.yea/services.json).
-  const urls = rest.length ? rest : listServices();
-  const clients = (
-    await Promise.all(
-      urls.map((u) =>
-        client(u).catch((e) => {
-          console.error(`yea mcp: ${u}: ${(e as Error).message}`);
-
-          return null;
-        }),
-      ),
-    )
-  ).filter((c): c is Client => !!c);
-
-  await runMcpBridge(clients);
-  process.exit(0);
+/** `yea mcp` lives in @yea-protocol/cli, which depends on @yea-protocol/mcp; the SDK can't. */
+async function cmdMcp() {
+  die(
+    'yea mcp runs from @yea-protocol/cli: npx -y @yea-protocol/cli mcp [<url> …]',
+  );
 }
 
 // ---- services for your AI tools ----
