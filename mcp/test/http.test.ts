@@ -1,6 +1,6 @@
 /** `@yea-protocol/mcp/http`: the bearer token, the Host check and the body cap, before MCP. */
 import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import net, { type AddressInfo } from 'node:net';
 import {
   Client,
   StreamableHTTPClientTransport,
@@ -11,12 +11,15 @@ import * as z from 'zod';
 import {
   httpApp,
   httpAuthFrom,
+  httpGate,
   MAX_BODY,
-  serveHttp,
   subOf,
 } from '../src/http.js';
+import { type ServeHttpOptions, serveHttp } from '../src/http-node.js';
 
 const TOKEN = 't'.repeat(40);
+
+const GATE = httpGate({ token: TOKEN, loopback: true });
 
 const servers: Server[] = [];
 
@@ -64,12 +67,43 @@ const post = (headers: Record<string, string>, body?: BodyInit) =>
       body ?? JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
   });
 
-async function listening(app: (req: Request) => Promise<Response>) {
-  const server = await serveHttp(app, { port: 0, host: '127.0.0.1' });
+/** Serve `app` with the gate; the URL, and the server's sockets (to see how much it read). */
+async function listening(
+  app: (req: Request) => Promise<Response>,
+  o: Partial<ServeHttpOptions> = {},
+) {
+  const server = await serveHttp(app, {
+    port: 0,
+    host: '127.0.0.1',
+    gate: GATE,
+    ...o,
+  });
+  const sockets: net.Socket[] = [];
 
+  server.on('connection', (s) => sockets.push(s));
   servers.push(server);
 
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+  const { port } = server.address() as AddressInfo;
+
+  return { url: `http://127.0.0.1:${port}/mcp`, port, sockets };
+}
+
+/** A body of `n` bytes, streamed in 64 KiB chunks (no Content-Length). */
+function streamOf(n: number) {
+  let sent = 0;
+
+  return new ReadableStream({
+    pull(c) {
+      if (sent >= n) {
+        c.close();
+
+        return;
+      }
+
+      sent += 1 << 16;
+      c.enqueue(new Uint8Array(1 << 16));
+    },
+  });
 }
 
 describe('httpAuthFrom', () => {
@@ -141,10 +175,26 @@ describe('httpApp', () => {
   });
 });
 
+describe('httpGate', () => {
+  it('lets the token through on a loopback Host, and nothing else', () => {
+    const req = (headers: Record<string, string>) =>
+      new Request('http://localhost/mcp', { method: 'POST', headers });
+
+    expect(
+      GATE(req({ host: 'localhost:8787', authorization: `Bearer ${TOKEN}` })),
+    ).toBeUndefined();
+    expect(GATE(req({ host: 'localhost' }))?.status).toBe(401);
+    expect(
+      GATE(req({ host: 'evil.example', authorization: `Bearer ${TOKEN}` }))
+        ?.status,
+    ).toBe(403);
+  });
+});
+
 describe('serveHttp', () => {
   it('serves the person with the token: calls run as their sub', async () => {
     const { app } = whoami();
-    const url = await listening(app);
+    const { url } = await listening(app);
     const client = new Client(
       { name: 'c', version: '1' },
       { versionNegotiation: { mode: { pin: '2026-07-28' } } },
@@ -165,54 +215,84 @@ describe('serveHttp', () => {
     }
   });
 
-  it('answers 413 to a body over the cap, declared or streamed, and the app never runs', async () => {
+  it('answers 413 to a body over the cap, declared or streamed, however big, and the app never runs', async () => {
     const { app, seen } = whoami();
-    const url = await listening(app);
+    const { url } = await listening(app);
     const headers = {
       'content-type': 'application/json',
       authorization: `Bearer ${TOKEN}`,
     };
+    // Bigger than the cap plus what the server drains after refusing: it hangs up mid-upload.
+    const huge = MAX_BODY + (4 << 20);
     const declared = await fetch(url, {
       method: 'POST',
       headers,
-      body: 'x'.repeat(MAX_BODY + 10),
+      body: 'x'.repeat(huge),
     });
-    let sent = 0;
     const streamed = await fetch(url, {
       method: 'POST',
       headers,
       duplex: 'half',
-      body: new ReadableStream({
-        pull(c) {
-          if (sent > MAX_BODY) {
-            c.close();
-
-            return;
-          }
-
-          sent += 1 << 16;
-          c.enqueue(new Uint8Array(1 << 16));
-        },
-      }),
+      body: streamOf(huge),
     } as RequestInit);
+    const justOver = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: 'x'.repeat(MAX_BODY + 10),
+    });
 
     expect(declared.status).toBe(413);
     expect(await declared.text()).toBe('request body exceeds 1 MiB');
     expect(streamed.status).toBe(413);
+    expect(await streamed.text()).toBe('request body exceeds 1 MiB');
+    expect(justOver.status).toBe(413);
+    expect(await justOver.text()).toBe('request body exceeds 1 MiB');
+    expect(seen.requests).toBe(0);
+  });
+
+  it('refuses a request without the token before reading its body', async () => {
+    const { app, seen } = whoami();
+    const { url, port, sockets } = await listening(app);
+    const tenMiB = 10 << 20;
+    // Declare 10 MiB, send 16 KiB of it, and wait: the 401 comes without the rest.
+    const answer = await new Promise<string>((resolve) => {
+      const s = net.connect(port, '127.0.0.1');
+      let got = '';
+
+      s.on('error', () => {});
+      s.on('data', (c) => {
+        got += c.toString();
+
+        if (got.includes('invalid_token')) {
+          s.destroy();
+          resolve(got);
+        }
+      });
+      s.write(
+        `POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: ${tenMiB}\r\n\r\n`,
+      );
+      s.write(Buffer.alloc(16 << 10).fill('x'));
+    });
+
+    expect(answer).toMatch(/^HTTP\/1\.1 401 /);
+    expect(answer).toMatch(/content-length: \d+/i);
+    expect(sockets[0].bytesRead).toBeLessThan(64 << 10);
+
+    // A client that sends the whole 10 MiB still reads the 401.
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'x'.repeat(tenMiB),
+    });
+
+    expect(r.status).toBe(401);
+    expect(await r.text()).toMatch(/invalid_token/);
     expect(seen.requests).toBe(0);
   });
 
   it('takes a smaller cap, and still checks the token under it', async () => {
     const { app, seen } = whoami();
-    const server = await serveHttp(app, {
-      port: 0,
-      host: '127.0.0.1',
-      maxBody: 1000,
-    });
-
-    servers.push(server);
-
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+    const { url } = await listening(app, { maxBody: 1000 });
     const big = await fetch(url, {
       method: 'POST',
       headers: { authorization: `Bearer ${TOKEN}` },
@@ -227,6 +307,27 @@ describe('serveHttp', () => {
     expect(big.status).toBe(413);
     expect(await big.text()).toBe('request body exceeds 1000 bytes');
     expect(noToken.status).toBe(401);
-    expect(seen.requests).toBe(1);
+    expect(seen.requests).toBe(0);
+  });
+
+  it('cuts off a client that takes too long to send its request', async () => {
+    const { app, seen } = whoami();
+    const { port } = await listening(app, { requestTimeout: 200 });
+    const closed = await new Promise<string>((resolve) => {
+      const s = net.connect(port, '127.0.0.1');
+      let got = '';
+
+      s.on('error', () => {});
+      s.on('data', (c) => {
+        got += c.toString();
+      });
+      s.on('close', () => resolve(got));
+      s.write(
+        `POST /mcp HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${TOKEN}\r\nContent-Length: 100\r\n\r\n{`,
+      );
+    });
+
+    expect(closed).toMatch(/^(HTTP\/1\.1 408 |$)/);
+    expect(seen.requests).toBe(0);
   });
 });

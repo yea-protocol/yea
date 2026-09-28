@@ -5,7 +5,12 @@
  * undoable. Not affiliated with, endorsed by, or sponsored by Stripe, Inc.
  */
 
-export { httpApp, httpAuthFrom, subOf } from '@yea-protocol/mcp/http';
+export {
+  httpApp,
+  httpAuthFrom,
+  httpGate,
+  subOf,
+} from '@yea-protocol/mcp/http';
 
 export {
   currentSubscriptions,

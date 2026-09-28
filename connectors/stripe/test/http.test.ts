@@ -4,7 +4,8 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
 import { yea } from '@yea-protocol/mcp';
-import { httpApp, serveHttp, subOf } from '@yea-protocol/mcp/http';
+import { httpApp, httpGate, subOf } from '@yea-protocol/mcp/http';
+import { serveHttp } from '@yea-protocol/mcp/http/node';
 import { MemoryStore } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import { stripeServer } from '../src/server.js';
@@ -30,6 +31,12 @@ async function httpWorld() {
     principal: w.principal.public,
   });
   const stripe = fakeStripe({ now: NOW });
+  const front = {
+    token: TOKEN,
+    sub: 'person-1',
+    loopback: true,
+    clientId: 'yea-stripe-http',
+  };
   const app = httpApp(
     stripeServer({
       key: TEST_KEY,
@@ -37,15 +44,10 @@ async function httpWorld() {
       fetch: stripe.fetch,
       now: () => NOW,
     }),
-    {
-      token: TOKEN,
-      sub: 'person-1',
-      loopback: true,
-      clientId: 'yea-stripe-http',
-    },
+    front,
   );
 
-  return { w: { ...w, approvals }, stripe, app };
+  return { w: { ...w, approvals }, stripe, app, gate: httpGate(front) };
 }
 
 /**
@@ -54,11 +56,15 @@ async function httpWorld() {
  */
 describe('--http', () => {
   it('serves the person with the token: jobs run as their sub', async () => {
-    const { w, stripe, app } = await httpWorld();
+    const { w, stripe, app, gate } = await httpWorld();
 
     await suggestedGrant(w);
 
-    const server = await serveHttp(app, { port: 0, host: '127.0.0.1' });
+    const server = await serveHttp(app, {
+      port: 0,
+      host: '127.0.0.1',
+      gate,
+    });
     const { port } = server.address() as AddressInfo;
     const client = new Client(
       { name: 'c', version: '1' },

@@ -22,33 +22,45 @@ async function readFrame(req: Request): Promise<unknown> {
   }
 }
 
-/** Stream the service's events and final reply as NDJSON. */
+/**
+ * Stream the service's events and final reply as NDJSON. If the client goes away (the stream is
+ * cancelled), the request still runs to the end: its lines are just no longer sent.
+ */
 function ndjsonReply(svc: Service, frame: unknown): Response {
   const enc = new TextEncoder();
+  let open = true;
   const stream = new ReadableStream({
     async start(ctrl) {
       const re = frameId(frame);
+      const send = (line: string) => {
+        if (open) {
+          ctrl.enqueue(enc.encode(line));
+        }
+      };
 
       try {
         const final = await svc.handle(frame, (e) =>
-          ctrl.enqueue(enc.encode(`${JSON.stringify(e)}\n`)),
+          send(`${JSON.stringify(e)}\n`),
         );
 
-        ctrl.enqueue(enc.encode(`${JSON.stringify(final)}\n`));
+        send(`${JSON.stringify(final)}\n`);
       } catch {
-        ctrl.enqueue(
-          enc.encode(
-            errorLine({
-              id: 's_err',
-              re,
-              code: 'internal',
-              message: 'reply could not be serialized',
-            }),
-          ),
+        send(
+          errorLine({
+            id: 's_err',
+            re,
+            code: 'internal',
+            message: 'reply could not be serialized',
+          }),
         );
       }
 
-      ctrl.close();
+      if (open) {
+        ctrl.close();
+      }
+    },
+    cancel() {
+      open = false;
     },
   });
 

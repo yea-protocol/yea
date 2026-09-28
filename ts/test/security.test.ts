@@ -166,7 +166,7 @@ describe('security regressions', () => {
     expect(big.status).toBe(413);
   });
 
-  it('[H3] serveFetch caps request bodies: 413, the app never runs, and a flood is cut off', async () => {
+  it('[H4] serveFetch caps request bodies: 413, the app never runs, and a flood is cut off', async () => {
     let calls = 0;
     const server = await serveFetch(
       () => {
@@ -196,7 +196,14 @@ describe('security regressions', () => {
         },
       }),
     } as RequestInit);
+    // More than the cap plus the 1 MiB drained after refusing: the answer must still arrive whole.
+    const huge = await fetch(url, {
+      method: 'POST',
+      body: 'x'.repeat(4 << 20),
+    });
 
+    expect(huge.status).toBe(413);
+    expect(await huge.text()).toBe('request body exceeds 1000 bytes');
     expect(declared.status).toBe(413);
     expect(streamed.status).toBe(413);
     expect(calls).toBe(0);
@@ -230,6 +237,70 @@ describe('security regressions', () => {
     expect(calls).toBe(0);
 
     const ok = await fetch(url, { method: 'POST', body: 'x'.repeat(1000) });
+
+    expect(ok.status).toBe(200);
+    expect(calls).toBe(1);
+  });
+
+  it('[H5] serveFetch runs the gate before reading the body', async () => {
+    let calls = 0;
+    const server = await serveFetch(
+      () => {
+        calls++;
+
+        return new Response('ok');
+      },
+      {
+        port: 0,
+        gate: (req) =>
+          req.headers.get('authorization') === 'Bearer ok'
+            ? undefined
+            : new Response('no', { status: 401 }),
+      },
+    );
+    const sockets: net.Socket[] = [];
+
+    server.on('connection', (s) => sockets.push(s));
+    closers.push(() => server.close());
+
+    const port = (server.address() as AddressInfo).port;
+    const url = `http://127.0.0.1:${port}/`;
+    const refused = await new Promise<string>((resolve) => {
+      const s = net.connect(port, '127.0.0.1');
+      let got = '';
+
+      s.on('error', () => {});
+      s.on('data', (c) => {
+        got += c.toString();
+
+        if (got.endsWith('no')) {
+          s.destroy();
+          resolve(got);
+        }
+      });
+      s.write(
+        `POST / HTTP/1.1\r\nHost: x\r\nContent-Length: ${10 << 20}\r\n\r\n`,
+      );
+      s.write(Buffer.alloc(16 << 10));
+    });
+
+    expect(refused).toMatch(/^HTTP\/1\.1 401 /);
+    expect(refused).toMatch(/content-length: 2\r\n/i);
+    expect(sockets[0].bytesRead).toBeLessThan(64 << 10);
+
+    const whole = await fetch(url, {
+      method: 'POST',
+      body: 'x'.repeat(4 << 20),
+    });
+
+    expect(whole.status).toBe(401);
+    expect(await whole.text()).toBe('no');
+
+    const ok = await fetch(url, {
+      method: 'POST',
+      headers: { authorization: 'Bearer ok' },
+      body: 'x',
+    });
 
     expect(ok.status).toBe(200);
     expect(calls).toBe(1);

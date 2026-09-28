@@ -256,10 +256,12 @@ yea grant --to <server key> --can cancel_subscription --can change_plan --risk l
 - **Transports:** stdio by default; `--http <port>` serves Streamable HTTP, which needs `sub`
   configured (SPEC-mcp-ts). The binary takes it from `YEA_SUB`, for requests that carry
   `Authorization: Bearer $YEA_HTTP_TOKEN` (32 characters or more); anything else gets 401
-  before the MCP handler, and on loopback the `Host` header is checked too. A request body over
-  1 MiB gets 413 and never reaches the MCP handler. The front end is `@yea-protocol/mcp/http`
+  before the MCP handler (and before the request body is read), and on loopback the `Host`
+  header is checked too. A request body over 1 MiB gets 413 and never reaches the MCP handler,
+  and a client has 30 seconds to send its request. The front end is `@yea-protocol/mcp/http`
   (SPEC-mcp-ts), shared with any other one-person MCP server; the connector passes its
-  `clientId`, `yea-stripe-http`, and re-exports `httpApp`, `httpAuthFrom` and `subOf`.
+  `clientId`, `yea-stripe-http`, and re-exports `httpApp`, `httpAuthFrom`, `httpGate` and
+  `subOf`.
 - **The example:** `examples/stripe-billing.ts` stays as the protocol-level example in the
   guide. The Stripe-reading helpers move into the connector, and the example imports them.
 

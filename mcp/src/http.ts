@@ -3,10 +3,10 @@
  * (SPEC-mcp-ts: HTTP serves one person in v0). `sub` must come from the transport's
  * authentication, so every request carries a bearer token (`YEA_HTTP_TOKEN`), and a request that
  * has it is that person (`YEA_SUB`). Anything else gets 401 before the MCP handler sees it, and a
- * request body over `maxBody` gets 413.
+ * request body over `maxBody` gets 413. Fetch-level only (it needs `node:crypto`, which Bun, Deno
+ * and Workers with `nodejs_compat` have); the Node server is in `./http/node`.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { Server } from 'node:http';
 import {
   type AuthInfo,
   createMcpHandler,
@@ -15,7 +15,6 @@ import {
   type McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
-import { serveFetch } from '@yea-protocol/sdk/node';
 
 /** The largest request body served by default: 1 MiB, the same cap as a YEA frame. */
 export const MAX_BODY = 1 << 20;
@@ -79,25 +78,15 @@ const unauthorized = () =>
   });
 
 /**
- * A fetch handler: the Host check (on loopback, against DNS rebinding), the bearer token, then
- * the MCP handler with the person's `sub`. The MCP handler caps the body it reads at `maxBody`
- * too, so the cap holds on runtimes other than `serveHttp`.
+ * The checks before anything else: on loopback the Host header (against DNS rebinding: 403),
+ * then the bearer token, compared in constant time (401). Undefined lets the request through.
+ * `httpApp` runs it on every request; pass it to `serveHttp` too, so it runs before the body is
+ * read.
  */
-export function httpApp(
-  factory: () => McpServer,
-  o: HttpAppOptions,
-): (req: Request) => Promise<Response> {
-  const handler = createMcpHandler(factory, {
-    maxRequestBodySize: o.maxBody ?? MAX_BODY,
-  });
-  const authInfo: AuthInfo = {
-    token: 'verified',
-    clientId: o.clientId ?? 'yea-http',
-    scopes: [],
-    extra: { sub: o.sub },
-  };
-
-  return async (req) => {
+export function httpGate(
+  o: Pick<HttpAppOptions, 'token' | 'loopback'>,
+): (req: Request) => Response | undefined {
+  return (req) => {
     const badHost = o.loopback
       ? hostHeaderValidationResponse(req, localhostAllowedHostnames())
       : undefined;
@@ -109,27 +98,28 @@ export function httpApp(
     const header = req.headers.get('authorization') ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
 
-    if (!token || !sameToken(token, o.token)) {
-      return unauthorized();
-    }
-
-    return handler.fetch(req, { authInfo });
+    return token && sameToken(token, o.token) ? undefined : unauthorized();
   };
 }
 
 /**
- * Serve `app` on `host:port` until the process ends; resolves with the server once it's
- * listening. Request headers reach the app (Streamable HTTP needs them); a body over `maxBody`
- * (default MAX_BODY) is answered 413 before the app runs, and never kept in full.
+ * A fetch handler: `httpGate`, then the MCP handler with the person's `sub`. The MCP handler
+ * caps the body it reads at `maxBody` too, so both checks hold on any runtime.
  */
-export function serveHttp(
-  app: (req: Request) => Promise<Response>,
-  o: { port: number; host: string; maxBody?: number },
-): Promise<Server> {
-  return serveFetch(app, {
-    port: o.port,
-    host: o.host,
-    maxBody: o.maxBody ?? MAX_BODY,
-    headers: true,
+export function httpApp(
+  factory: () => McpServer,
+  o: HttpAppOptions,
+): (req: Request) => Promise<Response> {
+  const gate = httpGate(o);
+  const handler = createMcpHandler(factory, {
+    maxRequestBodySize: o.maxBody ?? MAX_BODY,
   });
+  const authInfo: AuthInfo = {
+    token: 'verified',
+    clientId: o.clientId ?? 'yea-http',
+    scopes: [],
+    extra: { sub: o.sub },
+  };
+
+  return async (req) => gate(req) ?? handler.fetch(req, { authInfo });
 }

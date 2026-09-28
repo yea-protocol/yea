@@ -5,12 +5,8 @@
  */
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { yea } from '@yea-protocol/mcp';
-import {
-  httpApp,
-  httpAuthFrom,
-  serveHttp,
-  subOf,
-} from '@yea-protocol/mcp/http';
+import { httpApp, httpAuthFrom, httpGate, subOf } from '@yea-protocol/mcp/http';
+import { serveHttp } from '@yea-protocol/mcp/http/node';
 import { errorMessage, isLiveKey } from './api.js';
 import { parseArgs, USAGE } from './args.js';
 import { readSecretKey } from './key.js';
@@ -57,13 +53,19 @@ async function main(argv: string[]) {
     singleProcess: true,
     sub: subOf,
   });
-  const app = httpApp(stripeServer({ key, approvals }), {
+  const front = {
     ...auth,
     loopback: LOOPBACK.has(args.host),
     clientId: 'yea-stripe-http',
-  });
+  };
+  const app = httpApp(stripeServer({ key, approvals }), front);
 
-  await serveHttp(app, { port: args.http, host: args.host });
+  // The gate runs before the body is read, as well as inside the app.
+  await serveHttp(app, {
+    port: args.http,
+    host: args.host,
+    gate: httpGate(front),
+  });
   console.error(
     `${NAME}: ${mode} mode, on http://${args.host}:${args.http}/; service key ${await approvals.serviceId()}`,
   );
