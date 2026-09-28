@@ -71,17 +71,17 @@ const phraseFor = (p: Paid, amount: number) =>
   `${formatNumber(amount, p.ch.currency)}${p.ch.amount_refunded > 0 ? ' again' : ''}`;
 
 /** One refund plan. Money leaves the business, so it reports `spend`. */
-function refundPlan(
+function refund(
   ctx: Ctx,
   p: Paid,
-  refund: { amount: number; why: string },
+  o: { amount: number; why: string },
 ): JobPlan {
   const { c, ch } = p;
   const cur = ch.currency;
-  const money = formatMoney(refund.amount, cur);
+  const money = formatMoney(o.amount, cur);
 
   return {
-    summary: `${tag(ctx)} Refund ${money} of ${ch.id} (${paidLine(p)}) to ${who(c)} (${refund.why})`,
+    summary: `${tag(ctx)} Refund ${money} of ${ch.id} (${paidLine(p)}) to ${who(c)} (${o.why})`,
     effects: [
       create(
         'refund',
@@ -91,13 +91,13 @@ function refundPlan(
         `charge/${ch.id}`,
         'amount_refunded',
         formatMoney(ch.amount_refunded, cur),
-        formatMoney(ch.amount_refunded + refund.amount, cur),
+        formatMoney(ch.amount_refunded + o.amount, cur),
       ),
     ],
-    uses: { spend: toQuantity(refund.amount, cur) },
+    uses: { spend: toQuantity(o.amount, cur) },
     risk: riskFor(ctx, 'medium'),
-    data: { confirm: phraseFor(p, refund.amount) },
-    apply: () => applyRefund(ctx, ch, refund.amount),
+    data: { confirm: phraseFor(p, o.amount) },
+    apply: () => applyRefund(ctx, ch, o.amount),
   };
 }
 
@@ -129,11 +129,11 @@ async function plan(ctx: Ctx, input: RefundInput) {
   if (input.amount !== undefined) {
     const amount = partialAmount(input.amount, ch);
 
-    return [refundPlan(ctx, p, { amount, why: 'partial' })];
+    return [refund(ctx, p, { amount, why: 'partial' })];
   }
 
   const plans = [
-    refundPlan(ctx, p, {
+    refund(ctx, p, {
       amount: left,
       why: ch.amount_refunded > 0 ? "all of what's left" : 'all of it',
     }),
@@ -142,7 +142,7 @@ async function plan(ctx: Ctx, input: RefundInput) {
 
   if (unused) {
     plans.push(
-      refundPlan(ctx, p, {
+      refund(ctx, p, {
         amount: unused.amount,
         why: `estimated unused ${unused.days} days of the current period`,
       }),
@@ -180,6 +180,7 @@ function applyRefund(ctx: Ctx, ch: Stripe.Charge, amount: number) {
 
 // --- the job ---
 
+/** The `refund` job, before `server.ts` registers it. */
 export function refundJob(ctx: Ctx): JobSpec<RefundInput> {
   return {
     name: 'refund',

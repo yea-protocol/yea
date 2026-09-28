@@ -23,9 +23,7 @@ import { unixNow } from '@yea-protocol/sdk';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { isLiveKey } from '../src/api.js';
 import type { Ctx } from '../src/context.js';
-import { cancelJob } from '../src/jobs/cancel.js';
-import { changeJob } from '../src/jobs/change.js';
-import { refundJob } from '../src/jobs/refund.js';
+import { cancelJob, changeJob, refundJob } from '../src/jobs.js';
 import { uncopied } from '../src/schedule.js';
 import { contextFor } from '../src/server.js';
 

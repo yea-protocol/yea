@@ -3,14 +3,13 @@
  * A subscription on a schedule is cancelled at period end through the schedule, since Stripe
  * manages its cancellation there.
  */
-import { type Effect, type JobPlan, update } from '@yea-protocol/sdk';
+import { type JobPlan, update } from '@yea-protocol/sdk';
 import {
   cancelling,
   idOf,
   period,
   SCHEDULE_ID,
   type Stripe,
-  StripeError,
   SUB_ID,
 } from '../api.js';
 import {
@@ -31,6 +30,8 @@ import {
 } from '../find.js';
 import { getSchedule, onlyCurrentPhase } from '../schedule.js';
 import { confirmPhrase, who } from '../text.js';
+import { cancelNow } from './cancel/now.js';
+import { type PeriodEnd, periodEnd } from './cancel/period-end.js';
 
 // --- input schema ---
 
@@ -53,43 +54,22 @@ interface Target {
 const whose = (t: Target) =>
   `${who(t.c)}'s ${priceName(oneItem(t.sub).price)} subscription (${t.sub.id})`;
 
-/** What at-period-end changes: the schedule's end behaviour, or a subscription flag. */
-function periodEndEffect(t: Target): Effect {
-  const { end } = period(t.sub);
-  const sched = t.schedule;
-
-  if (sched) {
-    return update(
-      `subscription_schedule/${sched.id}`,
-      'end_behavior',
-      'release',
-      'cancel',
-      `${t.sub.id} ends ${day(end)}`,
-    );
-  }
-
-  return update(
-    `subscription/${t.sub.id}`,
-    'cancel_at_period_end',
-    false,
-    true,
-    `ends ${day(end)}`,
-  );
-}
-
+/** Cancel at period end: access until then, undoable until a day before it. */
 function atPeriodEnd(ctx: Ctx, t: Target): JobPlan {
   const { end } = period(t.sub);
+  const change = periodEnd(t.sub, t.schedule);
 
   return {
     summary: `${tag(ctx)} Cancel ${whose(t)} at period end, ${day(end)}; access until then`,
-    effects: [periodEndEffect(t)],
+    effects: [change.effect],
     risk: riskFor(ctx, 'low'),
     ...undoWindowBefore(ctx, end),
     data: { confirm: confirmPhrase(t.c) },
-    apply: () => applyAtPeriodEnd(ctx, t),
+    apply: () => applyAtPeriodEnd(ctx, change),
   };
 }
 
+/** Cancel now: access ends at once, and it can't be undone. */
 function now(ctx: Ctx, t: Target): JobPlan {
   return {
     summary: `${tag(ctx)} Cancel ${whose(t)} now; access ends immediately, with no refund`,
@@ -119,6 +99,7 @@ function canEndAtPeriodEnd(t: Target): boolean {
   );
 }
 
+/** The cancellation plans: at period end when it can be offered, and now. */
 async function plan(ctx: Ctx, input: CancelInput) {
   const found = await oneCustomerSubscription(ctx, input);
 
@@ -143,66 +124,15 @@ async function plan(ctx: Ctx, input: CancelInput) {
 
 // --- apply() ---
 
-/** The at-period-end write: the schedule's end behaviour, or the subscription's flag. */
-async function endAtPeriodEnd(
-  ctx: Ctx,
-  t: Target,
-): Promise<Record<string, string>> {
-  const sched = t.schedule;
-
-  if (sched) {
-    await ctx.stripe.write((s, o) =>
-      s.subscriptionSchedules.update(sched.id, { end_behavior: 'cancel' }, o),
-    );
-
-    return { schedule: sched.id, subscription: t.sub.id };
-  }
-
-  await ctx.stripe.write((s, o) =>
-    s.subscriptions.update(t.sub.id, { cancel_at_period_end: true }, o),
-  );
-
-  return { subscription: t.sub.id };
-}
-
-function applyAtPeriodEnd(ctx: Ctx, t: Target) {
+/** Make the at-period-end write the plan disclosed. */
+function applyAtPeriodEnd(ctx: Ctx, change: PeriodEnd) {
   return applying(async () => ({
     plan: 'cancel_at_period_end',
-    ...(await endAtPeriodEnd(ctx, t)),
+    ...(await change.write(ctx)),
   }));
 }
 
-/** Whether Stripe says the subscription is cancelled; a failed read says no. */
-const isCancelled = (ctx: Ctx, id: string) =>
-  ctx.stripe
-    .read((s) => s.subscriptions.retrieve(id))
-    .then(
-      (sub) => sub.status === 'canceled',
-      () => false,
-    );
-
-/**
- * Cancel at once. Stripe ignores idempotency keys on DELETE, so it isn't retried: a lost answer
- * is reported as unknown. The SDK still retries once after a reset connection, and if the first
- * try went through, that retry fails; so a plain failure is checked against the subscription,
- * and one that's cancelled counts as done.
- */
-async function cancelNow(ctx: Ctx, id: string) {
-  try {
-    await ctx.stripe.write((s, o) =>
-      s.subscriptions.cancel(id, {}, { ...o, maxNetworkRetries: 0 }),
-    );
-  } catch (e) {
-    if (
-      !(e instanceof StripeError) ||
-      e.unknown ||
-      !(await isCancelled(ctx, id))
-    ) {
-      throw e;
-    }
-  }
-}
-
+/** Cancel the subscription at once. */
 function applyNow(ctx: Ctx, t: Target) {
   return applying(async () => {
     await cancelNow(ctx, t.sub.id);
@@ -258,6 +188,7 @@ async function revert(ctx: Ctx, result: unknown) {
 
 // --- the job ---
 
+/** The `cancel_subscription` job, before `server.ts` registers it. */
 export function cancelJob(ctx: Ctx): JobSpec<CancelInput> {
   return {
     name: 'cancel_subscription',

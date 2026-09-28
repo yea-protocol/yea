@@ -76,6 +76,7 @@ const discounted = (ch: Change) =>
 const moving = (ctx: Ctx, ch: Change) =>
   `${tag(ctx)} Move ${who(ch.c)}'s subscription (${ch.sub.id}) from ${priceLabel(ch.item.price)} to ${priceLabel(ch.to)}`;
 
+/** Change at renewal: a schedule, undoable until a day before it. */
 function atRenewal(ctx: Ctx, ch: Change): JobPlan {
   const { end } = period(ch.sub);
   const risk: Risk = riskFor(
@@ -98,16 +99,19 @@ function atRenewal(ctx: Ctx, ch: Change): JobPlan {
   };
 }
 
-async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
-  const date = Math.max(today(ctx), period(ch.sub).start);
-  const items = [{ id: ch.item.id, price: ch.to.id, quantity: ch.quantity }];
+/** Change now, prorated: previewed at the same date and items `apply()` sends. */
+async function now(ctx: Ctx, ch: Change): Promise<JobPlan> {
+  const prorated: Prorated = {
+    items: [{ id: ch.item.id, price: ch.to.id, quantity: ch.quantity }],
+    date: Math.max(today(ctx), period(ch.sub).start),
+  };
   const preview = await ctx.stripe.read((s) =>
     s.invoices.createPreview({
       subscription: ch.sub.id,
       subscription_details: {
-        items,
+        items: prorated.items,
         proration_behavior: 'always_invoice',
-        proration_date: date,
+        proration_date: prorated.date,
       },
     }),
   );
@@ -121,14 +125,14 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
         'price',
         ch.item.price.id,
         ch.to.id,
-        `prorated from ${day(date)}`,
+        `prorated from ${day(prorated.date)}`,
       ),
       ...(p.effect ? [p.effect] : []),
     ],
     ...(p.uses ? { uses: p.uses } : {}),
     risk: riskFor(ctx, 'medium'),
     data: { confirm: confirmPhrase(ch.c) },
-    apply: () => applyNow(ctx, ch, { items, date }),
+    apply: () => applyNow(ctx, ch, prorated),
   };
 }
 
@@ -179,6 +183,7 @@ function refusePending(sub: Stripe.Subscription) {
   );
 }
 
+/** The plan-change plans: at renewal when it fits, and now. */
 async function plan(ctx: Ctx, input: ChangeInput) {
   const found = await oneCustomerSubscription(ctx, input);
 
@@ -199,7 +204,7 @@ async function plan(ctx: Ctx, input: ChangeInput) {
   const fits = await whatFits(ctx, ch);
   const plans = fits.renewal ? [atRenewal(ctx, ch)] : [];
 
-  plans.push(await nowProrated(ctx, ch));
+  plans.push(await now(ctx, ch));
 
   return plans;
 }
@@ -216,16 +221,16 @@ function applyAtRenewal(ctx: Ctx, ch: Change) {
 }
 
 /** "Now": the prorated update, at the date and items the preview used. */
-function applyNow(ctx: Ctx, ch: Change, now: Prorated) {
+function applyNow(ctx: Ctx, ch: Change, prorated: Prorated) {
   return applying(async () => {
     // A declined payment leaves the update pending, not the new price on an unpaid invoice.
     const sub = await ctx.stripe.write((s, o) =>
       s.subscriptions.update(
         ch.sub.id,
         {
-          items: now.items,
+          items: prorated.items,
           proration_behavior: 'always_invoice',
-          proration_date: now.date,
+          proration_date: prorated.date,
           payment_behavior: 'pending_if_incomplete',
         },
         o,
@@ -264,6 +269,7 @@ async function revert(ctx: Ctx, result: unknown) {
 
 // --- the job ---
 
+/** The `change_plan` job, before `server.ts` registers it. */
 export function changeJob(ctx: Ctx): JobSpec<ChangeInput> {
   return {
     name: 'change_plan',
