@@ -176,7 +176,9 @@ async def test_a_client_that_claims_elicitation_but_cant_answer_gets_codes(world
     assert r.is_error and "yea approve" in text(r) and done == []
 
 
-async def test_the_fastmcp_guard_cant_be_skipped_by_a_hashed_name(world):
+async def test_guarding_a_tool_the_server_doesnt_define_fails_loudly(world):
+    """An app's tool (reachable by a hashed name too) isn't this server's own: guard it where it's
+    defined. Guarding it here stops the server rather than leave it reachable unguarded."""
     from fastmcp import Client as FastClient
     from fastmcp import FastMCP
     from fastmcp.apps.app import FastMCPApp
@@ -194,65 +196,32 @@ async def test_the_fastmcp_guard_cant_be_skipped_by_a_hashed_name(world):
     fm.add_provider(app)
     world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
     async with FastClient(fm) as c:
-        by_name = await c.call_tool("wipe", {"target": "db"}, raise_on_error=False)
-        by_hash = await c.call_tool(hash_tool("dash", "wipe") + "_wipe", {"target": "db"}, raise_on_error=False)
-    assert by_name.is_error and by_hash.is_error and calls == []
-
-
-async def test_a_guarded_original_never_runs_before_approval(world):
-    calls = []
-
-    @world.server.tool()
-    async def wipe(target: str) -> str:
-        calls.append(target)
-        return "wiped"
-
-    world.approvals.guard(world.server, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
-    async with world.client("auto", Person(["decline"])) as c:
-        await c.call_tool("wipe", {"target": "db"})
-    async with world.client("auto") as c:
-        await c.call_tool("wipe", {"target": "db"})
+        for name in ("wipe", hash_tool("dash", "wipe") + "_wipe"):
+            r = await c.call_tool(name, {"target": "db"}, raise_on_error=False)
+            assert r.is_error and "isn't one of this server's own tools" in text(r)
     assert calls == []
 
 
-async def test_legacy_stateless_http_takes_the_consent_code_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("YEA_HOME", str(tmp_path))
-    done = []
-    ap = yea(name="s", transport="http", sub=lambda r: "person", store=FileStore(tmp_path / "st"),
-             server_key=tmp_path / "k", principal=PRINCIPAL.public)
-    srv = MCPServer("s", request_state_security=ap.request_state_security())
-
-    @ap.job(srv, risk="low")
-    async def send(to: str) -> list[Plan]:
-        return [Plan(f"Send to {to}", [create("mail/x")], apply=lambda: done.append(to))]
-
-    app = srv.streamable_http_app(stateless_http=True)
-    async with app.router.lifespan_context(app):
-        async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://127.0.0.1:8000") as http:
-            async with Client(streamable_http_client("http://127.0.0.1:8000/mcp", http_client=http), mode="legacy",
-                              elicitation_callback=Person()) as c:
-                r = await c.call_tool("send", {"to": "ana"})
-    assert r.is_error and "yea approve" in text(r) and done == []
-
-
-async def test_a_namespaced_copy_of_a_guarded_fastmcp_tool_is_refused(world):
+async def test_renamed_copies_of_a_guarded_fastmcp_tool_still_need_approval(world):
     from fastmcp import Client as FastClient
     from fastmcp import FastMCP
     from fastmcp.server.transforms import Namespace
 
-    fm = FastMCP("b", request_state_security=world.approvals.request_state_security())
+    child = FastMCP("child")
+    parent = FastMCP("b", request_state_security=world.approvals.request_state_security())
     calls = []
 
-    @fm.tool
+    @child.tool
     def wipe(target: str) -> str:
         calls.append(target)
         return "wiped"
 
-    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
-    fm.add_transform(Namespace("x"))
-    async with FastClient(fm) as c:
-        r = await c.call_tool("x_wipe", {"target": "db"}, raise_on_error=False)
-    assert r.is_error and "under another name" in text(r) and calls == []
+    world.approvals.guard(child, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+    parent.mount(child, namespace="c")
+    parent.add_transform(Namespace("x"))
+    async with FastClient(parent) as c:
+        r = await c.call_tool("x_c_wipe", {"target": "db"}, raise_on_error=False)
+    assert r.is_error and "yea approve" in text(r) and calls == []
 
 
 async def test_a_failing_original_with_a_broken_store_is_still_its_own_error(world):

@@ -139,7 +139,7 @@ class Approvals:
             mw = fm.FastMCPGuard(self._y, server) if fm is not None else GuardMiddleware(self._y, server)
             self._guards[server] = mw
             if fm is not None:
-                server.add_middleware(mw)
+                server.middleware.insert(0, mw)  # first, so no other middleware can run the tool before it's wrapped
             else:
                 server.middleware.append(mw)
         mw.add(name, Guarded(describe, revert, confirm_with))

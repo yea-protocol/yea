@@ -291,12 +291,19 @@ per request from the reserved `_meta` on 2026). `elicitation.form`, or a bare
 seam:
 
 - `job()` and `guard()` take a FastMCP server as they take an `MCPServer`, and detect it.
-  `guard()` installs a `fastmcp.server.middleware.Middleware` on that server itself (with
-  `mcp.add_middleware`), once. Its `on_call_tool` runs the routine for guarded tools, and takes
-  `preview` off with `context.copy(message=…)` before `call_next`, which matters because FastMCP
-  tool schemas set `additionalProperties: false`. Its `on_list_tools` adds `preview` to guarded
-  tools' listed schemas. `call_next` returns a FastMCP `ToolResult`, which the routine reads and
-  adds the receipt to in that shape.
+- **`guard()` replaces the tool, as `mcp-ts` does.** FastMCP can publish one tool under many
+  names (a `Namespace` copies it with a new name, a transform wraps it, an app tool also answers
+  to a hashed name, search proxies calls), so deciding by name in middleware can't be made
+  complete. Instead the plugin's middleware, installed first on that server, keeps each guarded
+  tool in the server's own provider replaced by an approval wrapper: the original's signature
+  plus `preview`, whose only way to act is the original's `run`. Every route that runs the tool
+  runs the wrapper. The replacement is checked on every message, so a tool registered, or
+  re-registered, after `guard()` is wrapped before anything can call it.
+- **Guard a tool where it's defined.** A mounted server's tool is guarded on that server (the
+  parent's calls go through the child's own middleware); an app's tool isn't supported in v0. A
+  guard that can't be kept (the tool isn't the server's own, isn't a function tool, has its own
+  `preview`, or runs as a background task) refuses **every** tool call on that server with the
+  reason, since the unguarded tool might be reachable by another name.
 - `@approvals.job(mcp, ...)` registers the wrapper with `Tool.from_function`, which honours the
   same `__signature__`/`__annotations__` construction.
 - On 2026 it returns `InputRequiredToolResult(InputRequiredResult(...))`, the documented way for
@@ -305,18 +312,8 @@ seam:
 - `FastMCP(request_state_security=approvals.request_state_security())` seals the state.
 - Capabilities come from `session.client_capabilities`, as above (not `client_params`, which is
   `None` on 2026 when a client omits `clientInfo`).
-- **Other names for a tool.** `on_call_tool` resolves the called name the way FastMCP does (by
-  name, then an app tool's hashed `<12 hex>_<name>`) and decides on the resolved tool's name. A
-  transformed tool calls its parent's `run` directly and skips middleware, and a transform can
-  rename a tool, so a `TransformedTool` whose `parent_tool` chain reaches a guarded tool is
-  refused. A `Namespace` renames a tool by copying it, so the guard also marks each guarded
-  tool by identity (a `dev.yea/guarded` entry in its metadata, and its function), and refuses a
-  tool that carries the mark under another name. `job()` needs no such check: its routine is inside the tool function, which
-  `parent_tool.run` still calls.
-- **Tasks.** FastMCP has no public synchronous tool lookup, so `guard()` can't see a tool's
-  `task_config` when it registers; a guarded task-enabled tool is refused when called. Running
-  task tools needs FastMCP's tasks extension, whose dispatch path hasn't been checked, so a server
-  with that extension isn't supported under `guard` in v0.
+- **Tasks.** Running task tools needs FastMCP's tasks extension, whose dispatch path hasn't been
+  checked, so a guarded task-enabled tool is refused (as above) in v0.
 
 ## Results and annotations
 

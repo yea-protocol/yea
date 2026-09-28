@@ -77,7 +77,7 @@ async def test_guard_wraps_an_existing_tool(world, fm, mode):
     assert calls == ["db"] and text(r) == "wiped db" and r.meta["dev.yea/receipt"]["tool"] == "wipe"
 
 
-async def test_a_transform_over_a_guarded_tool_is_refused(world, fm):
+async def test_a_transform_over_a_guarded_tool_still_needs_approval(world, fm):
     calls = []
 
     @fm.tool
@@ -85,16 +85,21 @@ async def test_a_transform_over_a_guarded_tool_is_refused(world, fm):
         calls.append(target)
         return "wiped"
 
-    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": f"Wipe {a['target']}", "effects": [], "risk": "low"})
+    async with Client(fm) as c:  # the first message wraps the tool
+        await c.list_tools()
     original = await fm.get_tool("wipe")
     fm.add_tool(TransformedTool.from_tool(original, name="wipe2", transform_args={"target": ArgTransform(name="t")}))
-    async with Client(fm) as c:
+    async with Client(fm) as c:  # can't ask: consent codes, nothing run
         r = await c.call_tool("wipe2", {"t": "db"}, raise_on_error=False)
-    assert r.is_error and "transform of a guarded tool" in text(r) and calls == []
+    assert r.is_error and "yea approve" in text(r) and calls == []
+    async with Client(fm, elicitation_handler=person([])) as c:
+        ok = await c.call_tool("wipe2", {"t": "db"})
+    assert calls == ["db"] and "dev.yea/receipt" in ok.meta
 
 
-async def test_a_task_enabled_tool_is_refused_by_guard(world, fm):
-    """Running task tools needs FastMCP's tasks extension, so this drives the middleware directly."""
+async def test_a_task_enabled_tool_cant_be_wrapped(world, fm):
+    """Running task tools needs FastMCP's tasks extension, so this checks the wrapping directly."""
     from fastmcp.tools import Tool
 
     from yea_mcp.fastmcp import FastMCPGuard
@@ -103,12 +108,9 @@ async def test_a_task_enabled_tool_is_refused_by_guard(world, fm):
     async def slow(x: int) -> str:
         return "ok"
 
-    tool = Tool.from_function(slow, task=True)
     guard = FastMCPGuard(world.approvals._y, fm)
-    g = Guarded(lambda a: {"summary": "Slow", "effects": []}, None, None)
-    guard.tools["slow"] = g
-    r = await guard._call(context=None, call_next=None, tool=tool, g=g)
-    assert r.is_error and "background task" in text(r)
+    with pytest.raises(ValueError, match="background task"):
+        guard._wrap(Tool.from_function(slow, task=True), Guarded(lambda a: {"summary": "S", "effects": []}, None, None))
 
 
 def sender(world, fm, done):
@@ -205,7 +207,7 @@ async def test_previews_denied_and_non_boolean(world, fm):
     assert r.is_error and "never allows send" in text(r) and "Send to ana" not in text(r)
 
 
-async def test_guard_a_failing_original_and_one_with_its_own_preview(world, fm):
+async def test_guard_a_failing_original(world, fm):
     import mcp_types as t
 
     calls = []
@@ -215,15 +217,47 @@ async def test_guard_a_failing_original_and_one_with_its_own_preview(world, fm):
         calls.append(x)
         return t.CallToolResult(content=[t.TextContent(type="text", text="down")], is_error=True)
 
+    world.approvals.guard(fm, "flaky", describe=lambda a: {"summary": "Flaky", "effects": [], "risk": "low"})
+    async with Client(fm, elicitation_handler=person([])) as c:
+        f = await c.call_tool("flaky", {"x": 1}, raise_on_error=False)
+    assert f.is_error and text(f) == "down" and not (f.meta or {}).get("dev.yea/receipt") and calls == [1]
+
+
+async def test_a_tool_with_its_own_preview_fails_loudly(world, fm):
+    calls = []
+
     @fm.tool
     def publish(preview: bool = False) -> str:
         calls.append("publish")
         return "published"
 
-    world.approvals.guard(fm, "flaky", describe=lambda a: {"summary": "Flaky", "effects": [], "risk": "low"})
     world.approvals.guard(fm, "publish", describe=lambda a: {"summary": "Publish", "effects": []})
-    async with Client(fm, elicitation_handler=person([])) as c:
-        f = await c.call_tool("flaky", {"x": 1}, raise_on_error=False)
-        p = await c.call_tool("publish", {}, raise_on_error=False)
-    assert f.is_error and text(f) == "down" and not (f.meta or {}).get("dev.yea/receipt") and calls == [1]
-    assert p.is_error and "own preview argument" in text(p)
+    async with Client(fm) as c:
+        r = await c.call_tool("publish", {}, raise_on_error=False)
+    assert r.is_error and "own preview argument" in text(r) and calls == []
+
+
+async def test_a_tool_registered_or_re_registered_later_is_wrapped(world, fm):
+    from fastmcp.server.transforms import Namespace
+
+    calls = []
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+
+    @fm.tool
+    def wipe(target: str) -> str:  # registered after guard()
+        calls.append(("first", target))
+        return "wiped"
+
+    async with Client(fm) as c:
+        await c.list_tools()
+    fm.local_provider.remove_tool("wipe")
+
+    @fm.tool
+    def wipe(target: str) -> str:  # noqa: F811 — re-registered under the same name
+        calls.append(("second", target))
+        return "wiped"
+
+    fm.add_transform(Namespace("x"))
+    async with Client(fm) as c:
+        r = await c.call_tool("x_wipe", {"target": "db"}, raise_on_error=False)
+    assert r.is_error and "yea approve" in text(r) and calls == []
