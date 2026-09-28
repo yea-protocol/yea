@@ -1,7 +1,8 @@
 /** YEA client: what an agent (or its harness) uses to talk to a service. */
 import { randomId } from './crypto.js';
-import { type Caveat, decodeGrant, makeProof } from './grants.js';
+import { type Caveat, decodeGrant } from './grants.js';
 import { lens } from './lens.js';
+import { autoTarget, makeProof } from './proof.js';
 import { isRisk } from './risk.js';
 import type { Service } from './service.js';
 import type {
@@ -232,7 +233,7 @@ export class Client {
     const budget = o.budget ?? this.opts.budget;
     const id = randomId('c', 6);
     // auto-commit proofs are bound to this request id, so a captured frame can't be replayed into new commits
-    const target = o.auto ? `auto:${capability}:${id}` : capability;
+    const target = o.auto ? autoTarget(capability, id) : capability;
 
     return this.send(
       {

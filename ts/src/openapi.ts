@@ -7,7 +7,8 @@
  * never auto-committed. Grants, spend caps and consent all apply unchanged.
  */
 import { YeaError } from './errors.js';
-import { type Plan, type Service, service } from './service.js';
+import type { Plan } from './plan.js';
+import { type Service, service } from './service.js';
 import type { Effect, ErrorCode, ParamSchema, Risk } from './types.js';
 
 /** An arbitrary JSON object: an OpenAPI document or any node inside it. */

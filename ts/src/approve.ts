@@ -3,8 +3,13 @@
  * the code, show the proposal it carries, ask, and sign a one-time consent to the agent. The
  * terminal is passed in, so the logic can be tested; the CLI supplies stdin and stdout.
  */
+
+import {
+  consentGrant,
+  consentRecipient,
+  decodeConsentCode,
+} from './consent.js';
 import { type KeyPair, proposalHash, sha256 } from './crypto.js';
-import { consentGrant, consentRecipient, decodeConsentCode } from './grants.js';
 import { fmtTime, untrustedLens } from './lens.js';
 import { isRisk } from './risk.js';
 import { printable } from './text.js';
