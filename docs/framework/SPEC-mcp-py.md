@@ -280,9 +280,10 @@ and §6, and the same order as `mcp-ts`):
     - A result that can't be turned into JSON (a circular object, say) is left out: the receipt is
       stored without it, so the job can still be undone, and the result says the action happened,
       that its result isn't shown or kept, and whether undo is available (as `mcp-ts`).
-    - If `settle_all` or `put_receipt` fails after `apply()` succeeded: say the action happened,
-      what failed, and whether undo is available (only once the receipt was saved and the plan is
-      undoable), in `mcp-ts`'s words. For `guard`, the original's result is kept with that line.
+    - If anything fails after `apply()` succeeded (`settle_all`, `put_receipt`, or anything after
+      the receipt is saved): say the action happened, what failed, and whether undo is available
+      (only once the receipt was saved and the plan is undoable), in `mcp-ts`'s words. For `guard`,
+      the original's result, when it's usable, is kept with that line.
 
 ### Asking, per era
 

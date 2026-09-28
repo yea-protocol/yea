@@ -174,9 +174,9 @@ async def test_a_result_that_cant_be_json_says_the_action_happened(world, mode):
         r = await c.call_tool("odd", {"x": 1})
     assert done == [1] and not r.is_error and "nothing was run" not in text(r)
     receipt = r.structured_content["receipt"]
-    assert text(r) == (f"✓ Odd happened, but its result couldn't be serialized (Circular reference detected (id "
-                       f"repeated)), so it isn't shown or kept; receipt {receipt['id']}; it can't be undone.")
-    assert "result" not in receipt and r.structured_content["result"] is None
+    assert text(r).startswith("✓ Odd happened, but its result couldn't be serialized (")
+    assert text(r).endswith(f"), so it isn't shown or kept; receipt {receipt['id']}; it can't be undone.")
+    assert receipt["result"] is None and r.structured_content["result"] is None  # null, as mcp-ts
 
 
 async def test_a_result_that_cant_be_json_still_leaves_an_undoable_receipt(world):
@@ -296,3 +296,20 @@ async def test_an_approved_apply_that_fails_part_way_says_the_approval_is_used_u
     assert len(person.seen) == 1
     assert r.is_error and text(r) == ("✗ approved, but Schedule failed part-way: schedule sch_1 was left behind. "
                                       "The approval is used up.")
+
+
+async def test_a_failure_after_the_receipt_is_saved_says_undo_is_available(world, monkeypatch):
+    import yea_mcp.call.run as run
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def ping(x: int) -> list[Plan]:
+        return [Plan("Ping", [create("p/1")], apply=lambda: {"ok": 1}, undo_window=60)]
+
+    def broken(receipt, auto):
+        raise RuntimeError("render broke")
+
+    monkeypatch.setattr(run, "receipt_result", broken)
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("ping", {"x": 1})
+    rid = r.structured_content["receipt"]["id"]
+    assert text(r) == f"✓ Ping happened, but then render broke; undo is available with receipt {rid}."

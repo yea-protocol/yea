@@ -32,11 +32,12 @@ async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: st
     if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
         await _release_each(call, held)
         return result
-    saved: dict[str, dict] = {}  # the receipt, once stored: a later failure can say undo is available
+    saved: dict[str, Any] = {}  # the receipt once stored, and whether the result was unusable
     try:
         return await _recorded(call, hp, held, result, how == "auto", saved)
     except Exception as e:  # noqa: BLE001
-        return _happened(call, hp, f"then {e}", saved.get("receipt"), result if call.job.guarded else None)
+        usable = call.job.guarded and "unserializable" not in saved  # never send a result that couldn't be
+        return _happened(call, hp, f"then {e}", saved.get("receipt"), result if usable else None)
 
 
 async def _release_each(call: Call, held: list[Reservation]) -> None:
@@ -49,7 +50,7 @@ async def _release_each(call: Call, held: list[Reservation]) -> None:
             pass
 
 
-def _receipt_for(call: Call, hp: HashedPlan, result: Any) -> dict:
+def _receipt_for(call: Call, hp: HashedPlan, result: Any, kept_none: bool = False) -> dict:
     """The receipt a successful job leaves (SPEC-approval §8's job receipt)."""
     p = hp.plan
     receipt: dict[str, Any] = {"id": new_receipt_id(), "service": call.y.service_id, "proposal": hp.plan_hash,
@@ -58,7 +59,7 @@ def _receipt_for(call: Call, hp: HashedPlan, result: Any) -> dict:
         receipt["uses"] = uses
     receipt["undo"] = {"until": call.now + p.undo_window} if hp.undoable and p.undo_window is not None else None
     receipt |= {"tool": hp.tool, "input": call.input, "planHash": hp.plan_hash, "sub": call.sub}
-    if result is not None:
+    if result is not None or kept_none:  # a result that couldn't be serialized is null, as mcp-ts's receiptFor
         receipt["result"] = result
     return receipt
 
@@ -73,11 +74,13 @@ def json_safe(v: Any) -> tuple[Any, str | None]:
 
 
 async def _recorded(call: Call, hp: HashedPlan, held: list[Reservation], result: Any, auto: bool,
-                    saved: dict[str, dict]) -> Result:
+                    saved: dict[str, Any]) -> Result:
     """After ``apply()`` succeeded: settle, store the receipt (without a result that couldn't be
     serialized, so the job can still be undone), and return it."""
     safe, note = json_safe(result)
-    receipt = _receipt_for(call, hp, safe)
+    if note:
+        saved["unserializable"] = True
+    receipt = _receipt_for(call, hp, safe, kept_none=note is not None)
     await settle_all(call.y.store, held)
     await call.y.store.put_receipt(receipt)
     saved["receipt"] = receipt
