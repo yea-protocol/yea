@@ -931,20 +931,23 @@ async def _ask_http(url, events):
     return await _HttpTransport(url).request({"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, events.append)
 
 
-def test_after_the_connection_fails_a_new_request_fails_at_once(monkeypatch):
-    """The reader stopping (here, an over-cap line) closes the connection; a later request raises
-    instead of waiting forever for a reply no one reads (#147 review)."""
-    import yea.client.connection as conn
+def test_after_the_connection_fails_a_new_request_fails_at_once():
+    """However the reader stops (here, an on_event callback that raises), the connection closes and
+    a later request raises instead of waiting forever for a reply no one reads (#147 review)."""
+    def lines(fid):
+        event = {"yea": 1, "id": "e_1", "re": fid, "kind": "EVENT", "message": "half"}
+        return json.dumps(event).encode() + b"\n"
 
-    monkeypatch.setattr(conn, "MAX_REPLY", 1000)
+    def boom(e):
+        raise RuntimeError("callback failed")
 
     async def go():
-        srv = await _fake_server(lambda fid: b"x" * 5000)
+        srv = await _fake_server(lines)
         try:
             async with await connect(f"yea://127.0.0.1:{srv.sockets[0].getsockname()[1]}") as c:
-                with pytest.raises(ConnectionError):
-                    await asyncio.wait_for(c.ask("x"), 5)
-                with pytest.raises(ConnectionError):
+                with pytest.raises(RuntimeError, match="callback failed"):
+                    await asyncio.wait_for(c.send({"verb": "ASK", "capability": "x", "params": {}}, boom), 5)
+                with pytest.raises(RuntimeError, match="callback failed"):
                     await asyncio.wait_for(c.ask("y"), 5)  # used to hang: nothing read the replies
         finally:
             srv.close()
