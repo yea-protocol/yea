@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @yea-protocol/sdk && npm run build -w @yea-protocol/mcp && npm run build -w @yea-protocol/stripe",
-    "test": "npm test -w @yea-protocol/sdk && npm test -w @yea-protocol/mcp && npm test -w @yea-protocol/stripe",
+    "test": "npm test -w @yea-protocol/sdk && npm test -w @yea-protocol/mcp && npm test -w @yea-protocol/stripe && node scripts/check-readme-snippets.mjs",
     "demo": "npm run build && node examples/demo.ts",
     "bench": "npm run build && node bench/run.ts && node bench/estimator.ts",
     "site": "npm run build -w yea-site",

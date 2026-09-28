@@ -104,6 +104,11 @@ person's identity from the transport's authentication (for example a subject the
 authorization server puts in `authInfo.extra`). An OAuth `clientId` names an app, not a
 person, and doesn't qualify.
 
+**Start-up line.** Once the options pass, `yea()` writes one line to stderr (stdout belongs to
+the stdio transport): `yea: service id <id> (name <name>)`, with the server's public key. It's
+the id `yea grant --to` needs, so the person doesn't have to read the key file
+([SPEC-docs.md](SPEC-docs.md), step 5).
+
 `approvals.serverOptions()` returns `{ requestState: { verify: codec.verify } }` for
 `new McpServer`. `approvals.serviceId()` resolves to the server's public key, the service id
 that `yea grant --to` issues policy grants to. `codec` is `createRequestStateCodec({ key, ttlSeconds: 600, bind })` with
@@ -377,6 +382,7 @@ can't elicit. For each:
 - `guard` wraps an existing tool. The original callback runs only once approved, its result
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
 - the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
+- the start-up line, once, on stderr;
 - after `apply()`: a result that can't be serialized applies once and says so, and a store
   failure says the action happened;
 - a 2025 client that can't elicit, spoofing an envelope that says it can, gets consent codes;

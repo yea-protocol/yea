@@ -31,6 +31,17 @@ The spec requires this of tooling: implementations must not let an agent trigger
 | A service faking a consent request | Tooling checks the request against the proposal the agent received, re-hashes it, and shows its real effects |
 | Oversized or flooding requests | 1 MiB frame limit enforced without buffering, and in-flight requests capped per connection |
 
+## MCP servers built with the framework
+
+A server that uses `@yea-protocol/mcp` ([guide](/guide/mcp-typescript)) enforces approval itself. A call through a guarded tool or job runs only if the person's signed policy allows it, the person approved it in their client by typing its phrase, or they signed a consent with `yea approve`. The model can't approve it through the tool call. Whether that holds depends on these; the full list is in [SPEC-approval §9](../../docs/framework/SPEC-approval.md#9-security).
+
+- **The principal's private key must be out of the agent's reach.** Whoever can use it can sign policies and consents, so an agent that can read it signs its own. Keep it on another OS user or device. On one account with an agent that can run commands, as Claude Code can, the guarantees are best effort.
+- **The pinned public key must be unwritable by the server's user.** The server trusts the key in the file `YEA_PRINCIPAL_PUB` names. If the agent could change that file, it could pin a key of its own and sign with it. So the server refuses a file that its OS user owns or can write, or that sits under a directory it could change: put it somewhere like `/etc/yea/principal.pub`, written with `sudo`. It also refuses the file when it runs as root. Without a usable pinned key, nothing runs on its own and no consent is accepted, so every call asks or fails closed.
+- **Only undoable plans run on their own.** A policy can let a plan run without asking only if it has an undo window and the tool can revert it. Everything else asks every time, whatever the policy says, so anything the policy lets through can be undone. High-risk plans aren't offered in the client's approval form at all: they need `yea approve`. Undo itself also runs without asking, within its window, since it restores what was approved.
+- **Approval covers calls through the tool, and nothing else.** An agent that can edit the client's config or hooks (for example, a Claude Code hook that answers the form for it), or that can reach the resource directly with its shell, isn't stopped by it. Keep those out of the agent's reach too, or treat the protection as best effort, as with the key.
+
+An accepted form counts only when the typed phrase matches, because some clients accept empty forms without showing them. Keep the agent away from the server's store too (`~/.yea/store` by default): it holds the totals, the one-time markers and the receipts.
+
 ## Known limits in v1
 
 - **Services are trusted to describe their own effects.** YEA makes the description explicit and binds commits to it, but a malicious service can still lie. Signed receipts are on the roadmap.

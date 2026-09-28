@@ -1,1 +1,12 @@
-{ "name": "yea-examples", "private": true, "type": "module", "dependencies": { "@yea-protocol/sdk": "*", "@yea-protocol/stripe": "*" } }
+{
+  "name": "yea-examples",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.1.0",
+    "@yea-protocol/mcp": "*",
+    "@yea-protocol/sdk": "*",
+    "@yea-protocol/stripe": "*",
+    "zod": "^4.2.0"
+  }
+}
