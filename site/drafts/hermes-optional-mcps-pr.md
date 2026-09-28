@@ -34,11 +34,11 @@ transport:
 
 ## PR body
 
-**What it is.** [YEA](https://github.com/yea-protocol/yea) (Your Explicit Approval) is an open protocol (Apache-2.0) for agents acting on behalf of people. Its MCP bridge exposes YEA services to any MCP client as four tools: `yea_ask`, `yea_intent`, `yea_commit`, `yea_undo`.
+**What it is.** [YEA](https://github.com/yea-protocol/yea) (Your Explicit Approval) is an open protocol (Apache-2.0) for agents acting on behalf of people. Its MCP bridge exposes YEA services to any MCP client with one tool per capability (`calendar_reschedule`, `shop_order`, …), plus `yea_consent`, `yea_undo` and `yea_expand`.
 
 **Why it fits Hermes.**
-- **Previews before side effects.** `yea_intent` returns proposals listing every effect, what it uses (money, emails), the risk and the undo window. Nothing changes until `yea_commit`.
-- **Human approval that means something.** When an action exceeds the user's signed policy (per-action cap, total spend, risk ceiling), the service returns `consent_required`. The bridge asks the human through MCP elicitation, which Hermes routes through its approval surface. The approval is a signature bound to that exact proposal and nothing else.
+- **Previews before side effects.** A tool call the user's grant doesn't cover returns proposals listing every effect, what it uses (money, emails), the risk and the undo window. Nothing changes until one is committed.
+- **Human approval that means something.** When an action exceeds the user's signed policy (per-action cap, total spend, risk ceiling), the service returns `consent_required`. The tool returns a consent code the human approves with `yea approve` where their principal key is; the agent hands the signed consent back through `yea_consent`. The approval is a signature bound to that exact proposal and nothing else.
 - **Undo.** Reversible commits return a receipt with an undo window.
 - **Token budgets.** Replies fit the requested budget and leave `EXPAND` handles, and results come back as compact text (Lens), not raw JSON.
 - **Any REST API.** `yea openapi <spec>` wraps an existing API so writes become proposals.

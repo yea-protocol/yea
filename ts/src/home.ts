@@ -104,17 +104,24 @@ export function agentKey(create = false) {
   return loadKey('agent', create);
 }
 
+/** The file a grant or consent is saved in, named after `name` with unsafe characters replaced. */
+const grantFile = (kind: 'grants' | 'consents', name: string) =>
+  p(kind, `${name.replace(/[^A-Za-z0-9_-]/g, '_')}.pg`);
+
 export function saveGrant(
   token: string,
   kind: 'grants' | 'consents',
   name: string,
 ) {
   ensure();
-  writeFileSync(
-    p(kind, `${name.replace(/[^A-Za-z0-9_-]/g, '_')}.pg`),
-    `${token}\n`,
-    { mode: 0o600 },
-  );
+  writeFileSync(grantFile(kind, name), `${token}\n`, { mode: 0o600 });
+}
+
+/** The consent saved for a proposal hash (by `yea approve` or the bridge), or null if none. */
+export function loadConsent(hash: string): string | null {
+  const f = grantFile('consents', hash);
+
+  return existsSync(f) ? readFileSync(f, 'utf8').trim() : null;
 }
 
 export function loadGrants(kind: 'grants' | 'consents' = 'grants'): string[] {

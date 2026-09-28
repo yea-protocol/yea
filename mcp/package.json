@@ -1,7 +1,7 @@
 {
   "name": "@yea-protocol/mcp",
   "version": "0.1.0",
-  "description": "YEA job tools for the TypeScript MCP SDK: previews, typed approval, a signed policy, consent codes and undo.",
+  "description": "YEA job tools for the TypeScript MCP SDK: previews, typed approval, a signed policy, consent codes and undo. Also the bridge behind `yea mcp`.",
   "type": "module",
   "license": "Apache-2.0",
   "main": "dist/index.js",
@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./bridge": {
+      "types": "./dist/bridge.d.ts",
+      "default": "./dist/bridge.js"
     }
   },
   "files": [

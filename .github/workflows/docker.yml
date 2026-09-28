@@ -3,7 +3,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: ["Dockerfile", "ts/**", ".github/workflows/docker.yml"]
+    paths: ["Dockerfile", "ts/**", "cli/**", "mcp/**", ".github/workflows/docker.yml"]
 permissions: { contents: read, packages: write, id-token: write, attestations: write }
 jobs:
   image:

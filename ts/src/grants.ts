@@ -158,20 +158,68 @@ export function consentGrant(opts: {
 /**
  * A consent request packed for a human to approve out of band (`yea approve <code>`).
  * `detail` carries the full proposal (as the agent saw it) so the approver can show its
- * effects and re-check the hash, instead of trusting a service-written summary.
+ * effects and re-check the hash, instead of trusting a service-written summary. `agent` is the
+ * key the consent should be issued to, for approving on a machine without that agent's key; it
+ * is unsigned, so `yea approve` shows it and checks it against a local agent key.
  */
 export function consentCode(
   c: ConsentRequest,
   detail?: Omit<Proposal, 'data'>,
+  o: { agent?: string } = {},
 ): string {
   const { data: _d, ...d } = (detail ?? {}) as Proposal;
+  const body = {
+    ...c,
+    ...(detail ? { detail: d } : {}),
+    ...(o.agent === undefined ? {} : { agent: o.agent }),
+  };
 
-  return `pc1.${b64u(utf8(canonical(detail ? { ...c, detail: d } : c)))}`;
+  return `pc1.${b64u(utf8(canonical(body)))}`;
+}
+
+/** An Ed25519 public key as YEA writes it (SPEC §6.1). */
+export const isPublicKey = (v: unknown): v is string =>
+  typeof v === 'string' && /^ed25519:[A-Za-z0-9_-]{43}$/.test(v);
+
+/**
+ * Who `yea approve` issues a protocol consent to: `--to` if given, else this machine's agent key
+ * when the code names it or no one. The code's `agent` is unsigned, so it's never used on its
+ * own: a code naming another key, or one on a machine without an agent key, needs `--to`.
+ * Returns the key, or why there is none.
+ */
+export function consentRecipient(o: {
+  code: unknown;
+  local: string | null;
+  to?: string;
+}): { key: string } | { why: string } {
+  const named = o.code === undefined || isPublicKey(o.code) ? o.code : null;
+
+  if (named === null) {
+    return { why: 'the code names an agent key that is not an ed25519 key' };
+  }
+
+  if (o.to !== undefined) {
+    return isPublicKey(o.to)
+      ? { key: o.to }
+      : { why: '--to is not an ed25519 public key' };
+  }
+
+  if (!o.local) {
+    return {
+      why: 'no agent key on this machine: pass --to <key> to say which agent the consent is for',
+    };
+  }
+
+  return named === undefined || named === o.local
+    ? { key: o.local }
+    : {
+        why: `the code asks for a consent to agent ${named}, but this machine's agent key is ${o.local}; pass --to <key> to say which`,
+      };
 }
 
 export function decodeConsentCode(
   code: string,
-): ConsentRequest & { detail?: Proposal } {
+): ConsentRequest & { detail?: Proposal; agent?: unknown } {
   if (!code.startsWith('pc1.')) {
     throw new Error('not a consent code (expected pc1.…)');
   }

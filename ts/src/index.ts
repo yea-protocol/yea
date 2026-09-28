@@ -21,6 +21,14 @@ export {
 } from './approval.js';
 
 export {
+  type ApproveIO,
+  type ApproveOutcome,
+  approveConsentCode,
+  consentLines,
+  keyFingerprint,
+} from './approve.js';
+
+export {
   type ApprovalAnswer,
   type ApprovalForm,
   type ApprovalState,
@@ -86,6 +94,7 @@ export {
   checkProof,
   consentCode,
   consentGrant,
+  consentRecipient,
   decodeConsentCode,
   decodeGrant,
   delegateGrant,
@@ -93,6 +102,7 @@ export {
   type GrantCheck,
   type GrantInfo,
   inspectGrant,
+  isPublicKey,
   issueGrant,
   makeProof,
   matchCapability,
@@ -136,6 +146,8 @@ export {
 } from './store.js';
 
 export { printable } from './text.js';
+
+export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
 export * from './types.js';
 

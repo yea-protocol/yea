@@ -134,7 +134,13 @@ export function callerOf(y: Yea, ctx: ServerContext): string {
  * which HTTP promises with `singleProcess: true` at start-up, so there's no per-call check.)
  */
 async function policyFor(y: Yea): Promise<Policy> {
-  const rules = readTighteningFor(y.tighten);
+  const { broken, deny, outOfBand } = readTighteningFor(y.tighten);
+
+  // A policy file that can't be read hides its deny list: refuse rather than guess.
+  if (broken) {
+    throw new Error(`your unsigned policy can't be used (${broken})`);
+  }
+
   const pinned = 'key' in y.principal ? y.principal.key : null;
   // Without a pinned principal nothing auto-runs (SPEC-approval §2).
   const grant = pinned ? readPolicy(y.policy) : null;
@@ -143,7 +149,8 @@ async function policyFor(y: Yea): Promise<Policy> {
     grant,
     principal: pinned ?? '',
     server: await y.serviceId(),
-    ...rules,
+    deny,
+    outOfBand,
   };
 }
 

@@ -12,6 +12,8 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.1.0",
+    "@yea-protocol/mcp": "0.1.0",
     "@yea-protocol/sdk": "0.1.0"
   },
   "peerDependencies": {

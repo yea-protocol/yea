@@ -727,6 +727,19 @@ for (const [name, token, proofKey, c, expect] of cases) {
   });
 }
 
+// A protocol consent code (a tooling format, not wire bytes): the request, the proposal as
+// detail (without `data`), and the agent key the consent should be issued to.
+const codeDetail = { ...hash[1].proposal, hash: hash[1].hash };
+const codeRequest = {
+  proposal: codeDetail.id,
+  hash: codeDetail.hash,
+  service: 'calendar.example',
+  capability: codeDetail.capability,
+  principal: principal.public,
+  summary: codeDetail.summary,
+  expires: codeDetail.expires,
+};
+
 out('grants', {
   seeds: {
     principal: seed(1),
@@ -737,6 +750,12 @@ out('grants', {
   rootTotalBlockId: rootSpendId,
   countsTotalBlockId: countsId,
   cases: gcases,
+  consentCode: {
+    consent: codeRequest,
+    detail: codeDetail,
+    agent: agent.public,
+    code: P.consentCode(codeRequest, codeDetail, { agent: agent.public }),
+  },
 });
 
 // lens

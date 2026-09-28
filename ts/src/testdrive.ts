@@ -1,7 +1,7 @@
 /**
  * `yea test-drive`: watch a real Claude model use YEA, live, in your terminal.
- * The example calendar and shop run in-process; the model gets the same four tools as the
- * MCP bridge; anything outside the (throwaway) policy asks YOU to approve it.
+ * The example calendar and shop run in-process; the model gets four generic tools (tools.ts);
+ * anything outside the (throwaway) policy asks YOU to approve it.
  * Needs an Anthropic API key (ANTHROPIC_API_KEY or an `ant auth login` profile).
  */
 import { mkdtempSync, writeFileSync } from 'node:fs';

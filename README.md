@@ -157,6 +157,12 @@ model reads. The human's taps are simulated in code. Excerpt from
 
 Headless Claude Code (Sonnet 5), the same services and the same stated rules in both arms,
 three runs per cell (medians). Violations are checked from real service state.
+
+> These runs used the bridge's previous tool surface: four generic tools (`yea_ask`,
+> `yea_intent`, `yea_commit`, `yea_undo`). `yea mcp` now exposes one tool per capability
+> ([#73](https://github.com/yea-protocol/yea/issues/73)); the live eval hasn't been re-run on it
+> yet, because a run costs money. The payload benchmark below still measures the generic tools,
+> which `yea test-drive` uses.
 [Method, every run, and what we got wrong →](bench/agent-eval/)
 
 | Task | Arm | Tool calls | Total tokens | Cost | Time | Task success | Rule violations |
@@ -170,7 +176,7 @@ three runs per cell (medians). Violations are checked from real service state.
 
 - **Zero violations in both arms, including under a prompt-injection attempt** ([results](bench/agent-eval/RESULTS-injection.md)). A well-behaved model followed the stated rules either way. YEA's rules are enforced *by the service*, so they still hold when a model doesn't. A run where the model behaves can't show that.
 - **Where YEA costs more:** on the over-limit order, its agent fetched the exact priced proposal before asking you. That's one extra turn, and in live use, turns (each re-reading ~27k tokens of Claude Code context) dominate total cost, not tool payloads.
-- **Where it wins:** in one of three reschedule runs the model passed the goal straight to `yea_intent`: 1 call and 55k tokens, against REST's 3 calls and 82k.
+- **Where it wins:** in one of three reschedule runs the model passed the goal straight to `yea_intent` (now `calendar_reschedule`): 1 call and 55k tokens, against REST's 3 calls and 82k.
 
 ### Payload benchmark
 
@@ -385,7 +391,8 @@ claude mcp add my-api -- npx @yea-protocol/cli mcp yea://127.0.0.1:7447
 
 <!-- #region claude-code -->
 The bridge exposes YEA services as an MCP server, so every MCP client can use them now.
-Tool results are Lens.
+Each capability is its own tool (`calendar_reschedule`, `shop_order`, …), plus `yea_consent`,
+`yea_undo` and `yea_expand`. Tool results are Lens.
 
 **Claude Code plugin** (bundles the MCP server and a skill that teaches consent etiquette):
 
@@ -403,10 +410,11 @@ npx @yea-protocol/cli add https://shop.example/yea   # add services; the bridge 
 npx @yea-protocol/cli doctor                     # check keys, grants, services, registration
 ```
 
-It never auto-approves `yea_commit` or `yea_undo` in your tool. When a commit needs
-consent, the bridge asks **you**: in the client's UI via MCP elicitation, or through
-`yea approve <code>`, which shows the exact action and needs an interactive terminal.
-The model can't approve for itself.
+Tools that change things are marked `destructiveHint`; don't auto-approve them in your tool.
+The service decides what the agent's grant covers. Anything over it comes back with a consent
+code: you run `yea approve <code>` where your principal key is, which shows the exact action
+and needs an interactive terminal, and paste the printed consent back to the agent. The model
+can't approve for itself, and the bridge never signs anything.
 
 ### Keep the principal key away from the agent
 

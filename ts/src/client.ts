@@ -120,23 +120,34 @@ export class Client {
     return { ...reply, lens: reply.lens ?? lens(reply) } as WithLens<T>;
   }
 
+  /**
+   * The grants this client sends its service with each request: its own, less any whose `svc`
+   * caveat names other services. None without an agent key, since a grant needs its proof.
+   */
+  async grantsSent(extra: string[] = []): Promise<string[]> {
+    const all = [...this.grants, ...extra];
+
+    if (!this.opts.key || !all.length) {
+      return [];
+    }
+
+    const aud = await this.audience();
+
+    return all.filter((g) => grantCovers(g, aud));
+  }
+
   private async signed(
     verb: Verb,
     target: string,
     extra: string[] = [],
   ): Promise<Pick<Request, 'grants' | 'proof'>> {
-    const all = [...this.grants, ...extra];
+    const grants = await this.grantsSent(extra);
 
-    if (!this.opts.key || !all.length) {
+    if (!this.opts.key || !grants.length) {
       return {};
     }
 
     const aud = await this.audience();
-    const grants = all.filter((g) => grantCovers(g, aud));
-
-    if (!grants.length) {
-      return {};
-    }
 
     return {
       grants,

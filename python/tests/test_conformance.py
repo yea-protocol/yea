@@ -5,7 +5,7 @@ import json
 import pytest
 from conftest import CONFORMANCE
 
-from yea import canonical, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
+from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
 from yea.uses import is_uses
 
 
@@ -64,6 +64,13 @@ def test_grants_total_block_ids():
     data = vectors("grants")
     ids = {bid for c in data["cases"] for bid in _block_ids(c["token"])}
     assert data["rootTotalBlockId"] in ids and data["countsTotalBlockId"] in ids
+
+
+def test_protocol_consent_code():
+    v = vectors("grants")["consentCode"]
+    code = consent_code(v["consent"], v["detail"], agent=v["agent"])
+    assert code == v["code"]
+    assert decode_consent_code(code)["agent"] == v["agent"]
 
 
 def _block_ids(token):

@@ -1397,5 +1397,55 @@
         "code": "unauthorized"
       }
     }
-  ]
+  ],
+  "consentCode": {
+    "consent": {
+      "proposal": "p_2",
+      "hash": "zy57pzpgSY4w-J3XykzXkkrUsaQ5VCjF-IdjEba8HsE",
+      "service": "calendar.example",
+      "capability": "calendar.reschedule",
+      "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+      "expires": 1790000600
+    },
+    "detail": {
+      "id": "p_2",
+      "capability": "calendar.reschedule",
+      "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+      "effects": [
+        {
+          "op": "update",
+          "target": "event/e42",
+          "field": "start",
+          "from": "2026-09-22T14:00:00Z",
+          "to": "2026-09-24T15:00:00Z"
+        },
+        {
+          "op": "send",
+          "target": "ana@example.com",
+          "detail": "update notification"
+        }
+      ],
+      "risk": "medium",
+      "undo": null,
+      "expires": 1790000600,
+      "uses": {
+        "spend": {
+          "amount": 1250,
+          "scale": 2,
+          "unit": "USD"
+        },
+        "emails": {
+          "amount": 1
+        }
+      },
+      "data": {
+        "note": "not hashed",
+        "n": 1.5
+      },
+      "hash": "zy57pzpgSY4w-J3XykzXkkrUsaQ5VCjF-IdjEba8HsE"
+    },
+    "agent": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+    "code": "pc1.eyJhZ2VudCI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USIsImNhcGFiaWxpdHkiOiJjYWxlbmRhci5yZXNjaGVkdWxlIiwiZGV0YWlsIjp7ImNhcGFiaWxpdHkiOiJjYWxlbmRhci5yZXNjaGVkdWxlIiwiZWZmZWN0cyI6W3siZmllbGQiOiJzdGFydCIsImZyb20iOiIyMDI2LTA5LTIyVDE0OjAwOjAwWiIsIm9wIjoidXBkYXRlIiwidGFyZ2V0IjoiZXZlbnQvZTQyIiwidG8iOiIyMDI2LTA5LTI0VDE1OjAwOjAwWiJ9LHsiZGV0YWlsIjoidXBkYXRlIG5vdGlmaWNhdGlvbiIsIm9wIjoic2VuZCIsInRhcmdldCI6ImFuYUBleGFtcGxlLmNvbSJ9XSwiZXhwaXJlcyI6MTc5MDAwMDYwMCwiaGFzaCI6Inp5NTdwenBnU1k0dy1KM1h5a3pYa2tyVXNhUTVWQ2pGLUlkakViYThIc0UiLCJpZCI6InBfMiIsInJpc2siOiJtZWRpdW0iLCJzdW1tYXJ5IjoiTW92ZSBcIjE6MSB3aXRoIEFuYVwiIHRvIFRodSAxNTowMCIsInVuZG8iOm51bGwsInVzZXMiOnsiZW1haWxzIjp7ImFtb3VudCI6MX0sInNwZW5kIjp7ImFtb3VudCI6MTI1MCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoienk1N3B6cGdTWTR3LUozWHlrelhra3JVc2FRNVZDakYtSWRqRWJhOEhzRSIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoicF8yIiwic2VydmljZSI6ImNhbGVuZGFyLmV4YW1wbGUiLCJzdW1tYXJ5IjoiTW92ZSBcIjE6MSB3aXRoIEFuYVwiIHRvIFRodSAxNTowMCJ9"
+  }
 }

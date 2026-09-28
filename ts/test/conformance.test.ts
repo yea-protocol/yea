@@ -68,6 +68,13 @@ describe('conformance vectors', () => {
       ).toEqual(c.expect);
     }
   });
+  it('protocol consent code', () => {
+    const { consentCode: v } = load('grants');
+    const code = P.consentCode(v.consent, v.detail, { agent: v.agent });
+
+    expect(code).toBe(v.code);
+    expect(P.decodeConsentCode(code)).toMatchObject({ agent: v.agent });
+  });
   it('lens', () => {
     for (const c of load('lens')) {
       expect(
