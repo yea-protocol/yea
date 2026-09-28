@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cancelJob } from '../src/cancel.js';
-import { changeJob } from '../src/change.js';
-import { refundJob } from '../src/refund.js';
+import { cancelJob } from '../src/jobs/cancel.js';
+import { changeJob } from '../src/jobs/change.js';
+import { refundJob } from '../src/jobs/refund.js';
 import { confirmPhrase, quoted, safeText } from '../src/text.js';
 import { D, hashesOf, NOW, plansOf, setup } from './helpers.js';
 

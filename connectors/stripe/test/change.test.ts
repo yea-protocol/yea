@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Stripe } from '../src/api.js';
-import { changeJob, cheaperOrSame } from '../src/change.js';
+import { cheaperOrSame } from '../src/jobs/change/prices.js';
+import { changeJob } from '../src/jobs/change.js';
 import { parseForm, price } from './fake-stripe.js';
 import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
 

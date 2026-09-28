@@ -22,10 +22,10 @@
 import { unixNow } from '@yea-protocol/sdk';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { isLiveKey } from '../src/api.js';
-import { cancelJob } from '../src/cancel.js';
-import { changeJob } from '../src/change.js';
 import type { Ctx } from '../src/context.js';
-import { refundJob } from '../src/refund.js';
+import { cancelJob } from '../src/jobs/cancel.js';
+import { changeJob } from '../src/jobs/change.js';
+import { refundJob } from '../src/jobs/refund.js';
 import { uncopied } from '../src/schedule.js';
 import { contextFor } from '../src/server.js';
 

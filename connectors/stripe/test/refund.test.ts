@@ -1,6 +1,6 @@
 import type { Clarification } from '@yea-protocol/sdk';
 import { describe, expect, it } from 'vitest';
-import { refundJob } from '../src/refund.js';
+import { refundJob } from '../src/jobs/refund.js';
 import { customersNamed } from './fixtures.js';
 import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
 

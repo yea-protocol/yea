@@ -252,7 +252,7 @@ yea grant --to <server key> --can cancel_subscription --can change_plan --risk l
 - **Dependencies:** `@yea-protocol/mcp`, `@modelcontextprotocol/server`, and Stripe's official
   SDK, `stripe` (no dependencies of its own). Stripe is called through the SDK's resources, with
   its types; the connector adds the idempotency keys, the error messages and the mode check
-  (`src/api.ts`).
+  (`src/api.ts`, with its parts in `src/api/`).
 - **Transports:** stdio by default; `--http <port>` serves Streamable HTTP, which needs `sub`
   configured (SPEC-mcp-ts). The binary takes it from `YEA_SUB`, for requests that carry
   `Authorization: Bearer $YEA_HTTP_TOKEN` (32 characters or more); anything else gets 401

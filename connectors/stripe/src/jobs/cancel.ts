@@ -12,7 +12,7 @@ import {
   type Stripe,
   StripeError,
   SUB_ID,
-} from './api.js';
+} from '../api.js';
 import {
   applying,
   type Ctx,
@@ -21,16 +21,18 @@ import {
   riskFor,
   tag,
   undoWindowBefore,
-} from './context.js';
+} from '../context.js';
 import {
   inputSchema,
   oneCustomerSubscription,
   oneItem,
   priceName,
   SUBSCRIPTION_FIELD,
-} from './find.js';
-import { getSchedule, onlyCurrentPhase } from './schedule.js';
-import { confirmPhrase, who } from './text.js';
+} from '../find.js';
+import { getSchedule, onlyCurrentPhase } from '../schedule.js';
+import { confirmPhrase, who } from '../text.js';
+
+// --- input schema ---
 
 interface CancelInput {
   customer: string;
@@ -38,6 +40,8 @@ interface CancelInput {
 }
 
 const SCHEMA = inputSchema({ subscription: SUBSCRIPTION_FIELD });
+
+// --- plan() ---
 
 interface Target {
   c: Stripe.Customer;
@@ -49,71 +53,123 @@ interface Target {
 const whose = (t: Target) =>
   `${who(t.c)}'s ${priceName(oneItem(t.sub).price)} subscription (${t.sub.id})`;
 
-/** What at-period-end does: a subscription flag, or the schedule's end behaviour. */
-function periodEndChange(t: Target): {
-  effect: Effect;
-  write(ctx: Ctx): Promise<Record<string, string>>;
-} {
+/** What at-period-end changes: the schedule's end behaviour, or a subscription flag. */
+function periodEndEffect(t: Target): Effect {
   const { end } = period(t.sub);
   const sched = t.schedule;
 
   if (sched) {
-    return {
-      effect: update(
-        `subscription_schedule/${sched.id}`,
-        'end_behavior',
-        'release',
-        'cancel',
-        `${t.sub.id} ends ${day(end)}`,
-      ),
-      write: async (ctx) => {
-        await ctx.stripe.write((s, o) =>
-          s.subscriptionSchedules.update(
-            sched.id,
-            { end_behavior: 'cancel' },
-            o,
-          ),
-        );
-
-        return { schedule: sched.id, subscription: t.sub.id };
-      },
-    };
+    return update(
+      `subscription_schedule/${sched.id}`,
+      'end_behavior',
+      'release',
+      'cancel',
+      `${t.sub.id} ends ${day(end)}`,
+    );
   }
 
-  return {
-    effect: update(
-      `subscription/${t.sub.id}`,
-      'cancel_at_period_end',
-      false,
-      true,
-      `ends ${day(end)}`,
-    ),
-    write: async (ctx) => {
-      await ctx.stripe.write((s, o) =>
-        s.subscriptions.update(t.sub.id, { cancel_at_period_end: true }, o),
-      );
-
-      return { subscription: t.sub.id };
-    },
-  };
+  return update(
+    `subscription/${t.sub.id}`,
+    'cancel_at_period_end',
+    false,
+    true,
+    `ends ${day(end)}`,
+  );
 }
 
 function atPeriodEnd(ctx: Ctx, t: Target): JobPlan {
   const { end } = period(t.sub);
-  const change = periodEndChange(t);
 
   return {
     summary: `${tag(ctx)} Cancel ${whose(t)} at period end, ${day(end)}; access until then`,
-    effects: [change.effect],
+    effects: [periodEndEffect(t)],
     risk: riskFor(ctx, 'low'),
     ...undoWindowBefore(ctx, end),
     data: { confirm: confirmPhrase(t.c) },
-    apply: () =>
-      applying(async () => ({
-        plan: 'cancel_at_period_end',
-        ...(await change.write(ctx)),
-      })),
+    apply: () => applyAtPeriodEnd(ctx, t),
   };
+}
+
+function now(ctx: Ctx, t: Target): JobPlan {
+  return {
+    summary: `${tag(ctx)} Cancel ${whose(t)} now; access ends immediately, with no refund`,
+    effects: [
+      update(`subscription/${t.sub.id}`, 'status', t.sub.status, 'canceled'),
+    ],
+    risk: riskFor(ctx, 'medium'),
+    data: { confirm: confirmPhrase(t.c) },
+    apply: () => applyNow(ctx, t),
+  };
+}
+
+/**
+ * Whether "at period end" can be offered: not when it's already cancelling, and on a schedule
+ * only when nothing else is pending, so ending the schedule ends the current period.
+ */
+function canEndAtPeriodEnd(t: Target): boolean {
+  const s = t.schedule;
+
+  if (cancelling(t.sub)) {
+    return false;
+  }
+
+  return (
+    !s ||
+    (s.end_behavior === 'release' && onlyCurrentPhase(s, period(t.sub).end))
+  );
+}
+
+async function plan(ctx: Ctx, input: CancelInput) {
+  const found = await oneCustomerSubscription(ctx, input);
+
+  if ('clarify' in found) {
+    return found.clarify;
+  }
+
+  const { c, sub } = found.found;
+
+  oneItem(sub);
+
+  const t: Target = {
+    c,
+    sub,
+    schedule: sub.schedule ? await getSchedule(ctx, idOf(sub.schedule)) : null,
+  };
+
+  return canEndAtPeriodEnd(t)
+    ? [atPeriodEnd(ctx, t), now(ctx, t)]
+    : [now(ctx, t)];
+}
+
+// --- apply() ---
+
+/** The at-period-end write: the schedule's end behaviour, or the subscription's flag. */
+async function endAtPeriodEnd(
+  ctx: Ctx,
+  t: Target,
+): Promise<Record<string, string>> {
+  const sched = t.schedule;
+
+  if (sched) {
+    await ctx.stripe.write((s, o) =>
+      s.subscriptionSchedules.update(sched.id, { end_behavior: 'cancel' }, o),
+    );
+
+    return { schedule: sched.id, subscription: t.sub.id };
+  }
+
+  await ctx.stripe.write((s, o) =>
+    s.subscriptions.update(t.sub.id, { cancel_at_period_end: true }, o),
+  );
+
+  return { subscription: t.sub.id };
+}
+
+function applyAtPeriodEnd(ctx: Ctx, t: Target) {
+  return applying(async () => ({
+    plan: 'cancel_at_period_end',
+    ...(await endAtPeriodEnd(ctx, t)),
+  }));
 }
 
 /** Whether Stripe says the subscription is cancelled; a failed read says no. */
@@ -147,64 +203,18 @@ async function cancelNow(ctx: Ctx, id: string) {
   }
 }
 
-function now(ctx: Ctx, t: Target): JobPlan {
-  return {
-    summary: `${tag(ctx)} Cancel ${whose(t)} now; access ends immediately, with no refund`,
-    effects: [
-      update(`subscription/${t.sub.id}`, 'status', t.sub.status, 'canceled'),
-    ],
-    risk: riskFor(ctx, 'medium'),
-    data: { confirm: confirmPhrase(t.c) },
-    apply: () =>
-      applying(async () => {
-        await cancelNow(ctx, t.sub.id);
+function applyNow(ctx: Ctx, t: Target) {
+  return applying(async () => {
+    await cancelNow(ctx, t.sub.id);
 
-        return { plan: 'cancel_now', subscription: t.sub.id };
-      }),
-  };
+    return { plan: 'cancel_now', subscription: t.sub.id };
+  });
 }
 
-/**
- * Whether "at period end" can be offered: not when it's already cancelling, and on a schedule
- * only when nothing else is pending, so ending the schedule ends the current period.
- */
-function canEndAtPeriodEnd(t: Target): boolean {
-  const s = t.schedule;
-
-  if (cancelling(t.sub)) {
-    return false;
-  }
-
-  return (
-    !s ||
-    (s.end_behavior === 'release' && onlyCurrentPhase(s, period(t.sub).end))
-  );
-}
-
-async function cancelPlans(ctx: Ctx, input: CancelInput) {
-  const found = await oneCustomerSubscription(ctx, input);
-
-  if ('clarify' in found) {
-    return found.clarify;
-  }
-
-  const { c, sub } = found.found;
-
-  oneItem(sub);
-
-  const t: Target = {
-    c,
-    sub,
-    schedule: sub.schedule ? await getSchedule(ctx, idOf(sub.schedule)) : null,
-  };
-
-  return canEndAtPeriodEnd(t)
-    ? [atPeriodEnd(ctx, t), now(ctx, t)]
-    : [now(ctx, t)];
-}
+// --- revert() ---
 
 /** Undo "at period end", from what `apply()` returned. */
-async function revertCancel(ctx: Ctx, result: unknown) {
+async function revert(ctx: Ctx, result: unknown) {
   const r = (result ?? {}) as {
     plan?: unknown;
     subscription?: unknown;
@@ -246,6 +256,8 @@ async function revertCancel(ctx: Ctx, result: unknown) {
   );
 }
 
+// --- the job ---
+
 export function cancelJob(ctx: Ctx): JobSpec<CancelInput> {
   return {
     name: 'cancel_subscription',
@@ -254,7 +266,7 @@ export function cancelJob(ctx: Ctx): JobSpec<CancelInput> {
       "Cancel a customer's subscription, for the Stripe API: at period end (undoable until a day before it), or now (not undoable). The user approves by typing the customer's email.",
     schema: SCHEMA,
     risk: riskFor(ctx, 'low'),
-    plan: (input) => cancelPlans(ctx, input),
-    revert: (_input, result) => revertCancel(ctx, result),
+    plan: (input) => plan(ctx, input),
+    revert: (_input, result) => revert(ctx, result),
   };
 }
