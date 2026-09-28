@@ -19,7 +19,7 @@ commits come with an undo window.
 ![deps](https://img.shields.io/badge/runtime%20deps-0-2BD9A5)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-![Claude Code](https://img.shields.io/badge/Claude%20Code-works-FFB224) ![Claude Desktop](https://img.shields.io/badge/Claude%20Desktop-works-FFB224) ![Cursor](https://img.shields.io/badge/Cursor-works-FFB224) ![Codex](https://img.shields.io/badge/Codex-works-FFB224) ![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-works-FFB224) ![VS Code](https://img.shields.io/badge/VS%20Code-works-FFB224) ![Windsurf](https://img.shields.io/badge/Windsurf%2FDevin-works-FFB224) ![any MCP client](https://img.shields.io/badge/any%20MCP%20client-works-FFB224)
+**Works with** Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI, VS Code, Windsurf and any MCP client, through the bridge. [What each client supports →](#client-support)
 
 **[Try it in your browser](https://yea-protocol.github.io/yea/playground)** · [Why YEA](docs/why.md) · [Docs](https://yea-protocol.github.io/yea/) · [Spec](SPEC.md) · [Quickstart](#quickstart) · [Use from Claude Code](#use-it-from-claude-code-today) · [Benchmark](#numbers) · [Design](docs/design.md)
 
@@ -53,10 +53,79 @@ agent ──UNDO r1 (the human changed their mind)──────────
 
 | I want to… | Do this |
 |---|---|
+| **I have an MCP server** | [Guard a risky tool in five minutes](#add-it-to-your-mcp-server): the person sees its plan in their client and types a phrase to approve it. TypeScript, unreleased: install from the repo ([guide](https://yea-protocol.github.io/yea/guide/mcp-typescript)) |
 | **See it work with a real model** (30 s) | `npx @yea-protocol/cli test-drive` runs Claude through a booking and a purchase that needs *your* approval. Needs an Anthropic API key. No key? Use `npx @yea-protocol/cli demo` or the [browser playground](https://yea-protocol.github.io/yea/playground) |
 | **Give my AI tool safe actions** | In Claude Code: `/plugin marketplace add yea-protocol/yea` then `/plugin install yea@yea`. Anywhere else: `npx @yea-protocol/cli install` (auto-detects Claude Code, Cursor, Codex, Gemini, VS Code, Windsurf and Claude Desktop). Then [add services](#use-it-from-claude-code-today) or [wrap an API](#wrap-any-rest-api-in-one-command): `yea openapi --preset github` |
 | **Make my service agent-ready** | [Build a service](#build-a-service) in ~30 lines of TypeScript or Python, or wrap your existing OpenAPI spec. [From REST to YEA](https://yea-protocol.github.io/yea/guide/service-design) translates a Stripe-style API step by step, with full code |
 | **Implement the protocol** | Read the [spec](SPEC.md) and pass the [conformance vectors](conformance). Go and Rust ports are welcome |
+
+## Add it to your MCP server
+
+> **Unreleased:** `@yea-protocol/mcp` isn't on npm yet. Install it from the repo, as the
+> [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows.
+
+Guard a tool you already have. Before it runs, the person sees its plan in their client and
+types the file's name to approve it. The model can't approve for itself, and there are no
+keys, policy or account to set up:
+
+<!-- snippet: examples/mcp-quickstart.ts#guard -->
+```ts
+const server = new McpServer(
+  { name: 'files', version: '1.0.0' },
+  approvals.serverOptions(), // lets YEA verify the approval state it sends round
+);
+
+// The tool you already have, registered as usual.
+const deleteFile = server.registerTool(
+  'delete_file',
+  {
+    description: 'Delete a file for good',
+    inputSchema: z.object({ path: z.string() }),
+  },
+  async ({ path }) => {
+    await rm(inside(root, path));
+
+    return { content: [{ type: 'text', text: `deleted ${path}` }] };
+  },
+);
+
+// One call: now it shows its plan and asks the person before it runs.
+approvals.guard(server, deleteFile, {
+  describe: (input) => ({
+    summary: `Delete ${String(input.path)}`,
+    effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
+  }),
+  // The person types the file's name to approve.
+  confirmWith: (_plan, input) => basename(String(input.path)),
+});
+```
+
+`approvals` comes from `yea({ name: 'files', transport: 'stdio' })`, once per process. From
+there, the [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed
+policy that lets undoable jobs run on their own, and consent codes for clients that can't
+ask. The whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
+
+### Client support
+
+As of 2026-09-27. The framework asks in the client through MCP form elicitation. Clients
+without it get consent codes, which the person approves with `yea approve <code>` in a
+terminal.
+
+| Client | The bridge (`yea mcp`) | Asks in the client (framework) | Consent codes (framework) |
+|---|---|---|---|
+| Claude Code | works | not run yet; vendor docs: supported | not run yet |
+| Cursor | works | not run yet; vendor docs: supported | not run yet |
+| VS Code | works | not run yet; vendor docs: supported | not run yet |
+| Codex | works | not run yet; vendor docs: supported ¹ | not run yet |
+| Claude Desktop | works | no (vendor docs) | not run yet |
+| Gemini CLI | works | no (vendor docs) | not run yet |
+| Windsurf | works | unknown | not run yet |
+| MCP TypeScript SDK client (our tests) | | yes, 2026-09-27: 2026-07-28 and 2025 protocol versions | yes, 2026-09-27 |
+
+"Vendor docs" means the client's own documentation, checked 2026-09-26
+([notes](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093)), not a run of
+ours. ¹ Codex auto-accepts forms with no fields under auto-approve
+policies, which is why YEA's form always asks for a typed phrase.
 
 ## What changes
 
@@ -150,6 +219,8 @@ model reads. The human's taps are simulated in code. Excerpt from
 ```
 
 ## Numbers
+
+These numbers measure the protocol and the bridge (`yea mcp`), not the MCP framework (`@yea-protocol/mcp`).
 
 > **In live runs with a real model, YEA costs about the same as a REST-style MCP server (+3–15% per task, same success rate) while adding an enforced policy, previews and undo.** Its replies are 30–45% smaller, and when a model hands its goal straight to an intent, a reschedule takes 1 call instead of 3. We publish where it loses, too.
 
@@ -460,6 +531,7 @@ for delegated agents.
 | [`SPEC.md`](SPEC.md) | The protocol, v1 draft |
 | [`conformance/`](conformance) | Language-neutral test vectors: canonical JSON, keys, hashes, proofs, grants, Lens and token estimates |
 | [`ts/`](ts) | Reference implementation (TypeScript, **zero runtime dependencies**, WebCrypto): service, client, transports, CLI, MCP bridge, OpenAPI adapter |
+| [`mcp/`](mcp) | `@yea-protocol/mcp` (unreleased): job tools and `guard()` for TypeScript MCP servers, with approval in the client, a signed policy, consent codes and undo |
 | [`python/`](python) | Second implementation (Python), started from the spec and vectors, passing all of them, and interoperating with TS |
 | [`examples/`](examples) | Calendar and meal-shop services, plus the narrated demo |
 | [`bench/`](bench) | The token benchmark above |
