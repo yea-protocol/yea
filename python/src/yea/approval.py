@@ -296,19 +296,17 @@ def needs_approval(p: HashedPlan, policy: Policy, used: Callable[[LedgerKey], in
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": p.plan_hash, "risk": p.risk, **({"uses": uses} if uses is not None else {})}
     spent = {(bid, lim["of"]): used(LedgerKey(bid, lim["of"])) for bid, lim in policy.totals}
+    if isinstance(policy.grant, Grant) and not _names_tools(policy.grant):
+        return f"the signed policy names no tools, so it doesn't let {p.tool} run without asking"
     ctx = GrantContext(policy.server_key, "COMMIT", p.tool, now, proposal, spent)
     v = verify_grant(policy.grant, [policy.principal], policy.server_key, ctx)
-    if not v.ok:
-        return v.reason
-    if not _names_tools(v.grant):
-        return f"the signed policy names no tools, so it doesn't let {p.tool} run without asking"
-    return None
+    return None if v.ok else v.reason
 
 
-def _names_tools(g: Grant | None) -> bool:
+def _names_tools(g: Grant) -> bool:
     """§2 condition 1 needs a ``can`` that covers the tool: a grant with no ``can`` at all
     (which the protocol reads as "any capability") doesn't auto-run job tools."""
-    return g is not None and any(isinstance(c, dict) and "can" in c for b in g.blocks for c in b["p"]["caveats"])
+    return any(isinstance(c, dict) and "can" in c for b in g.blocks for c in b["p"]["caveats"])
 
 
 def denied_reason(tool: str) -> str:
