@@ -44,7 +44,8 @@ def consent_request_problem(k: Mapping[str, Any], p: Mapping[str, Any], service:
 
 def check_consent(consent: Mapping[str, Any], proposal: Mapping[str, Any], service: str | None = None) -> None:
     """What an approver's tooling MUST check before showing a consent request: raises ValueError
-    with the reason on any problem (``consent_request_problem``)."""
+    with the reason on any problem (``consent_request_problem``). Pass ``service`` whenever you
+    know where the proposal came from; without it the service claim isn't checked."""
     why = consent_request_problem(consent, proposal, service)
     if why:
         raise ValueError(why)
@@ -59,7 +60,7 @@ def consent_view(p: Mapping[str, Any]) -> list[str]:
     return [printable(line) for line in rendered.split("\n")[1:]]
 
 
-def consent_lines(k: Mapping[str, Any], p: Mapping[str, Any], service: str | None = None) -> dict:
+def consent_lines(k: Mapping[str, Any], p: Mapping[str, Any], service: str | None = None) -> dict[str, Any]:
     """``{"lines": [...]}`` to show a person asked to consent to ``k``, or ``{"why": ...}`` when it
     must not be shown. There's no view without the proposal: the summary alone never suffices."""
     why = consent_request_problem(k, p, service)

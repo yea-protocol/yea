@@ -25,7 +25,8 @@ def test_check_proposal():
     assert check_proposal(proposal(risk="critical")) == "the proposal has an unknown risk"
     assert check_proposal({**proposal(), "summary": "changed"}) == "the proposal doesn't match its hash"
     assert check_proposal({**proposal(), "data": {"x": 1.5}}) is None  # data isn't hashed
-    assert check_proposal({**proposal(), "summary": 1.5}) == "the proposal doesn't match its hash"  # unhashable
+    # Unhashable (a float): refused with the mismatch message rather than raising.
+    assert check_proposal({**proposal(), "summary": 1.5}) == "the proposal doesn't match its hash"
 
 
 @pytest.mark.parametrize("over,why", [
@@ -38,6 +39,12 @@ def test_check_consent_names_the_first_problem(over, why):
     p = proposal()
     with pytest.raises(ValueError, match=why):
         check_consent(request(p, **over), p, "svc")
+
+
+def test_the_first_problem_in_ts_order_is_the_one_reported():
+    p = proposal()
+    with pytest.raises(ValueError, match="names another proposal"):
+        check_consent(request(p, proposal="p2", capability="y", service="other"), p, "svc")
 
 
 def test_check_consent_refuses_a_malformed_uses():
@@ -61,3 +68,5 @@ def test_consent_from_builds_from_the_proposal():
     k = request(p, summary="a different summary", expires=NOW + 5)
     c = consent_from(k, p)
     assert c["summary"] == "Do it" and c["expires"] == NOW + 5 and c["service"] == "svc" and c["principal"] == "ed25519:x"
+
+    assert consent_from(request(p, expires=NOW + 10_000), p)["expires"] == p["expires"]  # the proposal's is earlier

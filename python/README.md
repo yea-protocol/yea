@@ -34,7 +34,7 @@ def move(ctx):
 ```
 
 ```python
-from yea import check_consent, connect, consent_from, consent_grant, consent_lines, generate_key, issue_grant
+from yea import connect, consent_from, consent_grant, consent_lines, generate_key, issue_grant
 
 principal, agent = generate_key(), generate_key()   # normally: the human's key, and the agent's
 g = issue_grant(principal, agent.public, [{"svc": ["cal.example"]}, {"each": {"of": "spend", "max": 50, "unit": "USD"}}])
@@ -44,8 +44,10 @@ async with await connect("yea://127.0.0.1:7447", key=agent, grants=[g]) as c:
     r = await c.commit(props.proposals[0])     # signs the proof automatically
     if r.code == "consent_required":           # ask the human (consent_code(r.consent, p) for out-of-band):
         p = props.proposals[0]
-        check_consent(r.consent, p, "cal.example")  # it names the proposal we got, and p is well formed
-        print("\n".join(consent_lines(r.consent, p, "cal.example")["lines"]))  # show the person p itself
+        shown = consent_lines(r.consent, p, "cal.example")  # checks the request names p, and p is well formed
+        if "why" in shown:
+            raise SystemExit(shown["why"])
+        print("\n".join(shown["lines"]))              # show the person p itself, escaped
         r = await c.commit(p, grants=[consent_grant(principal, agent.public, consent_from(r.consent, p))])
     await c.undo(r.receipt["id"])
     # auto=True: commit in one round trip when the grant already allows it and it's undoable
