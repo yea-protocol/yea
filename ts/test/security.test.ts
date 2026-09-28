@@ -2175,3 +2175,31 @@ describe.skipIf(typeof process.getuid !== 'function')(
     });
   },
 );
+
+// Canonical JSON wrote a lone surrogate raw, and UTF-8 encoding turned it into U+FFFD, so a
+// summary holding one hashed the same as one holding U+FFFD: a person's consent bound text they
+// weren't shown. SPEC §10 now refuses lone surrogates, so there is nothing to hash or sign.
+describe('lone surrogates have no canonical form (#160)', () => {
+  const base = {
+    id: 'p_1',
+    capability: 'mail.send',
+    params: {},
+    effects: [],
+    risk: 'low',
+    expires: 1790000000,
+  } as unknown as P.Proposal;
+
+  it('refuses to hash a proposal with a lone surrogate', async () => {
+    await expect(
+      P.proposalHash({ ...base, summary: 'pay \ud800' }),
+    ).rejects.toThrow(/lone surrogate/);
+    expect(await P.proposalHash({ ...base, summary: 'pay �' })).toMatch(
+      /^[\w-]+$/,
+    );
+  });
+
+  it('refuses one in a key, and keeps surrogate pairs', () => {
+    expect(() => P.canonical({ '\udc00': 1 })).toThrow(/lone surrogate/);
+    expect(P.canonical({ s: '🎉' })).toBe('{"s":"🎉"}');
+  });
+});

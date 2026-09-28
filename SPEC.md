@@ -553,7 +553,7 @@ Rendering a value `v` at indent `n` (two spaces per level):
 - `null` → `-`
 - `true` / `false` → `true` / `false`
 - numbers → ECMAScript `Number::toString` (so `1.5`, `1e+21`, `1e-7`)
-- strings → **bare** if they match `^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$`, do not start or end with a space, are not `-`, `true`, `false`, or `null`, and do not match the JSON number grammar. Otherwise they are quoted as in §10.
+- strings → **bare** if they match `^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$`, do not start or end with a space, are not `-`, `true`, `false`, or `null`, and do not match the JSON number grammar. Otherwise they are quoted as in §10, except that a lone surrogate, which §10 refuses, is written `\uXXXX` (lowercase hex) as ECMAScript `JSON.stringify` writes it.
 - object keys are rendered with the same string rule.
 
 **Objects** (keys in insertion order), one line per key:
@@ -654,6 +654,7 @@ them in the proposal. For an undo receipt, the first line is
 - Objects: keys sorted by Unicode code point (keys SHOULD be ASCII), no whitespace.
 - Arrays: in order, no whitespace.
 - Strings: JSON-escaped with `\"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\u00XX` (lowercase hex) for other control characters below U+0020. All other characters are literal UTF-8.
+- A string or key that contains a lone surrogate (a UTF-16 code unit in U+D800–U+DFFF not paired with its partner, which JSON's `\uXXXX` escapes can carry) has no UTF-8 encoding, so it has no canonical form: `canonical` MUST refuse it with an error rather than replace or escape it. Anything that hashes or signs such a value fails.
 - Numbers: only integers in [−2^53+1, 2^53−1] are allowed in signed or hashed payloads, written in minimal decimal form.
 - `true`, `false`, `null`.
 
