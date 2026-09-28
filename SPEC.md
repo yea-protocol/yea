@@ -300,7 +300,8 @@ absent, clients render Lens locally (§9).
   - An absent or empty `uses` means the commit uses nothing the service measures. A service
     MUST NOT send a malformed `uses`. Clients MUST treat a proposal with a malformed `uses`
     as invalid, and limits treat one as a hard failure (§6.3).
-- `risk`: `low` | `medium` | `high`, as assessed by the service.
+- `risk`: `low` | `medium` | `high`, as assessed by the service. Any other value, or none, is
+  malformed: a service MUST NOT send one, and clients MUST treat such a proposal as invalid.
 - `undo`: `null` if irreversible, else `{"window": seconds}` counted from commit.
 - `expires`: unix seconds after which the proposal cannot be committed. Services SHOULD use whole minutes (the reference implementation rounds up: `ceil(t/60)*60`).
 - `hash`: `b64url(sha256(canonical(proposal without "hash" and "data")))` (§10). The hash binds everything a human is shown: summary, effects, uses, risk, undo and expiry. Numbers inside hashed fields MUST be integers.
@@ -367,7 +368,7 @@ not a list) and `{"risk": "extreme"}` both fail.
 | `{"nbf": int}` | now ≥ nbf |
 | `{"each": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and its value ≤ the limit's value |
 | `{"total": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and the values committed or reserved under *this block's id* for `of`, plus this one, ≤ the limit's value |
-| `{"risk": level}` | `COMMIT` only: the proposal risk ≤ level (`low` < `medium` < `high`) |
+| `{"risk": level}` | `COMMIT` only: the proposal risk ≤ level (`low` < `medium` < `high`). A proposal risk that is none of these fails closed as a hard (`forbidden`) failure. |
 | `{"only": proposalHash}` | `COMMIT` only: the proposal hash equals it |
 
 `each`, `total`, `risk` and `only` are ignored (satisfied) for verbs other than `COMMIT`.

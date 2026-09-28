@@ -12,7 +12,7 @@ import {
   type TotalLimit,
   usedOf,
 } from './grants.js';
-import { atLeast, isRisk } from './risk.js';
+import { atLeast, isRisk, knownRisk } from './risk.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -143,6 +143,8 @@ export function planPreimage(
       `plan has a malformed uses: ${JSON.stringify(plan.uses)}`,
     );
   }
+
+  knownRisk(risk);
 
   return {
     tool,

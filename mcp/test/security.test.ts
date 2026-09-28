@@ -361,6 +361,36 @@ describe('requestState that isn’t this call’s', () => {
   });
 });
 
+describe('a plan with an unknown risk', () => {
+  it('[M11] is refused before it gets a plan hash, and never runs', async () => {
+    const w = await world();
+
+    await grantPolicy(w, [{ can: ['refund'] }, { risk: 'high' }]);
+
+    const conn = await connect(
+      '2026',
+      refundServer(w, {
+        plan: ({ charge }) => [
+          {
+            summary: `Refund ${charge}`,
+            effects: [],
+            risk: 'critical' as 'high',
+            undoWindow: 60,
+            apply: () => {
+              w.applied.push(charge);
+            },
+          },
+        ],
+      }),
+    );
+    const r = await conn.call(ch1);
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/unknown risk/);
+    expect(w.applied).toEqual([]);
+  });
+});
+
 describe('a policy file that can not be read', () => {
   it('refuses job calls instead of treating deny as empty', async () => {
     const w = await world();

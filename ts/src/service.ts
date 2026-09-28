@@ -13,6 +13,7 @@ import {
   type GrantCheck,
   usedOf,
 } from './grants.js';
+import { knownRisk } from './risk.js';
 import { ledgerId } from './store.js';
 import type {
   Brief,
@@ -662,7 +663,7 @@ export class Service {
       summary: plan.summary,
       effects: plan.effects,
       ...usesOf(plan),
-      risk: plan.risk ?? def.risk ?? 'low',
+      risk: knownRisk(plan.risk ?? def.risk ?? 'low'),
       undo: window === null ? null : { window },
       expires:
         Math.ceil(
