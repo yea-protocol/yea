@@ -102,7 +102,7 @@ async def test_a_verified_state_without_yea_is_refused(world, monkeypatch):
     """A state the SDK sealed for this very tool and input, but that isn't our approval."""
     done = []
     jobs(world, done)
-    import yea_mcp.call as call_mod
+    import yea_mcp.call.route as call_mod  # where _ask reads input_required
 
     real = call_mod.input_required
     monkeypatch.setattr(call_mod, "input_required", lambda form, state: t.InputRequiredResult(

@@ -366,7 +366,7 @@ Each gets its own test and a note in the code:
 
 ```
 python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), the undo tool
-python/mcp/src/yea_mcp/call.py        the shared routine: steps 1–11
+python/mcp/src/yea_mcp/call/          the shared routine: steps 1–11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
 python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input
 python/mcp/src/yea_mcp/guard.py       the server middleware for guarded tools
