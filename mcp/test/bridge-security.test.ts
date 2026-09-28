@@ -19,7 +19,7 @@ import {
 } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { afterEach, describe, expect, it } from 'vitest';
-import { clip } from '../src/bridge/render.js';
+import { clip } from '../src/bridge/lens.js';
 import { bridge } from '../src/bridge.js';
 import {
   agentClient,

@@ -5,7 +5,7 @@
  */
 import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server';
 import { isObject, type Obj } from '../util.js';
-import { clip } from './render.js';
+import { clip } from './lens.js';
 
 /** The job tools' own fields: a capability param with one of these names would shadow it. */
 const JOB_FIELDS = ['goal', 'preview', 'proposal'];

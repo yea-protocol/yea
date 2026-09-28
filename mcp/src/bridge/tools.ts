@@ -15,8 +15,10 @@ import {
   refused,
 } from '../result.js';
 import { errorMessage, isObject, type Obj, warnOnce } from '../util.js';
+import { readCall } from './calls.js';
 import type { Service } from './greet.js';
 import { type Bridge, runJobCall } from './job.js';
+import { clip } from './lens.js';
 import { assignNames, genericBase, sanitize, type ToNames } from './names.js';
 import {
   badParamNames,
@@ -25,9 +27,7 @@ import {
   reservedParams,
   withJobFields,
 } from './params.js';
-import { clip } from './render.js';
 import type { JobCall, ToolSpec } from './types.js';
-import { readCall } from './utility.js';
 
 /** Past this many capabilities, a service gets two generic tools instead (decision 1). */
 const GENERIC_PAST = 25;

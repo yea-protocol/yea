@@ -4,7 +4,7 @@
  */
 import { type Brief, est, untrustedLens } from '@yea-protocol/sdk';
 import type { Service } from './greet.js';
-import { clip } from './render.js';
+import { clip } from './lens.js';
 import { isGeneric, type ToolMode } from './tools.js';
 import type { ToolSpec } from './types.js';
 

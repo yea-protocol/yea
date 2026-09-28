@@ -20,7 +20,7 @@ import { passThrough } from './bridge/params.js';
 import { PendingProposals } from './bridge/pending.js';
 import { buildTools, errorOf, type ToolMode } from './bridge/tools.js';
 import type { ToolSpec } from './bridge/types.js';
-import { utilityTools } from './bridge/utility.js';
+import { utilityTools } from './bridge/utility-tools.js';
 import type { Obj } from './util.js';
 
 export type { ConsentStore } from './bridge/consent.js';

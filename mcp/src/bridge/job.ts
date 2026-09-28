@@ -20,6 +20,13 @@ import {
 import { readTighteningFor } from '../policy.js';
 import { errorResult, NOTHING_RAN, refused, textResult } from '../result.js';
 import { type ConsentStore, checkConsent, codesFor } from './consent.js';
+import { proposalsLens, proposalView, replyResult } from './lens.js';
+import {
+  manyPrincipals,
+  noGrants,
+  proposalsResult,
+  receiptOutcome,
+} from './outcomes.js';
 import {
   approvable,
   type Pending,
@@ -27,13 +34,6 @@ import {
   pendingKey,
 } from './pending.js';
 import { checkProposals, expiringNote } from './proposals.js';
-import { proposalsLens, proposalView, replyResult } from './render.js';
-import {
-  manyPrincipals,
-  noGrants,
-  proposalsResult,
-  receiptResult,
-} from './results.js';
 import type { JobCall } from './types.js';
 
 /** What every call shares: the pending proposals, the consent store and the clock. */
@@ -241,7 +241,7 @@ async function commitPending(
   if (r.kind === 'RECEIPT') {
     b.pending.drop(entry.key);
 
-    return receiptResult(r, events);
+    return receiptOutcome(r, events);
   }
 
   if (STALE.has(r.code)) {
@@ -282,7 +282,7 @@ async function freshCall(
   });
 
   if (r.kind === 'RECEIPT') {
-    return receiptResult(r);
+    return receiptOutcome(r);
   }
 
   if (r.kind !== 'PROPOSALS') {

@@ -10,8 +10,8 @@ import {
   untrustedLens,
 } from '@yea-protocol/sdk';
 import { errorResult, NOTHING_RAN, textResult } from '../result.js';
+import { proposalsLens, proposalView } from './lens.js';
 import type { Pending } from './pending.js';
-import { proposalsLens, proposalView } from './render.js';
 import type { JobCall } from './types.js';
 
 /** How the person approves a code; on another machine they pass this agent's key with `--to`. */
@@ -19,7 +19,7 @@ const howToApprove = (agent: unknown) =>
   `Ask the user to run \`yea approve <code>\` where their principal key is (on a machine without this agent's key, add \`--to ${typeof agent === 'string' ? agent : '<agent key>'}\`), then paste the printed consent back to you and call \`yea_consent\` with it, then call this tool again with the same arguments.`;
 
 /** A receipt as a tool result, with any progress events before it. */
-export const receiptResult = (r: ReceiptReply, events: string[] = []) =>
+export const receiptOutcome = (r: ReceiptReply, events: string[] = []) =>
   textResult([...events, untrustedLens(r)], { receipt: r.receipt });
 
 /** SPEC.md §4.4: without grants, nothing from this INTENT can ever be committed. */
