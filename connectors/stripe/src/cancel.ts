@@ -8,6 +8,7 @@ import {
   cancelling,
   idOf,
   period,
+  SCHEDULE_ID,
   type Stripe,
   StripeError,
   SUB_ID,
@@ -28,7 +29,7 @@ import {
   priceName,
   SUBSCRIPTION_FIELD,
 } from './find.js';
-import { getSchedule, onlyCurrentPhase, SCHEDULE_ID } from './schedule.js';
+import { getSchedule, onlyCurrentPhase } from './schedule.js';
 import { confirmPhrase, who } from './text.js';
 
 interface CancelInput {

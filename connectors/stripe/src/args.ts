@@ -1,6 +1,7 @@
 /** The `yea-stripe` command line. */
 import { parseArgs as parse } from 'node:util';
-import { errorMessage } from './context.js';
+import { printable } from '@yea-protocol/sdk';
+import { errorMessage } from './api.js';
 
 export const USAGE = `usage: yea-stripe [--http <port>] [--host <address>]
        yea-stripe --service-key
@@ -12,46 +13,76 @@ export const USAGE = `usage: yea-stripe [--http <port>] [--host <address>]
   The key: STRIPE_SECRET_KEY_FILE (a file only this user can read) or STRIPE_SECRET_KEY.
   The policy: YEA_PRINCIPAL_PUB, YEA_POLICY, ~/.yea/policy.json.`;
 
+// Each flag may repeat, as before: every value is checked, and the last one counts.
 const OPTIONS = {
-  http: { type: 'string' },
-  host: { type: 'string', default: '127.0.0.1' },
+  http: { type: 'string', multiple: true },
+  host: { type: 'string', multiple: true },
   'service-key': { type: 'boolean', default: false },
 } as const;
 
 const PORT = /^\d{1,5}$/;
 
+const usageError = (why: string) => new Error(`${why}\n${USAGE}`);
+
 /** A port number, or throw. */
-function port(value: string): number {
-  if (!PORT.test(value) || Number(value) < 1 || Number(value) > 65_535) {
-    throw new Error(
-      `--http needs a port, got ${JSON.stringify(value)}\n${USAGE}`,
-    );
+function port(value: string | undefined): number {
+  if (
+    !value ||
+    !PORT.test(value) ||
+    Number(value) < 1 ||
+    Number(value) > 65_535
+  ) {
+    throw usageError(`--http needs a port, got ${JSON.stringify(value)}`);
   }
 
   return Number(value);
 }
 
-/** The flags as given; throws, with the usage, on anything it doesn't know. */
-function flags(argv: string[]) {
-  try {
-    return parse({ args: argv, options: OPTIONS, strict: true }).values;
-  } catch (e) {
-    throw new Error(`${errorMessage(e)}\n${USAGE}`);
+/** An address to listen on; an empty one would listen on every interface. */
+function host(value: string): string {
+  if (!value) {
+    throw usageError('--host needs an address');
   }
+
+  return value;
+}
+
+/** Node's parse; its message quotes the argument, which could hold anything, so it's escaped. */
+function parseOptions(argv: string[]) {
+  try {
+    return parse({ args: argv, options: OPTIONS, strict: true, tokens: true });
+  } catch (e) {
+    throw usageError(printable(errorMessage(e)));
+  }
+}
+
+/**
+ * The flags as given; throws, with the usage, on anything it doesn't know. `--http` with
+ * nothing or another flag after it says it needs a port, rather than Node's wording.
+ */
+function flags(argv: string[]) {
+  for (const [i, arg] of argv.entries()) {
+    if (arg === '--http') {
+      port(argv[i + 1]);
+    }
+  }
+
+  const { values, tokens } = parseOptions(argv);
+
+  if (tokens.some((t) => t.kind === 'option-terminator')) {
+    throw usageError('unexpected "--"');
+  }
+
+  return values;
 }
 
 /** Read the command line; throws on anything it doesn't know. */
 export function parseArgs(argv: string[]) {
   const v = flags(argv);
 
-  // An empty host would listen on every interface.
-  if (!v.host) {
-    throw new Error(`--host needs an address\n${USAGE}`);
-  }
-
   return {
-    http: v.http === undefined ? null : port(v.http),
-    host: v.host,
+    http: (v.http ?? []).map((p) => port(p)).at(-1) ?? null,
+    host: (v.host ?? []).map(host).at(-1) ?? '127.0.0.1',
     serviceKey: v['service-key'],
   };
 }

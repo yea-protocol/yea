@@ -5,7 +5,7 @@
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
 import { create, type JobPlan, type Risk, update } from '@yea-protocol/sdk';
-import { cancelling, idOf, period, type Stripe } from './api.js';
+import { cancelling, idOf, period, SCHEDULE_ID, type Stripe } from './api.js';
 import {
   applying,
   type Ctx,
@@ -30,7 +30,6 @@ import {
   getSchedule,
   onlyCurrentPhase,
   releaseSchedule,
-  SCHEDULE_ID,
   uncopied,
 } from './schedule.js';
 import { confirmPhrase, quoted, who } from './text.js';

@@ -4,14 +4,11 @@
  * phases with `from_subscription`), so a failure between them is cleaned up here.
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
-import { idOf, type Stripe, StripeError } from './api.js';
-import { applying, type Ctx, errorMessage } from './context.js';
+import { errorMessage, idOf, type Stripe, StripeError } from './api.js';
+import { applying, type Ctx } from './context.js';
 
 type Phase = Stripe.SubscriptionSchedule.Phase;
 type NewPhase = Stripe.SubscriptionScheduleUpdateParams.Phase;
-
-/** A schedule id, as `apply()` returns it for `revert`. */
-export const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
 
 const ids = (rs: { id: string }[] | null | undefined) => (rs ?? []).map(idOf);
 

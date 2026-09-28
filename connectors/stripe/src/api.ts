@@ -68,8 +68,9 @@ export const redactKeys = (s: string) =>
 /** A key is live unless it says it's a test key, so an unknown format fails toward caution. */
 export const isLiveKey = (key: string) => !key.includes('_test_');
 
-/** A subscription id, as `sub_…`. */
-export const SUB_ID = /^sub_[A-Za-z0-9]+$/;
+/** What was thrown, as text: an Error's message, or anything else as a string. */
+export const errorMessage = (e: unknown) =>
+  e instanceof Error ? e.message : String(e);
 
 /** The id of a field Stripe may expand into an object. */
 export const idOf = (r: string | { id: string }) =>
@@ -129,7 +130,7 @@ function failure(e: unknown, o: Settling): StripeError {
 
   // Not one of Stripe's answers: on a write, it may still have been sent.
   if (!(e instanceof errors.StripeError)) {
-    const why = o.clean(e instanceof Error ? e.message : String(e));
+    const why = o.clean(errorMessage(e));
 
     return new StripeError(
       `the Stripe call failed (${why})${o.write ? MAY_HAVE_HAPPENED : ''}`,
@@ -290,6 +291,12 @@ async function retrieveCustomer(
 
 const CUSTOMER_ID = /^cus_[A-Za-z0-9]+$/;
 const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+/** A subscription id, which a job checks before it acts on one. */
+export const SUB_ID = /^sub_[A-Za-z0-9]+$/;
+
+/** A subscription schedule id, which `revert` checks in what `apply()` returned. */
+export const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
 
 /**
  * Customers matching what a person said, at most `limit`: an id, an exact email (a list call,

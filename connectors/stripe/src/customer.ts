@@ -11,6 +11,7 @@ import { errorResult, textResult } from '@yea-protocol/mcp';
 import { lean } from '@yea-protocol/sdk';
 import {
   cancelling,
+  errorMessage,
   findCustomers,
   idOf,
   period,
@@ -18,7 +19,7 @@ import {
   type Stripe,
   subscriptionPage,
 } from './api.js';
-import { type Ctx, day, errorMessage } from './context.js';
+import { type Ctx, day } from './context.js';
 import { formatMoney } from './currency.js';
 import {
   howMany,

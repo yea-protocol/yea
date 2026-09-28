@@ -78,12 +78,13 @@ function pickCharge(
     return ch;
   }
 
-  const listed = recentLines(chs);
   const what = payment
     ? `${quoted(payment)} isn't one of ${who(c)}'s recent payments that succeeded`
     : `${who(c)} has no recent payment that succeeded`;
 
-  throw new Error(`${what}${listed ? `. Recent payments: ${listed}` : ''}`);
+  throw new Error(
+    `${what}${chs.length ? `. Recent payments: ${recentLines(chs)}` : ''}`,
+  );
 }
 
 /** The refunds already made on a charge, newest first; none when nothing was refunded. */

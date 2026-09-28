@@ -133,6 +133,28 @@ describe('the command line', () => {
       host: '0.0.0.0',
     });
     expect(parseArgs(['--service-key']).serviceKey).toBe(true);
+    expect(parseArgs(['--http', '1', '--http=2']).http).toBe(2);
+  });
+
+  it.each<[string[], RegExp]>([
+    [['--host', ''], /--host needs an address/],
+    [['--host='], /--host needs an address/],
+    [['--host', 'a', '--host', ''], /--host needs an address/],
+    [['--http'], /--http needs a port, got undefined/],
+    [['--http', 'x'], /--http needs a port, got "x"/],
+    [['--http', '--service-key'], /--http needs a port, got "--service-key"/],
+    [['--http', 'x', '--http', '8787'], /--http needs a port/],
+    [['--http=8787', '--http=0'], /--http needs a port, got "0"/],
+    [['--'], /unexpected "--"/],
+    [['--http', '8787', '--'], /unexpected "--"/],
+  ])('refuses %j, saying why', (argv, why) => {
+    expect(() => parseArgs(argv)).toThrow(why);
+  });
+
+  it('escapes what an unknown flag says before it is printed', () => {
+    expect(() => parseArgs(['--x\u001b[2J'])).toThrow(
+      /^Unknown option '--x\\u\{1b\}\[2J'/,
+    );
   });
 
   it.each([

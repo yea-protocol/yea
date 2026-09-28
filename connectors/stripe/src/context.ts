@@ -71,14 +71,15 @@ export function undoWindowBefore(
 
 /** What a person types to approve a plan, carried in its `data`. */
 export function confirmOf(hp: HashedPlan): string {
-  const confirm = (hp.plan.data as { confirm?: unknown } | null)?.confirm;
+  const d = hp.plan.data;
 
-  return typeof confirm === 'string' ? confirm : '';
+  return typeof d === 'object' &&
+    d !== null &&
+    'confirm' in d &&
+    typeof d.confirm === 'string'
+    ? d.confirm
+    : '';
 }
-
-/** What was thrown, as text: an Error's message, or anything else as a string. */
-export const errorMessage = (e: unknown) =>
-  e instanceof Error ? e.message : String(e);
 
 /**
  * Run a write, and turn one whose result is unknown (no answer, or a 5xx) into a
