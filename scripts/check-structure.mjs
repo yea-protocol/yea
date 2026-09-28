@@ -117,7 +117,7 @@ export function vueHeader(text) {
     return true;
   }
 
-  const script = /<script\b[^>]*>/.exec(top);
+  const script = /<script\b[^>]*>/i.exec(top);
 
   return (
     script !== null && scriptHeader(top.slice(script.index + script[0].length))
