@@ -11,7 +11,7 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .hint { font-size: 0.82rem; color: var(--vp-c-text-3); margin: -4px 0 0; line-height: 1.45; }
 .err { font-size: 0.82rem; color: var(--state-red); margin: 0; }
 .toggle { display: flex; gap: 8px; align-items: flex-start; font-size: 0.85rem; color: var(--vp-c-text-2); cursor: pointer; }
-.toggle input { margin-top: 3px; accent-color: var(--amber); }
+.toggle input { margin-top: 3px; accent-color: var(--vp-c-brand-1); }
 
 @media (max-width: 640px), (pointer: coarse) {
   select, input:not([type]), input[inputmode] { min-height: 44px; }

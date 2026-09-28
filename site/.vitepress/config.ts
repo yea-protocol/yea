@@ -4,6 +4,8 @@
  */
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
+import { appearanceMigration, fontPreloads, themeColor } from './head';
+import { paperLight } from './shiki-light';
 
 const repo = 'https://github.com/yea-protocol/yea';
 const site = 'https://yea-protocol.github.io/yea/';
@@ -17,7 +19,8 @@ export default defineConfig({
   cleanUrls: true,
   srcExclude: ['drafts/**'],
   lastUpdated: true,
-  appearance: 'dark',
+  // Follow the reader's OS theme. Pages are designed light first; both themes meet WCAG AA.
+  appearance: true,
   // Included repo files (SPEC.md, design.md, …) link to each other with repo-relative paths.
   ignoreDeadLinks: [
     /^\.\.?\//,
@@ -25,11 +28,13 @@ export default defineConfig({
     /RESULTS/,
   ],
   head: [
+    // First, so it runs before VitePress's check-dark-mode script reads the stored appearance.
+    appearanceMigration,
     [
       'link',
       { rel: 'icon', type: 'image/svg+xml', href: '/yea/brand/mark.svg' },
     ],
-    ['meta', { name: 'theme-color', content: '#0B0D12' }],
+    themeColor,
     ['meta', { property: 'og:type', content: 'website' }],
     [
       'meta',
@@ -79,8 +84,11 @@ export default defineConfig({
       copyright: `<a href="${repo}">github.com/yea-protocol/yea</a>`,
     },
   },
+  // Preload the fonts the first paint needs, so it doesn't swap faces.
+  transformHead: ({ assets, pageData }) =>
+    fontPreloads(assets, pageData.relativePath),
   markdown: {
-    theme: { light: 'github-light', dark: 'github-dark-dimmed' },
+    theme: { light: paperLight, dark: 'github-dark-dimmed' },
     // GitHub-style slugs, so anchors in the repo's markdown work here too.
     anchor: { slugify: githubSlug },
     config(md) {

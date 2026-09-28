@@ -116,7 +116,7 @@ const noTargetHint = computed(() =>
 <style scoped>
 .agent { padding: 18px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: calc(var(--vp-nav-height) + 16px); max-height: calc(100vh - var(--vp-nav-height) - 32px); overflow: auto; }
 .budget { display: flex; gap: 12px; align-items: center; }
-.budget input { flex: 1; accent-color: var(--amber); }
+.budget input { flex: 1; accent-color: var(--vp-c-brand-1); }
 .budget output { font-family: var(--vp-font-family-mono); font-size: 0.85rem; min-width: 3.5em; text-align: right; }
 .send { font: inherit; font-weight: 700; font-size: 0.95rem; height: 44px; border: 0; border-radius: 9px; background: var(--vp-button-brand-bg); color: var(--vp-button-brand-text); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .send:hover { background: var(--vp-button-brand-hover-bg); }

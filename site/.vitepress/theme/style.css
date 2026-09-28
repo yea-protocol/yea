@@ -1,52 +1,87 @@
 /* YEA brand on top of the VitePress default theme.
-   Colour carries protocol state everywhere: amber = proposed / waiting on a human,
-   green = committed (a receipt), red = refused. Nothing else gets those colours. */
+   Colour carries protocol state: amber = proposed / waiting on a person's consent,
+   green = committed (a receipt), red = refused. Nothing else gets those colours.
+   Docs links, focus, the active nav item and other interaction use "ink, lifted", a low-chroma
+   blue from the ink hue (--vp-c-brand-*); the landing keeps its links ink. Inline code and
+   containers are neutral. No pure white or black. Light is primary; the site follows the OS.
+   Every text colour clears 4.5:1 on the page, sidebar, code and container backgrounds. */
+/* A fallback matched to Public Sans's metrics (at 400, against Arial), so the swap when the
+   font arrives barely moves the page. */
+@font-face {
+  font-family: "Public Sans Fallback";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans");
+  size-adjust: 105.6%;
+  ascent-override: 89.96%;
+  descent-override: 21.31%;
+  line-gap-override: 0%;
+}
+
 :root {
   --ink: #0B0D12;
   --ink-2: #12151C;
   --ink-3: #1A1E27;
   --paper: #F7F5F0;
   --paper-2: #EFECE4;
+  --bone: #ECEAE4;
   --amber: #FFB224;
   --green: #2BD9A5;
   --red: #FF5C5C;
   --muted: #8A8F98;
 
-  --font-head: "Space Grotesk Variable", "Space Grotesk", system-ui, sans-serif;
-  --vp-font-family-base: "Inter Variable", "Inter", system-ui, sans-serif;
+  --vp-font-family-base: "Public Sans Variable", "Public Sans Fallback", system-ui, sans-serif;
   --vp-font-family-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+  /* One family: headings differ from body by weight and size, not by face. */
+  --font-head: var(--vp-font-family-base);
 
   /* light mode */
   --vp-c-bg: var(--paper);
   --vp-c-bg-alt: var(--paper-2);
   --vp-c-bg-soft: #E9E5DB;
-  --vp-c-bg-elv: #FFFFFF;
+  --vp-c-bg-elv: #FCFBF8;
   --vp-c-text-1: var(--ink);
   --vp-c-text-2: #3C414B;
   --vp-c-text-3: #5C616A;
   --vp-c-divider: #DAD5C9;
   --vp-c-border: #CFC9BB;
   --vp-c-gutter: #E2DDD1;
-  /* amber is too light for text on paper; the brand hue, darkened for contrast.
-     Light-theme text colours clear 4.5:1 on paper, on the code background and on the warning tint. */
-  --vp-c-brand-1: #8E5400;
-  --vp-c-brand-2: #9A5B00;
-  --vp-c-brand-3: #FFB224;
-  --vp-c-brand-soft: rgba(255, 178, 36, 0.18);
+  /* Ink, lifted: the ink hue (about 262 in OKLCH) at low chroma, light enough to read as a link. */
+  --vp-c-brand-1: #385281;
+  --vp-c-brand-2: #2C4167;
+  --vp-c-brand-3: #4A6594;
+  --vp-c-brand-soft: rgba(56, 82, 129, 0.1);
+  /* Protocol state. Amber text is darkened to read on paper; the consent fill keeps full amber. */
   --state-amber: #8E5400;
+  --state-amber-soft: rgba(255, 178, 36, 0.18);
   --state-green: #0B6E52;
   --state-red: #B52F2F;
+  --consent-bg: var(--amber);
+  --consent-text: var(--ink);
+  --consent-hover-bg: #FFC04D;
   --vp-code-block-bg: #ECE8DF;
-  /* inline code: the code-block tint, not VitePress's cool grey; the same inside info blocks */
+  /* Inline code: neutral text on the code-block tint, the same inside info blocks. */
   --vp-code-bg: #ECE8DF;
+  --vp-code-color: var(--vp-c-text-1);
   --vp-custom-block-info-code-bg: var(--vp-code-bg);
-  /* code and links in danger blocks sit on a doubled red tint */
+  /* Tips are neutral too: a soft fill, no hue. */
+  --vp-custom-block-tip-bg: var(--vp-c-bg-soft);
+  --vp-custom-block-tip-code-bg: var(--vp-code-bg);
+  /* Code and links in danger blocks sit on a doubled red tint. */
   --vp-c-danger-1: #A02127;
+  /* Warnings: VitePress tints them yellow, next to the state amber. Here they're neutral, marked
+     by a full 1px border instead of a hue, so amber still means only proposed and consent. */
+  --vp-c-warning-1: var(--vp-c-text-1);
+  --vp-c-warning-2: var(--vp-c-text-2);
+  --vp-c-warning-3: var(--vp-c-text-3);
+  --vp-c-warning-soft: var(--vp-c-default-soft);
+  --vp-custom-block-warning-bg: var(--vp-c-bg-soft);
+  --vp-custom-block-warning-border: var(--vp-c-text-3);
+  --vp-custom-block-warning-code-bg: var(--vp-code-bg);
+  /* The primary button is neutral: ink on paper here, bone on ink in dark. */
   --vp-button-brand-bg: var(--ink);
   --vp-button-brand-text: var(--paper);
   --vp-button-brand-hover-bg: #262A33;
   --vp-button-brand-hover-text: var(--paper);
-  --vp-button-brand-active-bg: #000;
+  --vp-button-brand-active-bg: #05060A;
   --vp-home-hero-name-color: var(--ink);
 }
 
@@ -55,46 +90,48 @@
   --vp-c-bg-alt: #090B0F;
   --vp-c-bg-soft: var(--ink-3);
   --vp-c-bg-elv: var(--ink-2);
-  --vp-c-text-1: #ECEAE4;
+  --vp-c-text-1: var(--bone);
   --vp-c-text-2: #B4B8BF;
   --vp-c-text-3: var(--muted);
   --vp-c-divider: #232834;
   --vp-c-border: #2C3240;
   --vp-c-gutter: #07080B;
-  --vp-c-brand-1: var(--amber);
-  --vp-c-brand-2: #FFC04D;
-  --vp-c-brand-3: #E09A10;
-  --vp-c-brand-soft: rgba(255, 178, 36, 0.14);
+  --vp-c-brand-1: #A3B8DF;
+  --vp-c-brand-2: #BFD0EC;
+  --vp-c-brand-3: #8FA6CF;
+  --vp-c-brand-soft: rgba(163, 184, 223, 0.12);
   --state-amber: var(--amber);
+  --state-amber-soft: rgba(255, 178, 36, 0.1);
   --state-green: var(--green);
   --state-red: var(--red);
   --vp-code-block-bg: #10131A;
   --vp-code-bg: var(--vp-c-default-soft);
   --vp-custom-block-info-code-bg: var(--vp-c-default-soft);
+  --vp-custom-block-tip-code-bg: var(--vp-c-default-soft);
   --vp-c-danger-1: var(--vp-c-red-1);
-  --vp-button-brand-bg: var(--amber);
+  --vp-button-brand-bg: var(--bone);
   --vp-button-brand-text: var(--ink);
-  --vp-button-brand-hover-bg: #FFC04D;
+  --vp-button-brand-hover-bg: var(--paper);
   --vp-button-brand-hover-text: var(--ink);
-  --vp-button-brand-active-bg: #E09A10;
+  --vp-button-brand-active-bg: #D6D3CB;
 }
 
-h1, h2, h3, h4, .VPNavBarTitle .title, .vp-doc h1, .vp-doc h2, .vp-doc h3 {
-  font-family: var(--font-head);
-  letter-spacing: -0.01em;
-}
-.vp-doc h1 { font-size: 2.4rem; line-height: 1.1; font-weight: 600; }
-.vp-doc h2 { font-weight: 600; border-top: 0; }
+/* Hierarchy by weight: 750 for page titles, 700 for sections, 600 below; tighter tracking as
+   size grows. */
+h1, h2, h3, h4, .VPNavBarTitle .title { letter-spacing: -0.01em; }
+.VPNavBarTitle .title { font-weight: 750; }
+.vp-doc h1 { font-size: 2.4rem; line-height: 1.1; font-weight: 750; letter-spacing: -0.025em; }
+.vp-doc h2 { font-weight: 700; letter-spacing: -0.015em; border-top: 0; }
+.vp-doc h3, .vp-doc h4 { font-weight: 600; }
 .vp-doc p, .vp-doc li { max-width: 72ch; }
+.custom-block.warning a { color: var(--vp-c-brand-1); }
+.custom-block.warning a:hover { color: var(--vp-c-brand-2); }
+/* Inline code stays neutral inside containers; VitePress colours it with the container's hue. */
+.custom-block.tip :not(a) > code,
+.custom-block.info :not(a) > code,
+.custom-block.note :not(a) > code { color: var(--vp-code-color); }
+.custom-block.warning a > code { color: inherit; }
 .vp-doc table { font-size: 0.92rem; }
-.vp-doc blockquote { border-left-color: var(--vp-c-brand-1); }
-
-/* Shiki's github-light tokens were tuned for white. On the paper code background four of them
-   fall under 4.5:1, so light mode uses the same hues, darkened. */
-html:not(.dark) .vp-code span[style*="--shiki-light:#D73A49"] { color: #B2303D; }
-html:not(.dark) .vp-code span[style*="--shiki-light:#6A737D"] { color: #5B636C; }
-html:not(.dark) .vp-code span[style*="--shiki-light:#E36209"] { color: #A14606; }
-html:not(.dark) .vp-code span[style*="--shiki-light:#22863A"] { color: #1C6F30; }
 
 :focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }
 
@@ -115,4 +152,4 @@ html:not(.dark) .vp-code span[style*="--shiki-light:#22863A"] { color: #1C6F30; 
 
 /* Task lists ("- [ ] item"): a checkbox instead of a bullet. */
 .vp-doc li.task-list-item { list-style: none; margin-left: -1.25em; }
-.vp-doc .task-list-item-checkbox { margin-right: 0.45em; accent-color: var(--vp-c-brand-1); vertical-align: -1px; }
+.vp-doc .task-list-item-checkbox { margin-right: 0.45em; accent-color: var(--vp-c-text-1); vertical-align: -1px; }
