@@ -1,0 +1,451 @@
+/**
+ * How a job tool call runs (SPEC-bridge, steps 1–6). The service decides: its grant check
+ * auto-commits what the agent's grants allow and demands a consent for the rest. The bridge
+ * shows the proposals, relays consents, and commits; it has no policy of its own beyond the
+ * person's unsigned `deny`, which only tightens.
+ *
+ * TODO(#73): `--approve-here` (steps 6–7: a form in the client, then signing with a principal
+ * key on this machine) waits for James (decision 4). Until then this file signs nothing: it
+ * never loads a principal key, and consent codes are the only way to approve.
+ */
+import type { CallToolResult } from '@modelcontextprotocol/server';
+import {
+  type Client,
+  consentCode,
+  decodeGrant,
+  isUses,
+  type Proposal,
+  type Proposals,
+  printable,
+  proposalHash,
+  type ReceiptReply,
+} from '@yea-protocol/sdk';
+import { readTighteningFor } from '../keys.js';
+import { type ConsentStore, checkConsent } from './consent.js';
+import type { Service } from './greet.js';
+import {
+  fresh,
+  type Pending,
+  type PendingProposals,
+  pendingKey,
+} from './pending.js';
+import {
+  errorResult,
+  proposalsLens,
+  proposalView,
+  replyResult,
+  safeLens,
+  textOf,
+} from './render.js';
+
+type Obj = Record<string, unknown>;
+
+/** What every call shares: the pending proposals, the consent store and the clock. */
+export interface Bridge {
+  pending: PendingProposals;
+  consents: ConsentStore;
+  budget: number;
+  /** Unsigned tightening merged with `~/.yea/policy.json`; only `deny` applies here. */
+  tighten: unknown;
+  now(): number;
+}
+
+/** One job call, its arguments already split and type-checked. */
+export interface JobCall {
+  tool: string;
+  svc: Service;
+  capability: string;
+  params: Obj;
+  goal?: string;
+  preview: boolean;
+  proposal?: string;
+}
+
+const NOTHING_RAN = 'nothing was run';
+
+/** Errors after which the pending proposals are gone, so a fresh INTENT is the way on. */
+const STALE = new Set(['not_found', 'expired', 'conflict']);
+
+/** Why a fresh call returned proposals: SPEC.md §4.3.1 auto-commits no more than this. */
+const AUTO_ONLY =
+  "the service commits at once only the first proposal, and only if it's undoable and within the user's grant";
+
+const HOW_TO_APPROVE =
+  'Ask the user to run `yea approve <code>` where their principal key is, then paste the printed consent back to you and call `yea_consent` with it, then call this tool again with the same arguments.';
+
+/** Step 1: the person's `deny`, matched on the capability or `service/capability`, never the tool name. */
+function denied(b: Bridge, call: JobCall): boolean {
+  const { deny } = readTighteningFor(b.tighten);
+
+  return (
+    deny.includes(call.capability) ||
+    deny.includes(`${call.svc.id}/${call.capability}`)
+  );
+}
+
+/** Run a job tool call (SPEC-bridge steps 1–6). */
+export async function runJobCall(
+  b: Bridge,
+  call: JobCall,
+): Promise<CallToolResult> {
+  if (denied(b, call)) {
+    return errorResult([
+      `✗ your policy never allows ${printable(call.capability)} at ${printable(call.svc.id)}; ${NOTHING_RAN}`,
+    ]);
+  }
+
+  if (call.preview) {
+    return previewCall(b, call);
+  }
+
+  const key = await pendingKey(call.tool, call.capability, call.params);
+  const entry = b.pending.get(key, b.now());
+
+  if (entry) {
+    const done = await pendingCall(b, call, entry);
+
+    if (done) {
+      return done;
+    }
+  } else if (call.proposal !== undefined) {
+    return errorResult([
+      `✗ proposal ${printable(call.proposal)} isn't pending for these arguments (it expired, was used, or the bridge restarted); ${NOTHING_RAN}. Call again without proposal for fresh proposals.`,
+    ]);
+  }
+
+  return freshCall(b, call, key);
+}
+
+/** Step 2: the proposals, as Lens; nothing is stored. */
+async function previewCall(b: Bridge, call: JobCall): Promise<CallToolResult> {
+  const r = await call.svc.client.intent(call.capability, call.params, {
+    goal: call.goal,
+    budget: b.budget,
+  });
+
+  if (r.kind !== 'PROPOSALS') {
+    return replyResult(r);
+  }
+
+  const { kept, dropped } = await checkProposals(r, call.capability);
+
+  return {
+    content: textOf([
+      'preview: nothing was run',
+      ...(kept.length ? [proposalsLens(kept)] : []),
+      ...dropped,
+    ]),
+    structuredContent: { proposals: kept.map(proposalView) },
+  };
+}
+
+/** Whether a proposal passes the checks a consent would need (SPEC.md §6.6, like `consentFor`). */
+async function sound(p: Proposal, capability: string): Promise<boolean> {
+  if (
+    typeof p?.id !== 'string' ||
+    typeof p.hash !== 'string' ||
+    p.capability !== capability ||
+    !Number.isSafeInteger(p.expires) ||
+    (p.uses !== undefined && !isUses(p.uses))
+  ) {
+    return false;
+  }
+
+  try {
+    return (await proposalHash(p)) === p.hash;
+  } catch {
+    // A proposal canonical JSON can't hash (a float, say) can't be bound by a consent.
+    return false;
+  }
+}
+
+/** Step 5: the proposals that pass, and a line for each that doesn't (never shown otherwise). */
+async function checkProposals(r: Proposals, capability: string) {
+  const kept: Proposal[] = [];
+  const dropped: string[] = [];
+
+  for (const p of r.proposals) {
+    if (await sound(p, capability)) {
+      kept.push(p);
+    } else {
+      dropped.push(
+        `✗ dropped a proposal from the service: its hash, uses or capability doesn't check out`,
+      );
+    }
+  }
+
+  return { kept, dropped };
+}
+
+/** COMMIT, retried once as is if it fails in transport: it's idempotent (SPEC.md §4.4). */
+async function commitOnce(c: Client, p: Proposal, extra: string[]) {
+  const events: string[] = [];
+  const o = {
+    grants: extra,
+    onEvent: (e: Parameters<typeof safeLens>[0]) => events.push(safeLens(e)),
+  };
+  let r: Awaited<ReturnType<Client['commit']>>;
+
+  try {
+    r = await c.commit(p, o);
+  } catch {
+    r = await c.commit(p, o);
+  }
+
+  return { r, events };
+}
+
+/** A receipt as a tool result, with any progress events before it. */
+const receiptResult = (r: ReceiptReply, events: string[] = []) => ({
+  content: textOf([...events, safeLens(r)]),
+  structuredContent: { receipt: r.receipt },
+});
+
+/**
+ * Step 3, with pending proposals: commit one the person consented to, or one the call names,
+ * or show the same proposals and codes again. Null means the entry went stale: go on to step 4.
+ */
+async function pendingCall(
+  b: Bridge,
+  call: JobCall,
+  entry: Pending,
+): Promise<CallToolResult | null> {
+  const consented = await consentedProposal(b, call, entry);
+
+  if (consented) {
+    return commitPending(b, call, {
+      entry,
+      p: consented.proposal,
+      extra: [consented.token],
+    });
+  }
+
+  if (call.proposal === undefined) {
+    return proposalsResult(entry, 'still waiting for approval', []);
+  }
+
+  const p = entry.proposals.find((x) => x.id === call.proposal);
+
+  return p
+    ? commitPending(b, call, { entry, p, extra: [] })
+    : errorResult([
+        `✗ ${printable(call.proposal)} is not one of this call's proposals (${entry.proposals.map((x) => printable(x.id)).join(', ')}); ${NOTHING_RAN}`,
+      ]);
+}
+
+/** A saved consent (from `yea_consent` or `yea approve`) for one of the entry's proposals. */
+async function consentedProposal(b: Bridge, call: JobCall, entry: Pending) {
+  const agent = call.svc.agent;
+
+  if (!agent) {
+    return null;
+  }
+
+  for (const p of entry.proposals) {
+    const token = b.consents.get(p.hash);
+    const check = token
+      ? await checkConsent(token, { entry, agent, now: b.now() })
+      : null;
+
+    if (token && check?.ok && check.proposal.hash === p.hash) {
+      return { proposal: p, token };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Commit a pending proposal with the agent's grants (plus a consent, if any). A receipt drops the
+ * entry; a stale proposal drops it and returns null; `consent_required` gives that proposal's code.
+ */
+async function commitPending(
+  b: Bridge,
+  call: JobCall,
+  commit: { entry: Pending; p: Proposal; extra: string[] },
+): Promise<CallToolResult | null> {
+  const { entry, p, extra } = commit;
+  const { r, events } = await commitOnce(call.svc.client, p, extra);
+
+  if (r.kind === 'RECEIPT') {
+    b.pending.drop(entry.key);
+
+    return receiptResult(r, events);
+  }
+
+  if (STALE.has(r.code)) {
+    b.pending.drop(entry.key);
+
+    return null;
+  }
+
+  if (r.code === 'consent_required' && !extra.length) {
+    return proposalsResult(
+      { ...entry, proposals: [p] },
+      `${printable(r.message)}: this needs the user's approval`,
+      [],
+    );
+  }
+
+  return replyResult(r);
+}
+
+/** Step 4: INTENT with `auto`, so the service commits at once what the agent's grants allow. */
+async function freshCall(
+  b: Bridge,
+  call: JobCall,
+  key: string,
+): Promise<CallToolResult> {
+  const r = await call.svc.client.intent(call.capability, call.params, {
+    goal: call.goal,
+    budget: b.budget,
+    auto: true,
+  });
+
+  if (r.kind === 'RECEIPT') {
+    return receiptResult(r);
+  }
+
+  if (r.kind !== 'PROPOSALS') {
+    return replyResult(r);
+  }
+
+  return proposalsFound(b, call, key, r);
+}
+
+/** The principals the grants sent to this service are rooted in (SPEC-bridge step 6). */
+async function principalsOf(c: Client): Promise<string[]> {
+  const iss = (await c.grantsSent()).map((g) => decodeGrant(g)[0].p.iss);
+
+  return [...new Set(iss.filter((x): x is string => typeof x === 'string'))];
+}
+
+/** Steps 5–6: check the proposals, keep them pending, and hand out a consent code for each. */
+async function proposalsFound(
+  b: Bridge,
+  call: JobCall,
+  key: string,
+  r: Proposals,
+): Promise<CallToolResult> {
+  const { kept, dropped } = await checkProposals(r, call.capability);
+
+  if (!kept.length) {
+    return errorResult([`✗ no usable proposals; ${NOTHING_RAN}`, ...dropped]);
+  }
+
+  const principals = await principalsOf(call.svc.client);
+  const entry: Pending = {
+    key,
+    tool: call.tool,
+    service: call.svc.id,
+    capability: call.capability,
+    principal: principals.length === 1 ? principals[0] : null,
+    proposals: kept,
+    codes: [],
+  };
+
+  if (!principals.length) {
+    return noGrants(call, entry, dropped);
+  }
+
+  entry.codes = entry.principal ? codesFor(b, call, entry) : [];
+
+  if (fresh(kept, b.now())) {
+    b.pending.set(entry);
+  }
+
+  return principals.length > 1
+    ? manyPrincipals(entry, principals, dropped)
+    : proposalsResult(entry, AUTO_ONLY, dropped);
+}
+
+/** A consent code per proposal with time left: `yea approve` elsewhere signs to `agent`. */
+function codesFor(b: Bridge, call: JobCall, entry: Pending) {
+  const principal = entry.principal;
+  const agent = call.svc.agent;
+
+  if (!principal || !agent) {
+    return [];
+  }
+
+  return entry.proposals
+    .filter((p) => fresh([p], b.now()))
+    .map((p) => ({
+      proposal: p.id,
+      code: consentCode(
+        {
+          proposal: p.id,
+          hash: p.hash,
+          service: entry.service,
+          capability: p.capability,
+          principal,
+          summary: p.summary,
+          expires: p.expires,
+        },
+        p,
+        { agent },
+      ),
+    }));
+}
+
+/** SPEC.md §4.4: without grants, nothing from this INTENT can ever be committed. */
+function noGrants(call: JobCall, entry: Pending, dropped: string[]) {
+  return errorResult(
+    [
+      `✗ nothing was run, and these can't be committed: no grant for this agent is sent to ${printable(call.svc.id)}`,
+      proposalsLens(entry.proposals),
+      ...dropped,
+      `Ask the user to run \`yea grant\` for this agent${call.svc.agent ? ` (${call.svc.agent})` : ' (run `yea install` to make its key)'}, then call again.`,
+    ],
+    { proposals: entry.proposals.map(proposalView), codes: [] },
+  );
+}
+
+/** Grants from two principals: §4.4 commits need the INTENT's one, so no code can be right. */
+function manyPrincipals(
+  entry: Pending,
+  principals: string[],
+  dropped: string[],
+) {
+  return errorResult(
+    [
+      `✗ ${NOTHING_RAN}: the grants sent to ${printable(entry.service)} come from ${principals.length} principals (${principals.join(', ')}), so no consent code can be made. Keep one principal's grants for this agent.`,
+      proposalsLens(entry.proposals),
+      ...dropped,
+    ],
+    { proposals: entry.proposals.map(proposalView), codes: [] },
+  );
+}
+
+/** The proposals, a code for each, and how to approve or commit one. */
+function proposalsResult(
+  entry: Pending,
+  why: string,
+  dropped: string[],
+): CallToolResult {
+  const codes = entry.codes.filter((c) =>
+    entry.proposals.some((p) => p.id === c.proposal),
+  );
+  const tail = codes.length
+    ? [
+        HOW_TO_APPROVE,
+        ...codes.map((c) => `  code for [${printable(c.proposal)}]: ${c.code}`),
+      ]
+    : [
+        'No consent code can be offered for these (they expire too soon, or there is no agent key); call again later for fresh ones.',
+      ];
+
+  return {
+    content: textOf([
+      `${NOTHING_RAN}: ${why}.`,
+      proposalsLens(entry.proposals),
+      ...dropped,
+      ...tail,
+      'To commit one the grant may allow (an irreversible one, say), call this tool again with the same arguments and `proposal: "<id>"`.',
+    ]),
+    structuredContent: {
+      proposals: entry.proposals.map(proposalView),
+      codes,
+    },
+  };
+}
