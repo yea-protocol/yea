@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from ._json import CanonicalError, b64url_decode, b64url_encode, canonical_bytes, compact, loads, proposal_hash, sha256_b64url
+from ._json import CanonicalError, b64url_decode, b64url_encode, canonical_bytes, compact, loads, sha256_b64url
 from .keys import KeyPair, parse_public_key, verify
 from .risk import exceeds, is_risk
 from .uses import fmt_quantity, is_limit, is_uses, limit_value, same_unit, value
@@ -118,21 +118,6 @@ def consent_code(consent: Mapping[str, Any], detail: Mapping[str, Any] | None = 
     if agent is not None:
         body["agent"] = agent
     return CONSENT_PREFIX + b64url_encode(canonical_bytes(body))
-
-
-def check_consent(consent: Mapping[str, Any], proposal: Mapping[str, Any], service: str) -> None:
-    """What an approver's tooling MUST check before showing a consent request (SPEC §6.6):
-    it names the proposal the agent actually received, from that service, and that
-    proposal's content hashes to the approved hash. Raises ValueError on any mismatch."""
-    if consent.get("service") != service:
-        raise ValueError("consent request names a different service")
-    for field_, want in (("proposal", proposal.get("id")), ("hash", proposal.get("hash")), ("capability", proposal.get("capability"))):
-        if consent.get(field_) != want:
-            raise ValueError(f"consent request {field_} does not match the proposal")
-    if not is_risk(proposal.get("risk")):
-        raise ValueError("the proposal has an unknown risk")  # SPEC §5.1: a client treats it as invalid
-    if proposal_hash(proposal) != consent["hash"]:
-        raise ValueError("the proposal's content does not hash to the approved hash")
 
 
 def decode_consent_code(code: str) -> dict:

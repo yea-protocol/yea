@@ -1,6 +1,7 @@
 """YEA protocol — independent Python implementation (see ../SPEC.md)."""
 
 from ._json import CanonicalError, b64url_decode, b64url_encode, canonical, compact, proposal_hash
+from .approve import check_consent, check_proposal, consent_from, consent_lines, consent_view
 from .budget import HandleStore, MemoryHandleStore, fit
 from .client import Client, Reply, connect, local
 from .errors import YeaError, fix
@@ -8,7 +9,6 @@ from .grants import (
     Grant,
     GrantContext,
     Verification,
-    check_consent,
     consent_code,
     consent_grant,
     decode_consent_code,
@@ -32,7 +32,7 @@ __version__ = "0.1.0"
 __all__ = [
     "CanonicalError", "Clarification", "Client", "CommitCtx", "Ctx", "Grant", "GrantContext", "HandleStore", "KeyPair",
     "MemoryHandleStore", "YeaError", "Plan", "Reply", "Service", "Verification", "b64url_decode", "b64url_encode",
-    "canonical", "clarify", "clip", "compact", "check_consent", "connect", "consent_code", "consent_grant", "decode_consent_code", "create", "decode_grant", "delegate_grant",
+    "canonical", "clarify", "clip", "compact", "check_consent", "check_proposal", "connect", "consent_from", "consent_lines", "consent_view", "consent_code", "consent_grant", "decode_consent_code", "create", "decode_grant", "delegate_grant",
     "effect_line", "est", "fit", "fix", "fmt_duration", "fmt_quantity", "fmt_time", "generate_key", "issue_grant",
     "key_from_seed", "lean", "lens", "local", "one_line", "printable", "proposal_hash", "quantity", "remove", "scalar", "send", "serve_http",
     "serve_stdio", "serve_stream", "serve_tcp", "service", "sign_proof", "spend", "update", "validate_params", "verify",
