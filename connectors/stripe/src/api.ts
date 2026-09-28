@@ -411,6 +411,10 @@ export interface Subscription {
   /** Set when the subscription is due to cancel at a given time. */
   cancel_at?: number | null;
   schedule: string | null;
+  /** A change waiting on its invoice's payment (`payment_behavior=pending_if_incomplete`). */
+  pending_update?: { expires_at?: number } | null;
+  /** The newest invoice: for a pending update, the one it waits on. */
+  latest_invoice?: string | { id: string } | null;
   discounts?: unknown[];
   items: { data: SubscriptionItem[] };
 }

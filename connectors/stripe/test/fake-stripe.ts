@@ -518,7 +518,13 @@ export function fakeStripe(
       form.payment_behavior === 'pending_if_incomplete' &&
       due(sub.customer, total) > 0
     ) {
-      return json({ ...sub, pending_update: { subscription_items: [wanted] } });
+      sub.pending_update = {
+        expires_at: now + 23 * 3600,
+        subscription_items: [wanted],
+      } as Subscription['pending_update'];
+      sub.latest_invoice = nextId('in');
+
+      return json(sub);
     }
 
     item.price = to;

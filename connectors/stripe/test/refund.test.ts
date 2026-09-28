@@ -219,6 +219,15 @@ describe('refund plans', () => {
       status: 'succeeded',
     });
 
+    // A later refund that failed doesn't count as when it was refunded.
+    s.stripe.state.refunds.push({
+      id: 're_failed',
+      amount: 500,
+      charge: 'ch_2',
+      created: NOW,
+      status: 'failed',
+    });
+
     const [full, unused] = await plansOf(refundJob(s.ctx), chen);
 
     expect(full.summary).toContain('already refunded 10.00 USD on 2026-09-26');

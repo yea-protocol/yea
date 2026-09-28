@@ -193,7 +193,7 @@ interface Paid {
  */
 function paidLine(p: Paid): string {
   const { ch } = p;
-  const last = p.earlier[0];
+  const last = p.earlier.find((r) => r.status === 'succeeded');
 
   if (ch.amount_refunded <= 0) {
     return `paid ${day(ch.created)}`;

@@ -11,7 +11,9 @@
  * - a subscription with settings the phase copy drops (automatic tax, invoice settings…) is
  *   offered no "at renewal";
  * - by hand, for now: `payment_behavior=pending_if_incomplete` with a declining test card
- *   (4000 0000 0000 0341) leaves the old price on, and `DELETE` on a scheduled subscription
+ *   (4000 0000 0000 0341) leaves the old price on, sets `pending_update` and `latest_invoice`
+ *   on the subscription (which change_plan then refuses, naming that invoice), and Stripe
+ *   discards the update after about 23 hours unpaid; and `DELETE` on a scheduled subscription
  *   cancels it (the fake allows it).
  *
  *   STRIPE_TEST_KEY=rk_test_… STRIPE_TEST_CUSTOMER=cus_… STRIPE_TEST_PRICE=price_… \

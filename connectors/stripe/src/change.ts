@@ -322,6 +322,29 @@ async function whatFits(ctx: Ctx, ch: Change) {
   return { renewal: false, now: true };
 }
 
+/**
+ * A change already waiting on payment refuses both plans: another "now" would make a second
+ * update and a second invoice, and "at renewal" would race the one pending.
+ */
+function refusePending(sub: Subscription) {
+  const pending = sub.pending_update ?? null;
+
+  if (pending === null) {
+    return;
+  }
+
+  const inv = sub.latest_invoice ?? null;
+  const invoice =
+    inv === null ? 'its open invoice' : typeof inv === 'string' ? inv : inv.id;
+  const until = pending.expires_at
+    ? `, by ${new Date(pending.expires_at * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+    : '';
+
+  throw new Error(
+    `${sub.id} already has a price change waiting on payment of ${invoice}. Stripe applies it once that invoice is paid, or discards it if it isn't${until}; nothing else can change the plan until then`,
+  );
+}
+
 async function changePlans(ctx: Ctx, input: ChangeInput) {
   const c = await oneCustomer(ctx, input);
 
@@ -334,6 +357,8 @@ async function changePlans(ctx: Ctx, input: ChangeInput) {
   if ('clarify' in sub) {
     return sub.clarify;
   }
+
+  refusePending(sub.found);
 
   const item = oneItem(sub.found);
   const to = await findPrice(ctx, input.price);

@@ -417,6 +417,10 @@ After the re-check (#76):
 - **A change left pending** by a declined payment is a `PartialApplyError`, not a receipt: it
   says the change is pending, and that Stripe discards it after about 23 hours if the invoice
   isn't paid.
+- **A subscription with a `pending_update`** gets neither "now" nor "at renewal": the job is
+  refused, naming the invoice it waits on (`latest_invoice`), and saying Stripe applies the
+  change once that's paid or discards it. A retry can't make a second update and invoice.
+  The "already refunded … on" date is the latest *succeeded* refund's.
 - **Customer reads must carry `livemode`;** one without it fails closed.
 - **Only the subscription jobs refuse** a customer with more than 100 subscriptions; a refund
   and the `customer` tool read the first page (the tool says the list is cut).

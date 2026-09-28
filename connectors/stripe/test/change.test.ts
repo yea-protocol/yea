@@ -395,6 +395,33 @@ describe('change_plan, what the customer pays and what can be copied', () => {
     expect(s.stripe.subs[0].items.data[0].price.id).toBe('price_pro');
   });
 
+  it('after a change left pending, a retry offers neither "now" nor "at renewal", naming the invoice', async () => {
+    const s = setup({ declines: true });
+    const [, now] = await plansOf(changeJob(s.ctx), toTeam);
+
+    await Promise.resolve(now.apply()).catch(() => null);
+    expect(s.stripe.state.prorations).toHaveLength(1);
+
+    for (const input of [toTeam, toBasic]) {
+      await expect(changeJob(s.ctx).plan(input)).rejects.toThrow(
+        "sub_chen already has a price change waiting on payment of in_1. Stripe applies it once that invoice is paid, or discards it if it isn't, by 2026-09-28 09:00 UTC; nothing else can change the plan until then",
+      );
+    }
+
+    // No second update, no second invoice.
+    expect(s.stripe.state.prorations).toHaveLength(1);
+    expect(s.stripe.writes()).toHaveLength(1);
+  });
+
+  it('a pending update without a known invoice still refuses', async () => {
+    const s = setup();
+
+    s.stripe.subs[0].pending_update = {};
+    await expect(changeJob(s.ctx).plan(toBasic)).rejects.toThrow(
+      /waiting on payment of its open invoice\. Stripe applies it once that invoice is paid, or discards it if it isn't;/,
+    );
+  });
+
   it.each([
     ['by id', 'price_basic'],
     ['by lookup key', 'basic'],
