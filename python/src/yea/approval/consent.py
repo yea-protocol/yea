@@ -12,8 +12,8 @@ from .phrase import phrase_of
 from .plan import HashedPlan, plan_preimage
 from .policy import Policy
 
-
 CONSENT_TTL = 600
+_NOT_A_CONSENT = "not a consent for this plan"
 
 
 def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan, phrase: str, now: int) -> str:
@@ -44,9 +44,6 @@ class ConsentCheck:
     id: str | None = None  # the consent grant's id, which the caller consumes once
     why: str | None = None
     exp: int | None = None
-
-
-_NOT_A_CONSENT = "not a consent for this plan"
 
 
 def check_job_consent(token: Any, p: HashedPlan, policy: Policy, now: int) -> ConsentCheck:

@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..grants import Grant, RISK_ORDER, block_id, decode_grant
+from ..grants import RISK_ORDER, Grant, block_id, decode_grant
 from ..uses import is_limit, limit_value
-
 
 DEFAULT_OUT_OF_BAND = "high"
 

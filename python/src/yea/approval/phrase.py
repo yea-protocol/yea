@@ -8,7 +8,6 @@ from typing import Any
 
 from .plan import HashedPlan
 
-
 _STRIP = "\u0009\u000a\u000b\u000c\u000d  ﻿"
 
 

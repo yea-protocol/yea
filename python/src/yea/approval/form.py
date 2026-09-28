@@ -7,7 +7,7 @@ from collections.abc import Callable
 from ..lens import fmt_duration, safe_effect_line
 from ..text import printable
 from ..uses import check_uses, fmt_uses
-from .decide import at_least
+from .decision import at_least
 from .phrase import phrase_of
 from .plan import HashedPlan
 from .policy import Policy

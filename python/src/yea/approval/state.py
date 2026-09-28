@@ -7,20 +7,15 @@ from typing import Any
 
 from .._json import b64url_encode
 
-
 STATE_TTL = 600  # seconds; no later than the MCP SDK's own request-state lifetime
-
-
 MAX_ROUNDS = 3
+BAD_STATE = "this approval is invalid or has expired; call the tool again"
 
 
 def new_state(tool: str, input_hash: str, sub: str, plans: list[str], round: int, now: int) -> dict:
     """The requestState plaintext: hashes, a counter and a nonce only."""
     return {"v": 1, "tool": tool, "inputHash": input_hash, "sub": sub, "plans": list(plans),
             "round": round, "nonce": b64url_encode(secrets.token_bytes(16)), "exp": now + STATE_TTL}
-
-
-BAD_STATE = "this approval is invalid or has expired; call the tool again"
 
 
 def check_state(state: Any, tool: str, input_hash: str, sub: str, now: int) -> dict | None:
