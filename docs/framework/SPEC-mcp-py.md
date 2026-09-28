@@ -191,8 +191,9 @@ missing one would let the original run unguarded.
 `undo(receipt: str)` is registered once per server, the first time a job or guard with
 `revert` is added. It calls the core's `undo_receipt(store, id, service, sub, now, revert)`
 with this server's service id, `sub(ctx)` and the job's `revert`. A receipt from another server
-sharing the store, or for a tool with no `revert` here, is "no such receipt". Its annotations
-say `destructiveHint: true, idempotentHint: true`.
+sharing the store, or for a tool with no `revert` here, is "no such receipt". A `revert` that
+raises a `PartialApplyError` is reported as failing part-way, with its message, never as
+"nothing was undone". Its annotations say `destructiveHint: true, idempotentHint: true`.
 
 ## How a call runs
 
@@ -242,7 +243,12 @@ and §6, and the same order as `mcp-ts`):
 11. **Run.** Call `apply()`. From the moment it returns, no result may say "nothing was run", or
     the client would retry and run it again.
     - If it raises (for `guard`: or returns a mapping with `isError: true` or an input-required
-      result): `release_all` and say the approval was used and nothing changed.
+      result): release each reservation (one that can't be released stays held, and never
+      hides why the plan failed) and say the approval was used and nothing changed.
+    - If it raises a `PartialApplyError` (any exception with `partial = True`, checked
+      structurally): it failed after changing something. The result shows its message, which
+      says what was left behind, and never "nothing changed". The reservations stay held,
+      which can only over-count. As SPEC-mcp-ts.
     - If it succeeds: `settle_all`, then `put_receipt` a job receipt with `id =
       new_receipt_id()`, `service`, `proposal = planHash`, `capability = tool`, `summary`,
       `at`, `effects`, `uses`, `undo = {"until": now + undo_window}` when undoable (else
@@ -365,7 +371,7 @@ Each gets its own test and a note in the code:
 ## Code layout
 
 ```
-python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), the undo tool
+python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), PartialApplyError, the undo tool
 python/mcp/src/yea_mcp/call/          the shared routine: steps 1–11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
 python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input

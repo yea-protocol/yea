@@ -11,10 +11,12 @@ from .model import (
     NOTHING_RAN,
     Call,
     JobDef,
+    PartialApplyError,
     Req,
     Result,
     Yea,
     _maybe,  # noqa: F401 — yea_mcp uses it for the undo tool
+    is_partial,
     wire_failed,
     wire_with_note,
     wire_with_receipt,
@@ -24,6 +26,8 @@ from .route import run_job
 from .run import json_safe
 
 __all__ = [
+    "PartialApplyError",
+    "is_partial",
     "Result",
     "NOTHING_RAN",
     "BAD_STATE",

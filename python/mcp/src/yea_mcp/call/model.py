@@ -92,3 +92,15 @@ class Call:
 
 async def _maybe(v: Any) -> Any:
     return await v if inspect.isawaitable(v) else v
+
+
+class PartialApplyError(Exception):
+    """Raised by an ``apply()`` (or ``revert``) that failed after changing something, so the result
+    doesn't say "nothing changed". Its message says what was left behind, and how to fix it."""
+
+    partial = True
+
+
+def is_partial(e: BaseException) -> bool:
+    """Checked structurally (``partial is True``), so a second copy of this package still counts."""
+    return getattr(e, "partial", None) is True
