@@ -10,7 +10,7 @@ import {
   constants,
   fstatSync,
   openSync,
-  readFileSync,
+  readSync,
   statSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -42,6 +42,9 @@ export interface PrivateFileOptions {
   /** The OS user id that must own the file; this process's by default. */
   owner?: number;
 }
+
+const tooBig = (path: string) =>
+  `${path} is larger than 64 KiB, too big for a key file`;
 
 const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
 
@@ -84,7 +87,7 @@ function unsafePrivateFile(
   }
 
   if (st.size > MAX_PRIVATE_FILE) {
-    return `${path} is larger than 64 KiB, too big for a key file`;
+    return tooBig(path);
   }
 
   return unsafeOwnerOrMode(path, st, owner);
@@ -111,6 +114,29 @@ function openNoFollow(path: string, label: string): number {
 }
 
 /**
+ * Read at most MAX_PRIVATE_FILE bytes from `fd`; null if there are more. fstat's size is only a
+ * snapshot, so a file that grows after the check still can't be read past the cap.
+ */
+function readCapped(fd: number): string | null {
+  const buf = Buffer.alloc(MAX_PRIVATE_FILE + 1);
+  let total = 0;
+
+  for (;;) {
+    const n = readSync(fd, buf, total, buf.length - total, null);
+
+    if (n === 0) {
+      return buf.toString('utf8', 0, total);
+    }
+
+    total += n;
+
+    if (total > MAX_PRIVATE_FILE) {
+      return null;
+    }
+  }
+}
+
+/**
  * The text of a file only this user may read: not a symlink, a regular file of at most 64 KiB,
  * owned by `owner`, and no group or other permission bits (0600 or 0400). It is opened once
  * (O_NOFOLLOW) and the checks run on that descriptor, so the file read is the file checked.
@@ -130,7 +156,13 @@ export function readPrivateFile(
       throw new Error(`refusing ${label}: ${why}`);
     }
 
-    return readFileSync(fd, 'utf8');
+    const text = readCapped(fd);
+
+    if (text === null) {
+      throw new Error(`refusing ${label}: ${tooBig(path)}`);
+    }
+
+    return text;
   } finally {
     closeSync(fd);
   }

@@ -190,10 +190,10 @@ What that means in practice:
   server's OS user with mode `0600` or `0400`, and be a regular file (not a symlink); the
   connector refuses anything looser, so other users on the machine can't read it. It is
   opened once with `O_NOFOLLOW` and checked on the open file. Where the platform has no
-  owners or mode bits to check (Windows), it is read with a warning on stderr. `STRIPE_SECRET_KEY` also works.
-  The key file is the opposite of the principal key file: the principal's public key must
-  be out of the server's reach to change, while the secret must be readable by the server
-  and nobody else.
+  owners or mode bits to check (Windows), it is read with a warning on stderr.
+  `STRIPE_SECRET_KEY` also works. The key file is the opposite of the principal key file:
+  the principal's public key must be out of the server's reach to change, while the secret
+  must be readable by the server and nobody else.
 - **The threat model.** Whatever the server can read, an agent running as the same OS user
   can read too, and a Stripe key lets it call Stripe directly and skip every approval. Only a
   separate OS user for the server, or a remote server, keeps the key from the agent. The
