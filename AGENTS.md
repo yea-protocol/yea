@@ -5,8 +5,8 @@ Guidance for AI coding agents (and humans) working in this repo.
 ## Layout
 - `SPEC.md`: the protocol. It is the source of truth; code follows it.
 - `conformance/*.json`: language-neutral test vectors generated from the TS reference (`ts/scripts/vectors.mjs`).
-- `ts/`: TypeScript reference implementation (npm `@yea-protocol/sdk`). Zero runtime dependencies. `src/` holds the core, `src/cli.ts` the CLI, `src/tools.ts` the generic tools of `yea test-drive`, and `src/openapi.ts` the OpenAPI adapter.
-- `cli/`: the `yea` command (npm `@yea-protocol/cli`), a thin package over the SDK's `./cli` export. The CLI's code lives in `ts/src/cli.ts`, except `yea mcp` (`cli/bin/mcp.js`).
+- `ts/`: TypeScript reference implementation (npm `@yea-protocol/sdk`). Zero runtime dependencies. `src/` holds the core, `src/cli.ts` the CLI's dispatcher (`run(argv)`) and `src/cli/*.ts` its commands, `src/tools.ts` the generic tools of `yea test-drive`, and `src/openapi.ts` the OpenAPI adapter.
+- `cli/`: the `yea` command (npm `@yea-protocol/cli`), a thin package over the SDK's `./cli` export. The CLI's code lives in `ts/src/cli.ts` (dispatcher, `run(argv)`) and `ts/src/cli/*.ts`, except `yea mcp` (`cli/bin/mcp.js`).
 - `mcp/`: `@yea-protocol/mcp`, job tools for the TypeScript MCP SDK, and the bridge behind `yea mcp` (`mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`).
 - `python/`: second implementation (PyPI `yea-sdk`, import `yea`).
 - `examples/`, `bench/`, `site/` (VitePress docs and playground), `deploy/demo/` (Cloudflare Worker).
