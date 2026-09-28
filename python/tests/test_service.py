@@ -836,3 +836,95 @@ def test_a_client_that_didnt_learn_the_service_id_signs_nothing():
     c.hello = failing_hello
     with pytest.raises(RuntimeError, match=r"did not identify itself \(HELLO failed\)"):
         run(c.undo("r_12345678"))
+
+
+def _fake_server(reply_lines):
+    """A TCP server that answers each request line with ``reply_lines(frame_id)`` (bytes)."""
+    async def handle(reader, writer):
+        while line := await reader.readline():
+            writer.write(reply_lines(json.loads(line)["id"]))
+            await writer.drain()
+    return asyncio.start_server(handle, "127.0.0.1", 0)
+
+
+def test_the_client_skips_a_bad_line_and_reads_a_reply_over_1_mib(monkeypatch):
+    """As TS's line transport: an unparseable line is dropped, not fatal to every pending request,
+    and replies up to 16 MiB are read (the old 1 MiB reader limit killed the connection) (#147)."""
+    big = "x" * (2 << 20)
+
+    def lines(fid):
+        final = {"yea": 1, "id": "s_1", "re": fid, "kind": "ANSWER", "data": big}
+        return b"not json\n" + json.dumps(final).encode() + b"\n"
+
+    async def go():
+        srv = await _fake_server(lines)
+        try:
+            async with await connect(f"yea://127.0.0.1:{srv.sockets[0].getsockname()[1]}") as c:
+                r = await asyncio.wait_for(c.ask("x"), 5)
+                assert r.kind == "ANSWER" and r.data == big
+        finally:
+            srv.close()
+
+    run(go())
+
+
+def test_a_reply_line_over_the_cap_fails_the_pending_requests(monkeypatch):
+    """Past MAX_REPLY without a newline, the client gives up with TS's message instead of buffering on."""
+    import yea.client.connection as conn
+
+    monkeypatch.setattr(conn, "MAX_REPLY", 1000)
+
+    async def go():
+        srv = await _fake_server(lambda fid: b"x" * 5000)
+        try:
+            async with await connect(f"yea://127.0.0.1:{srv.sockets[0].getsockname()[1]}") as c:
+                with pytest.raises(ConnectionError, match="reply exceeds 16 MiB without a newline"):
+                    await asyncio.wait_for(c.ask("x"), 5)
+        finally:
+            srv.close()
+
+    run(go())
+
+
+def test_the_http_client_stops_at_the_final_reply_and_caps_a_line(monkeypatch):
+    """The HTTP client reads line by line: EVENTs, then the final reply, and nothing after; a line
+    past MAX_REPLY fails rather than being read whole (#147)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    import yea.client.transports as tr
+
+    body = {"value": b""}
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            fid = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["id"]
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body["value"].replace(b"RE", fid.encode()))
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/yea"
+    try:
+        body["value"] = (b'{"yea":1,"id":"e","re":"RE","kind":"EVENT","message":"half"}\n'
+                         b'{"yea":1,"id":"s","re":"RE","kind":"ANSWER","data":1}\n'
+                         b"trailing junk that is never read\n")
+        events = []
+        r = run(_ask_http(url, events))
+        assert r.kind == "ANSWER" and r.data == 1 and [e.message for e in events] == ["half"]
+        monkeypatch.setattr(tr, "MAX_REPLY", 100)
+        body["value"] = b"y" * 1000
+        with pytest.raises(ConnectionError, match="reply exceeds 16 MiB without a newline"):
+            run(_ask_http(url, []))
+    finally:
+        server.shutdown()
+
+
+async def _ask_http(url, events):
+    from yea.client.transports import _HttpTransport
+
+    return await _HttpTransport(url).request({"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, events.append)

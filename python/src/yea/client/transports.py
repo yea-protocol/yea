@@ -9,6 +9,17 @@ from typing import Any
 from .._json import dumps, loads
 from .reply import OnEvent, Reply
 
+MAX_REPLY = 16 << 20  # the largest reply line a client reads (ts/src/client/transport.ts)
+TOO_BIG = "reply exceeds 16 MiB without a newline"
+
+
+def _frame_of(line: bytes) -> Any:
+    """A reply line as JSON, or None when it isn't JSON (the line is dropped, as TS drops it)."""
+    try:
+        return loads(line)
+    except ValueError:
+        return None
+
 
 class _StreamTransport:
     def __init__(self, reader: asyncio.StreamReader, writer: Any, proc: Any = None):
@@ -20,12 +31,17 @@ class _StreamTransport:
         err: BaseException = ConnectionError("connection closed")
         try:
             while True:
-                line = await self.reader.readline()
+                try:
+                    line = await self.reader.readline()
+                except ValueError:  # over the reader's limit without a newline
+                    err = ConnectionError(TOO_BIG)
+                    self.writer.close()
+                    break
                 if not line:
                     break
                 if not line.strip():
                     continue
-                frame = loads(line)
+                frame = _frame_of(line)
                 entry = self.pending.get(frame.get("re")) if isinstance(frame, dict) else None
                 if entry is None:
                     continue
@@ -73,8 +89,16 @@ class _HttpTransport:
         req = urllib.request.Request(
             self.url, data=dumps(frame).encode("utf-8"), method="POST", headers={"Content-Type": "application/json"}
         )
+        frames: list[dict] = []
         with urllib.request.urlopen(req, timeout=60) as resp:
-            return [loads(line) for line in resp.read().decode("utf-8").splitlines() if line.strip()]
+            while line := resp.readline(MAX_REPLY + 1):
+                if len(line) > MAX_REPLY and not line.endswith(b"\n"):
+                    raise ConnectionError(TOO_BIG)
+                if line.strip():
+                    frames.append(loads(line))
+                    if not (isinstance(frames[-1], dict) and frames[-1].get("kind") == "EVENT"):
+                        break  # the final reply: stop reading, as TS does
+        return frames
 
     async def request(self, frame: dict, on_event: OnEvent | None) -> Reply:
         frames = await asyncio.to_thread(self._post, frame)

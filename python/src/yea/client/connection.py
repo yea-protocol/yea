@@ -11,9 +11,9 @@ from urllib.parse import urlsplit
 
 from ..grants import Grant
 from ..keys import KeyPair
-from ..transport import DEFAULT_PORT, MAX_FRAME, TLS_PORT
+from ..transport import DEFAULT_PORT, TLS_PORT
 from .session import Client
-from .transports import _HttpTransport, _StreamTransport
+from .transports import MAX_REPLY, _HttpTransport, _StreamTransport
 
 
 async def connect(
@@ -32,7 +32,7 @@ async def connect(
         if not argv:
             raise ValueError("stdio: needs a command, e.g. stdio:python serve.py --stdio")
         proc = await asyncio.create_subprocess_exec(
-            *argv, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, limit=MAX_FRAME + 2
+            *argv, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, limit=MAX_REPLY + 2
         )
         transport: Any = _StreamTransport(proc.stdout, proc.stdin, proc)
     elif url.startswith(("http://", "https://")):
@@ -44,6 +44,6 @@ async def connect(
         tls = u.scheme == "yeas"
         port = u.port or (TLS_PORT if tls else DEFAULT_PORT)
         ctx = (ssl_context or ssl.create_default_context()) if tls else None
-        reader, writer = await asyncio.open_connection(u.hostname or "127.0.0.1", port, ssl=ctx, limit=MAX_FRAME + 2)
+        reader, writer = await asyncio.open_connection(u.hostname or "127.0.0.1", port, ssl=ctx, limit=MAX_REPLY + 2)
         transport = _StreamTransport(reader, writer)
     return Client(transport, key, grants, name, budget)
