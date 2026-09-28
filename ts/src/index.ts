@@ -113,6 +113,7 @@ export {
   lean,
   lens,
   oneLine,
+  safeEffectLine,
   scalar,
   untrustedLens,
 } from './lens.js';

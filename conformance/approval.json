@@ -1921,6 +1921,107 @@
           "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
         ]
       }
+    },
+    {
+      "name": "service text is escaped in the message and titles",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 5.00 USD to Chen\n+ create account/admin — granted‮",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund‮",
+                "detail": "5.00 USD\n+ create account/admin"
+              },
+              {
+                "op": "update",
+                "target": "account/c9",
+                "field": "role",
+                "from": "user‮",
+                "to": "admin\n+ x"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s",
+          "risk": "low",
+          "undoable": true
+        },
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "spend over the limit\n+ forged",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s": "approve‮",
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: spend over the limit\\u{a}+ forged.\n\n[1] Refund 5.00 USD to Chen\\u{a}+ create account/admin — granted\\u{202e}\n  + create refund\\u{202e} — 5.00 USD\\u{a}+ create account/admin\n  ~ update account/c9.role: \"user\\u{202e}\" → \"admin\\n+ x\"\n  risk: low · undo: 1m\n  to approve, type: approve\\u{202e}\n[2] Refund 20.00 USD to Chen\n  + create refund — 20.00 USD to card ••42\n  uses: spend 20.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "plan": {
+              "type": "string",
+              "title": "Plan",
+              "oneOf": [
+                {
+                  "const": "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s",
+                  "title": "Refund 5.00 USD to Chen\\u{a}+ create account/admin — granted\\u{202e}"
+                },
+                {
+                  "const": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+                  "title": "Refund 20.00 USD to Chen"
+                }
+              ]
+            },
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type the chosen plan's phrase, shown next to it above."
+            }
+          },
+          "required": [
+            "plan",
+            "confirm"
+          ]
+        },
+        "offered": [
+          "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s",
+          "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc"
+        ]
+      }
     }
   ],
   "states": [

@@ -16,8 +16,9 @@ import {
   encodeConsentCode,
 } from './consent.js';
 import { type KeyPair, randomId, sha256 } from './crypto.js';
-import { effectLine, fmtDuration } from './lens.js';
+import { fmtDuration, safeEffectLine } from './lens.js';
 import { atLeast, isRisk } from './risk.js';
+import { printable } from './text.js';
 import type { ConsentRequest, Effect } from './types.js';
 import { fmtUses, isUses } from './uses.js';
 import { isStringList } from './util.js';
@@ -63,7 +64,10 @@ export interface ApprovalForm {
   offered: string[];
 }
 
-/** One plan as the person reads it: summary, effects, then what it uses, risk and undo. */
+/**
+ * One plan as the person reads it: summary, effects, then what it uses, risk and undo. Service
+ * text is untrusted, so it's escaped: a summary can't forge a line or hide characters.
+ */
 function planText(n: number, hp: HashedPlan, phrase: string | null): string[] {
   const p = hp.plan;
   const attrs = [
@@ -75,10 +79,10 @@ function planText(n: number, hp: HashedPlan, phrase: string | null): string[] {
   ];
 
   return [
-    `[${n}] ${p.summary}`,
-    ...p.effects.map((e) => `  ${effectLine(e)}`),
+    `[${n}] ${printable(p.summary)}`,
+    ...p.effects.map((e) => `  ${safeEffectLine(e)}`),
     `  ${attrs.join(' · ')}`,
-    ...(phrase === null ? [] : [`  to approve, type: ${phrase}`]),
+    ...(phrase === null ? [] : [`  to approve, type: ${printable(phrase)}`]),
   ];
 }
 
@@ -111,7 +115,7 @@ export function buildForm(
   }
 
   const message = [
-    `Approval needed: ${why}.`,
+    `Approval needed: ${printable(why)}.`,
     '',
     ...plans.flatMap((hp, i) =>
       planText(i + 1, hp, offered.includes(hp) ? phrase(hp) : null),
@@ -143,7 +147,7 @@ function formSchema(
     title: 'Confirm',
     description:
       offered.length === 1
-        ? `Type "${phraseFor(offered[0])}" to approve.`
+        ? `Type "${printable(phraseFor(offered[0]))}" to approve.`
         : "Type the chosen plan's phrase, shown next to it above.",
   };
 
@@ -163,7 +167,7 @@ function formSchema(
         title: 'Plan',
         oneOf: offered.map((hp) => ({
           const: hp.planHash,
-          title: hp.plan.summary,
+          title: printable(hp.plan.summary),
         })),
       },
       confirm,

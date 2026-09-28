@@ -475,6 +475,14 @@ function keepQuoted(orig: unknown, safe: unknown, keys: string[]): unknown {
 }
 
 /**
+ * An effect line for a person or a model: its fields made one line by `oneLine`, except `from`
+ * and `to`, which Lens quotes itself; then the whole line through `printable`, for what the
+ * quotes leave.
+ */
+export const safeEffectLine = (e: Effect) =>
+  printable(effectLine(keepQuoted(e, oneLine(e), ['from', 'to']) as Effect));
+
+/**
  * `safe` (`r` after `oneLine`) with the values Lens renders quoted put back: an ANSWER's
  * `data`, a proposal's `data` and a receipt's `result` (lean, SPEC §9.1), and effects' `from`
  * and `to` (scalars). Only where Lens renders them: a `data` key elsewhere, such as a

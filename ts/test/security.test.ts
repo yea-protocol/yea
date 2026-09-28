@@ -1263,6 +1263,51 @@ describe('approval security (SPEC-approval)', () => {
       ),
     ).rejects.toThrow('not a job consent code');
   });
+
+  it('[A16] a plan summary cannot forge a line or hide characters in the approval form (#110)', async () => {
+    const evil = 'Refund 5 USD\n+ create account/admin — granted\u202e';
+    const plans = await P.hashPlans({ name: 'refund', revert: true }, {}, [
+      {
+        summary: evil,
+        effects: [
+          { op: 'create', target: 'refund\u200b', detail: evil },
+          { op: 'update', target: 'account', from: 'a\u202eb', to: 'c' },
+        ],
+        risk: 'low',
+        undoWindow: 60,
+        apply: () => null,
+      },
+      { summary: 'Refund 1 USD', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const form = P.buildForm(
+      plans,
+      'why\nforged',
+      { outOfBand: 'high', deny: [] },
+      () => 'go\u202e',
+    );
+    const schema = form?.requestedSchema.properties as {
+      plan: { oneOf: { title: string }[] };
+    };
+    const shown = [
+      form?.message ?? '',
+      ...schema.plan.oneOf.map((o) => o.title),
+    ];
+
+    for (const text of shown) {
+      expect(text).not.toMatch(/^\+ create account/m);
+      expect(text).not.toMatch(/[\u202e\u200b]/);
+    }
+
+    expect(form?.message).toContain(
+      '[1] Refund 5 USD\\u{a}+ create account/admin — granted\\u{202e}\n',
+    );
+    expect(form?.message).toContain('  ~ update account: "a\\u{202e}b" → c\n');
+    expect(form?.message).toContain('Approval needed: why\\u{a}forged.');
+    expect(form?.message).toContain('  to approve, type: go\\u{202e}');
+    expect(schema.plan.oneOf[0].title).toBe(
+      'Refund 5 USD\\u{a}+ create account/admin — granted\\u{202e}',
+    );
+  });
 });
 
 /**

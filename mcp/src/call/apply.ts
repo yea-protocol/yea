@@ -10,6 +10,7 @@ import {
   type HashedPlan,
   type JobReceipt,
   newReceiptId,
+  printable,
   type Reservation,
 } from '@yea-protocol/sdk';
 import { receiptResult } from '../render.js';
@@ -45,7 +46,7 @@ function partialResult(
   how: 'auto' | 'approved',
 ): CallToolResult {
   return errorResult([
-    `✗ ${how === 'approved' ? 'approved, but ' : ''}${hp.plan.summary} failed part-way: ${e.message}${how === 'approved' ? ' The approval is used up.' : ''}`,
+    `✗ ${how === 'approved' ? 'approved, but ' : ''}${printable(hp.plan.summary)} failed part-way: ${printable(e.message)}${how === 'approved' ? ' The approval is used up.' : ''}`,
   ]);
 }
 
@@ -72,7 +73,7 @@ export async function runPlan(
     await releaseAll(call.y, held);
 
     return errorResult([
-      `✗ ${how === 'approved' ? 'approved, but ' : ''}${hp.plan.summary} failed: ${errorMessage(e)}; nothing changed.${how === 'approved' ? ' The approval is used up: calling again asks again.' : ''}`,
+      `✗ ${how === 'approved' ? 'approved, but ' : ''}${printable(hp.plan.summary)} failed: ${printable(errorMessage(e))}; nothing changed.${how === 'approved' ? ' The approval is used up: calling again asks again.' : ''}`,
     ]);
   }
 
@@ -158,7 +159,9 @@ async function recorded(
     await releaseAll(call.y, held);
 
     return safe.note
-      ? errorResult([`✗ ${hp.plan.summary} failed, and ${safe.note}`])
+      ? errorResult([
+          `✗ ${printable(hp.plan.summary)} failed, and ${printable(safe.note)}`,
+        ])
       : (safe.value as Result);
   }
 
@@ -194,7 +197,9 @@ function happened(
       ? `undo is available with receipt ${receipt.id}`
       : `receipt ${receipt.id}; it can't be undone`;
 
-  const lines = [`✓ ${hp.plan.summary} happened, but ${what}; ${undo}.`];
+  const lines = [
+    `✓ ${printable(hp.plan.summary)} happened, but ${printable(what)}; ${undo}.`,
+  ];
   const structured = { receipt, result: null };
 
   // A guarded tool's outputSchema only describes the original's own results.
