@@ -141,6 +141,28 @@ describe.each<Kind>(['2026', '2025'])('undo on a %s client', (kind) => {
   });
 });
 
+it('a revert that fails part-way says so, never "nothing was undone"', async () => {
+  const { PartialApplyError } = await import('../src/index.js');
+  const w = await world();
+
+  await grantPolicy(w);
+
+  const conn = await connect(
+    '2026',
+    refundServer(w, {
+      revert: () => {
+        throw new PartialApplyError('no answer; check the dashboard');
+      },
+    }),
+  );
+  const id = await refunded(conn);
+  const r = await conn.call({ receipt: id }, 'undo');
+
+  expect(textOf(r)).toBe(
+    '✗ undo failed part-way: no answer; check the dashboard',
+  );
+});
+
 it('an irreversible job has no undo, and its receipt says so', async () => {
   const w = await world();
   const conn = await connect('2025', refundServer(w, { revert: undefined }));

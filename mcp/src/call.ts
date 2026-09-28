@@ -453,7 +453,7 @@ const failedResult = (job: JobDef, result: unknown) =>
  * An `apply()` that failed after changing something throws an error with `partial: true`
  * (`PartialApplyError`). Checked structurally, so a second copy of this package still counts.
  */
-const isPartial = (e: unknown): e is Error =>
+export const isPartial = (e: unknown): e is Error =>
   e instanceof Error && (e as { partial?: unknown }).partial === true;
 
 /**

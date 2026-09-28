@@ -31,6 +31,7 @@ import {
 import { FileStore } from '@yea-protocol/sdk/node';
 import {
   callerOf,
+  isPartial,
   type JobDef,
   type RevertFn,
   runJob,
@@ -538,6 +539,11 @@ async function undoCall(
         }
       : errorResult([`✗ ${out.why}; nothing was undone`]);
   } catch (e) {
+    // A revert that may have half-happened says so, never "nothing was undone".
+    if (isPartial(e)) {
+      return errorResult([`✗ undo failed part-way: ${e.message}`]);
+    }
+
     return errorResult([
       `✗ undo failed: ${e instanceof Error ? e.message : String(e)}; nothing was undone, and it can be tried again`,
     ]);

@@ -195,6 +195,8 @@ job's `revert`:
 - A receipt from another server sharing the store, or for a tool with no `revert` here, is
   "no such receipt".
 - It returns the undo receipt, or the refusal (SPEC-approval §7).
+- A `revert` that throws a `PartialApplyError` is reported as failing part-way, with its
+  message, never as "nothing was undone".
 - Its annotations say `destructiveHint: true, idempotentHint: true`.
 
 ## How a call runs
