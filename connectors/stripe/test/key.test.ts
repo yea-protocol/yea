@@ -94,21 +94,29 @@ describe('STRIPE_SECRET_KEY', () => {
 
 describe('the command line', () => {
   it('is stdio by default; --http takes a port, --host an address', () => {
-    expect(parseArgs([])).toEqual({ http: null, host: '127.0.0.1' });
-    expect(parseArgs(['--http', '8787'])).toEqual({
+    expect(parseArgs([])).toEqual({
+      http: null,
+      host: '127.0.0.1',
+      serviceKey: false,
+    });
+    expect(parseArgs(['--http', '8787'])).toMatchObject({
       http: 8787,
       host: '127.0.0.1',
     });
-    expect(parseArgs(['--http', '8787', '--host', '0.0.0.0'])).toEqual({
+    expect(parseArgs(['--http', '8787', '--host', '0.0.0.0'])).toMatchObject({
       http: 8787,
       host: '0.0.0.0',
     });
+    expect(parseArgs(['--service-key']).serviceKey).toBe(true);
   });
 
-  it.each([['--http'], ['--http', 'x'], ['--http', '70000'], ['--nope']])(
-    'refuses %j',
-    (...argv) => {
-      expect(() => parseArgs(argv)).toThrow(/usage: yea-stripe/);
-    },
-  );
+  it.each([
+    ['--http'],
+    ['--http', 'x'],
+    ['--http', '70000'],
+    ['--nope'],
+    ['--host'],
+  ])('refuses %j', (...argv) => {
+    expect(() => parseArgs(argv)).toThrow(/usage: yea-stripe/);
+  });
 });

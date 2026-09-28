@@ -21,6 +21,14 @@ async function main(argv: string[]) {
   }
 
   const args = parseArgs(argv);
+
+  if (args.serviceKey) {
+    // What `yea grant --to` needs; no Stripe key required.
+    console.log(await yea({ name: NAME, transport: 'stdio' }).serviceId());
+
+    return;
+  }
+
   const key = readSecretKey();
   const mode = isLiveKey(key) ? 'LIVE' : 'test';
 
@@ -28,7 +36,9 @@ async function main(argv: string[]) {
     const approvals = yea({ name: NAME, transport: 'stdio' });
 
     serveStdio(stripeServer({ key, approvals }));
-    console.error(`${NAME}: ${mode} mode, on stdio`);
+    console.error(
+      `${NAME}: ${mode} mode, on stdio; service key ${await approvals.serviceId()}`,
+    );
 
     return;
   }
@@ -48,7 +58,9 @@ async function main(argv: string[]) {
   });
 
   await serveHttp(app, { port: args.http, host: args.host });
-  console.error(`${NAME}: ${mode} mode, on http://${args.host}:${args.http}/`);
+  console.error(
+    `${NAME}: ${mode} mode, on http://${args.host}:${args.http}/; service key ${await approvals.serviceId()}`,
+  );
 }
 
 main(process.argv.slice(2)).catch((e: unknown) => {
