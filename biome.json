@@ -49,6 +49,9 @@
         },
         "useMaxParams": "error"
       },
+      "performance": {
+        "noReExportAll": "error"
+      },
       "style": {
         "noDefaultExport": "error",
         "noNonNullAssertion": "error",
@@ -79,6 +82,20 @@
           "correctness": {
             "noUnusedImports": "off",
             "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "ts/src/index.ts",
+        "mcp/src/index.ts",
+        "connectors/*/src/index.ts"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noReExportAll": "off"
           }
         }
       }

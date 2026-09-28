@@ -1,4 +1,9 @@
 /**
+ * Canonical JSON (SPEC §10), the byte form of everything YEA hashes or signs,
+ * and the code-point string order and quoting it is built on.
+ */
+
+/**
  * Canonical JSON (SPEC §10): sorted keys, no whitespace, integers only.
  * Used for everything that is hashed or signed.
  */

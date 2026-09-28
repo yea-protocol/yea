@@ -1,7 +1,10 @@
-// YEA vs. a typical REST-wrapper MCP server: the same tasks, over the same data.
-// Measures what the model has to read, with a real BPE tokenizer (o200k_base).
-// Both sides return the same information; only the protocol differs.
-// Deterministic: ids, keys and handles come from a seeded PRNG, so every run prints the same numbers.
+/**
+ * YEA vs. a typical REST-wrapper MCP server: the same tasks, over the same data.
+ * Measures what the model has to read, with a real BPE tokenizer (o200k_base).
+ * Both sides return the same information; only the protocol differs.
+ * Deterministic: ids, keys and handles come from a seeded PRNG, so every run prints the same numbers.
+ */
+
 let seed = 0x9e3779b9;
 
 globalThis.crypto.getRandomValues = (<T extends ArrayBufferView | null>(

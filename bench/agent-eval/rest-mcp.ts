@@ -1,7 +1,9 @@
-// Control arm: a conventional REST-style MCP server (one tool per endpoint, JSON results)
-// over the SAME example services the YEA arm uses. It holds an unrestricted grant, like an
-// API key: writes happen immediately, with no preview, policy check or undo.
-//   node rest-mcp.ts <calendar url> <shop url>     (reads YEA_HOME for the agent key + grant)
+/**
+ * Control arm: a conventional REST-style MCP server (one tool per endpoint, JSON results)
+ * over the SAME example services the YEA arm uses. It holds an unrestricted grant, like an
+ * API key: writes happen immediately, with no preview, policy check or undo.
+ *   node rest-mcp.ts <calendar url> <shop url>     (reads YEA_HOME for the agent key + grant)
+ */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect } from '@yea-protocol/sdk/node';

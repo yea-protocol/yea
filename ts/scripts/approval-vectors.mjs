@@ -1,5 +1,7 @@
-// Generates ../conformance/approval.json (docs/framework/SPEC-approval.md) from the reference.
-// Run by vectors.mjs. Every case asserts the outcome the spec requires before it's written.
+/**
+ * Generates ../conformance/approval.json (docs/framework/SPEC-approval.md) from the reference.
+ * Run by vectors.mjs. Every case asserts the outcome the spec requires before it's written.
+ */
 import {
   mkdtempSync,
   readdirSync,

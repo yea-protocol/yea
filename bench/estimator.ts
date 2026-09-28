@@ -1,5 +1,7 @@
-// Reproduces the token-estimator comparison in docs/design.md: how well each candidate
-// `est()` tracks a real BPE tokenizer (o200k) on the text YEA actually sends.
+/**
+ * Reproduces the token-estimator comparison in docs/design.md: how well each candidate
+ * `est()` tracks a real BPE tokenizer (o200k) on the text YEA actually sends.
+ */
 
 import { readFileSync } from 'node:fs';
 import { Client, est, lean, local } from '@yea-protocol/sdk';

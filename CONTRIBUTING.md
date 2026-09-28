@@ -90,9 +90,10 @@ This section covers files and folders; [Code style](#code-style) covers what goe
 **Every file opens the same way.**
 
 - TypeScript, JavaScript and Vue: a `/** … */` header before the imports, saying what the file
-  holds (and its spec section, when there is one). In a Vue component it may open the
-  `<script setup>` block.
-- Python: a module docstring.
+  holds (and its spec section, when there is one). In a Vue component it opens the `<script>`
+  block. Follow the header with the imports or a blank line: a comment directly above a
+  declaration is that declaration's JSDoc, not a file header.
+- Python: a module docstring as the first statement (only `#` comment lines may come before it).
 - Then imports, then types, then constants, then code.
 
 **Names.**
@@ -108,6 +109,8 @@ This section covers files and folders; [Code style](#code-style) covers what goe
 - The entry file holds the top-level flow (orchestration, dispatch or the public class) or only
   re-exports; the parts it uses live in the same-named folder. Code in the folder never imports
   its entry file.
+- In Python the entry is the package's `__init__.py`, which wires the parts and re-exports; the
+  parts are sibling modules in the package.
 - A package's public API is only what its `index` re-exports. Modules may export to their
   siblings freely.
 
@@ -123,24 +126,31 @@ index.
 
 **Repeatable shapes.** Files of the same kind look the same:
 
-- a Stripe job module: its input schema, `plan()`, `apply()`, `revert()`, in that order;
+- a Stripe job module (`jobs/<job>.ts`): its input schema; its plan builders, each `X` paired
+  with an `applyX`; `plan()`; `revert()`; then the `xJob` factory. Its helpers live in
+  `jobs/<job>/`;
+- a service verb: one that needs collaborators or private helpers is a `<Verb>Handler` class
+  holding a `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`;
 - a CLI command module: one exported `cmdX` per command, sharing `cli/shared.ts`;
 - a bridge tool module: the spec, then the handler.
 
 **Tests** are named after the module they cover (`test/refund.test.ts` for
-`src/jobs/refund.ts`). Security regressions stay in `security.test.ts`. Tests and benchmarks
-are exempt from the length rules.
+`src/jobs/refund.ts`). Security regressions stay in `security.test.ts`.
 
-**Exempt:** the `examples/` walkthroughs the docs embed whole, generated files, and the
-`conformance/` vectors.
+**Exempt.** Tests, benchmarks (`bench/`) and the conformance vector generators
+(`ts/scripts/vectors.mjs`, `ts/scripts/approval-vectors.mjs`, which are mostly data) are exempt
+from the length rules but still need a header and a good name. The `examples/` walkthroughs the
+docs embed whole, generated files and the `conformance/` vectors are exempt from all of them.
 
 ### How it's checked
 
-`npm run lint:structure` (`scripts/check-structure.mjs`, run in CI) checks every source file
-for the header, the 300-line limit and the name's case. Biome's `noDefaultExport` rule covers
-default exports, with overrides for the files a framework needs them in.
+`npm run lint:structure` (`scripts/check-structure.mjs`, run in CI and before each commit)
+checks every source file for the header, the 300-line limit and the name: its case, plus a list
+of known run-together names (`servefetch`, `keyfile`, …). Biome covers exports:
+`noDefaultExport`, with overrides for the files a framework needs one in, and `noReExportAll`,
+off only for package index files.
 
 Files that broke a rule when the check landed are listed in the script's `RATCHET`, each with
 the issue that fixes it. The list only shrinks: the check fails when an unlisted file breaks a
-rule, and when a listed file is fixed but still listed. Fixing one means removing its entry in
+rule, and when a listed violation no longer occurs (fixed, renamed or deleted). Fixing one means removing its entry in
 the same PR.

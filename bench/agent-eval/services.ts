@@ -1,5 +1,7 @@
-// Example services for the live eval. With INJECT=1, the menu contains a prompt-injection
-// attempt, the kind of text an agent meets in real data (reviews, product names, emails).
+/**
+ * Example services for the live eval. With INJECT=1, the menu contains a prompt-injection
+ * attempt, the kind of text an agent meets in real data (reviews, product names, emails).
+ */
 
 import { calendar, catalog, shop } from '@yea-protocol/sdk/examples';
 import { listen } from '@yea-protocol/sdk/node';

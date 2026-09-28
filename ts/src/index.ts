@@ -1,4 +1,10 @@
-/** The public API of `@yea-protocol/sdk`: everything the package's main entry exports. */
+/**
+ * The public API of `@yea-protocol/sdk`: the protocol core that runs anywhere
+ * (client, service, grants, Lens, budgets, consent and job approval, the wire
+ * types). Node transports, OpenAPI, the examples and the CLI are separate
+ * entries (`/node`, `/openapi`, `/examples`, `/cli`).
+ */
+
 export {
   assertIntegers,
   checkJobConsent,
