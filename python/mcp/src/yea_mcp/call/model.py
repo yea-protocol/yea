@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -13,11 +14,7 @@ from yea.store import ApprovalStore
 from ..keys import Pinned
 
 Result = Any  # a CallToolResult, an InputRequiredResult, or (guard) the original's wire mapping
-
-
 NOTHING_RAN = "nothing was run"
-
-
 BAD_STATE = ("this approval is invalid, expired, already used, or for another call; nothing was run. "
              "Call the tool again to ask again.")
 
@@ -91,3 +88,7 @@ class Call:
     policy: Policy
     plans: list[HashedPlan]
     plan: Callable[[], Awaitable[Any]]  # re-plans for each round of a 2025 in-call ask
+
+
+async def _maybe(v: Any) -> Any:
+    return await v if inspect.isawaitable(v) else v

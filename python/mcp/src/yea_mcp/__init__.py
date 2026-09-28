@@ -22,8 +22,7 @@ from yea.approval import STATE_TTL, HashedPlan, undo_receipt
 from yea.store import ApprovalStore, FileStore, MemoryStore, default_store_dir, is_receipt_id
 from yea.text import printable
 
-from .call import JobDef, Req, Yea, caller_of, is_memory_store, run_job
-from .call.prepare import _maybe
+from .call import JobDef, Req, Yea, _maybe, caller_of, is_memory_store, run_job
 from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
 from .keys import check_name, default_key_path, load_server_key, pinned_principal, warn_once
 from .render import error_result

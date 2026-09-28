@@ -1,5 +1,5 @@
 """The routine: ``run_job`` takes a call through the steps in order, and routes it to run, ask, judge an
-answer, or fail closed (steps 1-10)."""
+answer, or fail closed (steps 1–10; ``run.py`` does step 11)."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from ..ask import (
 )
 from ..render import clarify_result, consent_result, error_result, preview_result
 from .model import BAD_STATE, NOTHING_RAN, Call, JobDef, Req, Result, Yea
-from .prepare import _phrase_for, caller_of, hash_plans, is_memory_store, policy_for
+from .prepare import caller_of, hash_plans, is_memory_store, policy_for
 from .run import _run_plan
 
 
@@ -146,3 +146,12 @@ async def _answer(call: Call, raw: Any, answer: dict) -> Result:
     if v.kind == "not-approved":
         return error_result([f"✗ not approved; {NOTHING_RAN}"])
     return error_result([f"✗ {v.why}; {NOTHING_RAN}"])
+
+
+def _phrase_for(call: Call) -> Callable[[HashedPlan], str]:
+    def phrase(hp: HashedPlan) -> str:
+        p = call.job.confirm_with(hp, call.input) if call.job.confirm_with else ""
+        if not isinstance(p, str):
+            raise TypeError("confirm_with() must return a string")
+        return p
+    return phrase

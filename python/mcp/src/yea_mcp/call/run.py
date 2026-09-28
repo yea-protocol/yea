@@ -12,8 +12,7 @@ from yea.text import printable
 from yea.uses import check_uses
 
 from ..render import error_result, receipt_result
-from .model import Call, Result
-from .prepare import _maybe
+from .model import Call, Result, _maybe
 
 
 async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: str) -> Result:

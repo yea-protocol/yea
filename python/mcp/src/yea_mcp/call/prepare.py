@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
-from collections.abc import Callable
 from typing import Any
 
 from yea import Plan
@@ -11,17 +9,13 @@ from yea.approval import HashedPlan, Policy, Tightening, load_policy, plan_hash
 from yea.risk import resolve_risk
 
 from ..keys import has_total, read_policy, read_tightening_for
-from .model import Call, JobDef, Yea
+from .model import JobDef, Yea
 
 
 def is_memory_store(store: Any) -> bool:
     """By name along the class's ancestry, not by class: two copies of the SDK core mean two
     MemoryStore classes, and a subclass (a counting store in tests, say) is still one."""
     return any(c.__name__ == "MemoryStore" and c.__module__.startswith("yea") for c in type(store).__mro__)
-
-
-async def _maybe(v: Any) -> Any:
-    return await v if inspect.isawaitable(v) else v
 
 
 def caller_of(y: Yea, rctx: Any) -> str:
@@ -61,12 +55,3 @@ def described_risk(d: dict) -> Any:
     if "risk" in d and d["risk"] is None:
         raise ValueError("plan has an unknown risk: None")
     return d.get("risk")
-
-
-def _phrase_for(call: Call) -> Callable[[HashedPlan], str]:
-    def phrase(hp: HashedPlan) -> str:
-        p = call.job.confirm_with(hp, call.input) if call.job.confirm_with else ""
-        if not isinstance(p, str):
-            raise TypeError("confirm_with() must return a string")
-        return p
-    return phrase

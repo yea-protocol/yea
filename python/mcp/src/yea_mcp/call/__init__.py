@@ -14,6 +14,7 @@ from .model import (
     Req,
     Result,
     Yea,
+    _maybe,  # noqa: F401 — yea_mcp uses it for the undo tool
     wire_failed,
     wire_with_note,
     wire_with_receipt,
