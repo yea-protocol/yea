@@ -332,13 +332,13 @@ async def test_an_unprintable_phrase_is_refused_before_anyone_is_asked(world):
     async def refund(charge: str) -> list[Plan]:
         return [Plan(f"Refund {charge}", [create("refund")], apply=lambda: done.append(charge))]
 
-    evil = {"charge": "ch_1‮"}
+    evil = {"charge": "ch_1\u202e"}
     for mode, person in (("auto", Person()), ("legacy", Person()), ("auto", None)):  # form 2026, form 2025, codes
         async with world.client(mode, person) as c:
             r = await c.call_tool("refund", evil)
         assert r.is_error, mode
         assert ('the phrase from confirm_with() has unprintable characters, so no one could type it: "ch_1\\u{202e}"'
                 in text(r))
-        assert "‮" not in text(r) and r.structured_content is None
+        assert "\u202e" not in text(r) and "pc1." not in text(r) and r.structured_content is None
         assert person is None or person.seen == []
     assert done == []
