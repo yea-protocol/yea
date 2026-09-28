@@ -1577,6 +1577,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         const cli = spawnSync(process.execPath, [CLI, 'approve', code], {
           env: { ...process.env, YEA_HOME: home, YEA_PRINCIPAL_HOME: '' },
           encoding: 'utf8',
+          timeout: 15_000,
         });
 
         expect(cli.status).toBe(1);

@@ -49,7 +49,7 @@ import {
   listServices,
   removeService,
 } from './setup.js';
-import { printable } from './text.js';
+import { jsonPrintable, printable } from './text.js';
 import type { ConsentRequest, Proposal, Reply, Verb } from './types.js';
 import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
 import { unixNow } from './util.js';
@@ -236,28 +236,11 @@ async function client(url: string): Promise<Client> {
 /** Print a service's reply (`yea do`, and every command that shows one) as `untrustedLens`. */
 const say = (r: Reply) => console.log(untrustedLens(r));
 
-/**
- * What `JSON.stringify` leaves raw (it escapes only C0): DEL and C1, soft hyphen, U+034F, the
- * Arabic letter mark, zero-width and bidi marks, line and paragraph separators, bidi overrides
- * and isolates, invisible operators, BOM, and tag characters and variation selectors 17–256
- * (U+E0000–E03FF, as surrogate pairs). Each code unit shows as `\uXXXX`, so it's still JSON.
- */
-const JSON_UNSAFE =
-  /[\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]|\u034f|\udb40[\udc00-\udfff]/g;
-
-const escapeJson = (json: string) =>
-  json.replace(JSON_UNSAFE, (c) =>
-    Array.from(
-      { length: c.length },
-      (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`,
-    ).join(''),
-  );
-
 /** A service's reply as `--json` (without its `lens`, invisible characters escaped), or as escaped Lens. */
 const show = (r: Reply) =>
   o.json
     ? console.log(
-        escapeJson(JSON.stringify({ ...r, lens: undefined }, null, 2)),
+        jsonPrintable(JSON.stringify({ ...r, lens: undefined }, null, 2)),
       )
     : say(r);
 
