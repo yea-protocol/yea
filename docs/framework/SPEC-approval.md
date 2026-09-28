@@ -489,8 +489,9 @@ export function decide(
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - a `deny`ed tool never runs, even with approval;
   - deleting the unsigned policy file returns to the defaults, never to something looser;
-  - undo refuses outside its window, for another principal, a second time, and for an id
-    that isn't in the generated format (`../x`);
+  - undo refuses outside its window, for another principal, a second time, for an id that
+    isn't in the generated format (`../x`), and for a receipt from another server;
+  - a plan with a malformed `uses` never gets a plan hash;
   - a principal key file writable by the server's user, or in a directory it can write, is
     refused;
   - a partly failed reservation releases the reservations already made;

@@ -198,7 +198,7 @@ describe('conformance vectors', () => {
 
       const call = () =>
         P.undoJob(s, {
-          service: 'S',
+          service: v.undo.service,
           id: c.id,
           sub: c.sub,
           now: c.now,

@@ -13,7 +13,7 @@ import type {
   Reservation,
 } from './store.js';
 import type { Effect, Risk } from './types.js';
-import { exact, isLimit, type Uses } from './uses.js';
+import { exact, isLimit, isUses, type Uses } from './uses.js';
 
 /** What a job tool's handler returns for each way it could do the job (SPEC-approval §1). */
 export interface JobPlan {
@@ -133,6 +133,12 @@ export function planPreimage(
   risk: Risk,
 ): Record<string, unknown> {
   assertIntegers(input);
+
+  if (plan.uses !== undefined && !isUses(plan.uses)) {
+    throw new TypeError(
+      `plan has a malformed uses: ${JSON.stringify(plan.uses)}`,
+    );
+  }
 
   return {
     tool,
