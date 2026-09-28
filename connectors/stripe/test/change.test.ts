@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { Stripe } from '../src/api.js';
 import { changeJob, cheaperOrSame } from '../src/change.js';
 import { parseForm, price } from './fake-stripe.js';
-import { D, NOW, plansOf, setup } from './helpers.js';
+import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
 
 const toBasic = { customer: 'Chen', price: 'price_basic' };
 const today = NOW - 10 * 3600;
@@ -97,6 +98,7 @@ describe('change_plan plans', () => {
       proration_date: String(today),
       payment_behavior: 'pending_if_incomplete',
     });
+    expectOwnFreshKeys(s.stripe);
     expect(s.stripe.state.prorations).toEqual([
       { subscription: 'sub_chen', at: today, total: 2403 },
     ]);
@@ -110,9 +112,14 @@ describe('change_plan plans', () => {
     const [, now] = await plansOf(changeJob(s.ctx), toBasic);
 
     expect(now.effects[0].detail).toBe('prorated from 2026-09-27');
-    expect(
-      s.stripe.calls.find((c) => c.path.includes('create_preview'))?.body,
-    ).toContain(`proration_date%5D=${NOW - 3600}`);
+
+    const preview = s.stripe.calls.find((c) =>
+      c.path.includes('create_preview'),
+    );
+
+    expect(parseForm(preview?.body ?? '')).toMatchObject({
+      subscription_details: { proration_date: String(NOW - 3600) },
+    });
   });
 
   it('at renewal is two writes: a schedule from the subscription, then its phases', async () => {
@@ -166,6 +173,7 @@ describe('change_plan plans', () => {
     );
     expect(s.stripe.subs[0].schedule).toBeNull();
     expect(s.stripe.subs[0].items.data[0].price.id).toBe('price_pro');
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('a failed second write releases the schedule, and says nothing changed', async () => {
@@ -192,6 +200,7 @@ describe('change_plan plans', () => {
       '/v1/subscription_schedules/sub_sched_1/release',
     );
     expect(s.stripe.subs[0].schedule).toBeNull();
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('a second write with no answer is released too', async () => {
@@ -494,12 +503,15 @@ describe('change_plan, what the customer pays and what can be copied', () => {
 });
 
 describe('cheaper or same', () => {
+  // The fake's prices carry only the fields the connector reads.
+  const compare = (a: object, b: object) =>
+    cheaperOrSame(a as Stripe.Price, b as Stripe.Price);
   const base = price('price_a', 1000);
 
   it('is flat per-unit prices in the same currency and interval, no dearer', () => {
-    expect(cheaperOrSame(base, price('price_b', 1000))).toBe(true);
-    expect(cheaperOrSame(base, price('price_b', 999))).toBe(true);
-    expect(cheaperOrSame(base, price('price_b', 1001))).toBe(false);
+    expect(compare(base, price('price_b', 1000))).toBe(true);
+    expect(compare(base, price('price_b', 999))).toBe(true);
+    expect(compare(base, price('price_b', 1001))).toBe(false);
   });
 
   it('anything not comparable counts as dearer', () => {
@@ -511,11 +523,11 @@ describe('cheaper or same', () => {
       price('price_b', 500, { transform_quantity: { divide_by: 10 } }),
       price('price_b', 500, { billing_scheme: undefined }),
     ]) {
-      expect(cheaperOrSame(base, b)).toBe(false);
+      expect(compare(base, b)).toBe(false);
     }
 
     expect(
-      cheaperOrSame(price('price_a', null, { billing_scheme: 'tiered' }), base),
+      compare(price('price_a', null, { billing_scheme: 'tiered' }), base),
     ).toBe(false);
   });
 });

@@ -5,13 +5,7 @@
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
 import { create, type JobPlan, type Risk, update } from '@yea-protocol/sdk';
-import {
-  type Customer,
-  type Price,
-  period,
-  type Subscription,
-  type SubscriptionItem,
-} from './api.js';
+import { idOf, period, type Stripe } from './api.js';
 import {
   applying,
   type Ctx,
@@ -68,17 +62,17 @@ const SCHEMA = {
 const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
 
 interface Change {
-  c: Customer;
-  sub: Subscription;
-  item: SubscriptionItem;
-  to: Price;
+  c: Stripe.Customer;
+  sub: Stripe.Subscription;
+  item: Stripe.SubscriptionItem;
+  to: Stripe.Price;
   quantity: number;
 }
 
 /** The price asked for: by id, or by lookup key among active prices. */
-async function findPrice(ctx: Ctx, ref: string): Promise<Price> {
+async function findPrice(ctx: Ctx, ref: string): Promise<Stripe.Price> {
   if (/^price_[A-Za-z0-9_]+$/.test(ref)) {
-    const price = await ctx.stripe.get<Price>(`/prices/${ref}`);
+    const price = await ctx.stripe.read((s) => s.prices.retrieve(ref));
 
     if (price.active !== true) {
       throw new Error(`${ref} isn't an active price`);
@@ -87,10 +81,9 @@ async function findPrice(ctx: Ctx, ref: string): Promise<Price> {
     return price;
   }
 
-  const found = await ctx.stripe.get<{ data: Price[] }>('/prices', {
-    'lookup_keys[0]': ref,
-    active: 'true',
-  });
+  const found = await ctx.stripe.read((s) =>
+    s.prices.list({ lookup_keys: [ref], active: true }),
+  );
   const [price, ...more] = found.data;
 
   if (!price || more.length) {
@@ -107,7 +100,7 @@ async function findPrice(ctx: Ctx, ref: string): Promise<Price> {
  * currency, or another billing interval (Stripe then resets the billing date and charges at
  * once, whatever the proration setting).
  */
-function refuseUnsafe(from: Price, to: Price) {
+function refuseUnsafe(from: Stripe.Price, to: Stripe.Price) {
   if (from.id === to.id) {
     throw new Error(`the subscription is already on ${priceLabel(to)}`);
   }
@@ -122,7 +115,7 @@ function refuseUnsafe(from: Price, to: Price) {
     );
   }
 
-  const every = (p: Price) =>
+  const every = (p: Stripe.Price) =>
     `${p.recurring?.interval_count ?? 1} ${p.recurring?.interval ?? '?'}`;
 
   if (every(from) !== every(to)) {
@@ -133,18 +126,18 @@ function refuseUnsafe(from: Price, to: Price) {
 }
 
 /** Flat per-unit pricing: the only kind whose prices can be compared. */
-const flat = (p: Price) =>
+const flat = (p: Stripe.Price) =>
   p.billing_scheme === 'per_unit' &&
   p.recurring?.usage_type === 'licensed' &&
   typeof p.unit_amount === 'number' &&
-  (p.transform_quantity ?? null) === null;
+  p.transform_quantity === null;
 
 /**
  * Cheaper or the same: both flat per-unit, in the same currency and interval, with the same
  * quantity, and the new unit amount no higher. Anything else can't be compared, so counts as
  * dearer.
  */
-export function cheaperOrSame(from: Price, to: Price): boolean {
+export function cheaperOrSame(from: Stripe.Price, to: Stripe.Price): boolean {
   return (
     flat(from) &&
     flat(to) &&
@@ -157,7 +150,7 @@ export function cheaperOrSame(from: Price, to: Price): boolean {
 }
 
 const discounted = (ch: Change) =>
-  (ch.sub.discounts?.length ?? 0) > 0 || (ch.item.discounts?.length ?? 0) > 0;
+  ch.sub.discounts.length > 0 || ch.item.discounts.length > 0;
 
 const moving = (ctx: Ctx, ch: Change) =>
   `${tag(ctx)} Move ${who(ch.c)}'s subscription (${ch.sub.id}) from ${priceLabel(ch.item.price)} to ${priceLabel(ch.to)}`;
@@ -190,13 +183,11 @@ function atRenewal(ctx: Ctx, ch: Change): JobPlan {
   };
 }
 
-interface Preview {
-  /** The proration's net: positive is a charge, negative a credit. */
-  total: number;
-  /** What's charged after the customer's credit balance. */
-  amount_due: number;
-  currency: string;
-}
+/**
+ * What "now" is previewed as: `total` is the proration's net (positive is a charge, negative a
+ * credit), and `amount_due` what's charged after the customer's credit balance.
+ */
+type Preview = Pick<Stripe.Invoice, 'total' | 'amount_due' | 'currency'>;
 
 /** A prorated charge: what's due after the customer's balance, which is what's charged. */
 function charge(p: Preview, from: string) {
@@ -241,16 +232,15 @@ function proration(p: Preview, from: string) {
 async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
   const date = Math.max(startOfDay(ctx.now()), period(ch.sub).start);
   const items = [{ id: ch.item.id, price: ch.to.id, quantity: ch.quantity }];
-  const preview = await ctx.stripe.preview<Preview>(
-    '/invoices/create_preview',
-    {
+  const preview = await ctx.stripe.read((s) =>
+    s.invoices.createPreview({
       subscription: ch.sub.id,
       subscription_details: {
         items,
         proration_behavior: 'always_invoice',
         proration_date: date,
       },
-    },
+    }),
   );
   const p = proration(preview, priceName(ch.item.price));
 
@@ -272,19 +262,21 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
     apply: () =>
       applying(async () => {
         // A declined payment leaves the update pending, not the new price on an unpaid invoice.
-        const sub = await ctx.stripe.write<{ pending_update?: unknown }>(
-          'POST',
-          `/subscriptions/${ch.sub.id}`,
-          {
-            items,
-            proration_behavior: 'always_invoice',
-            proration_date: date,
-            payment_behavior: 'pending_if_incomplete',
-          },
+        const sub = await ctx.stripe.write((s, o) =>
+          s.subscriptions.update(
+            ch.sub.id,
+            {
+              items,
+              proration_behavior: 'always_invoice',
+              proration_date: date,
+              payment_behavior: 'pending_if_incomplete',
+            },
+            o,
+          ),
         );
 
         // Not a success: the invoice exists, but the change waits on its payment.
-        if ((sub.pending_update ?? null) !== null) {
+        if (sub.pending_update !== null) {
           throw new PartialApplyError(
             `Stripe invoiced the change, but the payment didn't go through, so the change is pending, not made. If the invoice isn't paid within about 23 hours, Stripe discards the change and ${ch.sub.id} stays on ${priceName(ch.item.price)}.`,
           );
@@ -301,8 +293,7 @@ async function nowProrated(ctx: Ctx, ch: Change): Promise<JobPlan> {
  * would undo it.
  */
 async function whatFits(ctx: Ctx, ch: Change) {
-  const ends =
-    ch.sub.cancel_at_period_end || (ch.sub.cancel_at ?? null) !== null;
+  const ends = ch.sub.cancel_at_period_end || ch.sub.cancel_at !== null;
 
   if (!ch.sub.schedule) {
     return {
@@ -311,7 +302,7 @@ async function whatFits(ctx: Ctx, ch: Change) {
     };
   }
 
-  const s = await getSchedule(ctx, ch.sub.schedule);
+  const s = await getSchedule(ctx, idOf(ch.sub.schedule));
 
   if (!onlyCurrentPhase(s, period(ch.sub).end)) {
     throw new Error(
@@ -326,16 +317,15 @@ async function whatFits(ctx: Ctx, ch: Change) {
  * A change already waiting on payment refuses both plans: another "now" would make a second
  * update and a second invoice, and "at renewal" would race the one pending.
  */
-function refusePending(sub: Subscription) {
-  const pending = sub.pending_update ?? null;
+function refusePending(sub: Stripe.Subscription) {
+  const pending = sub.pending_update;
 
   if (pending === null) {
     return;
   }
 
-  const inv = sub.latest_invoice ?? null;
   const invoice =
-    inv === null ? 'its open invoice' : typeof inv === 'string' ? inv : inv.id;
+    sub.latest_invoice === null ? 'its open invoice' : idOf(sub.latest_invoice);
   const until = pending.expires_at
     ? `, by ${new Date(pending.expires_at * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`
     : '';

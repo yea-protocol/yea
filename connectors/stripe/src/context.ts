@@ -9,12 +9,12 @@ import type {
   JobPlan,
   Risk,
 } from '@yea-protocol/sdk';
-import { type Stripe, StripeError } from './api.js';
+import { type StripeApi, StripeError } from './api.js';
 
 export const DAY = 86_400;
 
 export interface Ctx {
-  stripe: Stripe;
+  stripe: StripeApi;
   /** Any key without `_test_` is live. */
   live: boolean;
   /** Now, in Unix seconds. */

@@ -1,38 +1,26 @@
 /**
- * The Stripe REST API, as this connector uses it: one client that pins the API version, sends
- * a fresh idempotency key with each write, retries its own network failures, and turns Stripe's
- * errors into a `StripeError` that says what to do. Plus the readers (customers, charges,
- * subscriptions) that `examples/stripe-billing.ts` shares. No dependencies, so the example can
- * import it without the MCP server.
+ * Stripe, as this connector calls it: the official SDK, pinned to one API version, with what the
+ * connector adds on top. Each write gets a fresh idempotency key, each failure becomes a
+ * `StripeError` that says what to do, and each answer is checked against the key's mode. Plus
+ * the readers (customers, charges, subscriptions) that `examples/stripe-billing.ts` shares.
  */
+import { randomUUID } from 'node:crypto';
+import Stripe from 'stripe';
 
-export const API = 'https://api.stripe.com/v1';
+export type { Stripe };
 
-/** The version this connector is tested against. Periods live on subscription items since basil. */
-export const STRIPE_VERSION = '2026-08-26.dahlia';
-
-/** A form value: Stripe's `a[b][0][c]=…` encoding flattens nested objects and arrays. */
-export type FormValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | FormValue[]
-  | { [k: string]: FormValue };
+/**
+ * The version this connector is tested against, and the one stripe 22.6 pins. Typed as the
+ * SDK's latest, so an SDK that moves to another version fails the build rather than changing
+ * what's sent. Periods live on subscription items since basil.
+ */
+export const STRIPE_VERSION: Stripe.LatestApiVersion = '2026-08-26.dahlia';
 
 export interface StripeOptions {
   /** A secret (`sk_…`) or restricted (`rk_…`) key. */
   key: string;
+  /** For tests: the `fetch` the SDK sends requests with. Default: the SDK's Node client. */
   fetch?: typeof fetch;
-  /** Tries per request, counting the first. Default 3. */
-  attempts?: number;
-  /** How long to wait between tries. Default: 500 ms, then 1 s. */
-  sleep?: (ms: number) => Promise<void>;
-  /** A new idempotency key. Default `crypto.randomUUID()`. */
-  newKey?: () => string;
-  /** Per-try timeout in ms. Default 30 000. */
-  timeoutMs?: number;
 }
 
 /** Why a Stripe request failed, in words an agent can act on. */
@@ -48,7 +36,7 @@ export class StripeError extends Error {
 
   constructor(
     message: string,
-    o: { status: number; code?: string; unknown?: boolean },
+    o: { status: number; code?: string | undefined; unknown?: boolean },
   ) {
     super(message);
     this.name = 'StripeError';
@@ -59,54 +47,18 @@ export class StripeError extends Error {
   }
 }
 
-/** The client: reads, a POST that writes nothing, and writes. */
-export interface Stripe {
-  /** `GET path?query`. */
-  get<T>(path: string, query?: Record<string, string>): Promise<T>;
-  /** A POST that changes nothing, such as `/invoices/create_preview`: no idempotency key. */
-  preview<T>(path: string, form: Record<string, FormValue>): Promise<T>;
+/** The SDK, with each call's answer or failure settled the connector's way. */
+export interface StripeApi {
+  /** A call that changes nothing: a GET, or `invoices.createPreview`. */
+  read<T>(call: (s: Stripe) => Promise<T>): Promise<T>;
   /**
-   * A write, with a fresh random idempotency key that only this call's own retries reuse. A
-   * second call is a second write, never a replay of the first.
+   * A write. `o` carries a fresh random idempotency key, which the call passes to the SDK, and
+   * which only the SDK's own retries of that request reuse: a second call is a second write.
+   * Stripe ignores the key on a DELETE, so a DELETE also passes `maxNetworkRetries: 0`.
    */
   write<T>(
-    method: 'POST' | 'DELETE',
-    path: string,
-    form?: Record<string, FormValue>,
+    call: (s: Stripe, o: { idempotencyKey: string }) => Promise<T>,
   ): Promise<T>;
-}
-
-type Obj = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
-/** Stripe's form encoding: nested objects and arrays become `a[b][0]` keys; null and undefined are left out. */
-export function encodeForm(form: Record<string, FormValue>): string {
-  const out = new URLSearchParams();
-  const add = (key: string, v: FormValue) => {
-    if (v === null || v === undefined) {
-      return;
-    }
-
-    if (Array.isArray(v)) {
-      v.forEach((x, i) => {
-        add(`${key}[${i}]`, x);
-      });
-    } else if (typeof v === 'object') {
-      for (const [k, x] of Object.entries(v)) {
-        add(`${key}[${k}]`, x);
-      }
-    } else {
-      out.append(key, String(v));
-    }
-  };
-
-  for (const [k, v] of Object.entries(form)) {
-    add(k, v);
-  }
-
-  return out.toString();
 }
 
 /** Keys never appear in messages: Stripe masks them, and this makes sure. */
@@ -116,145 +68,9 @@ export const redactKeys = (s: string) =>
 /** A key is live unless it says it's a test key, so an unknown format fails toward caution. */
 export const isLiveKey = (key: string) => !key.includes('_test_');
 
-const defaultSleep = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-interface Attempt {
-  method: 'GET' | 'POST' | 'DELETE';
-  url: string;
-  body?: string;
-  idempotencyKey?: string;
-}
-
-/** What one try came back with: a response, or no response at all. */
-type Outcome =
-  | { kind: 'response'; status: number; json: unknown; retry: boolean }
-  | { kind: 'network'; message: string };
-
-/** Whether Stripe asks us to retry: 429, 5xx, or a key still in use, unless it says not to. */
-function retryable(res: Response, json: unknown): boolean {
-  const header = res.headers.get('stripe-should-retry');
-
-  if (header !== null) {
-    return header === 'true';
-  }
-
-  const code = isObject(json) && isObject(json.error) ? json.error.code : null;
-
-  return (
-    res.status === 429 ||
-    res.status >= 500 ||
-    (res.status === 409 && code === 'idempotency_key_in_use')
-  );
-}
-
-/** The message Stripe gave, else the status. */
-function stripeMessage(json: unknown, status: number): string {
-  const e = isObject(json) && isObject(json.error) ? json.error : {};
-
-  return typeof e.message === 'string' && e.message
-    ? e.message
-    : `Stripe returned HTTP ${status}`;
-}
-
-const stripeCode = (json: unknown): string | undefined => {
-  const e = isObject(json) && isObject(json.error) ? json.error : {};
-
-  return typeof e.code === 'string' ? e.code : undefined;
-};
-
-/** Stripe's error, said so an agent knows what to do next. */
-function teach(
-  status: number,
-  json: unknown,
-  o: { write: boolean; clean: (s: string) => string },
-): StripeError {
-  const said = o.clean(stripeMessage(json, status));
-  const write = o.write;
-  const code = stripeCode(json);
-
-  if (status === 403) {
-    return new StripeError(
-      `the Stripe key lacks a permission this needs (Stripe says: ${said}). Add that permission to the restricted key, then try again`,
-      { status, code },
-    );
-  }
-
-  if (status === 401) {
-    return new StripeError(
-      `Stripe rejected the key (${said}); check STRIPE_SECRET_KEY_FILE`,
-      { status, code },
-    );
-  }
-
-  if (status === 429) {
-    return new StripeError('Stripe is rate limiting; try again shortly', {
-      status,
-      code,
-    });
-  }
-
-  // A 5xx on a write may have been applied before it failed.
-  const unknown = write && status >= 500;
-
-  return new StripeError(
-    unknown
-      ? `Stripe failed (${said}), and the write may have happened; check the Stripe dashboard before trying again`
-      : `Stripe: ${said}`,
-    { status, code, unknown },
-  );
-}
-
-/** One try: a response, or a network failure (including a timeout). */
-async function tryOnce(
-  f: typeof fetch,
-  a: Attempt,
-  headers: Record<string, string>,
-  timeoutMs: number,
-): Promise<Outcome> {
-  try {
-    const res = await f(a.url, {
-      method: a.method,
-      headers: {
-        ...headers,
-        ...(a.body === undefined
-          ? {}
-          : { 'content-type': 'application/x-www-form-urlencoded' }),
-        ...(a.idempotencyKey ? { 'idempotency-key': a.idempotencyKey } : {}),
-      },
-      ...(a.body === undefined ? {} : { body: a.body }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const json: unknown = await res.json().catch(() => null);
-
-    return {
-      kind: 'response',
-      status: res.status,
-      json,
-      retry: !res.ok && retryable(res, json),
-    };
-  } catch (e) {
-    return {
-      kind: 'network',
-      message: e instanceof Error ? e.message : String(e),
-    };
-  }
-}
-
-/** Every object in a response that says which mode it's in. */
-function modesIn(json: unknown): boolean[] {
-  if (!isObject(json)) {
-    return [];
-  }
-
-  const items = Array.isArray(json.data) ? json.data : [json];
-
-  return items.flatMap((x) =>
-    isObject(x) && typeof x.livemode === 'boolean' ? [x.livemode] : [],
-  );
-}
+/** The id of a field Stripe may expand into an object. */
+export const idOf = (r: string | { id: string }) =>
+  typeof r === 'string' ? r : r.id;
 
 interface Settling {
   write: boolean;
@@ -264,12 +80,113 @@ interface Settling {
   clean(s: string): string;
 }
 
+const { errors } = Stripe;
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** What `write` adds when the result is unknown. */
+const MAY_HAVE_HAPPENED =
+  ', so the write may have happened; check the Stripe dashboard before trying again';
+
+/** The network's own reason for a connection failure, such as `ECONNRESET`. */
+function causeOf(detail: unknown): string {
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  const d = isObject(detail) ? detail : {};
+
+  if (typeof d.code === 'string') {
+    return d.code;
+  }
+
+  return typeof d.message === 'string' ? d.message : '';
+}
+
+/** No answer came back: the connection failed or timed out, after the SDK's retries. */
+function noAnswer(
+  e: InstanceType<typeof errors.StripeConnectionError>,
+  o: Settling,
+): StripeError {
+  const cause = causeOf(e.detail);
+  const why = o.clean(cause ? `${e.message} Cause: ${cause}` : e.message);
+
+  return new StripeError(
+    `no answer from Stripe (${why})${o.write ? MAY_HAVE_HAPPENED : '; try again shortly'}`,
+    { status: 0, unknown: o.write },
+  );
+}
+
+/** Stripe's error, said so an agent knows what to do next. */
+function failure(e: unknown, o: Settling): StripeError {
+  if (e instanceof errors.StripeConnectionError) {
+    return noAnswer(e, o);
+  }
+
+  // Not one of Stripe's answers: on a write, it may still have been sent.
+  if (!(e instanceof errors.StripeError)) {
+    const why = o.clean(e instanceof Error ? e.message : String(e));
+
+    return new StripeError(
+      `the Stripe call failed (${why})${o.write ? MAY_HAVE_HAPPENED : ''}`,
+      { status: 0, unknown: o.write },
+    );
+  }
+
+  const status = e.statusCode ?? 0;
+  const said = o.clean(e.message || `Stripe returned HTTP ${status}`);
+  const code = e.code;
+
+  if (e instanceof errors.StripePermissionError) {
+    return new StripeError(
+      `the Stripe key lacks a permission this needs (Stripe says: ${said}). Add that permission to the restricted key, then try again`,
+      { status: 403, code },
+    );
+  }
+
+  if (e instanceof errors.StripeAuthenticationError) {
+    return new StripeError(
+      `Stripe rejected the key (${said}); check STRIPE_SECRET_KEY_FILE`,
+      { status, code },
+    );
+  }
+
+  if (e instanceof errors.StripeRateLimitError) {
+    return new StripeError('Stripe is rate limiting; try again shortly', {
+      status,
+      code,
+    });
+  }
+
+  // A 5xx, a conflict or an unreadable answer: a write may have been applied before it failed.
+  const unknown = o.write && e instanceof errors.StripeAPIError;
+
+  return new StripeError(
+    unknown ? `Stripe failed (${said})${MAY_HAVE_HAPPENED}` : `Stripe: ${said}`,
+    { status, code, unknown },
+  );
+}
+
+/** Every object in an answer that says which mode it's in. */
+function modesIn(answer: unknown): boolean[] {
+  if (!isObject(answer)) {
+    return [];
+  }
+
+  const items = Array.isArray(answer.data) ? answer.data : [answer];
+
+  return items.flatMap((x) =>
+    isObject(x) && typeof x.livemode === 'boolean' ? [x.livemode] : [],
+  );
+}
+
 /**
- * A response from the other mode than the key looks like fails closed: the `[test]` or `[LIVE]`
+ * An answer from the other mode than the key looks like fails closed: the `[test]` or `[LIVE]`
  * a person approved would be wrong.
  */
-function checkMode(json: unknown, o: Settling) {
-  if (modesIn(json).some((m) => m !== o.live)) {
+function checkMode(answer: unknown, o: Settling) {
+  if (modesIn(answer).some((m) => m !== o.live)) {
     throw new StripeError(
       `Stripe answered in ${o.live ? 'test' : 'live'} mode, but the key looks like a ${o.live ? 'live' : 'test'} key; refusing to go on${o.write ? '. The write may have happened: check the Stripe dashboard' : ''}`,
       { status: 0, unknown: o.write },
@@ -277,155 +194,46 @@ function checkMode(json: unknown, o: Settling) {
   }
 }
 
-/** The final outcome as a value, or the error that says what to do. */
-function settle<T>(last: Outcome, o: Settling): T {
-  if (last.kind === 'network') {
-    const why = o.clean(last.message);
+/**
+ * Create the client. The key is only ever sent to Stripe, in the Authorization header. The SDK
+ * retries network failures, conflicts and 5xx twice, with the same idempotency key. Telemetry
+ * is off: with it on, the SDK keeps a machine id in ~/.config/stripe and sends it with the
+ * platform on every request.
+ */
+export function stripeApi(o: StripeOptions): StripeApi {
+  const stripe = new Stripe(o.key, {
+    apiVersion: STRIPE_VERSION,
+    maxNetworkRetries: 2,
+    timeout: 30_000,
+    telemetry: false,
+    ...(o.fetch ? { httpClient: Stripe.createFetchHttpClient(o.fetch) } : {}),
+  });
+  const live = isLiveKey(o.key);
+  const clean = (text: string) => redactKeys(text).split(o.key).join('…');
+  const settle = async <T>(call: () => Promise<T>, write: boolean) => {
+    const how = { write, live, clean };
+    let answer: T;
 
-    throw new StripeError(
-      o.write
-        ? `no answer from Stripe (${why}), so the write may have happened; check the Stripe dashboard before trying again`
-        : `no answer from Stripe (${why}); try again shortly`,
-      { status: 0, unknown: o.write },
-    );
-  }
-
-  if (last.status >= 200 && last.status < 300) {
-    checkMode(last.json, o);
-
-    return last.json as T;
-  }
-
-  throw teach(last.status, last.json, o);
-}
-
-/** Create the client. The key is only ever sent to Stripe, in the Authorization header. */
-export function stripeApi(o: StripeOptions): Stripe {
-  const f = o.fetch ?? globalThis.fetch;
-  const attempts = Math.max(1, o.attempts ?? 3);
-  const sleep = o.sleep ?? defaultSleep;
-  const newKey = o.newKey ?? (() => globalThis.crypto.randomUUID());
-  const timeoutMs = o.timeoutMs ?? 30_000;
-  const headers = {
-    authorization: `Bearer ${o.key}`,
-    'stripe-version': STRIPE_VERSION,
-  };
-
-  /** Try up to `attempts` times, with the same key, until Stripe answers something final. */
-  const tryAll = async (a: Attempt): Promise<Outcome> => {
-    let last: Outcome = { kind: 'network', message: 'not sent' };
-
-    for (let i = 0; i < attempts; i++) {
-      if (i > 0) {
-        await sleep(500 * i);
-      }
-
-      last = await tryOnce(f, a, headers, timeoutMs);
-
-      if (last.kind === 'response' && !last.retry) {
-        break;
-      }
+    try {
+      answer = await call();
+    } catch (e) {
+      throw failure(e, how);
     }
 
-    return last;
-  };
+    checkMode(answer, how);
 
-  const live = isLiveKey(o.key);
-  const clean = (text: string) =>
-    o.key ? redactKeys(text).split(o.key).join('…') : redactKeys(text);
-  const send = async <T>(a: Attempt): Promise<T> =>
-    settle<T>(await tryAll(a), {
-      write: a.idempotencyKey !== undefined,
-      live,
-      clean,
-    });
+    return answer;
+  };
 
   return {
-    get: (path, query) =>
-      send({
-        method: 'GET',
-        url: `${API}${path}${query ? `?${new URLSearchParams(query)}` : ''}`,
-      }),
-    preview: (path, form) =>
-      send({ method: 'POST', url: API + path, body: encodeForm(form) }),
-    write: (method, path, form) =>
-      send({
-        method,
-        url: API + path,
-        idempotencyKey: newKey(),
-        ...(form ? { body: encodeForm(form) } : {}),
-      }),
+    read: (call) => settle(() => call(stripe), false),
+    write: (call) =>
+      settle(() => call(stripe, { idempotencyKey: randomUUID() }), true),
   };
-}
-
-// ---- The objects this connector reads, and only the fields it reads. ----
-
-export interface Customer {
-  id: string;
-  name: string | null;
-  email: string | null;
-  deleted?: boolean;
-}
-
-export interface Charge {
-  id: string;
-  created: number;
-  amount: number;
-  amount_refunded: number;
-  currency: string;
-  status: string;
-  refunded?: boolean;
-  payment_intent: string | null;
-}
-
-export interface Price {
-  id: string;
-  active?: boolean;
-  nickname: string | null;
-  currency: string;
-  unit_amount: number | null;
-  billing_scheme?: 'per_unit' | 'tiered';
-  lookup_key?: string | null;
-  transform_quantity?: unknown;
-  recurring: {
-    interval: string;
-    interval_count: number;
-    usage_type?: 'licensed' | 'metered';
-  } | null;
-}
-
-export interface SubscriptionItem {
-  id: string;
-  quantity?: number;
-  current_period_start: number;
-  current_period_end: number;
-  price: Price;
-  discounts?: unknown[];
-}
-
-export interface Subscription {
-  id: string;
-  customer: string;
-  status: string;
-  cancel_at_period_end: boolean;
-  /** Set when the subscription is due to cancel at a given time. */
-  cancel_at?: number | null;
-  schedule: string | null;
-  /** A change waiting on its invoice's payment (`payment_behavior=pending_if_incomplete`). */
-  pending_update?: { expires_at?: number } | null;
-  /** The newest invoice: for a pending update, the one it waits on. */
-  latest_invoice?: string | { id: string } | null;
-  discounts?: unknown[];
-  items: { data: SubscriptionItem[] };
-}
-
-export interface List<T> {
-  data: T[];
-  has_more?: boolean;
 }
 
 /** The first item's billing period (since API version 2025-03-31, it's on the item). */
-export function period(s: Subscription): { start: number; end: number } {
+export function period(s: Stripe.Subscription): { start: number; end: number } {
   const item = s.items.data[0];
 
   if (!item) {
@@ -437,11 +245,11 @@ export function period(s: Subscription): { start: number; end: number } {
 
 /**
  * A customer read must say which mode it's in: one that doesn't can't be checked against the
- * key, so it fails closed. (Responses that do say are checked on every request.)
+ * key, so it fails closed. (Answers that do say are checked on every request.)
  */
-function withMode<T extends object>(customers: T[]): T[] {
+function withMode(customers: Stripe.Customer[]): Stripe.Customer[] {
   for (const c of customers) {
-    if (typeof (c as { livemode?: unknown }).livemode !== 'boolean') {
+    if (typeof c.livemode !== 'boolean') {
       throw new StripeError(
         "Stripe's customer came back without livemode, so its mode can't be checked; refusing to go on",
         { status: 0 },
@@ -452,20 +260,20 @@ function withMode<T extends object>(customers: T[]): T[] {
   return customers;
 }
 
-const CUSTOMER_ID = /^cus_[A-Za-z0-9]+$/;
-const EMAIL = /^[^\s@]+@[^\s@]+$/;
+/** Whether Stripe said it has no such object. */
+const missing = (e: unknown) => e instanceof StripeError && e.status === 404;
 
 /** One customer by id; a deleted one counts as missing. */
-export async function retrieveCustomer(
-  s: Stripe,
+async function retrieveCustomer(
+  api: StripeApi,
   id: string,
-): Promise<Customer | null> {
+): Promise<Stripe.Customer | null> {
   try {
-    const c = await s.get<Customer>(`/customers/${id}`);
+    const c = await api.read((s) => s.customers.retrieve(id));
 
     return c.deleted ? null : (withMode([c])[0] ?? null);
   } catch (e) {
-    if (e instanceof StripeError && e.status === 404) {
+    if (missing(e)) {
       return null;
     }
 
@@ -473,55 +281,51 @@ export async function retrieveCustomer(
   }
 }
 
+const CUSTOMER_ID = /^cus_[A-Za-z0-9]+$/;
+const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
 /**
  * Customers matching what a person said, at most `limit`: an id, an exact email (a list call,
  * which has no indexing delay), or else Stripe's search on name and email, which is eventually
  * consistent.
  */
 export async function findCustomers(
-  s: Stripe,
+  api: StripeApi,
   who: string,
   limit = 5,
-): Promise<Customer[]> {
+): Promise<Stripe.Customer[]> {
   const text = who.trim();
 
   if (CUSTOMER_ID.test(text)) {
-    const c = await retrieveCustomer(s, text);
+    const c = await retrieveCustomer(api, text);
 
     return c ? [c] : [];
   }
 
   if (EMAIL.test(text)) {
-    const byEmail = await s.get<List<Customer>>('/customers', {
-      email: text,
-      limit: String(limit),
-    });
+    const byEmail = await api.read((s) =>
+      s.customers.list({ email: text, limit }),
+    );
 
     return withMode(byEmail.data);
   }
 
   // Stripe wants double-quoted, backslash-escaped strings.
   const q = JSON.stringify(text);
-  const found = await s.get<List<Customer>>('/customers/search', {
-    query: `name:${q} OR email:${q}`,
-    limit: String(limit),
-  });
+  const found = await api.read((s) =>
+    s.customers.search({ query: `name:${q} OR email:${q}`, limit }),
+  );
 
   return withMode(found.data);
 }
 
 /** A customer's most recent charges, newest first. */
 export async function recentCharges(
-  s: Stripe,
+  api: StripeApi,
   customer: string,
   limit = 10,
-): Promise<Charge[]> {
-  return (
-    await s.get<List<Charge>>('/charges', {
-      customer,
-      limit: String(limit),
-    })
-  ).data;
+): Promise<Stripe.Charge[]> {
+  return (await api.read((s) => s.charges.list({ customer, limit }))).data;
 }
 
 /** Subscriptions still in force: active, trialing or past due. */
@@ -536,17 +340,16 @@ const MAX_SUBSCRIPTIONS = 100;
  * wasn't the whole list.
  */
 export async function subscriptionPage(
-  s: Stripe,
+  api: StripeApi,
   customer: string,
-): Promise<{ subs: Subscription[]; more: boolean }> {
-  const all = await s.get<List<Subscription>>('/subscriptions', {
-    customer,
-    limit: String(MAX_SUBSCRIPTIONS),
-  });
+): Promise<{ subs: Stripe.Subscription[]; more: boolean }> {
+  const all = await api.read((s) =>
+    s.subscriptions.list({ customer, limit: MAX_SUBSCRIPTIONS }),
+  );
 
   return {
     subs: all.data.filter((x) => LIVE_STATUSES.has(x.status)),
-    more: all.has_more === true,
+    more: all.has_more,
   };
 }
 
@@ -555,10 +358,10 @@ export async function subscriptionPage(
  * fit in one page is refused rather than read in part.
  */
 export async function currentSubscriptions(
-  s: Stripe,
+  api: StripeApi,
   customer: string,
-): Promise<Subscription[]> {
-  const page = await subscriptionPage(s, customer);
+): Promise<Stripe.Subscription[]> {
+  const page = await subscriptionPage(api, customer);
 
   if (page.more) {
     throw new StripeError(
@@ -572,22 +375,22 @@ export async function currentSubscriptions(
 
 /** One subscription by id, if it's this customer's and still in force. */
 export async function currentSubscription(
-  s: Stripe,
+  api: StripeApi,
   customer: string,
   id: string,
-): Promise<Subscription | null> {
+): Promise<Stripe.Subscription | null> {
   if (!/^sub_[A-Za-z0-9]+$/.test(id)) {
     return null;
   }
 
   try {
-    const sub = await s.get<Subscription>(`/subscriptions/${id}`);
+    const sub = await api.read((s) => s.subscriptions.retrieve(id));
 
-    return sub.customer === customer && LIVE_STATUSES.has(sub.status)
+    return idOf(sub.customer) === customer && LIVE_STATUSES.has(sub.status)
       ? sub
       : null;
   } catch (e) {
-    if (e instanceof StripeError && e.status === 404) {
+    if (missing(e)) {
       return null;
     }
 

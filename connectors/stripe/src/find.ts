@@ -4,12 +4,10 @@
  */
 import { type Clarification, clarify } from '@yea-protocol/sdk';
 import {
-  type Customer,
   currentSubscription,
   currentSubscriptions,
   findCustomers,
-  type Price,
-  type Subscription,
+  type Stripe,
 } from './api.js';
 import type { Ctx } from './context.js';
 import { formatMoney } from './currency.js';
@@ -28,7 +26,7 @@ const howMany = (n: number, noun: string) =>
 export async function oneCustomer<I extends { customer: string }>(
   ctx: Ctx,
   input: I,
-): Promise<Found<Customer>> {
+): Promise<Found<Stripe.Customer>> {
   const matches = await findCustomers(ctx.stripe, input.customer, MAX_MATCHES);
   const [first] = matches;
 
@@ -54,11 +52,11 @@ export async function oneCustomer<I extends { customer: string }>(
 }
 
 /** A price's name as people know it: its nickname, else lookup key, else id. */
-export const priceName = (p: Price) =>
+export const priceName = (p: Stripe.Price) =>
   safeText(p.nickname ?? p.lookup_key ?? p.id);
 
 /** `pro (49.00 USD/month)`. */
-export function priceLabel(p: Price): string {
+export function priceLabel(p: Stripe.Price): string {
   const every = p.recurring
     ? `/${p.recurring.interval_count > 1 ? `${p.recurring.interval_count} ` : ''}${p.recurring.interval}`
     : '';
@@ -71,15 +69,15 @@ export function priceLabel(p: Price): string {
 }
 
 /** A subscription as a list label: its id and what it's on. */
-const subLabel = (s: Subscription) =>
+const subLabel = (s: Stripe.Subscription) =>
   `${s.id}: ${s.items.data.map((i) => priceLabel(i.price)).join(', ')} (${s.status})`;
 
 /** The one subscription meant: `input.subscription`, the only one, or a question. */
 export async function oneSubscription<I extends { subscription?: string }>(
   ctx: Ctx,
-  c: Customer,
+  c: Stripe.Customer,
   input: I,
-): Promise<Found<Subscription>> {
+): Promise<Found<Stripe.Subscription>> {
   if (input.subscription !== undefined) {
     const s = await currentSubscription(ctx.stripe, c.id, input.subscription);
 
@@ -115,7 +113,7 @@ export async function oneSubscription<I extends { subscription?: string }>(
 }
 
 /** Refuse what v0 can't do safely: a subscription with more than one item. */
-export function oneItem(s: Subscription) {
+export function oneItem(s: Stripe.Subscription) {
   const [item, ...more] = s.items.data;
 
   if (!item || more.length) {

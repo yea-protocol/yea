@@ -1,4 +1,4 @@
-import type { Customer } from '../src/api.js';
+import type { Customer } from './fake-stripe.js';
 
 /** `n` customers called `<name> 1`, `<name> 2`…. */
 export const customersNamed = (name: string, n: number): Customer[] =>

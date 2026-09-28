@@ -28,9 +28,15 @@ import {
   signJobConsent,
 } from '@yea-protocol/sdk';
 import { FileStore } from '@yea-protocol/sdk/node';
+import { expect } from 'vitest';
 import type { Ctx, JobSpec } from '../src/context.js';
 import { contextFor, stripeServer } from '../src/server.js';
-import { D, type FakeState, fakeStripe } from './fake-stripe.js';
+import {
+  D,
+  type FakeState,
+  type FakeStripe,
+  fakeStripe,
+} from './fake-stripe.js';
 
 /** Sunday 2026-09-27, 10:00 UTC. */
 export const NOW = Date.UTC(2026, 8, 27, 10) / 1000;
@@ -65,10 +71,30 @@ export function setup(
     key: o.live ? LIVE_KEY : TEST_KEY,
     fetch: stripe.fetch,
     now: () => clock.now,
-    sleep: async () => {},
   });
 
   return { stripe, ctx, clock };
+}
+
+/** A version 4 UUID, as `randomUUID()` makes. */
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * Every write so far carried the connector's own idempotency key: a UUIDv4, never the SDK's
+ * `stripe-node-retry-…` one, and a different one for each write. (The fake refuses an
+ * `idempotencyKey` sent as a parameter, as Stripe does, so a key in the wrong argument fails.)
+ */
+export function expectOwnFreshKeys(stripe: FakeStripe) {
+  const keys = stripe.writes().map((w) => w.key);
+
+  expect(keys.length).toBeGreaterThan(0);
+
+  for (const key of keys) {
+    expect(key).toMatch(UUID_V4);
+  }
+
+  expect(new Set(keys).size).toBe(keys.length);
 }
 
 /** A job's plans, or throw if it asked a question instead. */
@@ -134,7 +160,6 @@ export async function world(
     approvals,
     fetch: s.stripe.fetch,
     now: () => s.clock.now,
-    sleep: async () => {},
   });
 
   return { ...s, home, store, principal, approvals, factory };

@@ -4,48 +4,22 @@
  * phases with `from_subscription`), so a failure between them is cleaned up here.
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
-import { type FormValue, type Price, StripeError } from './api.js';
+import { idOf, type Stripe, StripeError } from './api.js';
 import { applying, type Ctx } from './context.js';
 
-type Ref = string | { id: string };
+type Phase = Stripe.SubscriptionSchedule.Phase;
+type NewPhase = Stripe.SubscriptionScheduleUpdateParams.Phase;
 
-export interface SchedulePhase {
-  start_date: number;
-  end_date: number | null;
-  items: {
-    price: Ref;
-    quantity?: number;
-    tax_rates?: Ref[] | null;
-    metadata?: Record<string, string> | null;
-  }[];
-  collection_method?: string | null;
-  default_payment_method?: Ref | null;
-  default_tax_rates?: Ref[] | null;
-  description?: string | null;
-  metadata?: Record<string, string> | null;
-  currency?: string | null;
-  trial_end?: number | null;
-  discounts?: unknown[] | null;
-}
-
-export interface Schedule {
-  id: string;
-  subscription: string | null;
-  status: string;
-  end_behavior: string;
-  phases: SchedulePhase[];
-  current_phase: { start_date: number; end_date: number } | null;
-}
-
-const idOf = (r: Ref) => (typeof r === 'string' ? r : r.id);
-
-const ids = (rs: Ref[] | null | undefined) => (rs ?? []).map(idOf);
+const ids = (rs: { id: string }[] | null | undefined) => (rs ?? []).map(idOf);
 
 export const getSchedule = (ctx: Ctx, id: string) =>
-  ctx.stripe.get<Schedule>(`/subscription_schedules/${id}`);
+  ctx.stripe.read((s) => s.subscriptionSchedules.retrieve(id));
 
 /** Whether the schedule is in its last phase, ending at `end`: nothing else is pending. */
-export function onlyCurrentPhase(s: Schedule, end: number): boolean {
+export function onlyCurrentPhase(
+  s: Stripe.SubscriptionSchedule,
+  end: number,
+): boolean {
   const last = s.phases.at(-1);
 
   return (
@@ -57,23 +31,23 @@ export function onlyCurrentPhase(s: Schedule, end: number): boolean {
 }
 
 /** The settings a phase carries that the new phase keeps too. */
-function billingOf(p: SchedulePhase): Record<string, FormValue> {
+function billingOf(p: Phase) {
   return {
     collection_method: p.collection_method ?? undefined,
     default_payment_method: p.default_payment_method
       ? idOf(p.default_payment_method)
       : undefined,
     default_tax_rates: ids(p.default_tax_rates),
-    currency: p.currency ?? undefined,
+    currency: p.currency,
   };
 }
 
 /** The current phase, copied in full so the update leaves it as Stripe made it. */
-function copyPhase(p: SchedulePhase): Record<string, FormValue> {
+function copyPhase(p: Phase): NewPhase {
   return {
     ...billingOf(p),
     start_date: p.start_date,
-    end_date: p.end_date ?? undefined,
+    end_date: p.end_date,
     trial_end: p.trial_end ?? undefined,
     description: p.description ?? undefined,
     metadata: p.metadata ?? undefined,
@@ -88,10 +62,10 @@ function copyPhase(p: SchedulePhase): Record<string, FormValue> {
 
 /** The phase that starts at renewal: the new price for one billing period, then release. */
 function nextPhase(
-  current: SchedulePhase,
-  price: Price,
+  current: Phase,
+  price: Stripe.Price,
   quantity: number,
-): Record<string, FormValue> {
+): NewPhase {
   const every = price.recurring;
 
   if (!every) {
@@ -169,7 +143,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Release a schedule: the subscription stays as it is, and pending phases are dropped. */
 export const releaseSchedule = (ctx: Ctx, id: string) =>
-  ctx.stripe.write<Schedule>('POST', `/subscription_schedules/${id}/release`);
+  ctx.stripe.write((s, o) => s.subscriptionSchedules.release(id, {}, o));
 
 /**
  * The second write failed, or its result is unknown: release the schedule, so nothing is left
@@ -199,12 +173,15 @@ async function cleanUp(
  */
 export async function changeAtRenewal(
   ctx: Ctx,
-  o: { subscription: string; price: Price; quantity: number },
+  o: { subscription: string; price: Stripe.Price; quantity: number },
 ) {
   const made = await applying(() =>
-    ctx.stripe.write<Schedule>('POST', '/subscription_schedules', {
-      from_subscription: o.subscription,
-    }),
+    ctx.stripe.write((s, opts) =>
+      s.subscriptionSchedules.create(
+        { from_subscription: o.subscription },
+        opts,
+      ),
+    ),
   );
   const [current] = made.phases;
   const where = { schedule: made.id, subscription: o.subscription };
@@ -224,11 +201,17 @@ export async function changeAtRenewal(
       );
     }
 
-    await ctx.stripe.write('POST', `/subscription_schedules/${made.id}`, {
-      end_behavior: 'release',
-      phases: [copyPhase(current), nextPhase(current, o.price, o.quantity)],
-      metadata: { created_by: 'yea-stripe' },
-    });
+    await ctx.stripe.write((s, opts) =>
+      s.subscriptionSchedules.update(
+        made.id,
+        {
+          end_behavior: 'release',
+          phases: [copyPhase(current), nextPhase(current, o.price, o.quantity)],
+          metadata: { created_by: 'yea-stripe' },
+        },
+        opts,
+      ),
+    );
   } catch (e) {
     return cleanUp(ctx, where, e);
   }

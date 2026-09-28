@@ -2,7 +2,7 @@ import type { Clarification } from '@yea-protocol/sdk';
 import { describe, expect, it } from 'vitest';
 import { refundJob } from '../src/refund.js';
 import { customersNamed } from './fixtures.js';
-import { D, NOW, plansOf, setup } from './helpers.js';
+import { D, expectOwnFreshKeys, NOW, plansOf, setup } from './helpers.js';
 
 const chen = { customer: 'Chen' };
 
@@ -54,6 +54,7 @@ describe('refund plans', () => {
     expect(s.stripe.writes().map((c) => [c.method, c.path, c.body])).toEqual([
       ['POST', '/v1/refunds', 'payment_intent=pi_2&amount=2354'],
     ]);
+    expectOwnFreshKeys(s.stripe);
     expect(result).toEqual({
       plan: 'refund',
       refund: 're_1',
@@ -271,6 +272,7 @@ describe('refund plans', () => {
     // Even the same plan applied twice (the approval core stops this) is two writes, not a replay.
     await second.apply();
     expect(new Set(s.stripe.writes().map((w) => w.key)).size).toBe(3);
+    expectOwnFreshKeys(s.stripe);
   });
 
   it('a refund whose result is unknown fails part-way, never "nothing changed"', async () => {

@@ -4,7 +4,7 @@
  * manages its cancellation there.
  */
 import { type Effect, type JobPlan, update } from '@yea-protocol/sdk';
-import { type Customer, period, type Subscription } from './api.js';
+import { idOf, period, type Stripe, StripeError } from './api.js';
 import {
   applying,
   type Ctx,
@@ -15,7 +15,7 @@ import {
   undoWindowBefore,
 } from './context.js';
 import { oneCustomer, oneItem, oneSubscription, priceName } from './find.js';
-import { getSchedule, onlyCurrentPhase, type Schedule } from './schedule.js';
+import { getSchedule, onlyCurrentPhase } from './schedule.js';
 import { confirmPhrase, who } from './text.js';
 
 export interface CancelInput {
@@ -43,10 +43,10 @@ const SUB_ID = /^sub_[A-Za-z0-9]+$/;
 const SCHEDULE_ID = /^sub_sched_[A-Za-z0-9]+$|^sch_[A-Za-z0-9]+$/;
 
 interface Target {
-  c: Customer;
-  sub: Subscription;
+  c: Stripe.Customer;
+  sub: Stripe.Subscription;
   /** The schedule, when the subscription has one. */
-  schedule: Schedule | null;
+  schedule: Stripe.SubscriptionSchedule | null;
 }
 
 const whose = (t: Target) =>
@@ -58,23 +58,27 @@ function periodEndChange(t: Target): {
   write(ctx: Ctx): Promise<Record<string, string>>;
 } {
   const { end } = period(t.sub);
-  const s = t.schedule;
+  const sched = t.schedule;
 
-  if (s) {
+  if (sched) {
     return {
       effect: update(
-        `subscription_schedule/${s.id}`,
+        `subscription_schedule/${sched.id}`,
         'end_behavior',
         'release',
         'cancel',
         `${t.sub.id} ends ${day(end)}`,
       ),
       write: async (ctx) => {
-        await ctx.stripe.write('POST', `/subscription_schedules/${s.id}`, {
-          end_behavior: 'cancel',
-        });
+        await ctx.stripe.write((s, o) =>
+          s.subscriptionSchedules.update(
+            sched.id,
+            { end_behavior: 'cancel' },
+            o,
+          ),
+        );
 
-        return { schedule: s.id, subscription: t.sub.id };
+        return { schedule: sched.id, subscription: t.sub.id };
       },
     };
   }
@@ -88,9 +92,9 @@ function periodEndChange(t: Target): {
       `ends ${day(end)}`,
     ),
     write: async (ctx) => {
-      await ctx.stripe.write('POST', `/subscriptions/${t.sub.id}`, {
-        cancel_at_period_end: true,
-      });
+      await ctx.stripe.write((s, o) =>
+        s.subscriptions.update(t.sub.id, { cancel_at_period_end: true }, o),
+      );
 
       return { subscription: t.sub.id };
     },
@@ -116,6 +120,37 @@ function atPeriodEnd(ctx: Ctx, t: Target): JobPlan {
   };
 }
 
+/** Whether Stripe says the subscription is cancelled; a failed read says no. */
+const isCancelled = (ctx: Ctx, id: string) =>
+  ctx.stripe
+    .read((s) => s.subscriptions.retrieve(id))
+    .then(
+      (sub) => sub.status === 'canceled',
+      () => false,
+    );
+
+/**
+ * Cancel at once. Stripe ignores idempotency keys on DELETE, so it isn't retried: a lost answer
+ * is reported as unknown. The SDK still retries once after a reset connection, and if the first
+ * try went through, that retry fails; so a plain failure is checked against the subscription,
+ * and one that's cancelled counts as done.
+ */
+async function cancelNow(ctx: Ctx, id: string) {
+  try {
+    await ctx.stripe.write((s, o) =>
+      s.subscriptions.cancel(id, {}, { ...o, maxNetworkRetries: 0 }),
+    );
+  } catch (e) {
+    if (
+      !(e instanceof StripeError) ||
+      e.unknown ||
+      !(await isCancelled(ctx, id))
+    ) {
+      throw e;
+    }
+  }
+}
+
 function now(ctx: Ctx, t: Target): JobPlan {
   return {
     summary: `${tag(ctx)} Cancel ${whose(t)} now; access ends immediately, with no refund`,
@@ -126,7 +161,7 @@ function now(ctx: Ctx, t: Target): JobPlan {
     data: { confirm: confirmPhrase(t.c) },
     apply: () =>
       applying(async () => {
-        await ctx.stripe.write('DELETE', `/subscriptions/${t.sub.id}`);
+        await cancelNow(ctx, t.sub.id);
 
         return { plan: 'cancel_now', subscription: t.sub.id };
       }),
@@ -140,7 +175,7 @@ function now(ctx: Ctx, t: Target): JobPlan {
 function canEndAtPeriodEnd(t: Target): boolean {
   const s = t.schedule;
 
-  if (t.sub.cancel_at_period_end || (t.sub.cancel_at ?? null) !== null) {
+  if (t.sub.cancel_at_period_end || t.sub.cancel_at !== null) {
     return false;
   }
 
@@ -169,7 +204,7 @@ async function cancelPlans(ctx: Ctx, input: CancelInput) {
     c: c.found,
     sub: sub.found,
     schedule: sub.found.schedule
-      ? await getSchedule(ctx, sub.found.schedule)
+      ? await getSchedule(ctx, idOf(sub.found.schedule))
       : null,
   };
 
@@ -202,18 +237,22 @@ async function revertCancel(ctx: Ctx, result: unknown) {
     const schedule = r.schedule;
 
     return applying(() =>
-      ctx.stripe.write('POST', `/subscription_schedules/${schedule}`, {
-        end_behavior: 'release',
-      }),
+      ctx.stripe.write((s, o) =>
+        s.subscriptionSchedules.update(
+          schedule,
+          { end_behavior: 'release' },
+          o,
+        ),
+      ),
     );
   }
 
   const sub = r.subscription;
 
   return applying(() =>
-    ctx.stripe.write('POST', `/subscriptions/${sub}`, {
-      cancel_at_period_end: false,
-    }),
+    ctx.stripe.write((s, o) =>
+      s.subscriptions.update(sub, { cancel_at_period_end: false }, o),
+    ),
   );
 }
 

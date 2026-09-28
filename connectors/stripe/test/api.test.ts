@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   currentSubscription,
   currentSubscriptions,
-  encodeForm,
   findCustomers,
   isLiveKey,
   redactKeys,
@@ -16,68 +15,68 @@ import { refundJob } from '../src/refund.js';
 import { fakeStripe, price, subscription } from './fake-stripe.js';
 import { D, NOW, plansOf, setup, TEST_KEY } from './helpers.js';
 
-const client = (
-  f = fakeStripe({ now: NOW }),
-  o: { newKey?: () => string } = {},
-) => ({
+const client = (f = fakeStripe({ now: NOW })) => ({
   f,
-  api: stripeApi({
-    key: TEST_KEY,
-    fetch: f.fetch,
-    sleep: async () => {},
-    ...o,
-  }),
+  api: stripeApi({ key: TEST_KEY, fetch: f.fetch }),
 });
+
+const refund = { payment_intent: 'pi_2', amount: 100 };
 
 describe('the Stripe client', () => {
   it('pins the API version and sends the key only as a bearer token, on every request', async () => {
     const { f, api } = client();
 
-    await api.get('/customers/cus_chen');
-    await api.preview('/invoices/create_preview', {
-      subscription: 'sub_chen',
-      subscription_details: {
-        items: [{ id: 'si_chen', price: 'price_basic', quantity: 1 }],
-        proration_date: NOW - 3600,
-      },
-    });
-    await api.write('POST', '/subscriptions/sub_chen', {
-      cancel_at_period_end: true,
-    });
-    await api.write('DELETE', '/subscriptions/sub_chen');
+    await api.read((s) => s.customers.retrieve('cus_chen'));
+    await api.read((s) =>
+      s.invoices.createPreview({
+        subscription: 'sub_chen',
+        subscription_details: {
+          items: [{ id: 'si_chen', price: 'price_basic', quantity: 1 }],
+          proration_date: NOW - 3600,
+        },
+      }),
+    );
+    await api.write((s, o) =>
+      s.subscriptions.update('sub_chen', { cancel_at_period_end: true }, o),
+    );
+    await api.write((s, o) => s.subscriptions.cancel('sub_chen', {}, o));
 
-    expect(f.calls).toHaveLength(4);
+    expect(f.calls.map((c) => c.method)).toEqual([
+      'GET',
+      'POST',
+      'POST',
+      'DELETE',
+    ]);
+    expect(STRIPE_VERSION).toBe('2026-08-26.dahlia');
 
     for (const c of f.calls) {
       expect(c.version).toBe(STRIPE_VERSION);
-      expect(STRIPE_VERSION).toBe('2026-08-26.dahlia');
       expect(c.auth).toBe(`Bearer ${TEST_KEY}`);
       expect(c.path).not.toContain(TEST_KEY);
       expect(c.body).not.toContain(TEST_KEY);
     }
   });
 
-  it('sends an idempotency key with writes only, fresh for every call', async () => {
+  it('sends each write a fresh random idempotency key, DELETE included, and reads none', async () => {
     const { f, api } = client();
 
-    await api.get('/customers/cus_chen');
-    await api.preview('/invoices/create_preview', {}).catch(() => null);
-    await api.write('POST', '/refunds', {
-      payment_intent: 'pi_2',
-      amount: 100,
-    });
-    await api.write('POST', '/refunds', {
-      payment_intent: 'pi_2',
-      amount: 100,
-    });
+    await api.read((s) => s.customers.retrieve('cus_chen'));
+    await api.write((s, o) => s.refunds.create(refund, o));
+    await api.write((s, o) => s.refunds.create(refund, o));
+    await api.write((s, o) => s.subscriptions.cancel('sub_chen', {}, o));
 
-    const [get, preview, one, two] = f.calls;
+    const [get, ...writes] = f.calls;
+    const keys = writes.map((c) => c.key);
 
     expect(get.key).toBeNull();
-    expect(preview.key).toBeNull();
-    expect(one.key).toMatch(/^[0-9a-f-]{36}$/);
-    expect(two.key).toMatch(/^[0-9a-f-]{36}$/);
-    expect(one.key).not.toBe(two.key);
+
+    for (const key of keys) {
+      expect(key).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
+    }
+
+    expect(new Set(keys).size).toBe(3);
     // Two identical writes are two refunds, not a replay.
     expect(f.charges[0].amount_refunded).toBe(200);
   });
@@ -86,10 +85,7 @@ describe('the Stripe client', () => {
     const { f, api } = client();
 
     f.fail({ path: '/refunds', network: true, times: 2 });
-    await api.write('POST', '/refunds', {
-      payment_intent: 'pi_2',
-      amount: 100,
-    });
+    await api.write((s, o) => s.refunds.create(refund, o));
 
     const keys = f.calls.map((c) => c.key);
 
@@ -103,10 +99,7 @@ describe('the Stripe client', () => {
 
     f.fail({ path: '/refunds', after: true });
 
-    const r = await api.write<{ id: string }>('POST', '/refunds', {
-      payment_intent: 'pi_2',
-      amount: 100,
-    });
+    const r = await api.write((s, o) => s.refunds.create(refund, o));
 
     expect(r.id).toBe('re_1');
     expect(f.calls).toHaveLength(2);
@@ -120,14 +113,32 @@ describe('the Stripe client', () => {
     f.fail({ path: '/refunds', network: true, times: 3 });
 
     const e = await api
-      .write('POST', '/refunds', { payment_intent: 'pi_2', amount: 100 })
+      .write((s, o) => s.refunds.create(refund, o))
       .catch((x: unknown) => x);
 
+    expect(f.calls).toHaveLength(3);
     expect(e).toBeInstanceOf(StripeError);
     expect((e as StripeError).unknown).toBe(true);
+    expect((e as StripeError).status).toBe(0);
     expect((e as StripeError).message).toMatch(
-      /may have happened; check the Stripe dashboard/,
+      /^no answer from Stripe \(.+ Cause: fetch failed\), so the write may have happened; check the Stripe dashboard/,
     );
+  });
+
+  it('a failure that isn’t Stripe’s says the call failed, and on a write that it may have happened', async () => {
+    const { api } = client();
+    const boom = () => Promise.reject(new Error(`boom with ${TEST_KEY}`));
+    const read = (await api.read(boom).catch((x: unknown) => x)) as StripeError;
+    const write = (await api
+      .write(boom)
+      .catch((x: unknown) => x)) as StripeError;
+
+    expect(read.message).toBe('the Stripe call failed (boom with sk_test_…)');
+    expect(read.unknown).toBe(false);
+    expect(write.message).toMatch(
+      /^the Stripe call failed \(boom with sk_test_…\), so the write may have happened/,
+    );
+    expect(write.unknown).toBe(true);
   });
 
   it('a read with no answer is just a failure', async () => {
@@ -136,42 +147,74 @@ describe('the Stripe client', () => {
     f.fail({ path: '/customers/cus_chen', network: true, times: 3 });
 
     const e = (await api
-      .get('/customers/cus_chen')
+      .read((s) => s.customers.retrieve('cus_chen'))
       .catch((x: unknown) => x)) as StripeError;
 
     expect(e.unknown).toBe(false);
     expect(e.message).toMatch(/no answer from Stripe .*; try again shortly/);
   });
 
-  it('retries a 429 and a 5xx; a 5xx on a write that persists may have happened', async () => {
+  it('retries a 5xx; a 5xx on a write that persists may have happened', async () => {
     const { f, api } = client();
 
-    f.fail({ path: '/customers/cus_chen', status: 429 });
-    expect(await api.get('/customers/cus_chen')).toMatchObject({
-      id: 'cus_chen',
-    });
+    f.fail({ path: '/customers/cus_chen', status: 500 });
+    expect(
+      await api.read((s) => s.customers.retrieve('cus_chen')),
+    ).toMatchObject({ id: 'cus_chen' });
 
     f.fail({ path: '/refunds', status: 500, times: 3 });
 
     const e = (await api
-      .write('POST', '/refunds', { payment_intent: 'pi_2', amount: 1 })
+      .write((s, o) => s.refunds.create({ ...refund, amount: 1 }, o))
       .catch((x: unknown) => x)) as StripeError;
 
+    expect(e.status).toBe(500);
     expect(e.unknown).toBe(true);
     expect(e.message).toMatch(/the write may have happened/);
+  });
+
+  it('a rate limit says to try again, and changed nothing', async () => {
+    const { f, api } = client();
+
+    f.fail({ path: '/refunds', status: 429 });
+
+    const e = (await api
+      .write((s, o) => s.refunds.create(refund, o))
+      .catch((x: unknown) => x)) as StripeError;
+
+    expect(e.status).toBe(429);
+    expect(e.unknown).toBe(false);
+    expect(e.message).toBe('Stripe is rate limiting; try again shortly');
   });
 
   it('a 4xx is not retried and changed nothing', async () => {
     const { f, api } = client();
     const e = (await api
-      .write('POST', '/refunds', { payment_intent: 'pi_2', amount: 999999 })
+      .write((s, o) => s.refunds.create({ ...refund, amount: 999999 }, o))
       .catch((x: unknown) => x)) as StripeError;
 
     expect(f.calls).toHaveLength(1);
     expect(e.status).toBe(400);
+    expect(e.code).toBe('amount_too_large');
     expect(e.unknown).toBe(false);
     expect(e.message).toBe(
       'Stripe: Refund amount is greater than unrefunded amount',
+    );
+  });
+
+  it('a rejected key says to check the key file', async () => {
+    const { f, api } = client();
+
+    f.fail({
+      path: '/customers/cus_chen',
+      status: 401,
+      message: 'Invalid API Key provided: sk_test_****DEF',
+    });
+
+    await expect(
+      api.read((s) => s.customers.retrieve('cus_chen')),
+    ).rejects.toThrow(
+      'Stripe rejected the key (Invalid API Key provided: sk_test_…); check STRIPE_SECRET_KEY_FILE',
     );
   });
 
@@ -186,7 +229,7 @@ describe('the Stripe client', () => {
     });
 
     const e = (await api
-      .write('POST', '/refunds', { payment_intent: 'pi_2', amount: 1 })
+      .write((s, o) => s.refunds.create(refund, o))
       .catch((x: unknown) => x)) as StripeError;
 
     expect(e.permission).toBe(true);
@@ -200,27 +243,6 @@ describe('the Stripe client', () => {
   it('redacts anything that looks like a key', () => {
     expect(redactKeys('bad key sk_live_51Habc and rk_test_9z')).toBe(
       'bad key sk_live_… and rk_test_…',
-    );
-  });
-
-  it('encodes nested forms the way Stripe reads them', () => {
-    expect(
-      decodeURIComponent(
-        encodeForm({
-          a: 1,
-          skip: undefined,
-          none: null,
-          phases: [
-            {
-              items: [{ price: 'p', quantity: 2 }],
-              duration: { interval: 'month' },
-            },
-          ],
-          flag: false,
-        }),
-      ),
-    ).toBe(
-      'a=1&phases[0][items][0][price]=p&phases[0][items][0][quantity]=2&phases[0][duration][interval]=month&flag=false',
     );
   });
 });
@@ -271,9 +293,14 @@ describe('finding customers', () => {
       'cus_ana1',
       'cus_ana2',
     ]);
-    expect(f.calls[0].path).toBe(
-      `/v1/customers/search?${new URLSearchParams({ query: 'name:"Ana" OR email:"Ana"', limit: '5' })}`,
-    );
+
+    const u = new URL(f.calls[0].path, 'https://api.stripe.com');
+
+    expect(u.pathname).toBe('/v1/customers/search');
+    expect(Object.fromEntries(u.searchParams)).toEqual({
+      query: 'name:"Ana" OR email:"Ana"',
+      limit: '5',
+    });
   });
 });
 
@@ -360,15 +387,17 @@ describe('the mode Stripe answers in', () => {
   it('a test key answered in test mode is fine', async () => {
     const f = fakeStripe({ now: NOW, livemode: false });
 
-    expect(await client(f).api.get('/customers/cus_chen')).toMatchObject({
-      livemode: false,
-    });
+    expect(
+      await client(f).api.read((s) => s.customers.retrieve('cus_chen')),
+    ).toMatchObject({ livemode: false });
   });
 
   it('a test key answered in live mode fails closed, on reads and lists', async () => {
     const { api } = client(fakeStripe({ now: NOW, livemode: true }));
 
-    await expect(api.get('/customers/cus_chen')).rejects.toThrow(
+    await expect(
+      api.read((s) => s.customers.retrieve('cus_chen')),
+    ).rejects.toThrow(
       /Stripe answered in live mode, but the key looks like a test key; refusing to go on$/,
     );
     await expect(findCustomers(api, 'Ana')).rejects.toThrow(
@@ -378,13 +407,11 @@ describe('the mode Stripe answers in', () => {
 
   it('a write answered in the other mode may have happened, and says so', async () => {
     const f = fakeStripe({ now: NOW, livemode: false });
-    const api = stripeApi({
-      key: 'sk_live_51abc',
-      fetch: f.fetch,
-      sleep: async () => {},
-    });
+    const api = stripeApi({ key: 'sk_live_51abc', fetch: f.fetch });
     const e = (await api
-      .write('POST', '/subscriptions/sub_chen', { cancel_at_period_end: true })
+      .write((s, o) =>
+        s.subscriptions.update('sub_chen', { cancel_at_period_end: true }, o),
+      )
       .catch((x: unknown) => x)) as StripeError;
 
     expect(e.unknown).toBe(true);
@@ -397,7 +424,7 @@ describe('the mode Stripe answers in', () => {
 it('the key itself is taken out of any message, whatever its format', async () => {
   const f = fakeStripe({ now: NOW });
   const key = 'weird0key0format0123';
-  const api = stripeApi({ key, fetch: f.fetch, sleep: async () => {} });
+  const api = stripeApi({ key, fetch: f.fetch });
 
   f.fail({
     path: '/customers/cus_chen',
@@ -406,7 +433,7 @@ it('the key itself is taken out of any message, whatever its format', async () =
   });
 
   const e = (await api
-    .get('/customers/cus_chen')
+    .read((s) => s.customers.retrieve('cus_chen'))
     .catch((x: unknown) => x)) as Error;
 
   expect(e.message).toBe('Stripe: bad key … here');
@@ -418,11 +445,10 @@ it('a customer without livemode fails closed: its mode can’t be checked', asyn
   const plain = (c: object) => new Response(JSON.stringify(c), { status: 200 });
   const bare = stripeApi({
     key: TEST_KEY,
-    sleep: async () => {},
-    fetch: async (url) =>
+    fetch: async (url, init) =>
       String(url).includes('/customers/cus_chen')
         ? plain({ id: 'cus_chen', name: 'Chen Wei', email: null })
-        : f.fetch(url),
+        : f.fetch(url, init),
   });
 
   expect((await findCustomers(api, 'cus_chen'))[0]).toMatchObject({

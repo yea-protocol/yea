@@ -4,11 +4,10 @@
  */
 import { create, type JobPlan, update } from '@yea-protocol/sdk';
 import {
-  type Charge,
-  type Customer,
+  idOf,
   period,
   recentCharges,
-  type Subscription,
+  type Stripe,
   subscriptionPage,
 } from './api.js';
 import {
@@ -59,7 +58,7 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
-const paymentLine = (x: Charge) =>
+const paymentLine = (x: Stripe.Charge) =>
   `${x.id} (${day(x.created)}, ${formatMoney(x.amount, x.currency)}, ${formatMoney(x.amount - x.amount_refunded, x.currency)} left, ${x.status})`;
 
 /**
@@ -67,9 +66,17 @@ const paymentLine = (x: Charge) =>
  * latest is fully refunded: a retry after a refund whose result was unknown would then refund a
  * different payment of the same amount, under the same phrase.
  */
-function pickCharge(chs: Charge[], c: Customer, payment?: string): Charge {
+function pickCharge(
+  chs: Stripe.Charge[],
+  c: Stripe.Customer,
+  payment?: string,
+): Stripe.Charge {
   const ch = payment
-    ? chs.find((x) => x.id === payment || x.payment_intent === payment)
+    ? chs.find(
+        (x) =>
+          x.id === payment ||
+          (x.payment_intent !== null && idOf(x.payment_intent) === payment),
+      )
     : chs.find((x) => x.status === 'succeeded');
 
   if (ch && ch.status === 'succeeded') {
@@ -84,35 +91,28 @@ function pickCharge(chs: Charge[], c: Customer, payment?: string): Charge {
   throw new Error(`${what}${listed ? `. Recent payments: ${listed}` : ''}`);
 }
 
-interface PastRefund {
-  id: string;
-  amount: number;
-  created: number;
-  status: string;
-}
-
 /** The refunds already made on a charge, newest first; none when nothing was refunded. */
-async function pastRefunds(ctx: Ctx, ch: Charge): Promise<PastRefund[]> {
+async function pastRefunds(
+  ctx: Ctx,
+  ch: Stripe.Charge,
+): Promise<Stripe.Refund[]> {
   if (ch.amount_refunded <= 0) {
     return [];
   }
 
   return (
-    await ctx.stripe.get<{ data: PastRefund[] }>('/refunds', {
-      charge: ch.id,
-      limit: '10',
-    })
+    await ctx.stripe.read((s) => s.refunds.list({ charge: ch.id, limit: 10 }))
   ).data;
 }
 
-const refundLine = (r: PastRefund, cur: string) =>
+const refundLine = (r: Stripe.Refund, cur: string) =>
   `${r.id} (${formatMoney(r.amount, cur)}, ${day(r.created)}, ${r.status})`;
 
 /** A payment with nothing left is refused, naming the refunds already made. */
 function refuseRefunded(
-  c: Customer,
-  ch: Charge,
-  o: { earlier: PastRefund[]; chs: Charge[]; named: boolean },
+  c: Stripe.Customer,
+  ch: Stripe.Charge,
+  o: { earlier: Stripe.Refund[]; chs: Stripe.Charge[]; named: boolean },
 ): never {
   const refunds = o.earlier.map((r) => refundLine(r, ch.currency)).join('; ');
   const older = o.named
@@ -125,7 +125,7 @@ function refuseRefunded(
 }
 
 /** A partial refund: a valid amount in this currency, no more than what's left. */
-function partialAmount(text: string, ch: Charge): number {
+function partialAmount(text: string, ch: Stripe.Charge): number {
   const left = ch.amount - ch.amount_refunded;
   const amount = parseMoney(text, ch.currency);
 
@@ -146,9 +146,9 @@ function partialAmount(text: string, ch: Charge): number {
  */
 function unusedPart(
   ctx: Ctx,
-  ch: Charge,
-  latest: Charge | undefined,
-  subs: Subscription[],
+  ch: Stripe.Charge,
+  latest: Stripe.Charge | undefined,
+  subs: Stripe.Subscription[],
 ) {
   const sub = subs.find((s) => {
     const p = s.items.data.length === 1 ? period(s) : null;
@@ -182,9 +182,9 @@ function unusedPart(
 
 /** The payment being refunded, and the refunds already made on it. */
 interface Paid {
-  c: Customer;
-  ch: Charge;
-  earlier: PastRefund[];
+  c: Stripe.Customer;
+  ch: Stripe.Charge;
+  earlier: Stripe.Refund[];
 }
 
 /**
@@ -219,7 +219,7 @@ function refundPlan(
   const cur = ch.currency;
   const money = formatMoney(refund.amount, cur);
   const target = ch.payment_intent
-    ? { payment_intent: ch.payment_intent }
+    ? { payment_intent: idOf(ch.payment_intent) }
     : { charge: ch.id };
 
   return {
@@ -241,10 +241,8 @@ function refundPlan(
     data: { confirm: phraseFor(p, refund.amount) },
     apply: () =>
       applying(async () => {
-        const r = await ctx.stripe.write<{ id: string; status: string }>(
-          'POST',
-          '/refunds',
-          { ...target, amount: refund.amount },
+        const r = await ctx.stripe.write((s, o) =>
+          s.refunds.create({ ...target, amount: refund.amount }, o),
         );
 
         return {
