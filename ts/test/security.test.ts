@@ -604,7 +604,13 @@ describe('approval security (SPEC-approval)', () => {
       42,
     ]) {
       expect(
-        await P.undoJob(store, { id, sub: '', now, revert: () => null }),
+        await P.undoJob(store, {
+          service: 'S',
+          id,
+          sub: '',
+          now,
+          revert: () => null,
+        }),
       ).toEqual({ kind: 'refused', why: 'no such receipt' });
     }
 
@@ -851,5 +857,49 @@ describe('approval security (SPEC-approval)', () => {
       ok: false,
       why: 'not a consent for this plan',
     });
+  });
+
+  it('[A11] undo never touches a receipt from another server sharing the store', async () => {
+    const store = new P.MemoryStore();
+    let reverted = false;
+
+    await store.putReceipt({
+      id: 'r_EEEEEEEEEEEE',
+      service: 'billing-test',
+      proposal: 'H',
+      capability: 'refund',
+      summary: 'Refund',
+      at: now,
+      effects: [],
+      undo: { until: now + 60 },
+      tool: 'refund',
+      input: {},
+      planHash: 'H',
+      sub: '',
+    });
+
+    expect(
+      await P.undoJob(store, {
+        service: 'billing-prod',
+        id: 'r_EEEEEEEEEEEE',
+        sub: '',
+        now,
+        revert: () => {
+          reverted = true;
+        },
+      }),
+    ).toEqual({ kind: 'refused', why: 'no such receipt' });
+    expect(reverted).toBe(false);
+  });
+
+  it('[A12] a plan with a malformed uses never gets a plan hash', () => {
+    expect(() =>
+      P.planPreimage(
+        'refund',
+        {},
+        { summary: 'x', effects: [], uses: [] as never },
+        'low',
+      ),
+    ).toThrow('malformed uses');
   });
 });

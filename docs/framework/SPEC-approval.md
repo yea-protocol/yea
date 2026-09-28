@@ -83,7 +83,8 @@ Approval binds to a **plan hash** that stays the same when the same plan is reco
 planHash = b64url(sha256(canonical({ tool, input, summary, effects, uses, risk, undoWindow })))
 ```
 
-- `b64url` and `canonical` are SPEC.md's (§6.1, §10). Absent optional fields are left out.
+- `b64url` and `canonical` are SPEC.md's (§6.1, §10). Absent optional fields are left out,
+  and so is an empty `uses`, which means the same as an absent one (SPEC.md §5.1).
 - It leaves out volatile fields (proposal ids, expiry, `data`), unlike today's `proposalHash`.
 - `input` is the tool's validated input, so an approval to delete `old-nav` can't delete
   `main`.
@@ -319,8 +320,10 @@ be undone from any process: the receipt stores what it needs.
 
 `undo({ receipt })` takes a receipt id from the caller, so it first checks the id against the
 generated format (`r_` and 8 to 32 characters of `A-Z a-z 0-9 _ -`) and answers "not found"
-otherwise; the id never reaches a file path unchecked. It then runs only within the undo
-window, only for the same principal (`sub`), and only once:
+otherwise; the id never reaches a file path unchecked. A receipt whose `service` isn't this
+server's is "not found" too, since servers may share a store. It then runs only within the
+undo window (through `until` itself, as the protocol's `UNDO` does), only for the same
+principal (`sub`), and only once:
 
 1. `store.claimUndo(id)` (atomic; false if already claimed or undone);
 2. call the tool's `revert` with the stored input, plan hash and result;
@@ -351,7 +354,7 @@ interface ApprovalStore {
 type LedgerKey = { block: string; of: string };  // a policy grant block id and a measure
 type Reservation = { key: LedgerKey; amount: bigint; id: string };
 type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus what undo needs
-  tool: string; input: unknown; planHash: string; sub: string;
+  service: string; tool: string; input: unknown; planHash: string; sub: string;
 };
 ```
 
@@ -486,8 +489,9 @@ export function decide(
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - a `deny`ed tool never runs, even with approval;
   - deleting the unsigned policy file returns to the defaults, never to something looser;
-  - undo refuses outside its window, for another principal, a second time, and for an id
-    that isn't in the generated format (`../x`);
+  - undo refuses outside its window, for another principal, a second time, for an id that
+    isn't in the generated format (`../x`), and for a receipt from another server;
+  - a plan with a malformed `uses` never gets a plan hash;
   - a principal key file writable by the server's user, or in a directory it can write, is
     refused;
   - a partly failed reservation releases the reservations already made;

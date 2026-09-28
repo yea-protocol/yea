@@ -172,7 +172,12 @@ const hashed = async (key) => {
 // ---- plan hash (§1) ----
 const hash = [];
 
-for (const key of ['move', 'email', 'refund', 'unrated']) {
+plans.emptyUses = {
+  tool: { name: 'reschedule', revert: true },
+  plan: { ...plans.move.plan, uses: {} },
+};
+
+for (const key of ['move', 'email', 'refund', 'unrated', 'emptyUses']) {
   const hp = await hashed(key);
 
   hash.push({
@@ -202,6 +207,11 @@ hash.push({
   plan: plans.refund.plan,
   error: true,
 });
+must(
+  'empty uses hashes as absent',
+  hash.find((h) => h.name === 'emptyUses').planHash,
+  hash.find((h) => h.name === 'move').planHash,
+);
 must(
   'unrated plan resolves to medium',
   hash.find((h) => h.name === 'unrated').risk,
@@ -1021,6 +1031,125 @@ for (const [name, grant, at, want] of [
   });
 }
 
+// ---- undo (§7) ----
+const jobReceipt = (id, over = {}) => ({
+  id,
+  service: 'S',
+  proposal: 'H',
+  capability: 'reschedule',
+  summary: 'Move standup',
+  at: now,
+  effects: [],
+  undo: { until: now + 60 },
+  tool: 'reschedule',
+  input: { event: 'e1' },
+  planHash: 'H',
+  sub: 'client-1',
+  ...over,
+});
+const receipts = [
+  jobReceipt('r_DDDDDDDDDDDD', { service: 'another-server' }),
+  jobReceipt('r_AAAAAAAAAAAA'),
+  jobReceipt('r_BBBBBBBBBBBB', { undo: null }),
+  jobReceipt('r_CCCCCCCCCCCC'),
+];
+const undo = [];
+
+for (const [name, id, sub, at, want, first] of [
+  [
+    'within the window',
+    'r_AAAAAAAAAAAA',
+    'client-1',
+    now + 10,
+    { kind: 'undone' },
+  ],
+  [
+    'allowed at until itself',
+    'r_AAAAAAAAAAAA',
+    'client-1',
+    now + 60,
+    { kind: 'undone' },
+  ],
+  [
+    'closed at until + 1',
+    'r_AAAAAAAAAAAA',
+    'client-1',
+    now + 61,
+    { kind: 'refused', why: 'the undo window has closed' },
+  ],
+  [
+    'another principal',
+    'r_AAAAAAAAAAAA',
+    'client-2',
+    now + 10,
+    { kind: 'refused', why: 'no such receipt' },
+  ],
+  [
+    'never undoable',
+    'r_BBBBBBBBBBBB',
+    'client-1',
+    now + 10,
+    { kind: 'refused', why: 'this job can never be undone' },
+  ],
+  [
+    'already undone',
+    'r_CCCCCCCCCCCC',
+    'client-1',
+    now + 10,
+    { kind: 'refused', why: 'this job was already undone' },
+    true,
+  ],
+  [
+    'an id outside the format',
+    '../x',
+    'client-1',
+    now + 10,
+    { kind: 'refused', why: 'no such receipt' },
+  ],
+  [
+    'a receipt from another server sharing the store',
+    'r_DDDDDDDDDDDD',
+    'client-1',
+    now + 10,
+    { kind: 'refused', why: 'no such receipt' },
+  ],
+  [
+    'an unknown id',
+    'r_ZZZZZZZZZZZZ',
+    'client-1',
+    now + 10,
+    { kind: 'refused', why: 'no such receipt' },
+  ],
+]) {
+  const s = new P.MemoryStore();
+
+  for (const r of receipts) {
+    await s.putReceipt(r);
+  }
+
+  if (first) {
+    await P.undoJob(s, {
+      service: 'S',
+      id,
+      sub,
+      now: at,
+      revert: () => null,
+    });
+  }
+
+  const got = await P.undoJob(s, {
+    service: 'S',
+    id,
+    sub,
+    now: at,
+    revert: () => null,
+  });
+  const shown = got.kind === 'undone' ? { kind: 'undone' } : got;
+
+  must(`undo ${name}`, shown, want);
+  undo.push({ name, id, sub, now: at, undoneBefore: !!first, expect: want });
+}
+
 // ---- FileStore layout (§8) ----
 const dir = mkdtempSync(join(tmpdir(), 'yea-store-'));
 const store = new FileStore(dir);
@@ -1066,6 +1195,7 @@ export const approval = {
   states,
   judge,
   tightening,
+  undo: { service: 'S', receipts, cases: undo },
   consents: {
     plan: {
       tool: refundHp.tool,

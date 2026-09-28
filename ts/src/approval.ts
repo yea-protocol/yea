@@ -13,7 +13,7 @@ import type {
   Reservation,
 } from './store.js';
 import type { Effect, Risk } from './types.js';
-import { exact, isLimit, type Uses } from './uses.js';
+import { exact, isLimit, isUses, type Uses } from './uses.js';
 
 /** What a job tool's handler returns for each way it could do the job (SPEC-approval §1). */
 export interface JobPlan {
@@ -134,12 +134,19 @@ export function planPreimage(
 ): Record<string, unknown> {
   assertIntegers(input);
 
+  if (plan.uses !== undefined && !isUses(plan.uses)) {
+    throw new TypeError(
+      `plan has a malformed uses: ${JSON.stringify(plan.uses)}`,
+    );
+  }
+
   return {
     tool,
     input,
     summary: plan.summary,
     effects: plan.effects,
-    ...(plan.uses === undefined ? {} : { uses: plan.uses }),
+    // Absent and empty mean the same (SPEC.md §5.1), so they hash the same.
+    ...(plan.uses && Object.keys(plan.uses).length ? { uses: plan.uses } : {}),
     risk,
     ...(plan.undoWindow === undefined ? {} : { undoWindow: plan.undoWindow }),
   };
@@ -411,12 +418,15 @@ export async function undoJob(
   store: ApprovalStore,
   opts: {
     id: unknown;
+    /** This server's service id: a receipt from another server sharing the store is unknown. */
+    service: string;
     sub: string;
     now: number;
     revert: (r: JobReceipt) => unknown;
   },
 ): Promise<UndoOutcome> {
-  const r = isReceiptId(opts.id) ? await store.getReceipt(opts.id) : null;
+  const found = isReceiptId(opts.id) ? await store.getReceipt(opts.id) : null;
+  const r = found?.service === opts.service ? found : null;
   const why = undoRefusal(r, opts.sub, opts.now);
 
   if (why || !r) {
@@ -453,5 +463,6 @@ function undoRefusal(
     return 'this job can never be undone';
   }
 
-  return now >= r.undo.until ? 'the undo window has closed' : null;
+  // Open through `until` itself, as in the protocol's UNDO (SPEC.md §4.5).
+  return now > r.undo.until ? 'the undo window has closed' : null;
 }

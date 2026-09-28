@@ -11,6 +11,7 @@ const key = { block: 'B', of: 'emails' };
 
 const receipt = (over: Partial<P.JobReceipt> = {}): P.JobReceipt => ({
   id: 'r_AAAAAAAAAAAA',
+  service: 'S',
   proposal: 'H',
   capability: 'reschedule',
   summary: 'Move standup',
@@ -82,12 +83,25 @@ describe('undo (SPEC-approval §7)', () => {
     };
 
     expect(
-      (await P.undoJob(store, { id: 'r_AAAAAAAAAAAA', sub: '', now, revert }))
-        .kind,
+      (
+        await P.undoJob(store, {
+          service: 'S',
+          id: 'r_AAAAAAAAAAAA',
+          sub: '',
+          now,
+          revert,
+        })
+      ).kind,
     ).toBe('undone');
     expect(seen).toEqual([{ event: 'e1' }]);
     expect(
-      await P.undoJob(store, { id: 'r_AAAAAAAAAAAA', sub: '', now, revert }),
+      await P.undoJob(store, {
+        service: 'S',
+        id: 'r_AAAAAAAAAAAA',
+        sub: '',
+        now,
+        revert,
+      }),
     ).toEqual({
       kind: 'refused',
       why: 'this job was already undone',
@@ -102,6 +116,7 @@ describe('undo (SPEC-approval §7)', () => {
 
     expect(
       await P.undoJob(store, {
+        service: 'S',
         id: 'r_AAAAAAAAAAAA',
         sub: 'someone-else',
         now,
@@ -110,14 +125,21 @@ describe('undo (SPEC-approval §7)', () => {
     ).toEqual({ kind: 'refused', why: 'no such receipt' });
     expect(
       await P.undoJob(store, {
+        service: 'S',
         id: 'r_AAAAAAAAAAAA',
         sub: '',
-        now: now + 60,
+        now: now + 61,
         revert,
       }),
     ).toEqual({ kind: 'refused', why: 'the undo window has closed' });
     expect(
-      await P.undoJob(store, { id: 'r_BBBBBBBBBBBB', sub: '', now, revert }),
+      await P.undoJob(store, {
+        service: 'S',
+        id: 'r_BBBBBBBBBBBB',
+        sub: '',
+        now,
+        revert,
+      }),
     ).toEqual({ kind: 'refused', why: 'this job can never be undone' });
   });
 
@@ -131,12 +153,25 @@ describe('undo (SPEC-approval §7)', () => {
     };
 
     await expect(
-      P.undoJob(store, { id: 'r_AAAAAAAAAAAA', sub: '', now, revert }),
+      P.undoJob(store, {
+        service: 'S',
+        id: 'r_AAAAAAAAAAAA',
+        sub: '',
+        now,
+        revert,
+      }),
     ).rejects.toThrow('api down');
     fail = false;
     expect(
-      (await P.undoJob(store, { id: 'r_AAAAAAAAAAAA', sub: '', now, revert }))
-        .kind,
+      (
+        await P.undoJob(store, {
+          service: 'S',
+          id: 'r_AAAAAAAAAAAA',
+          sub: '',
+          now,
+          revert,
+        })
+      ).kind,
     ).toBe('undone');
   });
 });
