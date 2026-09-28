@@ -785,3 +785,90 @@ describe('approval security (SPEC-approval)', () => {
     ).toThrow('malformed uses');
   });
 });
+
+// `yea do`'s consent prompt (cli.ts `consentAndRetry`) runs `checkConsentRequest` and shows
+// `proposalLens`. The CLI runs `main()` on import and reads a TTY, so these test the two
+// exported functions it calls; test-drive (`tools.ts`) and `yea approve` call them too.
+describe('consent requests (SPEC.md §6.6)', () => {
+  /** A real consent_required from the pay service, and the proposal it's for. */
+  async function consentRequired() {
+    const c = await client(payService(), agent, principal, [
+      { each: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
+    ]);
+    const p = await intent(c, { to: 'a', amt: 500 });
+    const r = await c.commit(p);
+
+    if (r.kind !== 'ERROR' || !r.consent) {
+      throw new Error(r.lens);
+    }
+
+    return { p, k: r.consent, service: await c.audience() };
+  }
+
+  it('[C1] a matching request passes; one naming another service, hash or capability does not', async () => {
+    const { p, k, service } = await consentRequired();
+
+    expect(await P.checkConsentRequest(k, p, service)).toBeNull();
+    expect(await P.checkConsentRequest(k, p, 'other')).toBe(
+      'the consent request names another service',
+    );
+    expect(await P.checkConsentRequest({ ...k, hash: 'x' }, p, service)).toBe(
+      "the consent request's hash isn't the proposal's",
+    );
+    expect(
+      await P.checkConsentRequest({ ...k, capability: 'pay.x' }, p, service),
+    ).toBe('the consent request names another capability');
+    expect(
+      await P.checkConsentRequest({ ...k, proposal: 'p_x' }, p, service),
+    ).toBe('the consent request names another proposal');
+  });
+
+  it("[C2] yea do refuses a proposal that doesn't hash to its hash, even if the request echoes it", async () => {
+    const { p, k, service } = await consentRequired();
+    // The service changed what's shown but kept the hash the person would sign.
+    const tampered = { ...p, summary: 'pay a 0.01' };
+
+    expect(await P.checkConsentRequest(k, tampered, service)).toBe(
+      "the proposal doesn't match its hash",
+    );
+
+    // Unhashable (a float) is refused, not thrown.
+    const float = { ...p, effects: [{ ...p.effects[0], to: 1.5 }] };
+
+    expect(await P.checkConsentRequest(k, float, service)).toBe(
+      "the proposal doesn't match its hash",
+    );
+  });
+
+  it('[C3] yea do refuses a proposal with a malformed uses', async () => {
+    const { p, k, service } = await consentRequired();
+    const bad = {
+      ...p,
+      uses: { spend: { amount: -1, unit: 'USD' } },
+    } as P.Proposal;
+
+    expect(await P.checkConsentRequest(k, bad, service)).toBe(
+      'the proposal has a malformed uses',
+    );
+  });
+
+  it('[C4] the consent prompt shows uses, risk and undo, and escapes control characters in service text', async () => {
+    const { p } = await consentRequired();
+    // A bidi override; spelled as a code point so the source shows no hidden character.
+    const RLO = String.fromCodePoint(0x202e);
+    const lines = P.proposalLens({
+      ...p,
+      summary: 'pay a\n  + create payment/b\u001b[2K',
+      effects: [{ op: 'create', target: `payment/a${RLO}`, detail: 'x\ry' }],
+    });
+
+    expect(lines[0]).toBe(
+      `[${p.id}] pay a\\u{a}  + create payment/b\\u{1b}[2K`,
+    );
+    expect(lines[1]).toBe('  + create payment/a\\u{202e} — x\\u{d}y');
+    expect(lines[2]).toMatch(
+      /^ {2}uses: spend .+ · risk: \w+ · undo: .+ · expires: /,
+    );
+    expect(lines).toHaveLength(3);
+  });
+});

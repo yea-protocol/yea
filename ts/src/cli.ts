@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
-import { approveConsentCode } from './approve.js';
+import {
+  approveConsentCode,
+  checkConsentRequest,
+  proposalLens,
+} from './approve.js';
 import {
   type JobConsent,
   phraseMatches,
@@ -1109,26 +1113,27 @@ async function consentAndRetry({
   chosen: Proposal;
   consent: ConsentRequest | undefined;
 }) {
-  const p = await principalKey();
+  const why = k
+    ? await checkConsentRequest(k, chosen, await c.audience())
+    : 'the service sent none';
 
-  if (
-    !k ||
-    k.proposal !== chosen.id ||
-    k.hash !== chosen.hash ||
-    k.capability !== chosen.capability ||
-    k.service !== (await c.audience())
-  ) {
+  if (!k || why) {
     die(
-      "✗ the service's consent request doesn't match the proposal shown; not signing",
+      `✗ the service's consent request doesn't match the proposal shown (${why}); not signing`,
     );
   }
+
+  const p = await principalKey();
 
   if (!p || p.public !== k.principal) {
     return null;
   }
 
+  // SPEC.md §6.6: effects, uses, risk and undo, from the proposal whose hash was just checked.
   console.log(
-    `\n  ${chosen.summary}\n${chosen.effects.map((e) => `    ${effectLine(e)}`).join('\n')}`,
+    ['', `at ${printable(k.service)}:`, ...proposalLens(chosen)]
+      .map((l) => (l ? `  ${l}` : l))
+      .join('\n'),
   );
 
   if (

@@ -4,14 +4,13 @@
  * instead; it lives in `@yea-protocol/mcp/bridge`.)
  */
 
+import { checkConsentRequest, proposalLens } from './approve.js';
 import type { Client } from './client.js';
-import { keyPair, proposalHash } from './crypto.js';
+import { keyPair } from './crypto.js';
 import { consentCode, consentGrant } from './grants.js';
 import { loadGrants, principalKey, saveGrant } from './home.js';
-import { lens } from './lens.js';
 import { INSTRUCTIONS } from './tooldefs.js';
 import type { ConsentRequest, ErrorReply, Proposal } from './types.js';
-import { isUses } from './uses.js';
 
 export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
@@ -209,11 +208,11 @@ async function commitTool(
   if (r.kind === 'ERROR' && r.code === 'consent_required') {
     const consent = await consentFor(r, c, p);
 
-    if (!consent) {
+    if ('why' in consent) {
       return {
         text:
           r.lens +
-          "\n  → the service's consent request doesn't match this proposal; not asking the user to sign it.",
+          `\n  → the service's consent request doesn't match this proposal (${consent.why}); not asking the user to sign it.`,
         isError: true,
       };
     }
@@ -243,24 +242,17 @@ async function consentFor(
   err: ErrorReply,
   c: Client,
   p: Proposal,
-): Promise<ConsentRequest | null> {
+): Promise<ConsentRequest | { why: string }> {
   const k = err.consent;
 
-  if (
-    !k ||
-    k.proposal !== p.id ||
-    k.hash !== p.hash ||
-    k.capability !== p.capability ||
-    k.service !== (await c.audience())
-  ) {
-    return null;
+  if (!k) {
+    return { why: 'the service sent none' };
   }
 
-  if (
-    (p.uses !== undefined && !isUses(p.uses)) ||
-    (await proposalHash(p)) !== p.hash
-  ) {
-    return null;
+  const why = await checkConsentRequest(k, p, await c.audience());
+
+  if (why) {
+    return { why };
   }
 
   return {
@@ -294,16 +286,7 @@ async function askHuman(o: {
     return null;
   }
 
-  const shown = lens({
-    yea: 1,
-    id: '-',
-    re: '-',
-    kind: 'PROPOSALS',
-    proposals: [p],
-  })
-    .split('\n')
-    .slice(1)
-    .join('\n');
+  const shown = proposalLens(p).join('\n');
 
   if (
     !(await approve({

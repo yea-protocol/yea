@@ -274,7 +274,11 @@ function attrLine(attrs: typeof ATTRS, p: Proposal): string {
     .join(' · ');
 }
 
-function proposalsLines(ps: Proposal[]): string[] {
+/**
+ * The PROPOSALS body as lines, header first. A line can hold a newline from a service's
+ * string, so callers showing untrusted text escape per line rather than splitting the Lens.
+ */
+export function proposalsLines(ps: Proposal[]): string[] {
   // Attributes identical across all (N ≥ 2) proposals are stated once, in the header.
   const shared =
     ps.length >= 2

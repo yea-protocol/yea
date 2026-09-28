@@ -11,14 +11,13 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Client,
+  checkProposal,
   consentCode,
   decodeConsentCode,
   decodeGrant,
-  isUses,
   type Proposal,
   type Proposals,
   printable,
-  proposalHash,
   type ReceiptReply,
 } from '@yea-protocol/sdk';
 import { readTighteningFor } from '../keys.js';
@@ -145,24 +144,21 @@ async function previewCall(b: Bridge, call: JobCall): Promise<CallToolResult> {
   );
 }
 
-/** Whether a proposal passes the checks a consent would need (SPEC.md §6.6, like `consentFor`). */
+/**
+ * Whether a proposal passes the checks a consent would need (SPEC.md §6.6): well-typed id,
+ * hash and expiry, this tool's capability, then the SDK's `checkProposal` (uses and hash).
+ */
 async function sound(p: Proposal, capability: string): Promise<boolean> {
   if (
     typeof p?.id !== 'string' ||
     typeof p.hash !== 'string' ||
     p.capability !== capability ||
-    !Number.isSafeInteger(p.expires) ||
-    (p.uses !== undefined && !isUses(p.uses))
+    !Number.isSafeInteger(p.expires)
   ) {
     return false;
   }
 
-  try {
-    return (await proposalHash(p)) === p.hash;
-  } catch {
-    // A proposal canonical JSON can't hash (a float, say) can't be bound by a consent.
-    return false;
-  }
+  return (await checkProposal(p)) === null;
 }
 
 /** Step 5: the proposals that pass, and a line for each that doesn't (never shown otherwise). */

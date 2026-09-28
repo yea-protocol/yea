@@ -5,7 +5,7 @@
  */
 import { type KeyPair, proposalHash, sha256 } from './crypto.js';
 import { consentGrant, consentRecipient, decodeConsentCode } from './grants.js';
-import { fmtTime, lens } from './lens.js';
+import { fmtTime, proposalsLines } from './lens.js';
 import { printable } from './text.js';
 import type { ConsentRequest, Proposal } from './types.js';
 import { isUses } from './uses.js';
@@ -25,11 +25,62 @@ export type ApproveOutcome =
 export const keyFingerprint = async (key: string) =>
   (await sha256(key)).slice(0, 8);
 
-/** A proposal's Lens without the header line. */
-const proposalLens = (d: Proposal) =>
-  lens({ yea: 1, id: '-', re: '-', kind: 'PROPOSALS', proposals: [d] })
-    .split('\n')
-    .slice(1);
+/**
+ * A proposal as a person is shown it before consenting (SPEC.md §6.6): its Lens without the
+ * header line, so its summary, effects, uses, risk, undo and expiry. The text comes from the
+ * service, so each line is escaped with `printable`, a newline inside a field included.
+ */
+export const proposalLens = (p: Proposal): string[] =>
+  proposalsLines([p]).slice(1).map(printable);
+
+/**
+ * Why a proposal can't be bound by a consent, or null if it can (SPEC.md §5.1): its `uses`
+ * must be well formed and it must hash to its `hash`. One that canonical JSON can't hash (a
+ * float, say) can't be bound either.
+ */
+export async function checkProposal(p: Proposal): Promise<string | null> {
+  if (p.uses !== undefined && !isUses(p.uses)) {
+    return 'the proposal has a malformed uses';
+  }
+
+  try {
+    if ((await proposalHash(p)) === p.hash) {
+      return null;
+    }
+  } catch {
+    // Unhashable: refused below like any other mismatch.
+  }
+
+  return "the proposal doesn't match its hash";
+}
+
+/**
+ * Why consent request `k` can't be shown for signing against `p`, the proposal the agent got
+ * from the service; null when it can (SPEC.md §6.6). Its proposal, hash and capability must
+ * be `p`'s, and `p` must pass `checkProposal`. `service` is where `p` came from, when the
+ * caller knows it apart from `k` (a consent code carries only its own claim).
+ */
+export async function checkConsentRequest(
+  k: ConsentRequest,
+  p: Proposal,
+  service?: string,
+): Promise<string | null> {
+  const checks: [boolean, string][] = [
+    [k.proposal !== p.id, 'the consent request names another proposal'],
+    [k.hash !== p.hash, "the consent request's hash isn't the proposal's"],
+    [
+      k.capability !== p.capability,
+      'the consent request names another capability',
+    ],
+    [
+      service !== undefined && k.service !== service,
+      'the consent request names another service',
+    ],
+  ];
+  const mismatch = checks.find(([bad]) => bad);
+
+  return mismatch ? mismatch[1] : checkProposal(p);
+}
 
 /** What a code asks for, as lines to show; or why it can't be shown (its detail doesn't hash). */
 export async function consentLines(
@@ -49,21 +100,14 @@ export async function consentLines(
     };
   }
 
-  if (
-    d.id !== consent.proposal ||
-    d.hash !== consent.hash ||
-    d.capability !== consent.capability ||
-    (d.uses !== undefined && !isUses(d.uses)) ||
-    (await proposalHash(d)) !== consent.hash
-  ) {
-    return { why: "this consent code's proposal doesn't match its hash" };
+  const why = await checkConsentRequest(consent, d);
+
+  if (why) {
+    return { why: `this consent code can't be approved: ${why}` };
   }
 
   return {
-    lines: [
-      `at ${printable(consent.service)}:`,
-      ...proposalLens(d).map(printable),
-    ],
+    lines: [`at ${printable(consent.service)}:`, ...proposalLens(d)],
   };
 }
 
