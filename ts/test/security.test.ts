@@ -34,6 +34,7 @@ import {
   readPinnedKey,
   readPrivateFile,
   readServerSeed,
+  serveFetch,
   serveHttp,
 } from '../src/node.js';
 import { printable } from '../src/text.js';
@@ -163,6 +164,199 @@ describe('security regressions', () => {
     });
 
     expect(big.status).toBe(413);
+  });
+
+  it('[H4] serveFetch caps request bodies: 413, the app never runs, and a flood is cut off', async () => {
+    let calls = 0;
+    const server = await serveFetch(
+      () => {
+        calls++;
+
+        return new Response('ok');
+      },
+      { port: 0, maxBody: 1000, headers: true },
+    );
+
+    closers.push(() => server.close());
+
+    const port = (server.address() as AddressInfo).port;
+    const url = `http://127.0.0.1:${port}/`;
+    const declared = await fetch(url, {
+      method: 'POST',
+      body: 'x'.repeat(1001),
+    });
+    const streamed = await fetch(url, {
+      method: 'POST',
+      duplex: 'half',
+      body: new ReadableStream({
+        start(c) {
+          c.enqueue(new Uint8Array(600));
+          c.enqueue(new Uint8Array(600));
+          c.close();
+        },
+      }),
+    } as RequestInit);
+    // More than the cap plus the 1 MiB drained after refusing: the answer must still arrive whole.
+    const huge = await fetch(url, {
+      method: 'POST',
+      body: 'x'.repeat(4 << 20),
+    });
+
+    expect(huge.status).toBe(413);
+    expect(await huge.text()).toBe('request body exceeds 1000 bytes');
+    expect(declared.status).toBe(413);
+    expect(streamed.status).toBe(413);
+    expect(calls).toBe(0);
+
+    // A client that never stops sending is hung up on, not read forever.
+    const flood = await new Promise<number>((resolve) => {
+      const s = net.connect(port, '127.0.0.1');
+      const chunk = Buffer.alloc(1 << 16).fill('x');
+      let written = 0;
+      const pump = () => {
+        while (!s.destroyed && written < 256 << 20) {
+          written += chunk.length;
+
+          if (!s.write(`${chunk.length.toString(16)}\r\n${chunk}\r\n`)) {
+            s.once('drain', pump);
+
+            return;
+          }
+        }
+      };
+
+      s.on('error', () => {});
+      s.on('close', () => resolve(written));
+      s.write(
+        'POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n',
+      );
+      pump();
+    });
+
+    expect(flood).toBeLessThan(64 << 20);
+    expect(calls).toBe(0);
+
+    const ok = await fetch(url, { method: 'POST', body: 'x'.repeat(1000) });
+
+    expect(ok.status).toBe(200);
+    expect(calls).toBe(1);
+  });
+
+  it('[H5] serveFetch runs the gate before reading the body', async () => {
+    let calls = 0;
+    const server = await serveFetch(
+      () => {
+        calls++;
+
+        return new Response('ok');
+      },
+      {
+        port: 0,
+        gate: (req) =>
+          req.headers.get('authorization') === 'Bearer ok'
+            ? undefined
+            : new Response('no', { status: 401 }),
+      },
+    );
+    const sockets: net.Socket[] = [];
+
+    server.on('connection', (s) => sockets.push(s));
+    closers.push(() => server.close());
+
+    const port = (server.address() as AddressInfo).port;
+    const url = `http://127.0.0.1:${port}/`;
+    // Talk raw HTTP: send `head` and `body`, then collect the answer until `done` says so, or
+    // for 2 s. `next` sends more once the answer so far calls for it.
+    const raw = (o: {
+      head: string;
+      body?: Buffer;
+      done: (got: string) => boolean;
+      next?: (got: string) => Buffer | undefined;
+    }) =>
+      new Promise<string>((resolve) => {
+        const s = net.connect(port, '127.0.0.1');
+        let got = '';
+        const finish = () => {
+          s.destroy();
+          resolve(got);
+        };
+        const timer = setTimeout(finish, 2000);
+
+        s.on('error', () => {});
+        s.on('data', (c) => {
+          got += c.toString();
+
+          const more = o.next?.(got);
+
+          if (more) {
+            s.write(more);
+          }
+
+          if (o.done(got)) {
+            clearTimeout(timer);
+            finish();
+          }
+        });
+        s.write(o.head);
+
+        if (o.body) {
+          s.write(o.body);
+        }
+      });
+
+    // Declared under the cap, and only 16 KiB of it sent: a server that read the body before the
+    // gate would still be waiting for the rest.
+    const refused = await raw({
+      head: `POST / HTTP/1.1\r\nHost: x\r\nContent-Length: ${512 << 10}\r\n\r\n`,
+      body: Buffer.alloc(16 << 10),
+      done: (got) => got.endsWith('no'),
+    });
+
+    expect(refused).toMatch(/^HTTP\/1\.1 401 /);
+    expect(refused).toMatch(/content-length: 2\r\n/i);
+    expect(sockets[0].bytesRead).toBeLessThan(64 << 10);
+
+    // Expect: 100-continue without the token: 401, and never the go-ahead to send the body.
+    const noContinue = await raw({
+      head: 'POST / HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 1000\r\n\r\n',
+      done: (got) => got.endsWith('no'),
+    });
+
+    expect(noContinue).toMatch(/^HTTP\/1\.1 401 /);
+    expect(noContinue).not.toMatch(/100 Continue/);
+    expect(sockets[1].bytesRead).toBeLessThan(1000);
+
+    // With the token, the go-ahead comes, and then the app runs on the body.
+    const continued = await raw({
+      head: 'POST / HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ok\r\nExpect: 100-continue\r\nContent-Length: 1000\r\n\r\n',
+      next: (got) =>
+        got === 'HTTP/1.1 100 Continue\r\n\r\n'
+          ? Buffer.alloc(1000)
+          : undefined,
+      done: (got) => got.endsWith('ok'),
+    });
+
+    expect(continued).toMatch(
+      /^HTTP\/1\.1 100 Continue\r\n\r\nHTTP\/1\.1 200 /,
+    );
+    expect(calls).toBe(1);
+
+    const whole = await fetch(url, {
+      method: 'POST',
+      body: 'x'.repeat(4 << 20),
+    });
+
+    expect(whole.status).toBe(401);
+    expect(await whole.text()).toBe('no');
+
+    const ok = await fetch(url, {
+      method: 'POST',
+      headers: { authorization: 'Bearer ok' },
+      body: 'x',
+    });
+
+    expect(ok.status).toBe(200);
+    expect(calls).toBe(2);
   });
 
   it("[H2] concurrent commits can't overshoot a spend cap", async () => {

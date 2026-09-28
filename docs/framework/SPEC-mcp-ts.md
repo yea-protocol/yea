@@ -204,6 +204,59 @@ job's `revert`:
   message, never as "nothing was undone".
 - Its annotations say `destructiveHint: true, idempotentHint: true`.
 
+### `@yea-protocol/mcp/http`: the Streamable HTTP front end
+
+For a server that serves one person over HTTP (above), the package exports the front end the
+Stripe connector's `--http` runs on. `./http` is fetch-level (it needs only `node:crypto`, which
+Bun, Deno and Workers with `nodejs_compat` have); `./http/node` has the Node server.
+
+- `httpGate({ token, loopback })`: the checks, in one place. On loopback, the `Host` header
+  (DNS rebinding: 403); then `Authorization: Bearer <token>`, compared in constant time (401).
+  It returns the refusal, or undefined to let the request through.
+- `httpApp(factory, { token, sub, loopback, clientId?, maxBody? })`: a fetch handler that runs
+  `httpGate` on every request, then `createMcpHandler` with `authInfo`
+  `{ clientId (default 'yea-http'), extra: { sub } }`. The MCP handler reads at most `maxBody`
+  (its `maxRequestBodySize`), so both checks hold on Workers, Bun and Deno too.
+- `subOf(ctx)`: the `sub` for `yea({ sub })`: the verified request's, else `''`, which refuses the
+  call.
+- `httpAuthFrom(env)`: `{ token, sub }` from `YEA_HTTP_TOKEN` (32 characters or more) and
+  `YEA_SUB`; throws, naming what's missing.
+- `MAX_BODY`: the default cap, 1 MiB, the same as a YEA frame.
+- `serveHttp(app, { port, host, gate?, maxBody?, requestTimeout?, maxConnections? })` from
+  `./http/node`: the app on Node, through the SDK's `serveFetch` (`@yea-protocol/sdk/node`).
+  Pass `gate: httpGate(...)` with the app's token, so a request without it is refused before its
+  body is read. Request headers reach the app, because Streamable HTTP needs them (Authorization,
+  Accept, Content-Type, `MCP-Protocol-Version`, `Mcp-Session-Id`, `Mcp-Method`, `Mcp-Name`,
+  `Mcp-Param-*`, `Last-Event-ID`; the `Host` check reads Host). They arrive as the client sent
+  them, `X-Forwarded-*` included and unfiltered. The URL is parsed against `http://localhost`,
+  never the Host header.
+
+**What `serveFetch` does with each request.**
+
+1. The gate runs on the method, URL and headers, before any of the body is read. For
+   `Expect: 100-continue` it runs before `100 Continue` is sent: a refused client never gets the
+   go-ahead (and a declared body over the cap gets 413 instead).
+2. The body is read, keeping at most `maxBody` bytes. A body declared over it (Content-Length)
+   or streamed past it is answered 413, and the app never runs; reading pauses at the cap, so
+   the drain below is an exact bound.
+3. A refusal (the gate's, a 413, a 400 for a request fetch can't take) is framed by
+   Content-Length with `connection: close`. The server then reads and discards up to 1 MiB more
+   of the body, so a client that's nearly done sending reads the answer rather than a reset. Past
+   that it stops reading and closes the connection a second later, time for the client to read
+   the answer.
+4. The app's response is piped with backpressure; if the client goes away, the request's signal
+   aborts and the response body is cancelled.
+
+A client has `requestTimeout` (default 30 s) to send its whole request, and `maxConnections`
+(default: no limit) bounds how many are served at once. Memory: a request in flight holds at
+most `maxBody`, about twice that while its chunks are joined; without the token, nothing. So the
+worst case is about `2 × maxBody × maxConnections`.
+
+`createMcpHandler` has a cap of its own (`maxRequestBodySize`, 4 MiB by default; it refuses a
+declared Content-Length over it and stops reading once past it), which `httpApp` sets to
+`maxBody`. Before this front end, the connector streamed the body into the MCP handler with no
+cap of its own, relying on that 4 MiB default.
+
 ## How a call runs
 
 The guarded callback does, in order (SPEC-approval §5 and §6):
@@ -353,6 +406,8 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
   (where `~/.yea` is, honouring `YEA_HOME`), and `isMemoryStore` with `MemoryStore`'s brand.
 - Node ≥ 20 (the SDK's floor), ESM only.
 - `yea mcp` (the 2025-era bridge) moves onto this package in `bridge` (#40), not here.
+- Four entry points: `.` (the job tools), `./bridge` (`yea mcp`), `./http` (the Streamable HTTP
+  front end, fetch-level) and `./http/node` (its Node server, on the SDK's `serveFetch`).
 
 ## Code layout
 
@@ -370,6 +425,8 @@ mcp/src/serverkey.ts       the server's name and key
 mcp/src/policy.ts          pinned principal, policy and tightening loading
 mcp/src/render.ts          Lens text and structuredContent for plans, receipts and codes
 mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk metadata
+mcp/src/http.ts            the Streamable HTTP front end: token, Host check, body cap (`./http`)
+mcp/src/http-node.ts       its Node server, on the SDK's serveFetch (`./http/node`)
 mcp/src/util.ts            small internal helpers (isObject, errorMessage, warnOnce, errno, registryOf)
 mcp/test/*.test.ts         in-memory client tests; security cases in mcp/test/security.test.ts
 ```
@@ -399,6 +456,12 @@ can't elicit. For each:
 - a legacy stateless HTTP request takes the consent-code path;
 - the objective's shape: `serveStdio` (over an in-memory transport) with one `yea()` context,
   on both eras.
+- the HTTP front end (`mcp/test/http.test.ts`): no token, a wrong one or another scheme gets
+  401 and a foreign Host on loopback 403, before MCP; a call with the token runs as `sub`; a body
+  over the cap, declared or streamed, even past what's drained, gets a readable 413 and the app
+  never runs; a request without the token is refused before its body is read (declared under the cap,
+  so the test fails if the body is read first), and never gets `100 Continue`; a slow request is
+  cut off. The core's regression tests are in `ts/test/security.test.ts` (H4, H5).
 
 Security cases in `mcp/test/security.test.ts`, the approval core's list from the MCP side.
 Any fix that lands in the SDK core also gets its regression test in `ts/test/security.test.ts`

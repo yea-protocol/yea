@@ -1,11 +1,6 @@
 /** Node transports: TCP (yea://), TLS (yeas://), stdio, and an HTTP bridge server. */
 import { spawn } from 'node:child_process';
-import {
-  createServer as createHttpServer,
-  type Server as HttpServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from 'node:http';
+import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
 import tls from 'node:tls';
 import {
@@ -17,6 +12,7 @@ import {
 } from './client.js';
 import { errorLine, frameId } from './frames.js';
 import { fetchHandler } from './http.js';
+import { serveCapped } from './servefetch.js';
 import type { Service } from './service.js';
 
 export const DEFAULT_PORT = 7447;
@@ -182,80 +178,15 @@ export function serveStdio(svc: Service) {
   serveStream(svc, process.stdin, (s) => process.stdout.write(s));
 }
 
-/** Collect a request body; null (after answering 413) once it exceeds MAX_FRAME. */
-async function readCapped(
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<Buffer[] | null> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-
-  for await (const c of req) {
-    size += (c as Buffer).length;
-
-    if (size > MAX_FRAME) {
-      res.writeHead(413).end('frame exceeds 1 MiB');
-      req.destroy();
-
-      return null;
-    }
-
-    chunks.push(c as Buffer);
-  }
-
-  return chunks;
-}
-
-/** Copy a fetch Response onto a Node response, streaming the body. */
-async function relay(r: Response, res: ServerResponse) {
-  res.writeHead(r.status, Object.fromEntries(r.headers));
-
-  // Node's web streams are async-iterable; the DOM lib typings just don't say so.
-  if (r.body) {
-    for await (const c of r.body as unknown as AsyncIterable<Uint8Array>) {
-      res.write(c);
-    }
-  }
-
-  res.end();
-}
-
 /** Serve the HTTP bridge on Node's http module. */
 export function serveHttp(
   svc: Service,
   o: { port?: number; host?: string; path?: string } = {},
 ): Promise<HttpServer> {
-  const handler = fetchHandler(svc, { path: o.path });
-  const server = createHttpServer(async (req, res) => {
-    req.on('error', () => {
-      // an aborted upload surfaces through the body read below
-    });
-
-    try {
-      const chunks = await readCapped(req, res);
-
-      if (!chunks) {
-        return;
-      }
-
-      const url = new URL(req.url ?? '/', 'http://localhost'); // never trust the Host header for parsing
-      const body = req.method === 'POST' ? Buffer.concat(chunks) : undefined;
-
-      await relay(
-        await handler(new Request(url, { method: req.method, body })),
-        res,
-      );
-    } catch {
-      if (!res.headersSent) {
-        res.writeHead(400);
-      }
-
-      res.end();
-    }
-  });
-
-  return new Promise((resolve) =>
-    server.listen(o.port ?? 8080, o.host ?? '127.0.0.1', () => resolve(server)),
+  return serveCapped(
+    fetchHandler(svc, { path: o.path }),
+    { port: o.port, host: o.host, maxBody: MAX_FRAME },
+    'frame exceeds 1 MiB',
   );
 }
 
@@ -356,5 +287,13 @@ export {
   serverKeyPath,
   uid,
 } from './keyfile.js';
+
+export {
+  type FetchApp,
+  type FetchGate,
+  MAX_REQUEST_BODY,
+  type ServeFetchOptions,
+  serveFetch,
+} from './servefetch.js';
 
 export { listServices } from './setup.js';

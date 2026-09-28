@@ -4,6 +4,14 @@
  * `cancel_subscription` and `change_plan`, each previewed, approved and, where Stripe allows,
  * undoable. Not affiliated with, endorsed by, or sponsored by Stripe, Inc.
  */
+
+export {
+  httpApp,
+  httpAuthFrom,
+  httpGate,
+  subOf,
+} from '@yea-protocol/mcp/http';
+
 export {
   currentSubscriptions,
   findCustomers,
@@ -27,8 +35,6 @@ export {
   stepOf,
   toQuantity,
 } from './currency.js';
-
-export { httpApp, httpAuthFrom, subOf } from './http.js';
 
 export { readKeyFile, readSecretKey } from './key.js';
 
