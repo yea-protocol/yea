@@ -14,7 +14,12 @@ interface ReplyScrollDeps {
   pane: Readonly<ShallowRef<HTMLElement | null>>;
 }
 
-/** Whether the element's top edge is on screen, below the fixed navigation bar. */
+/**
+ * Whether the element's top edge is on screen, below what VitePress pins to the top. The pane's
+ * `scroll-margin-top` (the nav's height plus 16px) is that allowance at every width: from 960px
+ * up the nav bar is fixed; below 960px the nav scrolls away, but the local nav ("Return to top",
+ * 48px) stays pinned, and the same margin clears it with room to spare.
+ */
 function topInView(el: HTMLElement): boolean {
   const top = el.getBoundingClientRect().top;
   const below = Number.parseFloat(getComputedStyle(el).scrollMarginTop) || 0;

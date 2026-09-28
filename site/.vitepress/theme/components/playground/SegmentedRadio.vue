@@ -13,8 +13,13 @@ const props = defineProps<{
 
 const model = defineModel<T>({ required: true });
 
+/** The checked radio takes the tab stop; with none checked, the first one does. */
+const tabStop = (value: T, i: number) =>
+  model.value === value ||
+  (i === 0 && !props.options.some((o) => o.value === model.value));
+
 function onKey(e: KeyboardEvent, i: number) {
-  const next = moveIndex(e.key, i, props.options.length);
+  const next = moveIndex(e.key, i, props.options.length, 'both');
 
   if (next === null) {
     return;
@@ -34,7 +39,7 @@ function onKey(e: KeyboardEvent, i: number) {
       type="button"
       role="radio"
       :aria-checked="model === o.value"
-      :tabindex="model === o.value ? 0 : -1"
+      :tabindex="tabStop(o.value, i) ? 0 : -1"
       @click="model = o.value"
       @keydown="onKey($event, i)"
     >{{ o.text }}</button>

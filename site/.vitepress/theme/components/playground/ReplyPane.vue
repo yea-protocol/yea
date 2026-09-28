@@ -50,7 +50,7 @@ async function copyLens() {
 }
 
 function onTabKey(e: KeyboardEvent, i: number) {
-  const next = moveIndex(e.key, i, TABS.length);
+  const next = moveIndex(e.key, i, TABS.length, 'horizontal');
 
   if (next === null) {
     return;
@@ -119,6 +119,7 @@ function onTabKey(e: KeyboardEvent, i: number) {
 .tabs > button { flex: none; padding: 6px 14px; }
 .copy { font: inherit; font-size: 0.82rem; font-weight: 500; padding: 6px 10px; border: 0; border-radius: 7px; background: none; color: var(--vp-c-text-3); cursor: pointer; }
 
+.lens:focus-visible { outline-offset: -2px; }
 .lens { font-family: var(--vp-font-family-mono); font-size: 13px; line-height: 1.75; padding: 16px 18px 20px; overflow-x: auto; min-height: 120px; }
 .ln { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; color: var(--vp-c-text-1); }
 .ln.amber { color: var(--state-amber); }

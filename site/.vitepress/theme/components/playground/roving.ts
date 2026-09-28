@@ -3,15 +3,24 @@
  * a key moves to, wrapping at the ends, and moving focus there.
  */
 
-const STEP: Record<string, number> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1,
+/**
+ * Which arrows move: a radiogroup takes all four (WAI-ARIA radio group pattern); a
+ * horizontal tablist takes only Left and Right, leaving Up and Down to scroll the page.
+ */
+export type Orientation = 'both' | 'horizontal';
+
+const STEPS: Record<Orientation, Record<string, number>> = {
+  both: { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 },
+  horizontal: { ArrowRight: 1, ArrowLeft: -1 },
 };
 
 /** The index `key` moves to from `i` among `n` items, or null for any other key. */
-export function moveIndex(key: string, i: number, n: number): number | null {
+export function moveIndex(
+  key: string,
+  i: number,
+  n: number,
+  orientation: Orientation,
+): number | null {
   if (key === 'Home') {
     return 0;
   }
@@ -20,7 +29,7 @@ export function moveIndex(key: string, i: number, n: number): number | null {
     return n - 1;
   }
 
-  const step = STEP[key];
+  const step = STEPS[orientation][key];
 
   return step === undefined ? null : (i + step + n) % n;
 }
