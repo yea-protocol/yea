@@ -8,7 +8,7 @@ import { errorResult, READ_ANNOTATIONS, UNDO_ANNOTATIONS } from '../result.js';
 import type { Obj } from '../util.js';
 import { consentCall, expandCall, undoCall } from './calls.js';
 import type { Service } from './greet.js';
-import type { Bridge } from './job.js';
+import type { Bridge } from './state.js';
 import type { ToolSpec } from './types.js';
 
 const str = (description: string) => ({ type: 'string', description });

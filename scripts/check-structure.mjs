@@ -39,16 +39,11 @@ export const LENGTH_EXEMPT = [
  * when a listed violation no longer occurs.
  */
 export const RATCHET = {
-  'mcp/src/bridge/job.ts': ['length'], // #108: split
-  'mcp/src/bridge/tools.ts': ['length'], // #108: split
   'python/mcp/src/yea_mcp/call.py': ['length'], // #108: split
   'python/src/yea/client.py': ['length'], // #108: split
   'python/src/yea/lens.py': ['length'], // #108: split
   'site/.vitepress/theme/components/Landing.vue': ['length'], // #108: split
   'ts/src/ask.ts': ['length'], // #108: split
-  'ts/src/examples/billing.ts': ['length'], // #108: split
-  'ts/src/examples/calendar.ts': ['length'], // #108: split
-  'ts/src/examples/demo.ts': ['length'], // #108: split
   'ts/src/lens.ts': ['length'], // #108: split
 };
 
