@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
@@ -10,7 +12,7 @@ import {
   signJobConsent,
 } from './ask.js';
 import type { Client } from './client.js';
-import type { KeyPair } from './crypto.js';
+import { type KeyPair, keyPair } from './crypto.js';
 import { FileStore } from './filestore.js';
 import {
   type Caveat,
@@ -47,6 +49,7 @@ get started
 identity
   yea init                              create your principal key and an agent key in ${home()}
   yea whoami                            show public keys
+  yea service-id <name>                 the service id of an MCP server built with @yea-protocol/mcp (for yea grant --to)
   yea grant [caveats]                   principal → agent grant (saved; used automatically)
   yea grant-import <token>              save a grant issued to this machine's agent key (principal kept elsewhere)
   yea delegate <token> --to <key> [caveats]   attenuate a grant for a sub-agent
@@ -222,6 +225,7 @@ type ServiceCommand = (c: Client, args: string[]) => Promise<void>;
 const COMMANDS = new Map<string, Command>([
   ['init', cmdInit],
   ['whoami', cmdWhoami],
+  ['service-id', cmdServiceId],
   ['grant', cmdGrant],
   ['grant-import', cmdGrantImport],
   ['delegate', cmdDelegate],
@@ -330,6 +334,31 @@ async function cmdWhoami() {
   console.log(
     `principal ${p?.public ?? '(none — run yea init)'}\nagent     ${a?.public ?? '(none)'}`,
   );
+}
+
+/**
+ * The service id of an MCP server built with `@yea-protocol/mcp` or `yea-mcp`: the public key
+ * of its seed in `~/.yea/server/<name>.key`, which `yea grant --to` needs.
+ */
+async function cmdServiceId(rest: string[]) {
+  const name = rest[0] ?? die('usage: yea service-id <name>');
+
+  if (!/^[a-z0-9._-]{1,64}$/.test(name)) {
+    die(
+      `bad server name ${JSON.stringify(name)}: it matches [a-z0-9._-]{1,64}`,
+    );
+  }
+
+  const path = join(home(), 'server', `${name}.key`);
+  let seed: string;
+
+  try {
+    seed = readFileSync(path, 'utf8').trim();
+  } catch {
+    die(`no server key at ${path}: start the server once to create it`);
+  }
+
+  console.log((await keyPair(seed)).public);
 }
 
 async function cmdGrant() {
