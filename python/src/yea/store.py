@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -190,9 +191,11 @@ def _create_excl(path: Path, text: str = "") -> bool:
 
 
 def _write_atomic(path: Path, text: str) -> None:
+    """Write to a temp file beside ``path``, then rename. The temp name is unique, so two
+    writers of the same file don't share one."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    tmp = path.with_name(f"{path.name}.tmp")
-    fd = os.open(tmp, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+    tmp = path.with_name(f"{path.name}.{secrets.token_hex(6)}.tmp")
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
     os.replace(tmp, path)
@@ -252,18 +255,19 @@ class FileStore:
         result and whether to write."""
         path = self._ledger_path(k)
         lock = path.with_suffix(".lock")
-        await _acquire(lock)
+        token = await _acquire(lock)
         try:
             led = _parse_ledger(_read(path))
             out, write = change(led)
             if write:
+                _still_held(lock, token)  # a lock broken while we paused must not be written through
                 _write_atomic(path, json.dumps(
                     {"settled": str(led.settled), "reserved": {r: str(a) for r, a in led.reserved.items()}},
                     separators=(",", ":"),
                 ))
             return out
         finally:
-            lock.unlink(missing_ok=True)
+            _release(lock, token)
 
     async def reserve(self, k: LedgerKey, amount: int, max: int) -> Reservation | None:
         def change(led: _Ledger) -> tuple[Reservation | None, bool]:
@@ -300,19 +304,49 @@ class FileStore:
         return _read(self.root / "consents" / _plan_hash(plan_hash))
 
 
-async def _acquire(lock: Path) -> None:
-    """Take a lock file with O_EXCL, retrying; break one left by a crashed process."""
+async def _acquire(lock: Path) -> str:
+    """Take a lock file with O_EXCL, retrying for ``LOCK_WAIT``. It holds a random token, so only
+    its holder releases it. A lock older than ``LOCK_STALE`` was left by a crashed process."""
+    token = f"{os.getpid()}:{secrets.token_hex(8)}"
     deadline = time.monotonic() + LOCK_WAIT
-    while not _create_excl(lock, str(os.getpid())):
-        try:
-            if time.time() - lock.stat().st_mtime > LOCK_STALE:
-                lock.unlink(missing_ok=True)
-                continue
-        except FileNotFoundError:
-            continue
+    while not _create_excl(lock, token):
+        _break_if_stale(lock)
         if time.monotonic() > deadline:
             raise StoreError(f"timed out waiting for {lock}")
         await asyncio.sleep(0.01)
+    return token
+
+
+def _break_if_stale(lock: Path) -> None:
+    """Remove a stale lock without removing a fresh one someone just took: move it aside under a
+    unique name, then delete it only if it's the same file we found stale; else put it back."""
+    try:
+        st = lock.stat()
+        if time.time() - st.st_mtime <= LOCK_STALE:
+            return
+        aside = lock.with_name(f"{lock.name}.{secrets.token_hex(6)}.stale")
+        os.rename(lock, aside)
+    except FileNotFoundError:
+        return
+    moved = aside.stat()
+    if (moved.st_ino, moved.st_dev) == (st.st_ino, st.st_dev):
+        aside.unlink(missing_ok=True)
+        return
+    try:
+        os.link(aside, lock)  # someone's fresh lock: restore it unless a third holder took the name
+    except FileExistsError:
+        pass
+    aside.unlink(missing_ok=True)
+
+
+def _still_held(lock: Path, token: str) -> None:
+    if _read(lock) != token:
+        raise StoreError(f"lost {lock} while holding it; nothing was written")
+
+
+def _release(lock: Path, token: str) -> None:
+    if _read(lock) == token:
+        lock.unlink(missing_ok=True)
 
 
 def _parse_ledger(text: str | None) -> _Ledger:

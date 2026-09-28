@@ -8,9 +8,9 @@ import pytest
 
 from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed, quantity, spend
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_key_file, check_state, choose_store, decide, input_hash,
-    job_consent_code, judge_answer, load_policy, new_receipt_id, new_state, normalize_phrase, phrase_matches, plan_hash,
-    plan_preimage, read_tightening, reserve_all, undo_receipt,
+    HashedPlan, Policy, Tightening, build_form, check_key_file, check_state, choose_store, consent_for, decide,
+    input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
+    normalize_phrase, phrase_matches, plan_hash, plan_preimage, read_tightening, reserve_all, undo_receipt,
 )
 from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id
 from yea._json import canonical, sha256_b64url
@@ -32,7 +32,7 @@ def hashed(tool="delete_branch", input=None, p=None, risk="low", undoable=True):
 
 
 def policy(*caveats, deny=(), oob="high", principal=PRINCIPAL, issued_to=SERVER):
-    g = issue_grant(principal, issued_to.public, list(caveats), iat=NOW)
+    g = issue_grant(principal, issued_to.public, list(caveats) or [{"can": ["*"]}], iat=NOW)
     return load_policy(g, SERVER.public, PRINCIPAL.public, Tightening(tuple(deny), oob), NOW)
 
 
@@ -105,8 +105,8 @@ def test_deleting_the_policy_file_returns_to_the_defaults():
     t = read_tightening(None)
     assert t.deny == () and t.out_of_band == "high"
     p = load_policy(None, SERVER.public, PRINCIPAL.public, t, NOW)
-    assert decide([hashed()], p, no_use).kind == "ask"
-    assert decide([hashed(risk="high")], p, no_use).kind == "out-of-band"
+    assert decide([hashed()], p, no_use, NOW).kind == "ask"
+    assert decide([hashed(risk="high")], p, no_use, NOW).kind == "out-of-band"
 
 
 def test_key_file_owned_or_writable_by_this_user_is_refused(tmp_path):
@@ -126,68 +126,68 @@ def test_key_file_out_of_reach_is_accepted():
 
 
 def test_unsigned_or_foreign_policy_never_auto_runs():
-    assert decide([hashed()], policy({"can": ["*"]}, principal=OTHER), no_use).kind == "ask"  # not the pinned principal
-    assert decide([hashed()], policy({"can": ["*"]}, issued_to=OTHER), no_use).kind == "ask"  # issued to another server
-    assert decide([hashed()], policy({"can": ["*"]}, {"svc": ["elsewhere"]}), no_use).kind == "ask"
-    assert decide([hashed()], policy({"can": ["*"]}, {"exp": NOW}), no_use).kind == "ask"
+    assert decide([hashed()], policy({"can": ["*"]}, principal=OTHER), no_use, NOW).kind == "ask"  # not the pinned principal
+    assert decide([hashed()], policy({"can": ["*"]}, issued_to=OTHER), no_use, NOW).kind == "ask"  # issued to another server
+    assert decide([hashed()], policy({"can": ["*"]}, {"svc": ["elsewhere"]}), no_use, NOW).kind == "ask"
+    assert decide([hashed()], policy({"can": ["*"]}, {"exp": NOW}), no_use, NOW).kind == "ask"
     p = load_policy("pg1.not-a-grant", SERVER.public, PRINCIPAL.public, Tightening(), NOW)
-    assert p.grant is None and decide([hashed()], p, no_use).kind == "ask"
+    assert p.grant is None and decide([hashed()], p, no_use, NOW).kind == "ask"
 
 
 # ------------------------------------------------------------------ decide
 
 
 def test_within_policy_runs():
-    d = decide([hashed()], policy({"can": ["delete_branch"]}, {"risk": "low"}), no_use)
+    d = decide([hashed()], policy({"can": ["delete_branch"]}, {"risk": "low"}), no_use, NOW)
     assert d.kind == "run" and d.plan is not None and d.reserve == ()
 
 
 def test_deny_refuses_first():
-    d = decide([hashed(risk="high")], policy({"can": ["*"]}, deny=["delete_branch"]), no_use)
+    d = decide([hashed(risk="high")], policy({"can": ["*"]}, deny=["delete_branch"]), no_use, NOW)
     assert d.kind == "denied" and d.why == "your policy never allows delete_branch"
 
 
 def test_irreversible_never_auto_runs():
-    d = decide([hashed(undoable=False)], policy({"can": ["*"]}, {"risk": "high"}), no_use)
+    d = decide([hashed(undoable=False)], policy({"can": ["*"]}, {"risk": "high"}), no_use, NOW)
     assert d.kind == "ask" and d.why == "delete_branch can't be undone"
 
 
 def test_high_risk_goes_out_of_band_even_with_a_grant():
-    assert decide([hashed(risk="high")], policy({"can": ["*"]}, {"risk": "high"}), no_use).kind == "out-of-band"
-    assert decide([hashed(risk="medium")], policy({"can": ["*"]}, oob="medium"), no_use).kind == "out-of-band"
+    assert decide([hashed(risk="high")], policy({"can": ["*"]}, {"risk": "high"}), no_use, NOW).kind == "out-of-band"
+    assert decide([hashed(risk="medium")], policy({"can": ["*"]}, oob="medium"), no_use, NOW).kind == "out-of-band"
 
 
 def test_reasons_in_the_pinned_order():
     # Undoable comes before grant presence, and a failed grant check gives the core's reason.
     none = load_policy(None, SERVER.public, PRINCIPAL.public, Tightening(), NOW)
-    assert decide([hashed(undoable=False)], none, no_use).why == "delete_branch can't be undone"
-    assert decide([hashed()], none, no_use).why == "no signed policy lets delete_branch run without asking"
-    risky = decide([hashed(risk="medium")], policy({"can": ["*"]}, {"risk": "low"}), no_use)
+    assert decide([hashed(undoable=False)], none, no_use, NOW).why == "delete_branch can't be undone"
+    assert decide([hashed()], none, no_use, NOW).why == "no signed policy lets delete_branch run without asking"
+    risky = decide([hashed(risk="medium")], policy({"can": ["*"]}, {"risk": "low"}), no_use, NOW)
     assert risky.kind == "ask" and '{"risk":"low"}' in risky.why
-    assert '{"can":["reschedule"]}' in decide([hashed()], policy({"can": ["reschedule"]}), no_use).why
+    assert '{"can":["reschedule"]}' in decide([hashed()], policy({"can": ["reschedule"]}), no_use, NOW).why
     over = hashed(p=plan(uses={"spend": spend("25.01", "USD")}))
-    d = decide([over], policy({"can": ["*"]}, {"each": {"of": "spend", "max": 2500, "scale": 2, "unit": "USD"}}), no_use)
+    d = decide([over], policy({"can": ["*"]}, {"each": {"of": "spend", "max": 2500, "scale": 2, "unit": "USD"}}), no_use, NOW)
     assert d.kind == "ask" and "spend over the per-commit limit of 25.00 USD" in d.why
 
 
 def test_a_plan_without_uses_passes_limits():
     p = policy({"can": ["*"]}, {"each": {"of": "spend", "max": 0}}, {"total": {"of": "emails", "max": 0}})
-    assert decide([hashed()], p, no_use).kind == "run"
+    assert decide([hashed()], p, no_use, NOW).kind == "run"
 
 
 def test_totals_reserve_once_per_block_and_measure_with_the_smallest_max():
     p = policy({"can": ["*"]}, {"total": {"of": "emails", "max": 20}}, {"total": {"of": "emails", "max": 5}})
     h = hashed(p=plan(uses={"emails": quantity(2)}))
-    d = decide([h], p, no_use)
+    d = decide([h], p, no_use, NOW)
     assert d.kind == "run" and len(d.reserve) == 1
     key, amount, mx = d.reserve[0]
     assert key.of == "emails" and amount == 2 * 10**18 and mx == 5 * 10**18
-    assert decide([h], p, lambda k: 4 * 10**18).kind == "ask"  # 4 used + 2 > 5
+    assert decide([h], p, lambda k: 4 * 10**18, NOW).kind == "ask"  # 4 used + 2 > 5
 
 
 def test_only_plans0_can_run():
     second = hashed(p=plan("Archive old-nav"))
-    d = decide([hashed(undoable=False), second], policy({"can": ["*"]}), no_use)
+    d = decide([hashed(undoable=False), second], policy({"can": ["*"]}), no_use, NOW)
     assert d.kind == "ask"
 
 
@@ -218,7 +218,7 @@ def test_form_leaves_out_of_band_and_denied_plans_out_of_the_choice():
     assert [o["const"] for o in props["plan"]["oneOf"]] == [p.plan_hash for p in two]
     assert form["requested_schema"]["required"] == ["plan", "confirm"]
     assert "  uses: emails 1 · risk: low · undo: 1h" in form["message"]
-    assert build_form([low], "why", policy(deny=["delete_branch"]), lambda p: "x")["offered"] == []
+    assert build_form([low], "why", policy(deny=["delete_branch"]), lambda p: "x") is None  # nothing to offer: fail closed
 
 
 def test_state_holds_only_hashes_a_counter_and_a_nonce():
@@ -448,7 +448,7 @@ def test_corrupt_ledger_fails_closed(tmp_path):
 
 def test_policy_without_a_grant_still_carries_tightenings():
     p = Policy(deny=("x",))
-    assert p.grant is None and decide([hashed(tool="x")], p, no_use).kind == "denied"
+    assert p.grant is None and decide([hashed(tool="x")], p, no_use, NOW).kind == "denied"
 
 
 def test_a_symlink_in_a_writable_directory_is_refused(tmp_path):
@@ -519,3 +519,125 @@ def test_http_with_a_total_on_the_memory_store_refuses_to_start():
     assert isinstance(choose_store(True, None, p, single_process=True), MemoryStore)
     assert isinstance(choose_store(True, None, policy({"can": ["*"]})), MemoryStore)
     assert isinstance(choose_store(False, None, p), FileStore)
+
+
+# ------------------------------------------------------------------ review round
+
+
+def test_a_policy_loaded_earlier_still_expires():
+    p = policy({"can": ["*"]}, {"exp": NOW + 10})
+    assert decide([hashed()], p, no_use, NOW).kind == "run"
+    assert decide([hashed()], p, no_use, NOW + 10).kind == "ask"
+
+
+def test_a_grant_that_names_no_tools_doesnt_auto_run():
+    d = decide([hashed()], policy({"risk": "low"}), no_use, NOW)
+    assert d.kind == "ask" and "names no tools" in d.why
+
+
+def test_a_malformed_total_asks_instead_of_crashing():
+    d = decide([hashed(p=plan(uses={"emails": quantity(1)}))], policy({"can": ["*"]}, {"total": {"max": 5}}), no_use, NOW)
+    assert d.kind == "ask"
+
+
+def test_an_empty_phrase_falls_back_to_approve():
+    v = _judge({"action": "accept", "content": {"confirm": ""}}, pol=policy())
+    assert v.kind == "ask-again"
+    state = new_state("delete_branch", "ih", "", [hashed().plan_hash], 1, NOW)
+    for empty in ("", "  \u00a0", None):
+        verdict = judge_answer(state, {"action": "accept", "content": {"confirm": ""}}, [hashed()], policy(), lambda p, e=empty: e)
+        assert verdict.kind == "ask-again" and verdict.why == 'type "approve" exactly to approve'
+        ok = judge_answer(state, {"action": "accept", "content": {"confirm": "approve"}}, [hashed()], policy(), lambda p, e=empty: e)
+        assert ok.kind == "run"
+
+
+def test_float_input_hash_explains_itself():
+    with pytest.raises(ValueError, match="use a string or an integer"):
+        input_hash({"amount": 1.5})
+
+
+def test_an_intermediate_symlink_in_a_writable_directory_is_refused(tmp_path):
+    hosts = Path("/etc/hosts")
+    if not hosts.exists():
+        pytest.skip("no /etc/hosts")
+    # given -> (a root-owned directory's link would be fine) -> mid (in our directory) -> hosts
+    mid = tmp_path / "mid.pub"
+    mid.symlink_to(hosts)
+    outer = tmp_path / "outer.pub"
+    outer.symlink_to(mid)
+    assert check_key_file(outer) is not None
+    # Every hop is visited, so the directory holding each link is checked, not just the ends.
+    from yea.approval import _resolve_links
+
+    visited, real = _resolve_links(outer)
+    assert tmp_path.resolve() / "mid.pub" in visited
+    assert real == hosts.resolve()
+
+
+def test_load_principal_key_refuses_a_reachable_file(tmp_path):
+    f = tmp_path / "principal.pub"
+    f.write_text(PRINCIPAL.public + "\n")
+    with pytest.raises(ValueError, match="owned by this server's user"):
+        load_principal_key(f)
+
+
+# consents from `yea approve`
+
+
+def _consent(h, principal=PRINCIPAL, to=SERVER, only=None, exp=NOW + 600, svc=None):
+    caveats = [{"svc": [svc or SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [h.tool]}, {"only": only or h.plan_hash}]
+    if exp is not None:
+        caveats.append({"exp": exp})
+    return issue_grant(principal, to.public, caveats, iat=NOW).encode()
+
+
+def test_a_signed_consent_runs_its_plan_once(store):
+    async def go():
+        h = hashed(undoable=False, risk="high")  # consent is how irreversible and out-of-band plans run
+        await store.put_consent(h.plan_hash, _consent(h))
+        p = policy()
+        assert await consent_for([h], store, p, NOW) == h
+        assert await consent_for([h], store, p, NOW) is None  # a replayed consent runs nothing
+
+    run(go())
+
+
+def test_consents_that_dont_count(store):
+    async def go():
+        h, other = hashed(), hashed(p=plan("Archive old-nav"))
+        p = policy()
+        cases = [
+            _consent(h, principal=OTHER),  # not the pinned principal
+            _consent(h, to=OTHER),  # issued to another server's key
+            _consent(h, only=other.plan_hash),  # for another plan
+            _consent(h, exp=NOW),  # expired
+            _consent(h, exp=None),  # no expiry
+            _consent(h, svc="elsewhere"),
+            issue_grant(PRINCIPAL, SERVER.public, [{"can": ["*"]}], iat=NOW).encode(),  # the policy grant itself
+            "not a grant",
+        ]
+        for token in cases:
+            await store.put_consent(h.plan_hash, token)
+            assert await consent_for([h], store, p, NOW) is None, token
+        await store.put_consent(h.plan_hash, _consent(h))
+        assert await consent_for([h], store, policy(deny=["delete_branch"]), NOW) is None  # denied never runs
+        assert await consent_for([h], store, p, NOW) == h
+
+    run(go())
+
+
+def test_a_stale_lock_is_broken_but_a_fresh_one_is_not_removed_by_its_breaker(tmp_path):
+    import yea.store as st
+
+    lock = tmp_path / "x.lock"
+    lock.write_text("someone:1")
+    st._break_if_stale(lock)
+    assert lock.read_text() == "someone:1"  # fresh: left alone
+    os.utime(lock, (0, 0))
+    st._break_if_stale(lock)
+    assert not lock.exists() and not list(tmp_path.glob("*.stale"))
+    lock.write_text("mine")
+    st._release(lock, "not-mine")
+    assert lock.exists()  # only the holder releases it
+    with pytest.raises(StoreError):
+        st._still_held(lock, "not-mine")
