@@ -1,7 +1,7 @@
 {
   "name": "@yea-protocol/sdk",
   "version": "0.1.0",
-  "description": "The YEA protocol SDK for TypeScript: services, clients, grants, Lens and the MCP bridge. Zero runtime dependencies.",
+  "description": "The YEA protocol SDK for TypeScript: services, clients, grants, Lens and the OpenAPI adapter. Zero runtime dependencies.",
   "type": "module",
   "license": "Apache-2.0",
   "main": "dist/index.js",
@@ -14,10 +14,6 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "default": "./dist/node.js"
-    },
-    "./mcp": {
-      "types": "./dist/mcp.d.ts",
-      "default": "./dist/mcp.js"
     },
     "./openapi": {
       "types": "./dist/openapi.d.ts",

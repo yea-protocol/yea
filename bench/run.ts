@@ -21,15 +21,21 @@ globalThis.crypto.getRandomValues = (<T extends ArrayBufferView | null>(
 }) as typeof globalThis.crypto.getRandomValues;
 
 import { writeFileSync } from 'node:fs';
-import { Client, issueGrant, keyPair, local } from '@yea-protocol/sdk';
-import { INSTRUCTIONS, TOOLS as YEA_TOOLS } from '@yea-protocol/sdk/mcp';
+import {
+  Client,
+  INSTRUCTIONS,
+  issueGrant,
+  keyPair,
+  local,
+  TOOLS as YEA_TOOLS,
+} from '@yea-protocol/sdk';
 import { encode } from 'gpt-tokenizer/encoding/o200k_base';
 import { calendar } from '../examples/calendar.ts';
 import { shop } from '../examples/shop.ts';
 
 const tok = (s: string) => encode(s).length;
 
-// ---------- the YEA side: services behind the MCP bridge's tool surface ----------
+// ---------- the YEA side: services behind the four generic tools (yea test-drive; `yea mcp` before #73) ----------
 const principal = await keyPair(),
   agent = await keyPair();
 const grant = await issueGrant({ principal, to: agent.public });
