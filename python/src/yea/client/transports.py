@@ -17,7 +17,7 @@ def _frame_of(line: bytes) -> Any:
     """A reply line as JSON, or None when it isn't JSON (the line is dropped, as TS drops it)."""
     try:
         return loads(line)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
 
 
@@ -25,6 +25,7 @@ class _StreamTransport:
     def __init__(self, reader: asyncio.StreamReader, writer: Any, proc: Any = None):
         self.reader, self.writer, self.proc = reader, writer, proc
         self.pending: dict[str, tuple[asyncio.Future, list, OnEvent | None]] = {}
+        self.closed: BaseException | None = None  # why the reader stopped; later requests fail with it
         self.task = asyncio.create_task(self._read())
 
     async def _read(self) -> None:
@@ -33,16 +34,16 @@ class _StreamTransport:
             while True:
                 try:
                     line = await self.reader.readline()
-                except ValueError:  # over the reader's limit without a newline
+                except ValueError:  # a line over the reader's limit
                     err = ConnectionError(TOO_BIG)
-                    self.writer.close()
                     break
                 if not line:
                     break
                 if not line.strip():
                     continue
                 frame = _frame_of(line)
-                entry = self.pending.get(frame.get("re")) if isinstance(frame, dict) else None
+                re = frame.get("re") if isinstance(frame, dict) else None
+                entry = self.pending.get(re) if isinstance(re, str) else None  # anything else is dropped
                 if entry is None:
                     continue
                 fut, events, on_event = entry
@@ -54,17 +55,23 @@ class _StreamTransport:
                         if asyncio.iscoroutine(r):
                             await r
                 else:
-                    self.pending.pop(frame["re"], None)
+                    self.pending.pop(re, None)
                     if not fut.done():
                         fut.set_result(Reply(frame, events))
-        except Exception as e:  # malformed stream
+        except Exception as e:  # e.g. an on_event callback that raised
             err = e
+        # However the reader stops, the connection is done: close it, and fail what's pending and
+        # anything sent later, rather than leave requests waiting for replies no one will read.
+        self.closed = err
+        self.writer.close()
         for fut, _, _ in self.pending.values():
             if not fut.done():
                 fut.set_exception(err)
         self.pending.clear()
 
     async def request(self, frame: dict, on_event: OnEvent | None) -> Reply:
+        if self.closed is not None:
+            raise self.closed
         fut = asyncio.get_running_loop().create_future()
         self.pending[frame["id"]] = (fut, [], on_event)
         self.writer.write((dumps(frame) + "\n").encode("utf-8"))

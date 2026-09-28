@@ -847,14 +847,15 @@ def _fake_server(reply_lines):
     return asyncio.start_server(handle, "127.0.0.1", 0)
 
 
-def test_the_client_skips_a_bad_line_and_reads_a_reply_over_1_mib(monkeypatch):
+def test_the_client_skips_a_bad_line_and_reads_a_reply_over_1_mib():
     """As TS's line transport: an unparseable line is dropped, not fatal to every pending request,
     and replies up to 16 MiB are read (the old 1 MiB reader limit killed the connection) (#147)."""
     big = "x" * (2 << 20)
 
     def lines(fid):
         final = {"yea": 1, "id": "s_1", "re": fid, "kind": "ANSWER", "data": big}
-        return b"not json\n" + json.dumps(final).encode() + b"\n"
+        odd = b'{"re": []}\n' + b"[" * 200_000 + b"\n"  # valid JSON of the wrong shape; nesting past the recursion limit
+        return b"not json\n" + odd + json.dumps(final).encode() + b"\n"
 
     async def go():
         srv = await _fake_server(lines)
@@ -928,3 +929,24 @@ async def _ask_http(url, events):
     from yea.client.transports import _HttpTransport
 
     return await _HttpTransport(url).request({"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, events.append)
+
+
+def test_after_the_connection_fails_a_new_request_fails_at_once(monkeypatch):
+    """The reader stopping (here, an over-cap line) closes the connection; a later request raises
+    instead of waiting forever for a reply no one reads (#147 review)."""
+    import yea.client.connection as conn
+
+    monkeypatch.setattr(conn, "MAX_REPLY", 1000)
+
+    async def go():
+        srv = await _fake_server(lambda fid: b"x" * 5000)
+        try:
+            async with await connect(f"yea://127.0.0.1:{srv.sockets[0].getsockname()[1]}") as c:
+                with pytest.raises(ConnectionError):
+                    await asyncio.wait_for(c.ask("x"), 5)
+                with pytest.raises(ConnectionError):
+                    await asyncio.wait_for(c.ask("y"), 5)  # used to hang: nothing read the replies
+        finally:
+            srv.close()
+
+    run(go())
