@@ -1,6 +1,6 @@
 # Add YEA to your MCP server (TypeScript)
 
-You have an MCP server, and one of its tools does something a person should see first: it deletes a file, sends an email, or moves money. This guide adds YEA to that tool. Before the tool runs, the person sees its plan in their client and types a phrase to approve it. The model can't approve for itself.
+You have an MCP server, and one of its tools does something a person should see first: it deletes a file, sends an email, or moves money. This guide adds YEA to that tool. Before the tool runs, the server asks the person, through their client, to approve its plan by typing a phrase. The model can't approve it through the tool call. What else must stay out of the agent's reach, such as your client's config, is in the [security model](/guide/security#mcp-servers-built-with-the-framework).
 
 Steps 1–3 give you that tool, and need no keys, no policy and no account. Steps 4–6 are separate, later steps: undo, letting safe things run on their own, and clients that can't ask.
 
@@ -14,7 +14,7 @@ The code on this page comes from [`examples/mcp-quickstart.ts`](../../examples/m
 ```sh
 git clone https://github.com/yea-protocol/yea ~/yea
 cd ~/yea && npm ci && npm run build
-npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp --pack-destination ~/yea-pkgs
+mkdir -p ~/yea-pkgs && npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp --pack-destination ~/yea-pkgs
 
 cd ~/your-server
 npm i ~/yea-pkgs/yea-protocol-sdk-0.1.0.tgz ~/yea-pkgs/yea-protocol-mcp-0.1.0.tgz \
@@ -28,7 +28,7 @@ Steps 5 and 6 also use the `yea` command. From the clone: `alias yea="node $HOME
 
 ## 2. Guard one tool you already have
 
-Here is the whole change. `delete_file` is registered exactly as before, and one `approvals.guard(...)` call turns it into a tool that shows its plan and asks:
+Here is the whole change. `delete_file` is registered exactly as before, and one `approvals.guard(...)` call turns it into a tool that shows its plan and asks. The snippets below, in order, are a complete `server.ts`:
 
 <<< ../../examples/mcp-quickstart.ts#imports
 
@@ -38,11 +38,13 @@ Here is the whole change. `delete_file` is registered exactly as before, and one
 - **`confirmWith`** names the phrase the person types, here the file's name. Without it, the phrase is `approve`.
 - **`approvals.serverOptions()`** lets YEA verify the approval state it sends round the client.
 
-Then create the approval context once per process, and serve:
+Build the server in a factory. Leave out the `addMoveToTrash` line until step 4:
 
 <<< ../../examples/mcp-quickstart.ts#serve
 
-In the example, the guard code sits inside `createServer(approvals)`. The SDK may call the factory more than once, so it builds a fresh `McpServer` each time, while `yea()`, which holds the keys and the store, runs once.
+Then create the approval context once per process, and serve. The SDK may call the factory more than once, so it builds a fresh `McpServer` each time, while `yea()`, which holds the keys and the store, runs once:
+
+<<< ../../examples/mcp-quickstart.ts#start
 
 ::: details Show the full file
 <<< ../../examples/mcp-quickstart.ts
@@ -56,7 +58,7 @@ In **Claude Code**, from your server's folder:
 claude mcp add files -- npx tsx server.ts
 ```
 
-Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- node server.ts` works too. The example server works on files under `FILES_ROOT`, which defaults to the folder it starts in.
+Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- node server.ts` works too. Relative paths are resolved from the folder the server starts in.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
@@ -80,7 +82,7 @@ Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- nod
 ```
 :::
 
-Ask the agent to delete `docs/report.pdf`. Before anything happens, your client shows the plan and a field to type in. How it looks depends on the client; what it says is this:
+Ask the agent to delete `docs/report.pdf`. Before anything happens, the server sends the client a form (MCP form elicitation) with the plan and a field to type in. How a client shows it is up to the client; we've tested the exchange with the MCP SDK's own client, not yet in a named app. What it says is this:
 
 ```text
 Approval needed: delete_file can't be undone.
@@ -97,7 +99,7 @@ Type `report.pdf` and the file is deleted. Decline, or type something else three
 
 Three things to know at this point:
 
-- **The server's stderr warns** `yea: no pinned principal key (YEA_PRINCIPAL_PUB is not set)`. That's expected: it only matters for steps 5 and 6.
+- **The server's stderr warns** `yea: no pinned principal key (YEA_PRINCIPAL_PUB is not set): nothing auto-runs and no consent is accepted`. That's expected: it only matters for steps 5 and 6.
 - **The client must support form elicitation** to show the form. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run and what their vendors document. A client without it gets step 6's consent codes instead.
 - **A tool marked `risk: 'high'`**, or an `outOfBand` rule in `~/.yea/policy.json`, is never approved in the chat. It goes to consent codes, which need step 5's pinned key.
 
@@ -114,10 +116,13 @@ Deleting can't be undone, so it always asks. Moving a file to a trash folder can
 After approval, the call returns a receipt:
 
 ```text
-✓ Move docs/report.pdf to the trash (receipt r_xIy8y3mJMN7C) · undo until 2026-09-29T02:13:07Z
+✓ Move docs/report.pdf to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
+  result:
+    file: /Users/me/project/docs/report.pdf
+    trashedAs: /Users/me/project/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
 ```
 
-`undo({ receipt: "r_xIy8y3mJMN7C" })` puts the file back, within the window. Undo doesn't ask, because it restores what the person already approved changing. Any job call also takes `"preview": true`, which returns the plans and does nothing.
+`plan()` refuses anything that isn't a regular file, such as a directory, since `revert` couldn't put it back. `undo({ receipt: "r_Ny6CTkeKuDVI" })` puts the file back, within the window. Undo doesn't ask, because it restores what the person already approved changing. Any job call also takes `"preview": true`, which returns the plans and does nothing.
 
 ## 5. Let safe things run on their own
 
@@ -208,7 +213,7 @@ Ask the user to run `yea approve <code>` in their terminal, then call again.
 
 `yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
 
-So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account. With the key on another OS user, that user runs it on the server's machine, with `YEA_STORE` set to the server's store (which it must be able to write). A key on another device can't answer a consent code yet.
+So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account, and that's the case our tests cover. With the key on another OS user, that user would run it on the server's machine with `YEA_STORE` set to the server's store; we haven't yet tested a store written by two OS users. A key on another device can't answer a consent code yet.
 
 **Why the pinned key matters here:** the server accepts only consents signed by the pinned principal key. Without one it can't accept any, so it gives no codes and says why:
 

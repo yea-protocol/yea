@@ -18,7 +18,7 @@ GET  /v1/customers/search?query=name:"Chen"
 GET  /v1/subscriptions?customer=cus_chen
 GET  /v1/charges?customer=cus_chen&limit=5
 POST /v1/refunds
-     charge=ch_2  amount=2283
+     charge=ch_2  amount=2287
 ```
 
 Nothing tells the agent that a refund is permanent, or that the customer gets an email.
@@ -37,9 +37,9 @@ Approval needed: refund can't be undone.
   ~ update charge/ch_2.amount_refunded: 0.00 USD → 49.00 USD
   > send chen@wei.studio — refund receipt; back on the card in 5–10 days
   uses: spend 49.00 USD · risk: medium · undo: never
-[2] Refund 22.83 USD of ch_2 to Chen Wei (unused 14 days)
+[2] Refund 22.87 USD of ch_2 to Chen Wei (unused 14 days)
   …
-  uses: spend 22.83 USD · risk: medium · undo: never
+  uses: spend 22.87 USD · risk: medium · undo: never
 ```
 
 The person picks the second plan in their client and confirms it. A refund can't be undone, so it always asks: no policy lets it run on its own.
@@ -141,9 +141,9 @@ A job returns one or more **plans**. You fill in a plan from what you already kn
 
 | Plan field | What goes in it | For a refund |
 |---|---|---|
-| `summary` | One line a person would read | `Refund 22.83 USD of ch_2 to Chen Wei` |
+| `summary` | One line a person would read | `Refund 22.87 USD of ch_2 to Chen Wei` |
 | `effects` | Everything the call changes, including emails | the charge, and the receipt email |
-| `uses` | What it uses up, such as the money it moves | `spend 22.83 USD` |
+| `uses` | What it uses up, such as the money it moves | `spend 22.87 USD` |
 | `apply()` | The REST call | `POST /v1/refunds` |
 | `undoWindow` | How long it can be undone for, with the job's `revert()` | none, so `undo: never` |
 
@@ -188,7 +188,7 @@ The approval form and its typed confirmation, consent codes for clients that can
 
 ## The full example
 
-[`examples/stripe-jobs.ts`](../../examples/stripe-jobs.ts) puts these three tools in front of the real Stripe API. `@yea-protocol/mcp` isn't on npm yet, so run it from a clone of the repo, after `npm ci && npm run build`, with a test-mode key:
+[`examples/stripe-jobs.ts`](../../examples/stripe-jobs.ts) puts these three tools in front of the real Stripe API. It handles two-decimal currencies only, and refuses the rest; the `@yea-protocol/stripe` connector handles every Stripe currency. `@yea-protocol/mcp` isn't on npm yet, so run it from a clone of the repo, after `npm ci && npm run build`, with a test-mode key:
 
 ```sh
 claude mcp add billing -e STRIPE_SECRET_KEY=sk_test_… -- npx tsx examples/stripe-jobs.ts

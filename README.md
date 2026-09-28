@@ -53,7 +53,7 @@ agent ──UNDO r1 (the human changed their mind)──────────
 
 | I want to… | Do this |
 |---|---|
-| **I have an MCP server** | [Guard a risky tool in five minutes](#add-it-to-your-mcp-server): the person sees its plan in their client and types a phrase to approve it. TypeScript, unreleased: install from the repo ([guide](https://yea-protocol.github.io/yea/guide/mcp-typescript)) |
+| **I have an MCP server** | [Guard a risky tool](#add-it-to-your-mcp-server) with one call: before it runs, the server sends its plan to the client as a form that asks for a typed phrase (MCP form elicitation), or returns a consent code when the client can't show forms. TypeScript, unreleased: install from the repo ([guide](https://yea-protocol.github.io/yea/guide/mcp-typescript)) |
 | **See it work with a real model** (30 s) | `npx @yea-protocol/cli test-drive` runs Claude through a booking and a purchase that needs *your* approval. Needs an Anthropic API key. No key? Use `npx @yea-protocol/cli demo` or the [browser playground](https://yea-protocol.github.io/yea/playground) |
 | **Give my AI tool safe actions** | In Claude Code: `/plugin marketplace add yea-protocol/yea` then `/plugin install yea@yea`. Anywhere else: `npx @yea-protocol/cli install` (auto-detects Claude Code, Cursor, Codex, Gemini, VS Code, Windsurf and Claude Desktop). Then [add services](#use-it-from-claude-code-today) or [wrap an API](#wrap-any-rest-api-in-one-command): `yea openapi --preset github` |
 | **Make my service agent-ready** | [Build a service](#build-a-service) in ~30 lines of TypeScript or Python, or wrap your existing OpenAPI spec. [From REST to YEA](https://yea-protocol.github.io/yea/guide/service-design) translates a Stripe-style API step by step, with full code |
@@ -64,46 +64,46 @@ agent ──UNDO r1 (the human changed their mind)──────────
 > **Unreleased:** `@yea-protocol/mcp` isn't on npm yet. Install it from the repo, as the
 > [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows.
 
-Guard a tool you already have. Before it runs, the person sees its plan in their client and
-types the file's name to approve it. The model can't approve for itself, and there are no
-keys, policy or account to set up:
+Guard a tool you already have. Before it runs, the server sends its plan to the client as a
+form that asks the person to type the file's name, or returns a consent code for `yea
+approve` when the client can't show forms. The model can't approve it through the tool call,
+and there are no keys, policy or account to set up. Our tests drive both paths with the MCP
+SDK's own client; see [client support](#client-support) for named apps.
 
 <!-- snippet: examples/mcp-quickstart.ts#guard -->
 ```ts
-const server = new McpServer(
-  { name: 'files', version: '1.0.0' },
-  approvals.serverOptions(), // lets YEA verify the approval state it sends round
-);
+/** Your existing tool, registered as usual, then guarded. */
+function addDeleteFile(server: McpServer, approvals: Approvals) {
+  const deleteFile = server.registerTool(
+    'delete_file',
+    {
+      description: 'Delete a file for good',
+      inputSchema: z.object({ path: z.string() }),
+    },
+    async ({ path }) => {
+      await rm(path);
 
-// The tool you already have, registered as usual.
-const deleteFile = server.registerTool(
-  'delete_file',
-  {
-    description: 'Delete a file for good',
-    inputSchema: z.object({ path: z.string() }),
-  },
-  async ({ path }) => {
-    await rm(inside(root, path));
+      return { content: [{ type: 'text', text: `deleted ${path}` }] };
+    },
+  );
 
-    return { content: [{ type: 'text', text: `deleted ${path}` }] };
-  },
-);
-
-// One call: now it shows its plan and asks the person before it runs.
-approvals.guard(server, deleteFile, {
-  describe: (input) => ({
-    summary: `Delete ${String(input.path)}`,
-    effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
-  }),
-  // The person types the file's name to approve.
-  confirmWith: (_plan, input) => basename(String(input.path)),
-});
+  // One call: now it shows its plan and asks the person before it runs.
+  approvals.guard(server, deleteFile, {
+    describe: (input) => ({
+      summary: `Delete ${String(input.path)}`,
+      effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
+    }),
+    // The person types the file's name to approve.
+    confirmWith: (_plan, input) => basename(String(input.path)),
+  });
+}
 ```
 
-`approvals` comes from `yea({ name: 'files', transport: 'stdio' })`, once per process. From
-there, the [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed
-policy that lets undoable jobs run on their own, and consent codes for clients that can't
-ask. The whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
+Call it from your server factory, with `approvals` from
+`yea({ name: 'files', transport: 'stdio' })`, created once per process. From there, the
+[guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed policy
+that lets undoable jobs run on their own, and consent codes for clients that can't ask. The
+whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
 
 ### Client support
 
