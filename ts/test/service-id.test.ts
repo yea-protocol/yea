@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,8 +39,24 @@ describe('yea service-id', () => {
   it('refuses a bad name or a missing key', () => {
     const home = mkdtempSync(join(tmpdir(), 'yea-sid-'));
 
-    expect(run(home, '../x').status).not.toBe(0);
+    expect(run(home, '../x').err).toMatch(/bad server name/);
     expect(run(home, 'nope').err).toMatch(/start the server once/);
     expect(run(home).err).toMatch(/usage: yea service-id <name>/);
+  });
+
+  it('refuses a key file that is malformed, shared, or a symlink', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-sid-'));
+    const dir = join(home, 'server');
+    const server = await P.keyPair();
+
+    mkdirSync(dir, { mode: 0o700 });
+    writeFileSync(join(dir, 'bad.key'), 'not a seed\n', { mode: 0o600 });
+    writeFileSync(join(dir, 'open.key'), `${server.seed}\n`, { mode: 0o644 });
+    chmodSync(join(dir, 'open.key'), 0o644);
+    symlinkSync(join(dir, 'open.key'), join(dir, 'link.key'));
+
+    expect(run(home, 'bad').err).toMatch(/does not hold an Ed25519 seed/);
+    expect(run(home, 'open').err).toMatch(/private \(chmod 600\)/);
+    expect(run(home, 'link').err).toMatch(/not a regular file/);
   });
 });
