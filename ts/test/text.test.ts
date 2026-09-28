@@ -37,9 +37,12 @@ describe('printable', () => {
       'a\\u{200b}b\\u{ad}c\\u{feff}d',
     );
     expect(printable('a\u{e0041}b\u3164c')).toBe('a\\u{e0041}b\\u{3164}c');
+    expect(printable('a\u034fb\u17b4c')).toBe('a\\u{34f}b\\u{17b4}c');
   });
 
   it('keeps tab, accents, CJK and plain emoji', () => {
+    // A variation selector picks a glyph's style; the Braille blank shows as a blank cell.
+    expect(printable('\u2764\ufe0f \u2800')).toBe('\u2764\ufe0f \u2800');
     expect(printable('\tcafé 東京 😀')).toBe('\tcafé 東京 😀');
   });
 });

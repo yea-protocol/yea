@@ -9,9 +9,15 @@
  * Controls (C0 but tab, DEL, C1), format characters (bidi marks and overrides, zero-width
  * space and joiners, word joiner, BOM, soft hyphen, U+180E, U+206A–206F, interlinear
  * annotations U+FFF9–FFFB, tag characters U+E0000–E007F), line and paragraph separators, and
- * the Hangul fillers, which are letters that draw nothing.
+ * invisible fillers: the Hangul fillers (letters that draw nothing), the combining grapheme
+ * joiner U+034F and the Khmer inherent vowels U+17B4–17B5, all default-ignorable. Variation
+ * selectors U+FE00–FE0F stay, since U+FE0F is in ordinary emoji and they only pick a glyph's
+ * style; the Braille blank U+2800 stays too, since it shows as a blank cell, not as nothing.
+ * U+034F and U+17B4–17B5 are combining marks, which Biome won't allow in a character class, so
+ * they're alternatives; with `u`, each match is still one code point.
  */
-const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115f\u1160\u3164\uffa0]/gu;
+const UNSAFE =
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115f\u1160\u3164\uffa0]|\u034f|\u17b4|\u17b5/gu;
 
 /**
  * One line of untrusted text, each unsafe character shown as `\u{hex}`. A newline inside it is

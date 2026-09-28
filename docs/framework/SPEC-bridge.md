@@ -233,8 +233,9 @@ one exact proposal at one service, and still needs the agent key's proof.
 - **`yea_expand`** sends `EXPAND` with the handle. Handles are bound to the agent's key by
   the service (SPEC.md §4.6).
 - **Every result is rendered by the bridge.** A reply's own `lens` field is ignored, and every
-  service-written string outside `data` and `result` is made one line (control characters, line
-  separators and bidi marks escaped), so a hostile summary can't forge a line of ours.
+  service-written string outside `data` and `result` is made one line (control, format,
+  line/paragraph-separator and invisible filler characters are shown as `\u{…}` escapes), so
+  a hostile summary can't forge a line of ours.
 - **`yea_undo`** sends `UNDO` with the agent's grants. The service checks the window and the
   principal.
 

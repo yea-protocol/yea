@@ -293,8 +293,9 @@ phrase only checks that the person read the plan.
 1. recomputes the plan hash from the preimage, and refuses if it doesn't equal the code's
    `hash` and `proposal`, if the code's `capability` isn't the plan's `tool`, or if the code
    has expired; it caps `expires` at 10 minutes from now, whatever the code says;
-2. shows the plan, never only a summary, with control characters and bidi overrides escaped
-   so the text can't rewrite what the person reads;
+2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
+   and invisible filler characters are shown as `\u{…}` escapes, so the text can't rewrite
+   what the person reads;
 3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,

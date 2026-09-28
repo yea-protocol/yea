@@ -843,7 +843,8 @@ describe('approval security (SPEC-approval)', () => {
     const invisible = [
       0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0xad, 0x180e, 0xfff9, 0xfffa,
       0xfffb, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x115f, 0x1160,
-      0x3164, 0xffa0, 0x2028, 0x2029, 0xe0001, 0xe0020, 0xe0041, 0xe007f,
+      0x3164, 0xffa0, 0x034f, 0x17b4, 0x17b5, 0x2028, 0x2029, 0xe0001, 0xe0020,
+      0xe0041, 0xe007f,
     ];
 
     for (const cp of invisible) {
@@ -873,6 +874,9 @@ describe('approval security (SPEC-approval)', () => {
       '東京で会議 · 서울 · 北京',
       'thanks 👍 🎉 😀',
       'שלום مرحبا',
+      // Variation selectors pick an emoji's style; the Braille blank shows as a blank cell.
+      'ok \u2764\ufe0f \u263a\ufe0e',
+      'a\u2800b',
       '',
     ]) {
       expect(printable(s)).toBe(s);
