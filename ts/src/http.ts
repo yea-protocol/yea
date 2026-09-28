@@ -1,15 +1,9 @@
 /** HTTP bridge server side (SPEC §2.4) as a standard fetch handler: Workers, Bun, Deno, Node. */
+import { errorLine, frameId } from './frames.js';
 import type { Service } from './service.js';
 
 const MAX_FRAME = 1 << 20;
 const TOO_LARGE = Symbol('too large');
-
-/** The request id an error reply should answer: the frame's `id` if it has a string one, else '?'. */
-export function frameId(frame: unknown): string {
-  const id = (frame as { id?: unknown } | null | undefined)?.id;
-
-  return typeof id === 'string' ? id : '?';
-}
 
 const tooLarge = () => new Response('frame exceeds 1 MiB', { status: 413 });
 
@@ -44,14 +38,12 @@ function ndjsonReply(svc: Service, frame: unknown): Response {
       } catch {
         ctrl.enqueue(
           enc.encode(
-            `${JSON.stringify({
-              yea: 1,
+            errorLine({
               id: 's_err',
               re,
-              kind: 'ERROR',
               code: 'internal',
               message: 'reply could not be serialized',
-            })}\n`,
+            }),
           ),
         );
       }

@@ -5,6 +5,7 @@
 import { fit, type HandleStore, MemoryHandleStore } from './budget.js';
 import { proposalHash, randomId } from './crypto.js';
 import { fix, YeaError } from './errors.js';
+import { frameId, replyFrame } from './frames.js';
 import {
   type CheckContext,
   checkGrant,
@@ -12,6 +13,7 @@ import {
   type GrantCheck,
   usedOf,
 } from './grants.js';
+import { ledgerId } from './store.js';
 import type {
   Brief,
   CapabilityInfo,
@@ -214,18 +216,14 @@ export class Service {
   }
 
   brief(budget = this.opts.defaultBudget ?? 2000, re = 'discover'): Brief {
-    const r: Brief = {
-      yea: 1,
-      id: randomId('s', 6),
-      re,
-      kind: 'BRIEF',
+    const r: Brief = replyFrame(re, 'BRIEF', {
       service: {
         id: this.opts.id,
         name: this.opts.name,
         summary: this.opts.summary,
       },
       capabilities: this.capabilities,
-    };
+    });
 
     return fit(r, budget, this.handles);
   }
@@ -273,28 +271,20 @@ export class Service {
 
   private errorReply(re: string, e: unknown): ErrorReply {
     if (e instanceof YeaError) {
-      return {
-        yea: 1,
-        id: randomId('s', 6),
-        re,
-        kind: 'ERROR',
+      return replyFrame(re, 'ERROR', {
         code: e.code,
         message: e.message,
         ...e.extra,
-      };
+      });
     }
 
     this.opts.onError?.(e);
 
-    return {
-      yea: 1,
-      id: randomId('s', 6),
-      re,
-      kind: 'ERROR',
+    return replyFrame(re, 'ERROR', {
       code: 'internal',
       message: 'the service failed unexpectedly',
       retry: 5,
-    };
+    });
   }
 
   private unknownCapability(name: unknown, kind: 'ask' | 'intent'): never {
@@ -478,7 +468,7 @@ export class Service {
         uses: proposal.uses,
         risk: proposal.risk,
       },
-      used: (id, of) => this.used.get(ledgerKey(id, of)) ?? 0n,
+      used: (id, of) => this.used.get(ledgerId({ block: id, of })) ?? 0n,
     };
   }
 
@@ -501,13 +491,7 @@ export class Service {
     const data = await def.run({ params, principal: auth?.iss ?? null });
 
     return fit(
-      {
-        yea: 1,
-        id: randomId('s', 6),
-        re: req.id,
-        kind: 'ANSWER',
-        data: data ?? null,
-      },
+      replyFrame(req.id, 'ANSWER', { data: data ?? null }),
       budget,
       this.handles,
       verifiedKey(req),
@@ -578,9 +562,7 @@ export class Service {
       if (prior && prior.exp > this.now()) {
         const r = await prior.reply;
 
-        return r.kind === 'RECEIPT'
-          ? { ...r, id: randomId('s', 6), re: req.id, replay: true }
-          : r;
+        return r.kind === 'RECEIPT' ? replayOf(r, req.id) : r;
       }
     }
 
@@ -619,13 +601,7 @@ export class Service {
     });
 
     if (out && 'clarify' in out) {
-      return {
-        yea: 1,
-        id: randomId('s', 6),
-        re: req.id,
-        kind: 'CLARIFY',
-        ...out.clarify,
-      };
+      return replyFrame(req.id, 'CLARIFY', out.clarify);
     }
 
     const plans = Array.isArray(out) ? out : [out];
@@ -662,13 +638,9 @@ export class Service {
     }
 
     return fit(
-      {
-        yea: 1,
-        id: randomId('s', 6),
-        re: req.id,
-        kind: 'PROPOSALS',
+      replyFrame(req.id, 'PROPOSALS', {
         proposals: stored.map((s) => s.proposal),
-      },
+      }),
       budget,
       this.handles,
       verifiedKey(req),
@@ -871,10 +843,9 @@ export class Service {
     // Reserve totals synchronously, before any await, so concurrent commits can't overshoot a limit.
     const over = auth.totals.find((t) => {
       const q = usedOf(proposal.uses, t.of);
+      const used = this.used.get(ledgerId({ block: t.id, of: t.of })) ?? 0n;
 
-      return (
-        q && (this.used.get(ledgerKey(t.id, t.of)) ?? 0n) + exact(q) > t.max
-      );
+      return q && used + exact(q) > t.max;
     });
 
     if (over) {
@@ -905,7 +876,7 @@ export class Service {
    */
   private reserve(auth: Authorized, proposal: Proposal, sign: 1n | -1n) {
     const totals = new Map(
-      auth.totals.map((t) => [ledgerKey(t.id, t.of), t.of]),
+      auth.totals.map((t) => [ledgerId({ block: t.id, of: t.of }), t.of]),
     );
 
     for (const [key, of] of totals) {
@@ -942,13 +913,7 @@ export class Service {
         principal: auth.iss,
       });
 
-      return {
-        yea: 1,
-        id: randomId('s', 6),
-        re: reqId,
-        kind: 'RECEIPT',
-        receipt,
-      };
+      return replyFrame(reqId, 'RECEIPT', { receipt });
     } catch (e) {
       this.commits.delete(proposal.id); // failed commits may be retried
       this.reserve(auth, proposal, -1n);
@@ -1039,13 +1004,7 @@ export class Service {
         undoes: receipt.id,
       };
 
-      return {
-        yea: 1,
-        id: randomId('s', 6),
-        re: reqId,
-        kind: 'RECEIPT',
-        receipt: undo,
-      };
+      return replyFrame(reqId, 'RECEIPT', { receipt: undo });
     } catch (e) {
       stored.undone = undefined;
 
@@ -1097,7 +1056,7 @@ export class Service {
       parked.kind === 'array' ? { items: parked.items } : { text: parked.text };
 
     return fit(
-      { yea: 1, id: randomId('s', 6), re: req.id, kind: 'ANSWER', data },
+      replyFrame(req.id, 'ANSWER', { data }),
       budget,
       this.handles,
       parked.owner ?? null,
@@ -1110,16 +1069,6 @@ export const service = (opts: ServiceOptions) => new Service(opts);
 /** The holder key of a request whose proof has already been verified by authorize() (grants present ⇒ proof checked). */
 const verifiedKey = (req: Request): string | null =>
   req.grants?.length && req.proof ? req.proof.key : null;
-
-/** The frame's `id` if it has a string one, so even a malformed frame's error can be correlated. */
-function frameId(frame: unknown): string {
-  return typeof frame === 'object' &&
-    frame !== null &&
-    'id' in frame &&
-    typeof frame.id === 'string'
-    ? frame.id
-    : '?';
-}
 
 /** The envelope every request needs; verb-specific fields are checked where they are used. */
 function isRequestFrame(frame: unknown): frame is Request {
@@ -1205,18 +1154,12 @@ const eventFrame = (
   message: string,
   progress?: number,
   data?: unknown,
-): Event => ({
-  yea: 1,
-  id: randomId('s', 6),
-  re,
-  kind: 'EVENT',
-  message,
-  ...(progress !== undefined ? { progress } : {}),
-  ...(data !== undefined ? { data } : {}),
-});
-
-/** The ledger key of a `total`: its block and measure. */
-const ledgerKey = (blockId: string, of: string) => `${blockId} ${of}`;
+): Event =>
+  replyFrame(re, 'EVENT', {
+    message,
+    ...(progress !== undefined ? { progress } : {}),
+    ...(data !== undefined ? { data } : {}),
+  });
 
 /** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */
 function usesOf(plan: Plan): { uses?: Uses } {

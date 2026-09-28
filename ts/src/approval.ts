@@ -5,7 +5,14 @@
  */
 import { canonical } from './canonical.js';
 import { randomId, sha256 } from './crypto.js';
-import { checkGrant, decodeGrant, type TotalLimit, usedOf } from './grants.js';
+import {
+  blockId,
+  checkGrant,
+  decodeGrant,
+  type TotalLimit,
+  usedOf,
+} from './grants.js';
+import { atLeast, isRisk } from './risk.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -63,8 +70,6 @@ export interface ReserveFor {
   max: bigint;
 }
 
-const RISKS: Risk[] = ['low', 'medium', 'high'];
-
 /** The unsigned part of a policy: it can only tighten (SPEC-approval §2). */
 export interface Tightening {
   deny: string[];
@@ -72,8 +77,6 @@ export interface Tightening {
   /** What was ignored, for stderr. */
   warnings: string[];
 }
-
-const isRisk = (v: unknown): v is Risk => RISKS.includes(v as Risk);
 
 /**
  * Read `~/.yea/policy.json` or server options. Unknown fields and bad values are ignored with
@@ -106,9 +109,6 @@ export function readTightening(v: unknown): Tightening {
 
   return out;
 }
-
-export const atLeast = (r: Risk, floor: Risk) =>
-  RISKS.indexOf(r) >= RISKS.indexOf(floor);
 
 /**
  * Job inputs are hashed, and canonical JSON allows only integers (SPEC.md §10). Throws a
@@ -221,7 +221,7 @@ async function blocksOf(
   try {
     return await Promise.all(
       decodeGrant(grant).map(async (b) => ({
-        id: await sha256(b.s),
+        id: await blockId(b),
         caveats: b.p.caveats,
       })),
     );

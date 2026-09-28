@@ -4,17 +4,20 @@
  * consent code for `yea approve` when the client can't ask.
  */
 import {
-  atLeast,
   type HashedPlan,
   type Policy,
   planHashOf,
   planPreimage,
 } from './approval.js';
-import { b64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import { type KeyPair, randomId, sha256 } from './crypto.js';
-import { consentGrant, decodeConsentCode } from './grants.js';
+import {
+  consentGrant,
+  decodeConsentCode,
+  encodeConsentCode,
+} from './grants.js';
 import { effectLine, fmtDuration } from './lens.js';
+import { atLeast } from './risk.js';
 import type { ConsentRequest, Effect } from './types.js';
 import { fmtUses, isUses } from './uses.js';
 
@@ -349,7 +352,7 @@ export function jobConsentCode(o: {
     phrase: effectivePhrase(o.phrase),
   };
 
-  return `pc1.${b64u(utf8(canonical({ ...consent, detail })))}`;
+  return encodeConsentCode({ ...consent, detail });
 }
 
 /** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */

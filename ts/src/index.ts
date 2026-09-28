@@ -1,6 +1,5 @@
 export {
   assertIntegers,
-  atLeast,
   checkJobConsent,
   type Decision,
   decide,
@@ -121,6 +120,8 @@ export {
   scalar,
   untrustedLens,
 } from './lens.js';
+
+export { atLeast } from './risk.js';
 
 export {
   type Clarification,

@@ -2,6 +2,7 @@
  * What a commit uses up (SPEC §5.1) and the limits on it (SPEC §6.3).
  * Measure names and units mean nothing to the protocol; values compare exactly.
  */
+import { byCodePoint } from './canonical.js';
 
 /** An amount of one measure: its value is `amount × 10^−scale`. */
 export interface Quantity {
@@ -112,14 +113,6 @@ export function fmtUses(uses: Uses): string {
     .sort(byCodePoint)
     .map((k) => `${k} ${fmtQuantity(uses[k])}`)
     .join(', ');
-}
-
-function byCodePoint(a: string, b: string): number {
-  if (a === b) {
-    return 0;
-  }
-
-  return a < b ? -1 : 1;
 }
 
 /** A quantity of `amount` at an optional scale and unit. */
