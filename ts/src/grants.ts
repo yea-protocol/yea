@@ -18,7 +18,7 @@ import {
   sameUnit,
   type Uses,
 } from './uses.js';
-import { unixNow } from './util.js';
+import { isObject, isStringList, unixNow } from './util.js';
 
 export type Caveat =
   | { svc: string[] }
@@ -36,14 +36,14 @@ export interface Block {
   s: string;
 }
 
-const PREFIX = 'pg1.';
+const GRANT_PREFIX = 'pg1.';
 
 export function encodeGrant(blocks: Block[]): string {
-  return PREFIX + b64u(utf8(canonical(blocks)));
+  return GRANT_PREFIX + b64u(utf8(canonical(blocks)));
 }
 
 export function decodeGrant(token: string): Block[] {
-  if (!token.startsWith(PREFIX)) {
+  if (!token.startsWith(GRANT_PREFIX)) {
     throw new Error('not a pg1 grant');
   }
 
@@ -51,7 +51,7 @@ export function decodeGrant(token: string): Block[] {
   let blocks: unknown;
 
   try {
-    blocks = JSON.parse(fromUtf8(unb64u(token.slice(PREFIX.length))));
+    blocks = JSON.parse(fromUtf8(unb64u(token.slice(GRANT_PREFIX.length))));
   } catch {
     throw new Error('not valid b64url JSON');
   }
@@ -317,14 +317,11 @@ export interface TotalLimit {
 
 const CONSENTABLE = new Set(['each', 'total', 'risk']);
 
-const strList = (v: unknown) =>
-  Array.isArray(v) && v.every((x) => typeof x === 'string');
-
 /** Shape validators for each known caveat's value. */
 const VALID_CAVEAT: Record<string, (v: unknown) => boolean> = {
-  svc: strList,
-  verbs: strList,
-  can: strList,
+  svc: isStringList,
+  verbs: isStringList,
+  can: isStringList,
   exp: Number.isSafeInteger,
   nbf: Number.isSafeInteger,
   each: isLimit,
@@ -450,6 +447,7 @@ const CAVEAT_CHECKS: Record<
       'would pass the total limit of',
     );
   },
+  // `v` is a known risk: malformed() rejects any other ceiling before this runs.
   risk: (v, { p }) =>
     p && !atLeast(v as Risk, p.risk)
       ? `risk ${p.risk} exceeds ceiling ${v}`
@@ -525,7 +523,7 @@ interface CaveatResults {
 
 /** Check one caveat, recording a denial (hard or soft) or the total it counts against. */
 function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
-  if (!c || typeof c !== 'object' || Array.isArray(c)) {
+  if (!isObject(c)) {
     out.hard.push({
       c: c as Caveat,
       why: `malformed caveat ${JSON.stringify(c)}`,
@@ -536,7 +534,7 @@ function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
 
   const keys = Object.keys(c);
   const k = keys.length === 1 ? keys[0] : '';
-  const v = (c as Record<string, unknown>)[k];
+  const v = c[k];
   const bad = malformed(k, v, env);
 
   if (bad) {

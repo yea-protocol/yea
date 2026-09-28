@@ -20,6 +20,7 @@ import { effectLine, fmtDuration } from './lens.js';
 import { atLeast } from './risk.js';
 import type { ConsentRequest, Effect } from './types.js';
 import { fmtUses, isUses } from './uses.js';
+import { isStringList } from './util.js';
 
 // ---- the confirmation phrase (§3) ----
 
@@ -210,9 +211,6 @@ export function newState(o: {
   };
 }
 
-const isStrings = (v: unknown): v is string[] =>
-  Array.isArray(v) && v.every((x) => typeof x === 'string');
-
 function isState(v: unknown): v is ApprovalState {
   const s = v as Partial<ApprovalState> | null;
 
@@ -222,7 +220,7 @@ function isState(v: unknown): v is ApprovalState {
     typeof s.tool === 'string' &&
     typeof s.inputHash === 'string' &&
     typeof s.sub === 'string' &&
-    isStrings(s.plans) &&
+    isStringList(s.plans) &&
     Number.isSafeInteger(s.round) &&
     typeof s.nonce === 'string' &&
     Number.isSafeInteger(s.exp)
