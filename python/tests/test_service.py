@@ -722,3 +722,19 @@ def test_an_event_that_cant_be_serialized_is_dropped_and_apply_runs_once():
 
     run(go())
     assert ran == [1, 1]  # once per transport, never re-run
+
+
+def test_a_whole_number_float_budget_counts_like_the_integer():
+    """JSON can't tell 300.0 from 300, and TS accepts both; so does Python (#148)."""
+    from yea.lens import lens
+
+    async def go():
+        svc = shop()
+        for budget in (300.0, 3e2):
+            r = await svc.handle({"yea": 1, "id": "a1", "verb": "ASK", "capability": "shop.catalog", "budget": budget})
+            assert r["kind"] == "ANSWER" and est(lens(r)) <= 300 and r.get("more"), budget
+        for ignored in (True, 0.5, -300.0, float("inf")):  # the default budget (2000) applies
+            r = await svc.handle({"yea": 1, "id": "a1", "verb": "ASK", "capability": "shop.catalog", "budget": ignored})
+            assert est(lens(r)) > 300, ignored
+
+    run(go())

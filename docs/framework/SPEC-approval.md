@@ -318,7 +318,7 @@ phrase only checks that the person read the plan.
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
    with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: planHash}, {exp}]`, and
-   saves it in the store under the plan hash (`YEA_STORE`, else `~/.yea/store`).
+   saves it in the store under the plan hash (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`).
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
 and checks it: it must be a single root block that itself carries `only` = that plan hash
@@ -388,7 +388,8 @@ across restarts need it. HTTP servers use `MemoryStore` by default, and one with
 limit refuses to start on it unless the author passes `store` or sets `singleProcess: true`.
 A custom store (Redis, SQL) is for multi-process servers.
 
-**`FileStore` format**, under `~/.yea/store/` (or `YEA_HOME`), pinned by the conformance
+**`FileStore` format**, under `~/.yea/store/` by default (`$YEA_HOME/store` when `YEA_HOME` is set;
+the MCP servers and `yea approve` use `YEA_STORE` first), pinned by the conformance
 cases so the TypeScript and Python servers and the `yea` command share one store:
 
 ```
