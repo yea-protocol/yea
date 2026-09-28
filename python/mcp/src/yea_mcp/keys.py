@@ -71,22 +71,43 @@ def _create_key(path: Path) -> None:
         tmp.unlink(missing_ok=True)
 
 
+MAX_KEY_FILE = 64 * 1024  # as mcp-ts (ts/src/key-file.ts MAX_PRIVATE_FILE)
+
+
 def _read_key(path: Path) -> str:
-    """Open without following a symlink, check the open file, and read that same file."""
+    """Open without following a symlink, check the open file, and read that same file, at most
+    64 KiB of it (a file that grows after the check still can't be read past the cap)."""
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     except OSError as e:
         raise ValueError(f"yea(): refusing the server key: {path} is a symlink or unreadable ({e.strerror})") from None
-    with os.fdopen(fd, encoding="utf-8") as f:
-        st = os.fstat(f.fileno())
-        if not stat.S_ISREG(st.st_mode):
-            raise ValueError(f"yea(): refusing the server key: {path} is not a regular file")
-        if hasattr(os, "geteuid") and st.st_uid != os.geteuid():
-            raise ValueError(f"yea(): refusing the server key: {path} is not owned by this user")
-        if sys.platform != "win32" and st.st_mode & 0o077:
-            raise ValueError(f"yea(): refusing the server key: {path} can be read by other users (chmod 600 it)")
-        return f.read().strip()
+    try:
+        return _read_checked(path, fd)
+    finally:
+        os.close(fd)
 
+
+def _read_checked(path: Path, fd: int) -> str:
+    """The checks on the open descriptor, in mcp-ts's order (regular file, size, owner and mode),
+    then the capped read. The caller closes ``fd``."""
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
+        raise ValueError(f"yea(): refusing the server key: {path} is not a regular file")
+    if st.st_size > MAX_KEY_FILE:
+        raise ValueError(f"yea(): refusing the server key: {path} is larger than 64 KiB, too big for a key file")
+    if not hasattr(os, "geteuid"):  # Windows: no owner or mode bits to check; say so, as mcp-ts
+        warn_once(f"warning: can't check who owns {path} or who can read it on this platform; "
+                  "keep it private yourself")
+    elif st.st_uid != os.geteuid():
+        raise ValueError(f"yea(): refusing the server key: {path} is not owned by this user")
+    elif st.st_mode & 0o077:
+        raise ValueError(f"yea(): refusing the server key: {path} can be read by other users (chmod 600 it)")
+    data = b""
+    while len(data) <= MAX_KEY_FILE and (chunk := os.read(fd, MAX_KEY_FILE + 1 - len(data))):
+        data += chunk
+    if len(data) > MAX_KEY_FILE:  # it grew after the size check
+        raise ValueError(f"yea(): refusing the server key: {path} is larger than 64 KiB, too big for a key file")
+    return data.decode("utf-8", "replace").strip()
 
 def load_server_key(path: str | os.PathLike[str]) -> KeyPair:
     """The server's Ed25519 key: created on first run (0600, in a 0700 directory, via a temp file
