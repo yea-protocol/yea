@@ -1,8 +1,11 @@
 /**
  * What a job call returns (SPEC-mcp-ts, "Results and annotations"): Lens text for the model,
- * and the same as data in `structuredContent`.
+ * and the same as data in `structuredContent`. The bridge shares the result and refusal helpers.
  */
-import type { CallToolResult } from '@modelcontextprotocol/server';
+import type {
+  CallToolResult,
+  ToolAnnotations,
+} from '@modelcontextprotocol/server';
 import {
   type Clarification,
   effectLine,
@@ -13,9 +16,61 @@ import {
   lean,
   lens,
 } from '@yea-protocol/sdk';
+import type { Obj } from './util.js';
+
+/** A job changes things: destructive, so clients shouldn't auto-approve it. Hints only. */
+export const JOB_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+};
+
+/** `undo` changes things too, but undoing a receipt twice does nothing more. */
+export const UNDO_ANNOTATIONS: ToolAnnotations = {
+  ...JOB_ANNOTATIONS,
+  idempotentHint: true,
+};
+
+/** A read never changes anything. */
+export const READ_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+};
+
+/** What every refusal says, so the model knows nothing happened. */
+export const NOTHING_RAN = 'nothing was run';
+
+/** A job retry whose approval state is bad or used: `yea()` minted it, and it's spent. */
+export const INVALID_APPROVAL =
+  'this approval is invalid, expired, already used, or for another call; nothing was run. Call the tool again to ask again.';
+
+/** Any approval state on a bridge job call: the bridge mints none yet (TODO(#73)). */
+export const UNMINTED_STATE =
+  'this approval state is invalid, expired or already used; nothing was run. Call the tool again without it.';
+
+const text = (lines: string[]) => [
+  { type: 'text' as const, text: lines.join('\n') },
+];
+
+/** Lines of text for the model, and `structured` as data. */
+export function textResult(lines: string[], structured?: Obj): CallToolResult {
+  return {
+    content: text(lines),
+    ...(structured ? { structuredContent: structured } : {}),
+  };
+}
+
+/** A refusal or failure: `isError`, so the model sees the reason and the fix. */
+export function errorResult(lines: string[], structured?: Obj): CallToolResult {
+  return { ...textResult(lines, structured), isError: true };
+}
+
+/** `✗ <why>; nothing was run`, then any lines that help. */
+export const refused = (why: string, more: string[] = [], structured?: Obj) =>
+  errorResult([`✗ ${why}; ${NOTHING_RAN}`, ...more], structured);
 
 /** A plan as data: what the model and the person see, never `apply` or `data`. */
-export function planView(hp: HashedPlan) {
+function planView(hp: HashedPlan) {
   const p = hp.plan;
 
   return {
@@ -47,13 +102,9 @@ function planLines(n: number, hp: HashedPlan): string[] {
   ];
 }
 
-export const plansText = (plans: HashedPlan[]) => [
+const plansText = (plans: HashedPlan[]) => [
   `${plans.length} plan${plans.length === 1 ? '' : 's'}:`,
   ...plans.flatMap((hp, i) => planLines(i + 1, hp)),
-];
-
-const text = (lines: string[]) => [
-  { type: 'text' as const, text: lines.join('\n') },
 ];
 
 /**
@@ -65,27 +116,16 @@ export function previewResult(
   plans: HashedPlan[],
   asError: boolean,
 ): CallToolResult {
-  return {
-    content: text([
-      'preview: nothing was run',
-      ...plansText(plans),
-      'Call again without preview to run the first plan, or to ask the user.',
-    ]),
-    structuredContent: { plans: plans.map(planView) },
-    ...(asError ? { isError: true } : {}),
-  };
-}
+  const lines = [
+    `preview: ${NOTHING_RAN}`,
+    ...plansText(plans),
+    'Call again without preview to run the first plan, or to ask the user.',
+  ];
+  const structured = { plans: plans.map(planView) };
 
-/** A refusal or failure: `isError`, so the model sees the reason and the fix. */
-export function errorResult(
-  lines: string[],
-  structured?: Record<string, unknown>,
-): CallToolResult {
-  return {
-    content: text(lines),
-    isError: true,
-    ...(structured ? { structuredContent: structured } : {}),
-  };
+  return asError
+    ? errorResult(lines, structured)
+    : textResult(lines, structured);
 }
 
 /** No approval could be asked for here: the plans, and a consent code for each. */
@@ -102,14 +142,10 @@ export function consentResult(
         ...codes.map((c) => `  code for [${codeNumber(plans, c)}]: ${c.code}`),
       ];
 
-  return errorResult(
-    [
-      `✗ approval needed: ${why}; nothing was run`,
-      ...plansText(plans),
-      ...tail,
-    ],
-    { plans: plans.map(planView), codes },
-  );
+  return refused(`approval needed: ${why}`, [...plansText(plans), ...tail], {
+    plans: plans.map(planView),
+    codes,
+  });
 }
 
 const codeNumber = (plans: HashedPlan[], c: { planHash: string }) =>
@@ -129,24 +165,21 @@ export function receiptResult(
     auto,
   });
 
-  return {
-    content: text([line]),
-    structuredContent: { receipt, result: receipt.result ?? null },
-  };
+  return textResult([line], { receipt, result: receipt.result ?? null });
 }
 
 /** A plan's question back to the model, with what to call again with for each answer. */
 export function clarifyResult(c: Clarification): CallToolResult {
   const { question, options } = c.clarify;
 
-  return {
-    content: text([
+  return textResult(
+    [
       `? ${question}`,
       ...options.map(
         (o, i) =>
           `  ${i + 1}. ${o.label} → ${lean(o.params).split('\n').join(', ')}`,
       ),
-    ]),
-    structuredContent: { clarify: c.clarify },
-  };
+    ],
+    { clarify: c.clarify },
+  );
 }

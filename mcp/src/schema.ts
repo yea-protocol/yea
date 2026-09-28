@@ -12,23 +12,19 @@ import type {
   StandardSchemaV1,
   StandardSchemaWithJSON,
 } from '@modelcontextprotocol/server';
+import { isObject, type Obj } from './util.js';
 
 /** Set on the validated input when the call asked for a preview. */
 export const PREVIEW: unique symbol = Symbol('yea.preview');
 
 const TARGET = 'draft-2020-12';
 
-type Obj = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
 const issue = (message: string): StandardSchemaV1.FailureResult => ({
   issues: [{ message }],
 });
 
 /** The author's JSON Schema with `preview` added; throws if its root can't carry it. */
-export function withPreviewField(json: Obj): Obj {
+function withPreviewField(json: Obj): Obj {
   if (json.type !== 'object') {
     throw new TypeError(
       'a job input schema must be a plain object at its root (z.object(...) or equivalent)',

@@ -10,6 +10,7 @@ import {
   type More,
   printable,
 } from '@yea-protocol/sdk';
+import { isObject } from '../util.js';
 
 /** Large enough that a service lists every capability with its params at once. */
 const HELLO_BUDGET = 100_000;
@@ -30,11 +31,6 @@ export interface Service {
   /** The BRIEF the service answered HELLO with (its capabilities are in `capabilities`). */
   brief: Brief;
 }
-
-type Obj = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** A capability entry the bridge can build a tool from; anything else is skipped. */
 const isCapability = (c: unknown): c is CapabilityInfo =>

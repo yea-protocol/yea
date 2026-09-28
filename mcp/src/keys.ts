@@ -26,6 +26,7 @@ import {
   type Tightening,
 } from '@yea-protocol/sdk';
 import { home, readPinnedKey } from '@yea-protocol/sdk/node';
+import { warnOnce } from './util.js';
 
 const NAME = /^[a-z0-9._-]{1,64}$/;
 const SEED = /^[A-Za-z0-9_-]{43}$/;
@@ -208,16 +209,6 @@ export function pinnedPrincipal(option: string | undefined): Pinned {
   return PUBLIC_KEY.test(option)
     ? { key: option }
     : { why: 'the principal option is not an ed25519 public key' };
-}
-
-const warned = new Set<string>();
-
-/** Warn on stderr, once per message, so a per-call read doesn't flood the log. */
-export function warnOnce(message: string) {
-  if (!warned.has(message)) {
-    warned.add(message);
-    console.error(`yea: ${message}`);
-  }
 }
 
 /** Read a file, or null if it doesn't exist; other errors are reported and read as absent. */

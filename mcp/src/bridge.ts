@@ -21,7 +21,7 @@ import { greet, type Service } from './bridge/greet.js';
 import type { Bridge } from './bridge/job.js';
 import { passThrough } from './bridge/params.js';
 import { PendingProposals } from './bridge/pending.js';
-import { clip, errorResult, safeLens } from './bridge/render.js';
+import { clip, safeLens } from './bridge/render.js';
 import {
   buildTools,
   errorOf,
@@ -30,6 +30,8 @@ import {
   type ToolSpec,
 } from './bridge/tools.js';
 import { consentCall, expandCall, undoCall } from './bridge/utility.js';
+import { errorResult, READ_ANNOTATIONS, UNDO_ANNOTATIONS } from './render.js';
+import type { Obj } from './util.js';
 
 export type { ConsentStore } from './bridge/consent.js';
 export type { ToolMode } from './bridge/tools.js';
@@ -136,8 +138,6 @@ function instructionsFor(
     .trim();
 }
 
-type Obj = Record<string, unknown>;
-
 const str = (description: string) => ({ type: 'string', description });
 
 const object = (properties: Obj, required: string[]) => ({
@@ -216,7 +216,7 @@ function utilityTools(b: Bridge, services: Map<string, Service>): ToolSpec[] {
         { service: str('The service id.'), handle: str('The handle, h_….') },
         ['service', 'handle'],
       ),
-      annotations: { readOnlyHint: true, destructiveHint: false },
+      annotations: READ_ANNOTATIONS,
       meta: {},
       run: withService(services, 'handle', (svc, handle) =>
         expandCall(svc, { handle, budget: b.budget }),
@@ -232,11 +232,7 @@ function utilityTools(b: Bridge, services: Map<string, Service>): ToolSpec[] {
         },
         ['service', 'receipt'],
       ),
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-      },
+      annotations: UNDO_ANNOTATIONS,
       meta: {},
       run: withService(services, 'receipt', undoCall),
     },

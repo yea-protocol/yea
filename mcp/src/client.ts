@@ -12,14 +12,10 @@ import {
   type McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
-
-type Obj = Record<string, unknown>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
+import { isObject, type Obj } from './util.js';
 
 /** `elicitation.form`, or a bare `elicitation: {}` (the pre-mode meaning), means form support. */
-export function canElicitForm(caps: unknown): boolean {
+function canElicitForm(caps: unknown): boolean {
   const e = isObject(caps) ? caps.elicitation : undefined;
 
   if (!isObject(e)) {
@@ -36,7 +32,7 @@ const MODERN = '2026-07-28';
  * Whether this server instance is serving the 2026-07-28 era: the SDK's own test
  * (`_servedModernEra`), on the negotiated revision. Revisions are dates, so they order as text.
  */
-export const servesModern = (server: McpServer) => {
+const servesModern = (server: McpServer) => {
   const v = server.server.getNegotiatedProtocolVersion();
 
   return v !== undefined && v >= MODERN;
@@ -46,10 +42,7 @@ export const servesModern = (server: McpServer) => {
  * The capabilities this request was made with, by era, as the SDK's `_inputRequestCapabilityView`
  * reads them; undefined when there are none.
  */
-export function clientCapabilities(
-  server: McpServer,
-  ctx: ServerContext,
-): unknown {
+function clientCapabilities(server: McpServer, ctx: ServerContext): unknown {
   // A 2026-07-28 request carries its own capabilities; use only those.
   if (servesModern(server)) {
     return (ctx.mcpReq.envelope as Obj | undefined)?.[

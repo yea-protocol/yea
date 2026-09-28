@@ -8,7 +8,14 @@ import type {
   ToolAnnotations,
 } from '@modelcontextprotocol/server';
 import { type CapabilityInfo, printable } from '@yea-protocol/sdk';
-import { warnOnce } from '../keys.js';
+import {
+  errorResult,
+  JOB_ANNOTATIONS,
+  READ_ANNOTATIONS,
+  refused,
+  UNMINTED_STATE,
+} from '../render.js';
+import { errorMessage, isObject, type Obj, warnOnce } from '../util.js';
 import type { Service } from './greet.js';
 import { type Bridge, type JobCall, runJobCall } from './job.js';
 import { assignNames, genericBase, sanitize, type ToNames } from './names.js';
@@ -19,10 +26,8 @@ import {
   reservedParams,
   withJobFields,
 } from './params.js';
-import { clip, errorResult } from './render.js';
+import { clip } from './render.js';
 import { readCall } from './utility.js';
-
-type Obj = Record<string, unknown>;
 
 /** Past this many capabilities, a service gets two generic tools instead (decision 1). */
 export const GENERIC_PAST = 25;
@@ -40,23 +45,6 @@ export interface ToolSpec {
 }
 
 type Unnamed = Omit<ToolSpec, 'name'>;
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
-const READ: ToolAnnotations = { readOnlyHint: true, destructiveHint: false };
-
-/** A job changes things: destructive, so clients shouldn't auto-approve it. Hints only. */
-const JOB: ToolAnnotations = {
-  readOnlyHint: false,
-  destructiveHint: true,
-  idempotentHint: false,
-};
-
-const BAD_STATE =
-  'this approval state is invalid, expired or already used; nothing was run. Call the tool again without it.';
-
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Whether a service gets the two generic tools. */
 export const isGeneric = (svc: Service, mode: ToolMode) =>
@@ -107,19 +95,19 @@ function jobHandler(
 ) {
   return async (args: Obj, ctx: ServerContext): Promise<CallToolResult> => {
     if (ctx.mcpReq.requestState() !== undefined) {
-      return errorResult([`✗ ${BAD_STATE}`]);
+      return errorResult([`✗ ${UNMINTED_STATE}`]);
     }
 
     const picked = pick(args);
 
     if ('why' in picked) {
-      return errorResult([`✗ ${picked.why}; nothing was run`]);
+      return refused(picked.why);
     }
 
     const fields = jobFields(picked.fields);
 
     if ('why' in fields) {
-      return errorResult([`✗ ${fields.why}; nothing was run`]);
+      return refused(fields.why);
     }
 
     return runJobCall(b, {
@@ -180,7 +168,7 @@ function capabilityTool(
     return () => ({
       description: describe(svc, cap),
       schema,
-      annotations: READ,
+      annotations: READ_ANNOTATIONS,
       meta: meta(svc, cap.name),
       run: (args) =>
         readCall(svc, { capability: cap.name, params: args, budget: b.budget }),
@@ -190,7 +178,7 @@ function capabilityTool(
   return (name) => ({
     description: describe(svc, cap),
     schema: withJobFields(schema),
-    annotations: JOB,
+    annotations: JOB_ANNOTATIONS,
     meta: meta(svc, cap.name),
     run: jobHandler(b, { tool: name, svc }, (args) => {
       const { fields, rest } = split(args);
@@ -232,7 +220,7 @@ function genericTool(b: Bridge, svc: Service, kind: 'ask' | 'intent') {
     return (): Unnamed => ({
       description,
       schema: genericSchema(kind),
-      annotations: READ,
+      annotations: READ_ANNOTATIONS,
       meta: meta(svc),
       run: async (args) => {
         const p = pick(args);
@@ -251,7 +239,7 @@ function genericTool(b: Bridge, svc: Service, kind: 'ask' | 'intent') {
   return (name: string): Unnamed => ({
     description,
     schema: genericSchema(kind),
-    annotations: JOB,
+    annotations: JOB_ANNOTATIONS,
     meta: meta(svc),
     run: jobHandler(b, { tool: name, svc }, pick),
   });
@@ -321,4 +309,4 @@ export async function buildTools(
 }
 
 export const errorOf = (e: unknown) =>
-  errorResult([`✗ ${printable(message(e))}`]);
+  errorResult([`✗ ${printable(errorMessage(e))}`]);

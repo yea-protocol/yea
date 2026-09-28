@@ -44,11 +44,14 @@ import {
   clarifyResult,
   consentResult,
   errorResult,
+  INVALID_APPROVAL,
   previewResult,
   receiptResult,
+  refused,
+  textResult,
 } from './render.js';
+import { errorMessage, isObject, type Obj } from './util.js';
 
-type Obj = Record<string, unknown>;
 type Result = CallToolResult | InputRequiredResult;
 
 /** What `revert` gets from the receipt, so any process can undo the job. */
@@ -104,17 +107,8 @@ interface Call {
   plans: HashedPlan[];
 }
 
-const NOTHING_RAN = 'nothing was run';
-const BAD_STATE =
-  'this approval is invalid, expired, already used, or for another call; nothing was run. Call the tool again to ask again.';
-
 const MEMORY_NO_CONSENT =
   "this server keeps approvals in memory, where `yea approve` can't reach them; use a client that can show approval forms, or run the server with a FileStore";
-
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const isObject = (v: unknown): v is Obj =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Who is calling; on HTTP an empty answer refuses the call (SPEC-mcp-ts, per-call refusals). */
 export function callerOf(y: Yea, ctx: ServerContext): string {
@@ -185,11 +179,7 @@ async function planFor(
   }
 
   if (!out.length) {
-    return {
-      result: errorResult([
-        `✗ ${call.job.name} has no way to do this; ${NOTHING_RAN}`,
-      ]),
-    };
+    return { result: refused(`${call.job.name} has no way to do this`) };
   }
 
   return { plans: await hashPlans(call.job, call.input, out) };
@@ -220,9 +210,7 @@ export async function runJob(
 
     // Step 2: a denied tool shows nothing, not even a preview.
     if (started.policy.deny.includes(base.job.name)) {
-      return errorResult([
-        `✗ your policy never allows ${base.job.name}; ${NOTHING_RAN}`,
-      ]);
+      return refused(`your policy never allows ${base.job.name}`);
     }
 
     const planned = await planFor(started);
@@ -237,7 +225,7 @@ export async function runJob(
       ? previewResult(call.plans, call.job.ownResultsAreErrors?.() ?? false)
       : await route(call);
   } catch (e) {
-    return errorResult([`✗ ${message(e)}; ${NOTHING_RAN}`]);
+    return refused(errorMessage(e));
   }
 }
 
@@ -246,7 +234,7 @@ function route(call: Call): Promise<Result> {
   const state: unknown = call.ctx.mcpReq.requestState();
 
   if (state === undefined) {
-    return fresh(call);
+    return firstCall(call);
   }
 
   if (typeof state === 'string') {
@@ -299,7 +287,7 @@ async function consented(call: Call): Promise<HashedPlan | null> {
 }
 
 /** Steps 6–8 on a first call: a consent, the policy, or ask. */
-async function fresh(call: Call): Promise<Result> {
+async function firstCall(call: Call): Promise<Result> {
   const approved = await consented(call);
 
   if (approved) {
@@ -322,9 +310,9 @@ async function fresh(call: Call): Promise<Result> {
         : ask(call, 'a limit filled up while this call was being decided', 1);
     }
     case 'denied':
-      return errorResult([`✗ ${d.why}; ${NOTHING_RAN}`]);
+      return refused(d.why);
     case 'nothing':
-      return errorResult([`✗ no plans; ${NOTHING_RAN}`]);
+      return refused('no plans');
     case 'ask':
     case 'out-of-band':
       return ask(call, d.why, 1);
@@ -417,7 +405,7 @@ async function answer(call: Call, raw: unknown): Promise<Result> {
   });
 
   if (!state || !(await call.y.store.consumeOnce(state.nonce, state.exp))) {
-    return errorResult([`✗ ${BAD_STATE}`]);
+    return errorResult([`✗ ${INVALID_APPROVAL}`]);
   }
 
   const v = judgeAnswer(state, answerOf(call.ctx), {
@@ -439,9 +427,9 @@ async function answer(call: Call, raw: unknown): Promise<Result> {
       );
     case 'denied':
     case 'refuse':
-      return errorResult([`✗ ${v.why}; ${NOTHING_RAN}`]);
+      return refused(v.why);
     case 'not-approved':
-      return errorResult([`✗ not approved; ${NOTHING_RAN}`]);
+      return refused('not approved');
   }
 }
 
@@ -500,7 +488,7 @@ async function runPlan(
     await releaseAll(call.y, held);
 
     return errorResult([
-      `✗ ${how === 'approved' ? 'approved, but ' : ''}${hp.plan.summary} failed: ${message(e)}; nothing changed.${how === 'approved' ? ' The approval is used up: calling again asks again.' : ''}`,
+      `✗ ${how === 'approved' ? 'approved, but ' : ''}${hp.plan.summary} failed: ${errorMessage(e)}; nothing changed.${how === 'approved' ? ' The approval is used up: calling again asks again.' : ''}`,
     ]);
   }
 
@@ -518,7 +506,7 @@ function jsonSafe(v: unknown): { value: unknown; note: string | null } {
   } catch (e) {
     return {
       value: null,
-      note: `its result couldn't be serialized (${message(e).split('\n')[0]}), so it isn't shown or kept`,
+      note: `its result couldn't be serialized (${errorMessage(e).split('\n')[0]}), so it isn't shown or kept`,
     };
   }
 }
@@ -564,7 +552,7 @@ async function finish(
   try {
     return await recorded(call, hp, held, { ...done, saved });
   } catch (e) {
-    return happened(call, hp, `then ${message(e)}`, saved.receipt);
+    return happened(call, hp, `then ${errorMessage(e)}`, saved.receipt);
   }
 }
 
@@ -622,15 +610,11 @@ function happened(
       ? `undo is available with receipt ${receipt.id}`
       : `receipt ${receipt.id}; it can't be undone`;
 
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `✓ ${hp.plan.summary} happened, but ${what}; ${undo}.`,
-      },
-    ],
-    structuredContent: { receipt, result: null },
-    // A guarded tool's outputSchema only describes the original's own results.
-    ...(call.job.ownResultsAreErrors?.() ? { isError: true } : {}),
-  };
+  const lines = [`✓ ${hp.plan.summary} happened, but ${what}; ${undo}.`];
+  const structured = { receipt, result: null };
+
+  // A guarded tool's outputSchema only describes the original's own results.
+  return call.job.ownResultsAreErrors?.()
+    ? errorResult(lines, structured)
+    : textResult(lines, structured);
 }
