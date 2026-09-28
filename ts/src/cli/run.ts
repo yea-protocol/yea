@@ -16,7 +16,7 @@ async function trustedPrincipals(): Promise<string[]> {
 
 // ---- try it ----
 
-export async function cmdTestDrive(rest: string[], o: Options) {
+export async function cmdTestDrive(rest: string[], o: Options, argv: string[]) {
   try {
     await import('@anthropic-ai/sdk');
   } catch {
@@ -38,7 +38,7 @@ export async function cmdTestDrive(rest: string[], o: Options) {
         '-p',
         `@yea-protocol/sdk@${version}`,
         'yea',
-        ...process.argv.slice(2),
+        ...argv,
       ],
       { stdio: 'inherit' },
     );

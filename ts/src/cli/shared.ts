@@ -46,8 +46,15 @@ export function parseCommandLine(argv: string[]) {
 /** The flags given on the command line. */
 export type Options = ReturnType<typeof parseCommandLine>['values'];
 
-/** A command that works locally (keys, grants, setup, servers). */
-export type Command = (rest: string[], o: Options) => Promise<void>;
+/**
+ * A command that works locally (keys, grants, setup, servers). `argv` is the whole command
+ * line given to `run`, for a command that runs `yea` again.
+ */
+export type Command = (
+  rest: string[],
+  o: Options,
+  argv: string[],
+) => Promise<void>;
 
 /** A command that talks to the service at the first argument; `args` are the rest. */
 export type ServiceCommand = (

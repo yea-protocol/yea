@@ -124,7 +124,7 @@ const SERVICE_COMMANDS = new Map<string, ServiceCommand>([
   ['do', cmdDo],
 ]);
 
-async function main(o: Options, args: string[]) {
+async function main(o: Options, args: string[], argv: string[]) {
   const [cmd, ...rest] = args;
 
   if (!cmd || o.help) {
@@ -134,7 +134,7 @@ async function main(o: Options, args: string[]) {
   const command = COMMANDS.get(cmd);
 
   if (command) {
-    return command(rest, o);
+    return command(rest, o, argv);
   }
 
   const [url, ...more] = rest;
@@ -163,7 +163,7 @@ export function run(argv: string[]): Promise<void> {
   const { values: o, positionals: args } = parseCommandLine(argv);
 
   // An error can quote a service's reply (a JSON.parse SyntaxError does), escapes and all.
-  return main(o, args).catch((e) =>
+  return main(o, args, argv).catch((e) =>
     die(`✗ ${printable((e as Error).message)}`),
   );
 }
