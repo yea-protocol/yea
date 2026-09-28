@@ -214,19 +214,48 @@ async def test_an_apply_that_fails_part_way_says_what_it_left_and_keeps_its_rese
 
 
 async def test_a_release_that_fails_never_hides_why_the_plan_failed(world, monkeypatch):
-    """Each reservation is released on its own; a store error there keeps the apply error (#149)."""
+    """Each reservation is released on its own: a store error on one keeps the apply error and
+    still releases the next (#149)."""
     def apply():
         raise RuntimeError("the calendar is down")
 
     @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
     async def schedule(event: str) -> list[Plan]:
-        return [Plan("Schedule", [], apply=apply, uses={"emails": quantity(1)}, undo_window=60)]
+        return [Plan("Schedule", [], apply=apply, uses={"emails": quantity(1), "sms": quantity(1)}, undo_window=60)]
 
-    async def broken(r):
-        raise OSError("disk full")
+    world.grant({"can": ["schedule"]}, {"risk": "low"}, {"total": {"of": "emails", "max": 5}},
+                {"total": {"of": "sms", "max": 5}})
+    release, failed = world.store.release, []
 
-    world.grant({"can": ["schedule"]}, {"risk": "low"}, {"total": {"of": "emails", "max": 5}})
-    monkeypatch.setattr(world.store, "release", broken)
+    async def first_fails(r):
+        if not failed:
+            failed.append(r)
+            raise OSError("disk full")
+        await release(r)
+
+    monkeypatch.setattr(world.store, "release", first_fails)
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("schedule", {"event": "e1"})
     assert r.is_error and text(r) == "✗ Schedule failed: the calendar is down; nothing changed."
+    block = decode_grant(os.environ["YEA_POLICY"]).id
+    used = [await world.store.used(LedgerKey(block, of)) for of in ("emails", "sms")]
+    assert failed and sorted(used) == [0, 10**18]  # the failed one stays held; the other is released
+
+
+async def test_an_approved_apply_that_fails_part_way_says_the_approval_is_used_up(world):
+    """The approved branch of the part-way text (#149)."""
+    from yea_mcp import PartialApplyError
+
+    def apply():
+        raise PartialApplyError("schedule sch_1 was left behind.")
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def schedule(event: str) -> list[Plan]:
+        return [Plan("Schedule", [], apply=apply, undo_window=60)]
+
+    person = Person()  # no policy: it asks, and the person approves
+    async with world.client("auto", person) as c:
+        r = await c.call_tool("schedule", {"event": "e1"})
+    assert len(person.seen) == 1
+    assert r.is_error and text(r) == ("✗ approved, but Schedule failed part-way: schedule sch_1 was left behind. "
+                                      "The approval is used up.")

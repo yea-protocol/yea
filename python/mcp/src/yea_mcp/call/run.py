@@ -24,7 +24,8 @@ async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: st
         approved = how == "approved"
         said = f"✗ {'approved, but ' if approved else ''}{printable(hp.plan.summary)} failed"
         if is_partial(e):  # it changed something: the reservations stay held, which can only over-count
-            return error_result([f"{said} part-way: {printable(str(e))}{' The approval is used up.' if approved else ''}"])
+            used_up = " The approval is used up." if approved else ""
+            return error_result([f"{said} part-way: {printable(str(e))}{used_up}"])
         await _release_each(call, held)
         return error_result([f"{said}: {printable(str(e))}; nothing changed."
                              f"{' The approval is used up: calling again asks again.' if approved else ''}"])
