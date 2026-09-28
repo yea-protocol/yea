@@ -111,3 +111,26 @@ def test_the_start_up_lines(tmp_path, monkeypatch, capsys):
     assert f"yea: service id {ap.service_id()} (name files)" in err
     assert ("yea: no pinned principal key (YEA_PRINCIPAL_PUB is not set): nothing auto-runs and no consent is "
             "accepted") in err
+
+
+def test_start_requires_files_root(tmp_path):
+    with pytest.raises(ValueError, match="FILES_ROOT is not set"):
+        mcp_quickstart.files_root({})
+    with pytest.raises(ValueError, match="doesn't exist"):
+        mcp_quickstart.files_root({"FILES_ROOT": str(tmp_path / "missing")})
+
+
+def test_start_refuses_a_root_that_holds_the_server(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    this = project / "server.py"
+    this.write_text("")
+    for root in (project, tmp_path):  # the server's folder, or any folder above it
+        with pytest.raises(ValueError, match="holds this server's own files"):
+            mcp_quickstart.files_root({"FILES_ROOT": str(root)}, str(this))
+    with pytest.raises(ValueError, match="holds this server's own files"):  # the example, from the repo
+        mcp_quickstart.files_root({"FILES_ROOT": str(Path(mcp_quickstart.__file__).parent)})
+
+
+def test_start_accepts_a_root_elsewhere(tmp_path):
+    assert mcp_quickstart.files_root({"FILES_ROOT": str(tmp_path)}) == str(tmp_path.resolve())

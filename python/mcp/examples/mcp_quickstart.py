@@ -2,12 +2,14 @@
 guide for Python (site/guide/mcp-python.md). The guide shows its regions in order, and
 python/mcp/tests/test_quickstart.py drives them with in-memory clients.
 
-    FILES_ROOT=~/scratch uv run python examples/mcp_quickstart.py
+    FILES_ROOT=~/yea-scratch uv run python examples/mcp_quickstart.py
 """
 
 # region imports
 import os
+import sys
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
@@ -30,6 +32,21 @@ def inside(root: str, path: str) -> Path:
     if full == base or base not in full.parents:
         raise ValueError(f"{path} is outside {base}")
     return full
+
+
+def files_root(env: Mapping[str, str] = os.environ, this: str = __file__) -> str:
+    """The folder the tools may change: ``FILES_ROOT``, which must exist and must not hold this
+    server's own files, or ``delete_file`` could remove them."""
+    hint = 'set FILES_ROOT to a folder of files the tools may change, such as "$HOME/yea-scratch"'
+    if not env.get("FILES_ROOT"):
+        raise ValueError(f"FILES_ROOT is not set: {hint}")
+    root = Path(env["FILES_ROOT"]).resolve()
+    if not root.is_dir():
+        raise ValueError(f"FILES_ROOT {root} doesn't exist: create it first")
+    own = Path(this).resolve()
+    if root == own or root in own.parents:
+        raise ValueError(f"FILES_ROOT {root} holds this server's own files: {hint}")
+    return str(root)
 
 
 # endregion root
@@ -93,9 +110,8 @@ def add_move_to_trash(server: MCPServer, approvals: Approvals, root: str) -> Non
 
 
 # region serve
-def create_server(approvals: Approvals, root: str | None = None) -> MCPServer:
+def create_server(approvals: Approvals, root: str) -> MCPServer:
     """The server, with both tools. ``root`` is the only folder the tools touch."""
-    root = root or os.environ.get("FILES_ROOT") or os.getcwd()
     # request_state_security lets YEA seal the approval state it sends round the client.
     server = MCPServer("files", request_state_security=approvals.request_state_security())
     add_delete_file(server, approvals, root)
@@ -107,6 +123,10 @@ def create_server(approvals: Approvals, root: str | None = None) -> MCPServer:
 
 if __name__ == "__main__":
     # region start
+    try:
+        root = files_root()
+    except ValueError as e:
+        sys.exit(f"files: {e}")  # refuse to start
     approvals = yea(name="files", transport="stdio")  # once per process
-    create_server(approvals).run("stdio")
+    create_server(approvals, root).run("stdio")
     # endregion start

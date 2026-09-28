@@ -27,7 +27,7 @@ Here is the whole change. `delete_file` is registered exactly as before, and one
 
 <<< ../../python/mcp/examples/mcp_quickstart.py#imports
 
-The example's tools only touch files inside one folder, so a mistaken or hostile path can't reach anything else, including the server's own key and approval store:
+The example's tools only touch files inside one folder, so a mistaken or hostile path can't reach anything else, including the server's own key and approval store. That folder comes from `FILES_ROOT`, which must be set and must not hold the server's own files:
 
 <<< ../../python/mcp/examples/mcp_quickstart.py#root
 
@@ -41,7 +41,7 @@ Build the server. Leave out the `add_move_to_trash` line until step 4:
 
 <<< ../../python/mcp/examples/mcp_quickstart.py#serve
 
-`request_state_security` lets YEA seal the approval state it sends round the client. Then create the approval context once per process, and serve:
+`request_state_security` lets YEA seal the approval state it sends round the client. Then check `FILES_ROOT` (the server refuses to start with a message saying what to set), create the approval context once per process, and serve:
 
 <<< ../../python/mcp/examples/mcp_quickstart.py#start
 
@@ -51,13 +51,19 @@ Build the server. Leave out the `add_move_to_trash` line until step 4:
 
 ## 3. Run it in your client
 
-In **Claude Code**, from your server's project folder:
+The tools only act inside `FILES_ROOT`, so give them a folder of files you can lose. The server refuses to start without it, or when it holds the server's own files, since `delete_file` could then remove your project's files, such as `server.py` and `pyproject.toml`. Make the folder, with a file for step 3 to delete and one for step 4 to move to the trash:
 
 ```sh
-claude mcp add files -- uv run python server.py
+mkdir -p "$HOME/yea-scratch/docs"
+echo "Q3 report" > "$HOME/yea-scratch/docs/report.pdf"
+echo "meeting notes" > "$HOME/yea-scratch/docs/notes.txt"
 ```
 
-The tools only act inside `FILES_ROOT` (default: the folder the server starts in), so set it to the folder you mean, for example `claude mcp add files -e FILES_ROOT=$HOME/scratch -- uv run python server.py`.
+Then, in **Claude Code**, from your server's project folder:
+
+```sh
+claude mcp add files -e FILES_ROOT="$HOME/yea-scratch" -- uv run python server.py
+```
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
@@ -65,7 +71,11 @@ The tools only act inside `FILES_ROOT` (default: the folder the server starts in
 ```json
 {
   "mcpServers": {
-    "files": { "command": "uv", "args": ["run", "--directory", "/absolute/path/to/project", "python", "server.py"] }
+    "files": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/project", "python", "server.py"],
+      "env": { "FILES_ROOT": "/absolute/path/to/yea-scratch" }
+    }
   }
 }
 ```
@@ -75,7 +85,12 @@ The tools only act inside `FILES_ROOT` (default: the folder the server starts in
 ```json
 {
   "servers": {
-    "files": { "type": "stdio", "command": "uv", "args": ["run", "--directory", "${workspaceFolder}", "python", "server.py"] }
+    "files": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "${workspaceFolder}", "python", "server.py"],
+      "env": { "FILES_ROOT": "/absolute/path/to/yea-scratch" }
+    }
   }
 }
 ```
@@ -112,13 +127,13 @@ Deleting can't be undone, so it always asks. Moving a file to a trash folder can
 - **`apply()`** runs at most once, and only after the plan is approved or allowed.
 - **`revert`** plus an **`undo_window`** make the plan undoable. The first job with `revert` adds an `undo` tool to the server.
 
-After approval, the call returns a receipt:
+Ask the agent to move `docs/notes.txt` to the trash. After approval, the call returns a receipt:
 
 ```text
-✓ Move docs/report.pdf to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
+✓ Move docs/notes.txt to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
   result:
-    file: /Users/me/project/docs/report.pdf
-    trashedAs: /Users/me/project/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
+    file: /Users/me/yea-scratch/docs/notes.txt
+    trashedAs: /Users/me/yea-scratch/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-notes.txt
 ```
 
 The plan refuses anything that isn't a regular file, such as a directory, since `revert` couldn't put it back. `undo(receipt="r_Ny6CTkeKuDVI")` puts the file back, within the window. Undo doesn't ask, because it restores what the person already approved changing. Any job call also takes `"preview": true`, which returns the plans and does nothing.
@@ -164,6 +179,7 @@ The policy is only as strong as the place where your **private** principal key l
 
    ```sh
    claude mcp add files \
+     -e FILES_ROOT="$HOME/yea-scratch" \
      -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
      -e YEA_POLICY="$HOME/.config/yea/files.policy" \
      -- uv run python server.py

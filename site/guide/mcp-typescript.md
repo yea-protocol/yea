@@ -32,7 +32,7 @@ Here is the whole change. `delete_file` is registered exactly as before, and one
 
 <<< ../../examples/mcp-quickstart.ts#imports
 
-The example's tools only touch files inside one folder, so a mistaken or hostile path can't reach anything else, including the server's own key and approval store:
+The example's tools only touch files inside one folder, so a mistaken or hostile path can't reach anything else, including the server's own key and approval store. That folder comes from `FILES_ROOT`, which must be set and must not hold the server's own files:
 
 <<< ../../examples/mcp-quickstart.ts#root
 
@@ -46,7 +46,7 @@ Build the server in a factory. Leave out the `addMoveToTrash` line until step 4:
 
 <<< ../../examples/mcp-quickstart.ts#serve
 
-Then create the approval context once per process, and serve. The SDK may call the factory more than once, so it builds a fresh `McpServer` each time, while `yea()`, which holds the keys and the store, runs once:
+Then check `FILES_ROOT` (the server refuses to start with a message saying what to set), create the approval context once per process, and serve. The SDK may call the factory more than once, so it builds a fresh `McpServer` each time, while `yea()`, which holds the keys and the store, runs once:
 
 <<< ../../examples/mcp-quickstart.ts#start
 
@@ -56,13 +56,21 @@ Then create the approval context once per process, and serve. The SDK may call t
 
 ## 3. Run it in your client
 
-In **Claude Code**, from your server's folder:
+The tools only act inside `FILES_ROOT`, so give them a folder of files you can lose. The server refuses to start without it, or when it holds the server's own files, since `delete_file` could then remove your project's files, such as `server.ts` and `package.json`. Make the folder, with a file for step 3 to delete and one for step 4 to move to the trash:
 
 ```sh
-claude mcp add files -- npx tsx server.ts
+mkdir -p "$HOME/yea-scratch/docs"
+echo "Q3 report" > "$HOME/yea-scratch/docs/report.pdf"
+echo "meeting notes" > "$HOME/yea-scratch/docs/notes.txt"
 ```
 
-Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- node server.ts` works too. The tools only act inside `FILES_ROOT` (default: the folder the server starts in), so set it to the folder you mean, for example `claude mcp add files -e FILES_ROOT=$HOME/scratch -- npx tsx server.ts`.
+Then, in **Claude Code**, from your server's folder:
+
+```sh
+claude mcp add files -e FILES_ROOT="$HOME/yea-scratch" -- npx tsx server.ts
+```
+
+Node 22.18 or later can run TypeScript directly, so `node server.ts` works in place of `npx tsx server.ts`.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
@@ -70,7 +78,11 @@ Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- nod
 ```json
 {
   "mcpServers": {
-    "files": { "command": "npx", "args": ["tsx", "/absolute/path/to/server.ts"] }
+    "files": {
+      "command": "npx",
+      "args": ["tsx", "/absolute/path/to/server.ts"],
+      "env": { "FILES_ROOT": "/absolute/path/to/yea-scratch" }
+    }
   }
 }
 ```
@@ -80,7 +92,12 @@ Node 22.18 or later can run TypeScript directly, so `claude mcp add files -- nod
 ```json
 {
   "servers": {
-    "files": { "type": "stdio", "command": "npx", "args": ["tsx", "${workspaceFolder}/server.ts"] }
+    "files": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["tsx", "${workspaceFolder}/server.ts"],
+      "env": { "FILES_ROOT": "/absolute/path/to/yea-scratch" }
+    }
   }
 }
 ```
@@ -117,13 +134,13 @@ Deleting can't be undone, so it always asks. Moving a file to a trash folder can
 - **`apply()`** runs at most once, and only after the plan is approved or allowed.
 - **`revert`** plus an **`undoWindow`** make the plan undoable. The first job with `revert` adds an `undo` tool to the server.
 
-After approval, the call returns a receipt:
+Ask the agent to move `docs/notes.txt` to the trash. After approval, the call returns a receipt:
 
 ```text
-✓ Move docs/report.pdf to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
+✓ Move docs/notes.txt to the trash (receipt r_Ny6CTkeKuDVI) · undo until 2026-09-29T02:37:30Z
   result:
-    file: /Users/me/project/docs/report.pdf
-    trashedAs: /Users/me/project/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-report.pdf
+    file: /Users/me/yea-scratch/docs/notes.txt
+    trashedAs: /Users/me/yea-scratch/docs/.trash/b0974c8d-9a52-4c19-acd0-ccb8bc0cef3f-notes.txt
 ```
 
 `plan()` refuses anything that isn't a regular file, such as a directory, since `revert` couldn't put it back. `undo({ receipt: "r_Ny6CTkeKuDVI" })` puts the file back, within the window. Undo doesn't ask, because it restores what the person already approved changing. Any job call also takes `"preview": true`, which returns the plans and does nothing.
@@ -169,6 +186,7 @@ The policy is only as strong as the place where your **private** principal key l
 
    ```sh
    claude mcp add files \
+     -e FILES_ROOT="$HOME/yea-scratch" \
      -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
      -e YEA_POLICY="$HOME/.config/yea/files.policy" \
      -- npx tsx server.ts
