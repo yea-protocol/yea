@@ -162,26 +162,56 @@ def read_policy(option: str | None) -> str | None:
     return token
 
 
-def _file_tightening() -> Tightening | None:
-    text = _read_if_there(home() / "policy.json")
-    if text is None:
-        return None
+@dataclass(frozen=True)
+class Rules:
+    """Unsigned tightening as a call applies it; ``broken`` says why job calls must refuse."""
+
+    deny: tuple[str, ...]
+    out_of_band: str
+    broken: str | None = None
+
+
+def _no_constants(name: str) -> Any:
+    """NaN and Infinity aren't JSON (TS's JSON.parse refuses them); Python's parser would accept them."""
+    raise ValueError(f"{name} is not JSON")
+
+
+def _parse_tightening(path: Path, text: str) -> Tightening | str:
+    """The unsigned rules in a policy file, or why the file can't be used."""
     try:
-        return read_tightening(json.loads(text))
+        doc = json.loads(text, parse_constant=_no_constants)
     except ValueError:
-        return read_tightening(["not an object"])
+        return f"{path} is not valid JSON"
+    if not isinstance(doc, dict):  # null too, as TS: an object is the only valid policy
+        return f"{path}: the policy file is not a JSON object; ignored"
+    t = read_tightening(doc)
+    # Unknown fields only warn; a file we can't read, or a bad deny or outOfBand, fails closed.
+    bad = next((w for w in t.warnings if "not a JSON object" in w or "bad value" in w), None)
+    return f"{path}: {bad}" if bad else t
 
 
-def read_tightening_for(option: Any) -> Tightening:
+def _file_tightening() -> Tightening | str | None:
+    """The unsigned rules in ``~/.yea/policy.json``: None when there's no file, a reason string
+    when it can't be used. Its ``deny`` can't be known then, so job calls refuse."""
+    path = home() / "policy.json"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as e:
+        return f"can't read {path}: {e}"
+    return _parse_tightening(path, text)
+
+
+def read_tightening_for(option: Any) -> Rules:
     """The option and ``~/.yea/policy.json`` merged: ``deny`` is the union, ``outOfBand`` the stricter."""
-    parts = [read_tightening(option or {})]
-    if (from_file := _file_tightening()) is not None:
-        parts.append(from_file)
+    from_file = _file_tightening()
+    parts = [read_tightening(option or {}), *([from_file] if isinstance(from_file, Tightening) else [])]
     for w in (w for t in parts for w in t.warnings):
         warn_once(f"policy: {w}")
     deny = tuple(dict.fromkeys(d for t in parts for d in t.deny))
     oob = min((t.out_of_band for t in parts), key=lambda r: RISK_ORDER[r])
-    return Tightening(deny, oob)
+    return Rules(deny, oob, from_file if isinstance(from_file, str) else None)
 
 
 def has_total(grant: str) -> bool:

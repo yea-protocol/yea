@@ -15,7 +15,7 @@ from mcp_types.methods import is_input_required
 from pydantic_core import to_jsonable_python
 from yea import Plan
 from yea.approval import (
-    HashedPlan, Policy, build_form, check_state, consent_for, decide, input_hash, job_consent_code, judge_answer,
+    HashedPlan, Policy, Tightening, build_form, check_state, consent_for, decide, input_hash, job_consent_code, judge_answer,
     load_policy, new_receipt_id, new_state, plan_hash, release_all, reserve_all, settle_all, spent,
 )
 from yea.service import Clarification
@@ -125,11 +125,13 @@ def caller_of(y: Yea, rctx: Any) -> str:
 def policy_for(y: Yea) -> Policy:
     """The policy for this call; raises when its totals can't be kept on this store."""
     rules = read_tightening_for(y.tighten)
+    if rules.broken:  # a policy file that can't be read hides its deny list: refuse rather than guess
+        raise ValueError(f"your unsigned policy can't be used ({rules.broken})")
     grant = read_policy(y.policy) if y.principal.key else None  # no pinned principal: nothing auto-runs
     if grant and y.shared_memory and has_total(grant):
         raise ValueError("the policy has a total limit, which a MemoryStore can only keep when one process "
                          "serves every request (single_process=True)")
-    return load_policy(grant, y.service_id, y.principal.key, rules)
+    return load_policy(grant, y.service_id, y.principal.key, Tightening(rules.deny, rules.out_of_band))
 
 
 def hash_plans(job: JobDef, input: dict, plans: list[Any]) -> list[HashedPlan]:
@@ -227,10 +229,7 @@ async def _replanned(call: Call) -> Call:
         plans = hash_plans(call.job, call.input, list(out)) if isinstance(out, (list, tuple)) else []
     except Exception:  # noqa: BLE001
         plans = []
-    try:
-        policy = policy_for(call.y)  # a deny added while the person was reading counts
-    except Exception:  # noqa: BLE001
-        policy = call.policy
+    policy = policy_for(call.y)  # a deny added while the person was reading counts; a broken file refuses
     return Call(call.y, call.job, call.input, call.req, call.sub, int(time.time()), policy, plans, call.plan)
 
 
