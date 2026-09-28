@@ -146,6 +146,10 @@ the name is what plans hash, `deny` lists and `can` caveats match. The server is
 finds the tool's name there through a narrow cast (an SDK seam), and throws if the tool isn't
 registered on that server.
 
+Like `job()`, `guard` throws for a tool whose input schema already has a `preview` property, or
+whose root isn't a plain object: the wrapper schema would shadow the tool's own argument. It
+throws when called, and the tool stays disabled.
+
 The SDK has no tool-call middleware (typescript-sdk PR #2820 is still a draft), so `guard`
 replaces the handler:
 
@@ -159,7 +163,9 @@ replaces the handler:
 The original callback becomes the plan's `apply`. Its result is returned unchanged, so an
 `outputSchema` still holds. The receipt goes in `_meta['dev.yea/receipt']`. If the original
 returns `isError: true` or an `input_required` result, that counts as a failure: reservations
-are released, no receipt is written, and the result is returned as is.
+are released, no receipt is written, and the result is returned as is. The check reads the value
+the original callback returned, structurally (`isError === true`, or `resultType ===
+'input_required'`), and assumes no class: handlers often return plain literals.
 
 **A guarded tool with an `outputSchema`.** A client rejects any success result whose
 `structuredContent` doesn't match the tool's `outputSchema`; `isError: true` results are

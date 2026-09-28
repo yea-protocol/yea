@@ -1,15 +1,20 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   type CallToolResult,
   McpServer,
   type RegisteredTool,
 } from '@modelcontextprotocol/server';
+import { exact, quantity } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as z from 'zod';
 import type { GuardConfig } from '../src/index.js';
 import {
   approve,
   connect,
+  grantPolicy,
   type Kind,
+  ledgerKeyOf,
   textOf,
   type World,
   world,
@@ -261,3 +266,113 @@ describe('guard failures', () => {
     expect(pinged).toBe(1);
   });
 });
+
+describe('guard refuses schemas it can’t carry preview on', () => {
+  it('throws for a preview property or a root that isn’t a plain object, and leaves the tool off', async () => {
+    const w = await world();
+    const server = new McpServer({ name: 'b', version: '1' });
+    const schemas = {
+      withPreview: z.object({ amount: z.string(), preview: z.string() }),
+      union: z.union([
+        z.object({ a: z.string() }),
+        z.object({ b: z.string() }),
+      ]),
+      string: z.string(),
+    };
+
+    for (const [name, inputSchema] of Object.entries(schemas)) {
+      const tool = server.registerTool(
+        name,
+        { inputSchema: inputSchema as z.ZodObject },
+        () => ({ content: [] }),
+      );
+
+      expect(() => w.approvals.guard(server, tool, describeCharge)).toThrow(
+        /^guard\(\): a job input schema (may not have a field named preview|must be a plain object at its root)/,
+      );
+      expect(tool.enabled).toBe(false);
+    }
+  });
+});
+
+describe('guard failure detection reads the value the original returned', () => {
+  /** A guarded tool that auto-runs under a policy with a total, and returns `result`. */
+  async function autoRun(result: Record<string, unknown>) {
+    const w = await world();
+    const token = await grantPolicy(w, [
+      { can: ['charge'] },
+      { risk: 'low' },
+      { total: { of: 'emails', max: 5 } },
+    ]);
+    let calls = 0;
+    const conn = await connect('2026', () => {
+      const server = new McpServer(
+        { name: 'b', version: '1' },
+        w.approvals.serverOptions(),
+      );
+      const tool = server.registerTool(
+        'charge',
+        { inputSchema: z.object({ amount: z.string() }) },
+        () => {
+          calls++;
+
+          return result as never;
+        },
+      );
+
+      w.approvals.guard(server, tool, {
+        describe: () => ({
+          summary: 'Charge',
+          effects: [],
+          risk: 'low',
+          uses: { emails: quantity(1) },
+          undoWindow: 60,
+        }),
+        revert: () => null,
+      });
+
+      return server;
+    });
+    const r = await conn.raw({ name: 'charge', arguments: { amount: '5' } });
+
+    return { w, token, r, calls: () => calls };
+  }
+
+  it('a plain { content, isError: true }: passed through, no receipt, reservations released', async () => {
+    const failed = {
+      content: [{ type: 'text', text: 'card declined' }],
+      isError: true,
+    };
+    const { w, token, r, calls } = await autoRun(failed);
+
+    expect(calls()).toBe(1);
+    expect(r).toMatchObject(failed);
+    expect(r._meta).not.toHaveProperty('dev.yea/receipt');
+    expect(filesIn(w.storeDir, 'receipts')).toEqual([]);
+    expect(await w.store.used(await ledgerKeyOf(token))).toBe(0n);
+  });
+
+  it('an input_required result: passed through, no receipt, reservations released', async () => {
+    const asks = { resultType: 'input_required', requestState: 'inner' };
+    const { w, token, r, calls } = await autoRun(asks);
+
+    expect(calls()).toBe(1);
+    expect(r).toMatchObject(asks);
+    expect(filesIn(w.storeDir, 'receipts')).toEqual([]);
+    expect(await w.store.used(await ledgerKeyOf(token))).toBe(0n);
+  });
+
+  it('a success is settled and gets a receipt', async () => {
+    const ok = { content: [{ type: 'text', text: 'charged' }] };
+    const { w, token, r } = await autoRun(ok);
+
+    expect(r._meta).toHaveProperty('dev.yea/receipt');
+    expect(filesIn(w.storeDir, 'receipts')).toHaveLength(1);
+    expect(await w.store.used(await ledgerKeyOf(token))).toBe(
+      exact(quantity(1)),
+    );
+  });
+});
+
+const filesIn = (root: string, dir: string) =>
+  existsSync(join(root, dir)) ? readdirSync(join(root, dir)) : [];

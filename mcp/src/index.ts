@@ -355,6 +355,20 @@ function guardedCallback(
 }
 
 /**
+ * The wrapper schema for a guarded tool. Like `job()`, it refuses a root that isn't a plain
+ * object, or one that already has `preview`: the wrapper would shadow the tool's own argument.
+ */
+function guardSchema(schema: StandardSchemaWithJSON): StandardSchemaWithJSON {
+  try {
+    return previewSchema(schema);
+  } catch (e) {
+    throw new TypeError(
+      `guard(): ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+/**
  * Turn a registered tool into a job without rewriting it (SPEC-mcp-ts `guard`). The SDK has no
  * tool-call middleware (typescript-sdk PR #2820), so this replaces the handler. SDK seam:
  * `RegisteredTool.disable`/`update`/`enable`.
@@ -389,7 +403,7 @@ function guardTool(
   tool.update({
     callback: callback as never,
     ...(tool.inputSchema
-      ? { paramsSchema: previewSchema(tool.inputSchema) }
+      ? { paramsSchema: guardSchema(tool.inputSchema) }
       : {}),
     annotations: jobAnnotations(tool.annotations),
     _meta: {

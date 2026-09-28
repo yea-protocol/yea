@@ -444,7 +444,11 @@ async function answer(call: Call, raw: unknown): Promise<Result> {
   }
 }
 
-/** A guarded tool's own error, or a request for input, is a failed apply. */
+/**
+ * A guarded tool's own error, or a request for input, is a failed apply. This inspects the value
+ * the original callback actually returned (a plain object, often a literal), structurally: no
+ * class is assumed, and `isInputRequiredResult` only reads `resultType`.
+ */
 const failedResult = (job: JobDef, result: unknown) =>
   job.guarded &&
   (!isObject(result) ||
