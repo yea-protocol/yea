@@ -1317,8 +1317,17 @@ describe('approval security (SPEC-approval)', () => {
     );
     // Checked as the tool names it: no fallback to `approve`, even when it normalizes to ''.
     expect(() => P.checkedPhrase('\ufeff')).toThrow(TypeError);
-    expect(P.checkedPhrase('old\tnav')).toBe('old\tnav');
+    expect(P.checkedPhrase('old nav')).toBe('old nav');
     expect(P.checkedPhrase(' ')).toBe('approve');
+    // Typeable, not just printable: inside, only a plain space; the error shows the others.
+    expect(() => P.checkedPhrase('old\tnav')).toThrow(
+      'the approval phrase has whitespace other than plain spaces inside, so no one could type it: "old\\u{9}nav"',
+    );
+    expect(() => P.checkedPhrase('old\u00a0nav')).toThrow('"old\\u{a0}nav"');
+    // A long phrase is cut in the error.
+    expect(() => P.checkedPhrase(`${'x'.repeat(100)}\u202e`)).toThrow(
+      `"${'x'.repeat(79)}…"`,
+    );
 
     const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
       { summary: 'Refund', effects: [], risk: 'low', apply: () => null },

@@ -595,7 +595,7 @@ describe('an unprintable phrase', () => {
   it('[M16] is refused as a tool error before anyone is asked, with no form and no code (#130)', async () => {
     const w = await world();
     // The refund job's confirmWith returns the charge id, so this phrase hides a bidi override.
-    const evil = { charge: 'ch_1‮' };
+    const evil = { charge: 'ch_1\u202e' };
     const elicit = await connect('2026', refundServer(w));
     const codes = await connect('2025-no-elicit', refundServer(w));
 
@@ -604,7 +604,8 @@ describe('an unprintable phrase', () => {
       expect(textOf(r)).toContain(
         'the phrase from confirmWith() has unprintable characters, so no one could type it: "ch_1\\u{202e}"',
       );
-      expect(textOf(r)).not.toMatch(/‮/);
+      expect(textOf(r)).not.toMatch(/\u202e/);
+      expect(textOf(r)).not.toContain('pc1.');
       expect(r.structuredContent).toBeUndefined();
     }
 

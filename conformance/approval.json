@@ -1431,46 +1431,82 @@
   ],
   "phraseChecks": [
     {
+      "name": "a plain phrase",
       "phrase": "old-nav",
       "expect": "old-nav"
     },
     {
+      "name": "no phrase falls back to approve",
       "phrase": "",
       "expect": "approve"
     },
     {
+      "name": "edge whitespace only falls back to approve",
       "phrase": " \t",
       "expect": "approve"
     },
     {
-      "phrase": "old\tnav",
-      "expect": "old\tnav"
+      "name": "a plain space inside",
+      "phrase": "old nav",
+      "expect": "old nav"
     },
     {
+      "name": "no-break space and tab at the edges",
+      "phrase": " old-nav\t",
+      "expect": " old-nav\t"
+    },
+    {
+      "name": "an accented letter",
       "phrase": "café",
       "expect": "café"
     },
     {
+      "name": "an emoji with its variation selector",
       "phrase": "👍️",
       "expect": "👍️"
     },
     {
+      "name": "a tab inside",
+      "phrase": "old\tnav",
+      "expect": null
+    },
+    {
+      "name": "a no-break space inside",
+      "phrase": "old nav",
+      "expect": null
+    },
+    {
+      "name": "an em space inside",
+      "phrase": "old nav",
+      "expect": null
+    },
+    {
+      "name": "an em space at the edge, which is not stripped",
+      "phrase": "old-nav ",
+      "expect": null
+    },
+    {
+      "name": "a bidi override",
       "phrase": "go‮",
       "expect": null
     },
     {
+      "name": "a newline",
       "phrase": "approve\n",
       "expect": null
     },
     {
+      "name": "a zero-width space",
       "phrase": "old​nav",
       "expect": null
     },
     {
+      "name": "only a BOM, refused before the fallback",
       "phrase": "﻿",
       "expect": null
     },
     {
+      "name": "a C1 control",
       "phrase": "ch_1",
       "expect": null
     }

@@ -1,9 +1,9 @@
 /**
  * The confirmation phrase (docs/framework/SPEC-approval.md §3): how a typed
- * answer is normalized and matched, the `approve` fallback, and the printable-text rule.
+ * answer is normalized and matched, the `approve` fallback, and the rule that a phrase is typeable.
  */
 import type { HashedPlan } from '../approval.js';
-import { printable } from '../text.js';
+import { clip, printable } from '../text.js';
 
 /** The phrase a person types to approve this plan: the tool's, or `approve`. */
 export type PhraseFor = (hp: HashedPlan) => string;
@@ -26,18 +26,46 @@ export const phraseMatches = (typed: unknown, phrase: string) =>
 export const effectivePhrase = (phrase: string) =>
   normalizePhrase(phrase) === '' ? DEFAULT_PHRASE : phrase;
 
+/** Whitespace a person can't be sure of typing: a tab, or any space separator but U+0020. */
+const ODD_SPACE = /(?! )[\t\p{Zs}]/gu;
+
+/** The phrase as an error shows it: printable, odd spaces escaped too, at most 80 characters. */
+const shown = (phrase: string) =>
+  clip(
+    printable(phrase).replace(
+      ODD_SPACE,
+      (c) => `\\u{${(c.codePointAt(0) ?? 0).toString(16)}}`,
+    ),
+    80,
+  );
+
+/** Why no one could type `phrase`, or null when it's typeable text (§3). */
+function untypeable(phrase: string): string | null {
+  if (printable(phrase) !== phrase) {
+    return 'has unprintable characters';
+  }
+
+  // Edge whitespace is stripped when matching; inside, only a plain space can be typed.
+  return phrase.replace(EDGE, '').match(ODD_SPACE)
+    ? 'has whitespace other than plain spaces inside'
+    : null;
+}
+
 /**
- * A tool's phrase, checked before anyone is asked (§3): it must be printable text, since the
- * person is shown it escaped and could never type the raw characters, so anything else is a
- * developer error. `whose` names the phrase in the error. Then the `approve` fallback applies.
+ * A tool's phrase, checked before anyone is asked (§3): it must be printable text whose only
+ * inner whitespace is plain spaces, since the person is shown it escaped and couldn't type the
+ * raw characters. Anything else is a developer error. `whose` names the phrase in the error.
+ * Then the `approve` fallback applies. Look-alike letters (homoglyphs) are out of scope.
  */
 export function checkedPhrase(
   phrase: string,
   whose = 'the approval phrase',
 ): string {
-  if (printable(phrase) !== phrase) {
+  const why = untypeable(phrase);
+
+  if (why) {
     throw new TypeError(
-      `${whose} has unprintable characters, so no one could type it: "${printable(phrase)}"`,
+      `${whose} ${why}, so no one could type it: "${shown(phrase)}"`,
     );
   }
 
