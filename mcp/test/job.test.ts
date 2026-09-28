@@ -465,6 +465,38 @@ describe('the tool as clients see it', () => {
     );
     expect(await w.store.used(await ledgerKeyOf(token))).toBe(0n);
   });
+
+  it('an apply that fails part-way says what it left, never "nothing changed", and keeps its reservation', async () => {
+    const { PartialApplyError } = await import('../src/index.js');
+    const w = await world();
+    const token = await grantPolicy(w);
+    const conn = await connect(
+      '2026',
+      refundServer(w, {
+        plan: () => [
+          {
+            summary: 'Schedule',
+            effects: [],
+            uses: { emails: quantity(1) },
+            undoWindow: 60,
+            apply: () => {
+              throw new PartialApplyError('schedule sch_1 was left behind.');
+            },
+          },
+        ],
+      }),
+    );
+    const r = await conn.call(ch1);
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toBe(
+      '✗ Schedule failed part-way: schedule sch_1 was left behind.',
+    );
+    expect(textOf(r)).not.toMatch(/nothing changed/);
+    expect(await w.store.used(await ledgerKeyOf(token))).toBe(
+      exact(quantity(1)),
+    );
+  });
 });
 
 describe('with a MemoryStore and one process', () => {

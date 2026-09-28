@@ -52,6 +52,14 @@ export { canAsk, canElicitForm } from './client.js';
 
 export { PREVIEW } from './schema.js';
 
+/**
+ * Thrown by an `apply()` that failed after changing something, so the result doesn't say
+ * "nothing changed". Its message says what was left behind, and how to fix it.
+ */
+export class PartialApplyError extends Error {
+  readonly partial = true;
+}
+
 export interface YeaOptions {
   /** The server's name, `[a-z0-9._-]{1,64}`: names its key file and appears in consent codes. */
   name: string;
