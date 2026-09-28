@@ -12,12 +12,45 @@ const ready =
   hasUv &&
   existsSync(`${pyDir}/examples/serve.py`) &&
   !process.env.SKIP_INTEROP;
-const TCP = 17457,
-  HTTP = 18457;
+
+/** serve.py's start-up line on stderr: the addresses it bound. */
+const UP = /python example up · calendar yea:\/\/(\S+) http:\/\/(\S+)\/yea/;
+
+/**
+ * Wait for serve.py's "up" line and return the `host:port` of its TCP and HTTP
+ * servers, as bound. The service binds port 0, so parallel runs never reach
+ * each other's process.
+ */
+function boundAddresses(proc: ChildProcess): Promise<[string, string]> {
+  return new Promise((resolve, reject) => {
+    let log = '';
+    const fail = (why: string) => {
+      clearTimeout(timer);
+      reject(new Error(`python service ${why}:\n${log}`));
+    };
+    const timer = setTimeout(() => fail('did not start'), 25_000);
+
+    proc.stderr?.setEncoding('utf8');
+    proc.stderr?.on('data', (chunk: string) => {
+      log += chunk;
+
+      const m = UP.exec(log);
+
+      if (m) {
+        clearTimeout(timer);
+        resolve([m[1], m[2]]);
+      }
+    });
+    proc.on('error', (e) => fail(`could not start (${e.message})`));
+    // 'close', not 'exit': by then stderr is drained, so the log is complete.
+    proc.on('close', (code) => fail(`exited (${code})`));
+  });
+}
 
 describe.skipIf(!ready)('interop: TS client → Python service', async () => {
   const principal = await P.keyPair(),
     agent = await P.keyPair();
+  const urls: string[] = [];
   let proc: ChildProcess;
 
   beforeAll(async () => {
@@ -26,31 +59,22 @@ describe.skipIf(!ready)('interop: TS client → Python service', async () => {
       env: {
         ...process.env,
         YEA_TRUST: principal.public,
-        YEA_PORT: String(TCP),
-        YEA_HTTP_PORT: String(HTTP),
+        HOST: '127.0.0.1',
+        YEA_PORT: '0',
+        YEA_HTTP_PORT: '0',
       },
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
     });
 
-    for (let i = 0; i < 100; i++) {
-      try {
-        await (await fetch(`http://127.0.0.1:${HTTP}/.well-known/yea`)).json();
+    const [tcp, http] = await boundAddresses(proc);
 
-        return;
-      } catch {
-        await new Promise((r) => setTimeout(r, 150));
-      }
-    }
-
-    throw new Error('python service did not start');
+    urls.push(`yea://${tcp}`, `http://${http}/yea`);
   }, 30_000);
   afterAll(() => proc?.kill());
 
-  for (const url of [
-    `yea://127.0.0.1:${TCP}`,
-    `http://127.0.0.1:${HTTP}/yea`,
-  ]) {
-    it(`full flow over ${url.split(':')[0]}`, async () => {
+  for (const [i, transport] of ['yea', 'http'].entries()) {
+    it(`full flow over ${transport}`, async () => {
+      const url = urls[i];
       const grant = await P.issueGrant({
         principal,
         to: agent.public,

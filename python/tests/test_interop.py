@@ -5,10 +5,11 @@ byte for byte with ours."""
 import asyncio
 import json
 import os
+import queue
+import re
 import shutil
-import socket
 import subprocess
-import time
+import threading
 from datetime import date, timedelta
 
 import pytest
@@ -20,7 +21,8 @@ REPO = ROOT.parent
 SEEDS = json.loads((REPO / "conformance" / "grants.json").read_text())["seeds"]
 PRINCIPAL = key_from_seed(SEEDS["principal"])
 AGENT = key_from_seed(SEEDS["agent"])
-PORTS = {"calendar": (7447, 8447), "shop": (7449, 8449)}
+# serve.ts's start-up line on stderr names each service's bound addresses.
+UP = re.compile(r"(\w+) yea://(\S+) http://(\S+)/yea")
 
 
 def _node_ok() -> bool:
@@ -37,26 +39,51 @@ if not NODE_OK and os.environ.get("YEA_REQUIRE_INTEROP"):
 pytestmark = pytest.mark.skipif(not NODE_OK, reason="needs node >= 22.18 and a built ts/dist")
 
 
-def _port_open(port: int) -> bool:
-    with socket.socket() as s:
-        return s.connect_ex(("127.0.0.1", port)) == 0
+def _read_ports(proc: subprocess.Popen, found: queue.Queue) -> None:
+    """Read the servers' stderr until the "up" line, then keep draining it; at EOF, put the log."""
+    assert proc.stderr
+    log = ""
+    for line in proc.stderr:
+        log += line
+        if line.startswith("yea examples up"):
+            found.put({name: (tcp, http) for name, tcp, http in UP.findall(line)})
+    found.put(log)
+
+
+def _start_failed(proc: subprocess.Popen, found: queue.Queue, why: str) -> None:
+    """Stop the servers and fail with their stderr, flushed once the process is gone."""
+    proc.kill()
+    proc.wait(5)
+    log = ""
+    try:
+        while not isinstance(log := found.get(timeout=5), str):
+            pass
+    except queue.Empty:
+        pass
+    pytest.fail(f"TS servers {why}:\n{log}")
 
 
 @pytest.fixture(scope="module")
 def ts_servers():
-    if any(_port_open(p) for pair in PORTS.values() for p in pair):
-        pytest.skip("interop ports 7447/8447/7449/8449 are already in use")
+    """Start examples/serve.ts on free ports (YEA_PORT=0) and yield each service's bound
+    ``host:port`` pair, so parallel runs never reach each other's servers."""
+    env = {**os.environ, "YEA_TRUST": PRINCIPAL.public, "HOST": "127.0.0.1", "YEA_PORT": "0"}
     proc = subprocess.Popen(
-        ["node", "examples/serve.ts"], cwd=REPO, env={**os.environ, "YEA_TRUST": PRINCIPAL.public},
+        ["node", "examples/serve.ts"], cwd=REPO, env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
     )
-    deadline = time.time() + 15
-    while not all(_port_open(p) for pair in PORTS.values() for p in pair):
-        if proc.poll() is not None or time.time() > deadline:
-            proc.kill()
-            pytest.fail(f"TS servers did not start: {proc.stderr.read() if proc.stderr else ''}")
-        time.sleep(0.1)
-    yield
+    found: queue.Queue = queue.Queue()
+    threading.Thread(target=_read_ports, args=(proc, found), daemon=True).start()
+    try:
+        ports = found.get(timeout=15)
+    except queue.Empty:
+        _start_failed(proc, found, "did not start within 15s")
+    if isinstance(ports, str):
+        found.put(ports)  # the log: the process already exited
+        _start_failed(proc, found, f"exited ({proc.poll()})")
+    if not {"calendar", "shop"} <= ports.keys():
+        _start_failed(proc, found, f"reported {ports}, not calendar and shop")
+    yield ports
     proc.terminate()
     proc.wait(5)
 
@@ -106,8 +133,8 @@ def assert_same_lens(replies):
 
 @pytest.mark.parametrize("transport", ["tcp", "http"])
 def test_calendar_flow(ts_servers, transport):
-    tcp, http = PORTS["calendar"]
-    url = f"yea://127.0.0.1:{tcp}" if transport == "tcp" else f"http://127.0.0.1:{http}/yea"
+    tcp, http = ts_servers["calendar"]
+    url = f"yea://{tcp}" if transport == "tcp" else f"http://{http}/yea"
     g = issue_grant(PRINCIPAL, AGENT.public, [{"svc": ["calendar.example"]}, {"can": ["calendar.*"]}])
 
     async def go():
@@ -141,12 +168,12 @@ def test_calendar_flow(ts_servers, transport):
 
 
 def test_shop_consent_flow(ts_servers):
-    tcp, _ = PORTS["shop"]
+    tcp, _ = ts_servers["shop"]
     g = issue_grant(PRINCIPAL, AGENT.public, [{"svc": ["shop.example"]}, {"each": {"of": "spend", "max": 5000, "scale": 2, "unit": "USD"}}])
     deliver = (date.today() + timedelta(days=2)).isoformat()
 
     async def go():
-        async with await connect(f"yea://127.0.0.1:{tcp}", key=AGENT, grants=[g]) as c:
+        async with await connect(f"yea://{tcp}", key=AGENT, grants=[g]) as c:
             props = await c.intent("shop.order", {"items": [{"sku": "m002", "qty": 4}], "deliver": deliver})
             assert props.kind == "PROPOSALS", props.lens
             p = props.proposals[0]

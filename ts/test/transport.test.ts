@@ -1,10 +1,18 @@
-import type { AddressInfo } from 'node:net';
+import { type AddressInfo, createServer } from 'node:net';
 import { afterAll, describe, expect, it } from 'vitest';
 import { calendar } from '../../examples/calendar.ts';
 import * as P from '../src/index.js';
 import { connect, listen, serveHttp } from '../src/node.js';
 
 const closers: (() => void)[] = [];
+
+/** Whether this host can listen on the IPv6 loopback. */
+const ipv6 = await new Promise<boolean>((resolve) => {
+  const probe = createServer();
+
+  probe.once('error', () => resolve(false));
+  probe.listen(0, '::1', () => probe.close(() => resolve(true)));
+});
 
 afterAll(() => {
   for (const close of closers) {
@@ -47,6 +55,25 @@ describe('transports', async () => {
     }
 
     expect((await c.commit(p.proposals[0])).kind).toBe('RECEIPT');
+  });
+
+  // new URL('yea://[::1]:p').hostname keeps the brackets, which net.connect can't resolve.
+  it.skipIf(!ipv6)('TCP to an IPv6 literal (yea://[::1]:port)', async () => {
+    const server = await listen(calendar({ trust: [principal.public] }), {
+      port: 0,
+      host: '::1',
+    });
+
+    closers.push(() => server.close());
+
+    const port = (server.address() as AddressInfo).port;
+    const c = await connect(`yea://[::1]:${port}`, {
+      key: agent.seed,
+      grants: [grant],
+    });
+
+    closers.push(() => c.close());
+    expect((await c.hello()).kind).toBe('BRIEF');
   });
 
   it('HTTP bridge with discovery', async () => {
