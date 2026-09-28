@@ -159,6 +159,8 @@ const PAGES: Record<string, string> = {
   'python/README.md': '/guide/python',
   'docs/why.md': '/why',
   'deploy/demo/README.md': '/guide/hosted-demo',
+  'connectors/stripe/README.md': '/guide/stripe',
+  mcp: '/guide/mcp-typescript',
   'README.md': '/',
 };
 
@@ -171,7 +173,7 @@ function repoLink(href: string): string {
   const [path, hash] = href.split('#');
 
   if (
-    !/\.md$|^(\.\.\/)*(ts|python|examples|bench|conformance|docs|site|deploy)\b|\.(ts|py|json|svg|txt)$/.test(
+    !/\.md$|^(\.\.\/)*(ts|python|examples|bench|conformance|docs|site|deploy|mcp|connectors)\b|\.(ts|py|json|svg|txt)$/.test(
       path,
     )
   ) {
@@ -188,6 +190,7 @@ function repoLink(href: string): string {
     `python/${clean}`,
     `bench/${clean}`,
     `deploy/demo/${clean}`,
+    `connectors/stripe/${clean}`,
   ];
   const page = candidates.map((c) => PAGES[c]).find(Boolean);
 
@@ -244,6 +247,7 @@ function sidebar() {
       items: [
         { text: 'From REST to YEA', link: '/guide/service-design' },
         { text: 'Build a service', link: '/guide/build-a-service' },
+        { text: 'Stripe connector', link: '/guide/stripe' },
         { text: 'Wrap any REST API', link: '/guide/openapi' },
         { text: 'Docker', link: '/guide/docker' },
         { text: 'Python', link: '/guide/python' },
