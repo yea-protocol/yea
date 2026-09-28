@@ -34,13 +34,19 @@ section. Both have the same steps. The five-minute claim covers steps 1–3 only
 
 1. **Install.**
    - TypeScript: `npm i @yea-protocol/mcp @yea-protocol/sdk @modelcontextprotocol/server zod`.
-   - Python: the `yea-mcp` distribution with `uv add`, after #69 settles its name.
+   - Python: `uv add yea-mcp`, or `uv add 'yea-mcp[fastmcp]'` for FastMCP, after the release.
+     Until then, a repo install needs both distributions, since `yea-mcp` depends on
+     `yea-sdk`: `uv add "yea-sdk @ git+https://github.com/yea-protocol/yea#subdirectory=python"
+     "yea-mcp @ git+https://github.com/yea-protocol/yea#subdirectory=python/mcp"`.
 2. **Guard one tool you already have.** The snippet is a region of the example file, so it
    type-checks. In TypeScript: the full imports (`McpServer`, `serveStdio` from
    `@modelcontextprotocol/server/stdio`, `z`, `node:fs/promises`, `node:path`); the
    `serveStdio` factory; `yea({ name, transport: 'stdio' })`; `approvals.guard(server, tool,
    { describe, confirmWith })`. Inside `describe` and `confirmWith`, the input is untyped
-   (`Record<string, unknown>`), so the example converts it with `String(...)`.
+   (`Record<string, unknown>`), so the example converts it with `String(...)`. Python guards
+   by name, `approvals.guard(server, "delete_file", describe=…, confirm_with=…)`, and the
+   same calls work on a `fastmcp.FastMCP` server (guard a mounted server's tool on the server
+   that defines it).
 3. **Run it in your client.** `claude mcp add files -- node server.ts` for Claude Code, plus
    the matching config for Cursor and VS Code. The page shows what the person then sees: the
    plan, and a field that says *Type "report.pdf" to approve*. **This is the five-minute
@@ -59,8 +65,10 @@ section. Both have the same steps. The five-minute claim covers steps 1–3 only
      set `YEA_POLICY=~/.yea/files.policy`.
    - **Pass both variables in the client config.**
 
-   Only undoable plans run on their own, so only the step-4 job does. The page says why, and
-   that the grant is signed by the person, not the agent.
+   Only undoable plans run on their own, so the grant names the step-4 job. The step-2 guard
+   never auto-runs unless its `describe` gives an `undoWindow` and it has a `revert`. The page
+   says why, and that the grant is signed by the person, not the agent. The Python server's
+   id is also `approvals.service_id()`.
 6. **Clients that can't ask.** What the consent code looks like, `yea approve`, and why a
    pinned key is needed for it.
 7. **Where to next:** the connector example, the security model, the spec.
@@ -141,7 +149,7 @@ with its worked example on the framework API:
 | Work | Owner |
 |---|---|
 | TypeScript guide, `examples/mcp-quickstart.ts`, the service-id log line and `yea service-id`, "From REST to YEA", README, the security section | parley-80 |
-| Python guide, `python/examples/mcp_quickstart.py` (with `yea-mcp`), Landing, the sidebar, `generate.mjs`, the connector page and wiring, the integrations page | parley-05 |
+| Python guide, `python/mcp/examples/mcp_quickstart.py`, Landing, the sidebar, `generate.mjs`, the connector page and wiring, the integrations page | parley-05 |
 
 ## Testing
 
@@ -151,8 +159,10 @@ with its worked example on the framework API:
     client that can't ask, using the in-memory clients. `examples/package.json` gains
     `@yea-protocol/mcp`, `@modelcontextprotocol/server` and `zod`. The root `npm test` runs
     it.
-  - `python/examples/mcp_quickstart.py` gets a test in `yea-mcp`'s suite (#69), run by CI's
-    Python job.
+  - `python/mcp/examples/mcp_quickstart.py` lives with `yea-mcp`, whose environment has
+    `mcp`, and gets a test in its pytest suite, which CI already runs. Python region markers
+    are `# region name` / `# endregion name`, imported from site/ as
+    `<<< @/../python/mcp/examples/mcp_quickstart.py#name`.
 - **Drift checks** in CI:
   - the README snippet against the example's region;
   - `Landing.vue`'s numbers against `bench/RESULTS.md`.
