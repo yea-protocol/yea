@@ -10,6 +10,13 @@ CONFORMANCE = ROOT.parent / "conformance"
 # (test_zz_vectors_read.py checks that nothing was left unread, like ts/test/conformance.test.ts).
 LOADED: set[str] = set()
 READ: dict[str, set[str]] = {}
+READERS = ("test_conformance.py", "test_approval_conformance.py")
+DESELECTED_READERS: list[str] = []
+
+
+def pytest_deselected(items):
+    """A deselected reader test (-k, --deselect, --lf) means some sections may go unread."""
+    DESELECTED_READERS.extend(i.nodeid for i in items if i.path.name in READERS)
 
 
 class Sections(dict):

@@ -151,7 +151,7 @@ async def _answer(call: Call, raw: Any, answer: dict) -> Result:
 
 def _phrase_for(call: Call) -> Callable[[HashedPlan], str]:
     """The phrase the person types for a plan: the tool's, or ``approve``. One that isn't a string,
-    or isn't printable text (SPEC-approval §3), is the developer's error: the call is refused before
+    or isn't typeable text (SPEC-approval §3), is the developer's error: the call is refused before
     anyone is asked."""
     def phrase(hp: HashedPlan) -> str:
         p = call.job.confirm_with(hp, call.input) if call.job.confirm_with else ""

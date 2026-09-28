@@ -34,7 +34,7 @@ The example's tools only touch files inside one folder, so a mistaken or hostile
 <<< ../../python/mcp/examples/mcp_quickstart.py#guard
 
 - **`describe(args)`** says what the call will do: a one-line `summary` and its `effects`. It must not change anything. Its `args` are the raw arguments, before the tool validates them, so convert fields with `str(...)`.
-- **`confirm_with`** names the phrase the person types, here the file's name. Without it, the phrase is `approve`. It must be printable text: a phrase with control or invisible characters is refused as a tool error, since no one could type it.
+- **`confirm_with`** names the phrase the person types, here the file's name. Without it, the phrase is `approve`. It must be typeable: a phrase with control or invisible characters, or a tab or other unusual space inside, is refused as a tool error.
 - **`guard` takes the tool's name.** It installs YEA's check on that server, so a guard can't be forgotten or attached to the wrong one.
 
 Build the server. Leave out the `add_move_to_trash` line until step 4:

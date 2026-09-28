@@ -174,8 +174,6 @@ def test_undo(case):
 
 @pytest.mark.parametrize("c", cases("phraseChecks"))  # each case has a name, used as its id
 def test_phrase_checks(c):
-    if c is None:
-        pytest.skip("no phraseChecks section")
     if c["expect"] is None:
         with pytest.raises(TypeError):
             checked_phrase(c["phrase"])
