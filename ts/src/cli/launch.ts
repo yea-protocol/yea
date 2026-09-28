@@ -1,4 +1,4 @@
-/** Commands that run something: the test drive, the demo, the example services and bridges. */
+/** Commands that launch something: the test drive, the demo, the example services and bridges. */
 import { principalKey } from '../home.js';
 import { die, type Options } from './shared.js';
 

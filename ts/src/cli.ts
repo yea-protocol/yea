@@ -26,7 +26,7 @@ import {
   cmdMcp,
   cmdOpenapi,
   cmdTestDrive,
-} from './cli/run.js';
+} from './cli/launch.js';
 import {
   type Command,
   client,
@@ -49,7 +49,8 @@ import { printable } from './text.js';
 
 export { die } from './cli/shared.js';
 
-const HELP = `yea — the protocol agents speak
+/** The help text. Built when it's shown: `home()` can move an old ~/.parley on first use. */
+const help = () => `yea — the protocol agents speak
 
 get started
   yea install [--target claude-code,cursor,codex,gemini,vscode,windsurf,claude-desktop] [--local] [--with-principal]
@@ -128,7 +129,7 @@ async function main(o: Options, args: string[], argv: string[]) {
   const [cmd, ...rest] = args;
 
   if (!cmd || o.help) {
-    return console.log(HELP);
+    return console.log(help());
   }
 
   const command = COMMANDS.get(cmd);
@@ -140,14 +141,14 @@ async function main(o: Options, args: string[], argv: string[]) {
   const [url, ...more] = rest;
 
   if (!url) {
-    die(HELP);
+    die(help());
   }
 
   const c = await client(url, o);
 
   try {
     const talk =
-      SERVICE_COMMANDS.get(cmd) ?? die(`unknown command ${cmd}\n\n${HELP}`);
+      SERVICE_COMMANDS.get(cmd) ?? die(`unknown command ${cmd}\n\n${help()}`);
 
     await talk(c, more, o);
   } finally {
@@ -168,14 +169,27 @@ export function run(argv: string[]): Promise<void> {
   );
 }
 
-/** Whether node was started with this file (`node dist/cli.js …`) rather than importing it. */
+/**
+ * Whether node was started with this file (`node dist/cli.js …`, or `node dist/cli`, which node
+ * resolves to it) rather than importing it.
+ */
 function isEntry(): boolean {
   const script = process.argv[1];
+  const self = realPath(fileURLToPath(import.meta.url));
 
+  return (
+    !!script &&
+    !!self &&
+    [script, `${script}.js`].some((p) => realPath(p) === self)
+  );
+}
+
+/** `p` with every symlink resolved, or null if there's nothing there. */
+function realPath(p: string): string | null {
   try {
-    return !!script && realpathSync(script) === fileURLToPath(import.meta.url);
+    return realpathSync(p);
   } catch {
-    return false;
+    return null;
   }
 }
 
