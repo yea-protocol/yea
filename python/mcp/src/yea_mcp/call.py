@@ -1,0 +1,294 @@
+"""How a job call runs (SPEC-mcp-py, "How a call runs", steps 1–11). Every decision comes from the
+SDK core (``decide``, ``build_form``, ``judge_answer``, ``consent_for``); this file only orders
+them and turns their answers into MCP results. The job wrapper and the guard middleware share it."""
+
+from __future__ import annotations
+
+import inspect
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+import mcp_types as t
+from mcp_types.methods import is_input_required
+from yea import Plan
+from yea.approval import (
+    HashedPlan, Policy, build_form, check_state, consent_for, decide, input_hash, job_consent_code, judge_answer,
+    load_policy, new_receipt_id, new_state, plan_hash, release_all, reserve_all, settle_all, spent,
+)
+from yea.service import Clarification
+from yea.store import ApprovalStore, Reservation
+from yea.uses import check_uses
+
+from .ask import answer_of, ask_in_call, can_ask, input_required, is_modern, parse_state
+from .keys import Pinned, has_total, read_policy, read_tightening_for
+from .render import clarify_result, consent_result, error_result, preview_result, receipt_result
+
+Result = Any  # a CallToolResult, an InputRequiredResult, or (guard) the original's wire mapping
+
+NOTHING_RAN = "nothing was run"
+BAD_STATE = ("this approval is invalid, expired, already used, or for another call; nothing was run. "
+             "Call the tool again to ask again.")
+
+
+@dataclass
+class Yea:
+    """The one approval context per process that ``yea()`` creates."""
+
+    name: str
+    transport: str
+    store: ApprovalStore
+    shared_memory: bool  # a MemoryStore without a promise that one process serves every request
+    principal: Pinned
+    policy: str | None
+    tighten: Any
+    service_id: str
+    sub: Callable[[Any], str]
+
+
+def wire_failed(result: Any) -> bool:
+    """``MCPServer``'s ``call_next`` hands back the wire mapping: read it structurally, assume no class."""
+    if is_input_required(result):
+        return True
+    return result.get("isError") is True if isinstance(result, dict) else True
+
+
+def wire_with_receipt(result: Any, receipt: dict) -> Any:
+    return {**result, "_meta": {**(result.get("_meta") or {}), "dev.yea/receipt": receipt}}
+
+
+def wire_with_note(result: Any, note: str) -> Any:
+    return {**result, "content": [*(result.get("content") or []), {"type": "text", "text": note}]}
+
+
+@dataclass
+class JobDef:
+    """A job as the routine runs it: from ``job()`` or from ``guard()``. A guard's original result
+    is the SDK's own shape, so how to read it and add to it is per SDK."""
+
+    name: str
+    risk: str | None
+    revert: Callable[..., Any] | None
+    confirm_with: Callable[[HashedPlan, dict], str] | None
+    guarded: bool = False
+    own_results_are_errors: Callable[[], bool] = lambda: False
+    failed: Callable[[Any], bool] = wire_failed
+    with_receipt: Callable[[Any, dict], Any] = wire_with_receipt
+    with_note: Callable[[Any, str], Any] = wire_with_note
+
+
+@dataclass
+class Req:
+    """What the routine needs from the request, whichever SDK surface it came through."""
+
+    rctx: Any  # the ServerRequestContext, which sub() gets
+    session: Any
+    request_id: Any
+    protocol_version: str | None
+    state: Any  # the plaintext request state, or None
+    responses: Any  # the input responses, or None
+
+
+@dataclass
+class Call:
+    y: Yea
+    job: JobDef
+    input: dict
+    req: Req
+    sub: str
+    now: int
+    policy: Policy
+    plans: list[HashedPlan]
+
+
+async def _maybe(v: Any) -> Any:
+    return await v if inspect.isawaitable(v) else v
+
+
+def caller_of(y: Yea, rctx: Any) -> str:
+    """Who is calling; on HTTP an empty answer refuses the call."""
+    sub = y.sub(rctx)
+    if not isinstance(sub, str) or (y.transport == "http" and sub == ""):
+        raise ValueError("no authenticated caller: the server's sub() returned no identity")
+    return sub
+
+
+def policy_for(y: Yea) -> Policy:
+    """The policy for this call; raises when its totals can't be kept on this store."""
+    rules = read_tightening_for(y.tighten)
+    grant = read_policy(y.policy) if y.principal.key else None  # no pinned principal: nothing auto-runs
+    if grant and y.shared_memory and has_total(grant):
+        raise ValueError("the policy has a total limit, which a MemoryStore can only keep when one process "
+                         "serves every request (single_process=True)")
+    return load_policy(grant, y.service_id, y.principal.key, rules)
+
+
+def hash_plans(job: JobDef, input: dict, plans: list[Any]) -> list[HashedPlan]:
+    out = []
+    for p in plans:
+        if not isinstance(p, Plan):
+            raise TypeError("a job's plan function must return a list of yea.Plan, or clarify(...)")
+        risk = p.risk or job.risk or "medium"
+        undoable = p.undo_window is not None and job.revert is not None
+        out.append(HashedPlan(job.name, p, plan_hash(job.name, input, p, risk), risk, undoable))
+    return out
+
+
+def _phrase_for(call: Call) -> Callable[[HashedPlan], str]:
+    def phrase(hp: HashedPlan) -> str:
+        p = call.job.confirm_with(hp, call.input) if call.job.confirm_with else ""
+        if not isinstance(p, str):
+            raise TypeError("confirm_with() must return a string")
+        return p
+    return phrase
+
+
+async def run_job(y: Yea, job: JobDef, input: dict, preview: bool, req: Req,
+                  plan: Callable[[], Awaitable[Any]]) -> Result:
+    """Steps 1–11. Anything unexpected before ``apply()`` runs nothing."""
+    try:
+        sub = caller_of(y, req.rctx)
+        input_hash(input)  # step 1: canonical JSON, so integer-only numbers
+        policy = policy_for(y)
+        if job.name in policy.deny:  # step 2: a denied tool shows nothing, not even a preview
+            return error_result([f"✗ your policy never allows {job.name}; {NOTHING_RAN}"])
+        out = await plan()
+        if isinstance(out, Clarification):
+            return clarify_result(out)
+        if not isinstance(out, (list, tuple)):
+            raise TypeError("a job's plan function must return a list of plans or clarify(...)")
+        if not out:
+            return error_result([f"✗ {job.name} has no way to do this; {NOTHING_RAN}"])
+        call = Call(y, job, input, req, sub, int(time.time()), policy, hash_plans(job, input, list(out)))
+        if preview:
+            return preview_result(call.plans, job.own_results_are_errors())
+        return await _route(call)
+    except Exception as e:  # noqa: BLE001 — nothing has been applied yet
+        return error_result([f"✗ {e}; {NOTHING_RAN}"])
+
+
+async def _route(call: Call) -> Result:
+    """Step 5: a first call, or a retry carrying our state. Anything else is refused."""
+    kind, value = parse_state(call.req.state)
+    if kind == "fresh":
+        return await _fresh(call)
+    if kind == "foreign":
+        raise ValueError(value)
+    return await _answer(call, value, answer_of(call.req.responses))
+
+
+async def _fresh(call: Call) -> Result:
+    """Steps 6–8 on a first call: a consent, the policy, or ask."""
+    approved = await consent_for(call.plans, call.y.store, call.policy, call.now)
+    if approved is not None:
+        return await _run_plan(call, approved, [], "approved")
+    amounts = await spent(call.y.store, call.policy)
+    d = decide(call.plans, call.policy, lambda k: amounts.get(k, 0), call.now)
+    if d.kind == "run" and d.plan is not None:
+        held = await reserve_all(call.y.store, d.reserve)
+        if held is None:
+            return await _ask(call, "a limit filled up while this call was being decided", 1)
+        return await _run_plan(call, d.plan, held, "auto")
+    if d.kind == "denied":
+        return error_result([f"✗ {d.why}; {NOTHING_RAN}"])
+    if d.kind == "nothing":
+        return error_result([f"✗ no plans; {NOTHING_RAN}"])
+    return await _ask(call, d.why or "approval needed", 1)
+
+
+async def _ask(call: Call, why: str, round: int) -> Result:
+    """Step 8: a form if the client can take one, asked per era; else step 9."""
+    form = build_form(call.plans, why, call.policy, _phrase_for(call)) if can_ask(call.req.session) else None
+    if form is None:
+        return await _fail_closed(call, why, call.plans)
+    state = new_state(call.job.name, input_hash(call.input), call.sub, form["offered"], round, call.now)
+    if is_modern(call.req.protocol_version):
+        return input_required(form, state)
+    answer = await ask_in_call(call.req.session, call.req.request_id, form)
+    if answer is None:  # the client can't be reached from here
+        return await _fail_closed(call, why, call.plans)
+    return await _answer(call, state, answer)
+
+
+async def _fail_closed(call: Call, why: str, plans: list[HashedPlan]) -> t.CallToolResult:
+    """Step 9: nothing runs; the plans and a consent code for each, for ``yea approve``."""
+    if call.y.principal.key is None:
+        return consent_result(why, plans, [], call.y.principal.why)
+    phrase = _phrase_for(call)
+    codes = [{"planHash": hp.plan_hash,
+              "code": job_consent_code(call.y.service_id, call.y.principal.key, call.input, hp, phrase(hp), call.now)}
+             for hp in plans if hp.tool not in call.policy.deny]
+    return consent_result(why, plans, codes, None)
+
+
+async def _answer(call: Call, raw: Any, answer: dict) -> Result:
+    """Step 10: check and consume the state, then judge the answer against the recomputed plans."""
+    state = check_state(raw, call.job.name, input_hash(call.input), call.sub, call.now)
+    if state is None or not await call.y.store.consume_once(state["nonce"], state["exp"]):
+        return error_result([f"✗ {BAD_STATE}"])
+    v = judge_answer(state, answer, call.plans, call.policy, _phrase_for(call))
+    if v.kind == "run" and v.plan is not None:
+        return await _run_plan(call, v.plan, [], "approved")
+    if v.kind == "ask-again" and v.round is not None:
+        return await _ask(call, v.why or "ask again", v.round)
+    if v.kind == "out-of-band" and v.plan is not None:
+        return await _fail_closed(call, f"risk is {v.plan.risk}, which needs approval outside the chat", [v.plan])
+    if v.kind == "not-approved":
+        return error_result([f"✗ not approved; {NOTHING_RAN}"])
+    return error_result([f"✗ {v.why}; {NOTHING_RAN}"])
+
+
+async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: str) -> Result:
+    """Step 11: apply once, then settle and record the receipt."""
+    try:
+        result = await _maybe(hp.plan.apply())
+    except Exception as e:  # noqa: BLE001
+        await release_all(call.y.store, held)
+        approved = how == "approved"
+        return error_result([f"✗ {'approved, but ' if approved else ''}{hp.plan.summary} failed: {e}; nothing changed."
+                             f"{' The approval is used up: calling again asks again.' if approved else ''}"])
+    if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
+        await release_all(call.y.store, held)
+        return result
+    return await _recorded(call, hp, held, result, how == "auto")
+
+
+def _receipt_for(call: Call, hp: HashedPlan, result: Any) -> dict:
+    """The receipt a successful job leaves (SPEC-approval §8's job receipt)."""
+    p = hp.plan
+    receipt: dict[str, Any] = {"id": new_receipt_id(), "service": call.y.service_id, "proposal": hp.plan_hash,
+                               "capability": hp.tool, "summary": p.summary, "at": call.now, "effects": p.effects}
+    if (uses := check_uses(p.uses)) is not None:
+        receipt["uses"] = uses
+    receipt["undo"] = {"until": call.now + p.undo_window} if hp.undoable and p.undo_window is not None else None
+    receipt |= {"tool": hp.tool, "input": call.input, "planHash": hp.plan_hash, "sub": call.sub}
+    if result is not None:
+        receipt["result"] = _jsonable(result)
+    return receipt
+
+
+def _jsonable(v: Any) -> Any:
+    return v.model_dump(mode="json", by_alias=True, exclude_none=True) if hasattr(v, "model_dump") else v
+
+
+async def _recorded(call: Call, hp: HashedPlan, held: list[Reservation], result: Any, auto: bool) -> Result:
+    """After ``apply()`` succeeded: settle, store the receipt, and return it."""
+    receipt = _receipt_for(call, hp, result)
+    try:
+        await settle_all(call.y.store, held)
+        await call.y.store.put_receipt(receipt)
+    except Exception as e:  # noqa: BLE001
+        return _unrecorded(call, hp, result, str(e))
+    if call.job.guarded:
+        return call.job.with_receipt(result, receipt)
+    return receipt_result(receipt, auto)
+
+
+def _unrecorded(call: Call, hp: HashedPlan, result: Any, why: str) -> Result:
+    """The action happened, but its receipt couldn't be kept: say so, and that undo isn't available."""
+    note = f"✓ {hp.plan.summary} happened, but its receipt couldn't be saved ({why}), so it can't be undone."
+    if call.job.guarded:
+        return call.job.with_note(result, note)
+    return t.CallToolResult(content=[t.TextContent(type="text", text=note)],
+                            structured_content={"receipt": None, "result": _jsonable(result)})

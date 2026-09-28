@@ -42,6 +42,8 @@ jobs:
         working-directory: python
         env:
           YEA_REQUIRE_INTEROP: "1"   # fail instead of skipping if node/ts/dist is missing
+      - run: uv run --python ${{ matrix.python }} pytest -q   # yea-mcp: MCPServer and FastMCP, both eras
+        working-directory: python/mcp
   site:
     runs-on: ubuntu-latest
     steps:

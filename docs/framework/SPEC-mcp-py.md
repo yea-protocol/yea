@@ -64,7 +64,7 @@ assume it.
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
-| `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. It always gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly). Used for the state binding and for undo. |
+| `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. On `MCPServer` it gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly); on FastMCP, FastMCP's request context. Used for the state binding and for undo. |
 
 `approvals.service_id()` returns the server key's public key, the value to pass to
 `yea grant --to` when issuing the policy.
@@ -113,7 +113,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 |---|---|
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
-| `revert` | Optional `revert(receipt, ctx) -> Any` (sync or async). With it, plans that set `undo_window` are undoable. It gets the stored job receipt (`input`, `planHash`, `result`, …). |
+| `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,
@@ -284,11 +284,13 @@ per request from the reserved `_meta` on 2026). `elicitation.form`, or a bare
 `yea_mcp.fastmcp` adapts the same routine to FastMCP 4, whose own middleware is the supported
 seam:
 
-- `approvals.fastmcp_middleware()` is a `fastmcp.server.middleware.Middleware`, added with
-  `FastMCP(middleware=[...])` or `mcp.add_middleware(...)`. Its `on_call_tool` runs the routine
-  for guarded tools, and takes `preview` off with `context.copy(message=…)` before `call_next`,
-  which matters because FastMCP tool schemas set `additionalProperties: false`. Its
-  `on_list_tools` adds `preview` to guarded tools' listed schemas.
+- `job()` and `guard()` take a FastMCP server as they take an `MCPServer`, and detect it.
+  `guard()` installs a `fastmcp.server.middleware.Middleware` on that server itself (with
+  `mcp.add_middleware`), once. Its `on_call_tool` runs the routine for guarded tools, and takes
+  `preview` off with `context.copy(message=…)` before `call_next`, which matters because FastMCP
+  tool schemas set `additionalProperties: false`. Its `on_list_tools` adds `preview` to guarded
+  tools' listed schemas. `call_next` returns a FastMCP `ToolResult`, which the routine reads and
+  adds the receipt to in that shape.
 - `@approvals.job(mcp, ...)` registers the wrapper with `Tool.from_function`, which honours the
   same `__signature__`/`__annotations__` construction.
 - On 2026 it returns `InputRequiredToolResult(InputRequiredResult(...))`, the documented way for
