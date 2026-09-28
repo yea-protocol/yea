@@ -127,6 +127,7 @@ export {
 
 export {
   type ApprovalStore,
+  isMemoryStore,
   type JobReceipt,
   type LedgerKey,
   ledgerId,

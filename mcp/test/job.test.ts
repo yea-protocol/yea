@@ -513,3 +513,112 @@ describe('a pinned principal key', () => {
     expect((await conn.call(ch1)).isError).toBeFalsy();
   });
 });
+
+describe('after apply() the action has happened, whatever fails next', () => {
+  /** A refund that auto-runs and returns `result`. */
+  async function autoRefund(kind: Kind, result: () => unknown) {
+    const w = await world();
+
+    await grantPolicy(w);
+
+    const conn = await connect(
+      kind,
+      refundServer(w, {
+        plan: ({ charge }) => [
+          {
+            summary: `Refund ${charge}`,
+            effects: [],
+            undoWindow: 60,
+            apply: () => {
+              w.applied.push(charge);
+
+              return result();
+            },
+          },
+        ],
+      }),
+    );
+
+    return { w, conn };
+  }
+
+  it.each<Kind>(['2026', '2025'])(
+    '%s: a result that can’t be serialized applies once, says so, and doesn’t hang',
+    async (kind) => {
+      const circular: Record<string, unknown> = { id: 're_1' };
+
+      circular.self = circular;
+
+      const { w, conn } = await autoRefund(kind, () => circular);
+      const r = await conn.call(ch1);
+
+      expect(w.applied).toEqual(['ch_1']);
+      expect(r.isError).toBeFalsy();
+      expect(textOf(r)).toMatch(
+        /^✓ Refund ch_1 happened, but its result couldn't be serialized \(.*\), so it isn't shown or kept; undo is available with receipt r_/,
+      );
+
+      const { receipt } = r.structuredContent as {
+        receipt: { id: string; result: unknown };
+      };
+
+      expect(await w.store.getReceipt(receipt.id)).toMatchObject({
+        result: null,
+      });
+    },
+  );
+
+  it('a store that fails after apply says the action happened, not that nothing ran', async () => {
+    const { w, conn } = await autoRefund('2025', () => ({ ok: true }));
+
+    w.store.putReceipt = () => Promise.reject(new Error('disk full'));
+
+    const r = await conn.call(ch1);
+
+    expect(w.applied).toEqual(['ch_1']);
+    expect(textOf(r)).toBe(
+      "✓ Refund ch_1 happened, but then disk full; its receipt wasn't saved, so it can't be undone.",
+    );
+    expect(textOf(r)).not.toMatch(/nothing was run/);
+  });
+});
+
+describe('HTTP on the default MemoryStore', () => {
+  it('gives no consent codes, since yea approve can’t reach it, and says why', async () => {
+    const w = await world({
+      transport: 'http',
+      store: undefined,
+      singleProcess: true,
+      sub: () => 'person-1',
+    });
+    const conn = await connect('2026-no-elicit', refundServer(w));
+    const r = await conn.call(ch1);
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(
+      /No consent can be accepted: this server keeps approvals in memory, where `yea approve` can't reach them/,
+    );
+    expect((r.structuredContent as { codes: unknown[] }).codes).toEqual([]);
+    expect(textOf(r)).not.toMatch(/pc1\./);
+  });
+});
+
+describe('the era decides where the capabilities come from', () => {
+  it('a 2025 client that can’t elicit, spoofing an envelope that says it can, gets consent codes', async () => {
+    const w = await world();
+    const conn = await connect('2025-no-elicit', refundServer(w));
+    const r = await conn.raw({
+      name: 'refund',
+      arguments: ch1,
+      _meta: {
+        'io.modelcontextprotocol/clientCapabilities': {
+          elicitation: { form: {} },
+        },
+      },
+    });
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/yea approve <code>/);
+    expect((r.structuredContent as { codes: unknown[] }).codes).toHaveLength(1);
+  });
+});

@@ -64,8 +64,8 @@ export type RevertFn = (r: RevertInput, ctx: ServerContext) => unknown;
 export interface Yea {
   transport: 'stdio' | 'http';
   store: ApprovalStore;
-  /** A MemoryStore without a promise that one process serves every request. */
-  sharedMemory: boolean;
+  /** A MemoryStore: `yea approve` writes consents to a FileStore, so none can reach it. */
+  memoryStore: boolean;
   principal: Pinned;
   policy: string | undefined;
   tighten: unknown;
@@ -108,6 +108,9 @@ const NOTHING_RAN = 'nothing was run';
 const BAD_STATE =
   'this approval is invalid, expired, already used, or for another call; nothing was run. Call the tool again to ask again.';
 
+const MEMORY_NO_CONSENT =
+  "this server keeps approvals in memory, where `yea approve` can't reach them; use a client that can show approval forms, or run the server with a FileStore";
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const isObject = (v: unknown): v is Obj =>
@@ -126,29 +129,15 @@ export function callerOf(y: Yea, ctx: ServerContext): string {
   return sub;
 }
 
-/** Whether a policy grant has a `total` limit (a MemoryStore shared by processes can't hold one). */
-function hasTotal(grant: string): boolean {
-  try {
-    return decodeGrant(grant).some((b) =>
-      b.p.caveats.some((c) => isObject(c) && Object.hasOwn(c, 'total')),
-    );
-  } catch {
-    return false; // the grant check says why it's unusable
-  }
-}
-
-/** The policy for this call; throws when its totals can't be kept on this store. */
+/**
+ * The policy for this call. (A `total` on a MemoryStore needs one process, which stdio is, and
+ * which HTTP promises with `singleProcess: true` at start-up, so there's no per-call check.)
+ */
 async function policyFor(y: Yea): Promise<Policy> {
   const rules = readTighteningFor(y.tighten);
   const pinned = 'key' in y.principal ? y.principal.key : null;
   // Without a pinned principal nothing auto-runs (SPEC-approval §2).
   const grant = pinned ? readPolicy(y.policy) : null;
-
-  if (grant && y.sharedMemory && hasTotal(grant)) {
-    throw new Error(
-      'the policy has a total limit, which a MemoryStore can only keep when one process serves every request (singleProcess: true)',
-    );
-  }
 
   return {
     grant,
@@ -378,6 +367,11 @@ async function failClosed(
     return consentResult(why, plans, [], pinned.why);
   }
 
+  // `yea approve` stores consents in a FileStore; a code for a MemoryStore could never work.
+  if (call.y.memoryStore) {
+    return consentResult(why, plans, [], MEMORY_NO_CONSENT);
+  }
+
   const phrase = phraseFor(call);
   const codes = allowed.map((hp) => ({
     planHash: hp.planHash,
@@ -478,13 +472,23 @@ async function runPlan(
     ]);
   }
 
-  if (failedResult(call.job, result)) {
-    await releaseAll(call.y, held);
+  return finish(call, hp, held, { result, auto: how === 'auto' });
+}
 
-    return result as Result;
+/** A value as JSON carries it, or null and why not (a circular or bigint result can't go). */
+function jsonSafe(v: unknown): { value: unknown; note: string | null } {
+  if (v === undefined) {
+    return { value: undefined, note: null };
   }
 
-  return recorded(call, hp, held, { result, auto: how === 'auto' });
+  try {
+    return { value: JSON.parse(JSON.stringify(v)) as unknown, note: null };
+  } catch (e) {
+    return {
+      value: null,
+      note: `its result couldn't be serialized (${message(e).split('\n')[0]}), so it isn't shown or kept`,
+    };
+  }
 }
 
 /** The receipt a successful job leaves (SPEC-approval §8's JobReceipt). */
@@ -512,24 +516,60 @@ function receiptFor(call: Call, hp: HashedPlan, result: unknown): JobReceipt {
   };
 }
 
-/** After `apply()` succeeded: settle, store the receipt, and return it. */
-async function recorded(
+/**
+ * Everything after a successful `apply()`. The action has happened, so nothing here may say
+ * "nothing was run": any failure is reported as the action having happened, with whether undo
+ * is available.
+ */
+async function finish(
   call: Call,
   hp: HashedPlan,
   held: Reservation[],
   done: { result: unknown; auto: boolean },
 ): Promise<Result> {
-  const receipt = receiptFor(call, hp, done.result);
+  const saved: { receipt: JobReceipt | null } = { receipt: null };
 
   try {
-    await Promise.all(held.map((r) => call.y.store.settle(r)));
-    await call.y.store.putReceipt(receipt);
+    return await recorded(call, hp, held, { ...done, saved });
   } catch (e) {
-    return unrecorded(call, hp, done.result, message(e));
+    return happened(call, hp, `then ${message(e)}`, saved.receipt);
+  }
+}
+
+/** Handle a guarded tool's failed result, or settle, store the receipt, and return it. */
+async function recorded(
+  call: Call,
+  hp: HashedPlan,
+  held: Reservation[],
+  done: {
+    result: unknown;
+    auto: boolean;
+    /** Set once the receipt is stored, so a later failure can say undo is available. */
+    saved: { receipt: JobReceipt | null };
+  },
+): Promise<Result> {
+  const safe = jsonSafe(done.result);
+
+  if (failedResult(call.job, done.result)) {
+    await releaseAll(call.y, held);
+
+    return safe.note
+      ? errorResult([`✗ ${hp.plan.summary} failed, and ${safe.note}`])
+      : (safe.value as Result);
+  }
+
+  const receipt = receiptFor(call, hp, safe.value);
+
+  await Promise.all(held.map((r) => call.y.store.settle(r)));
+  await call.y.store.putReceipt(receipt);
+  done.saved.receipt = receipt;
+
+  if (safe.note) {
+    return happened(call, hp, safe.note, receipt);
   }
 
   if (call.job.guarded) {
-    const r = done.result as CallToolResult;
+    const r = safe.value as CallToolResult;
 
     return { ...r, _meta: { ...r._meta, 'dev.yea/receipt': receipt } };
   }
@@ -537,26 +577,28 @@ async function recorded(
   return receiptResult(receipt, done.auto);
 }
 
-/** The action happened, but its receipt couldn't be kept: say so, and that undo isn't available. */
-function unrecorded(
+/** The action happened, but something after it didn't: say so, and whether undo is available. */
+function happened(
   call: Call,
   hp: HashedPlan,
-  result: unknown,
-  why: string,
+  what: string,
+  receipt: JobReceipt | null,
 ): Result {
-  const note = `✓ ${hp.plan.summary} happened, but its receipt couldn't be saved (${why}), so it can't be undone.`;
-
-  if (call.job.guarded) {
-    const r = result as CallToolResult;
-
-    return {
-      ...r,
-      content: [...(r.content ?? []), { type: 'text', text: note }],
-    };
-  }
+  const undo = !receipt
+    ? "its receipt wasn't saved, so it can't be undone"
+    : receipt.undo
+      ? `undo is available with receipt ${receipt.id}`
+      : `receipt ${receipt.id}; it can't be undone`;
 
   return {
-    content: [{ type: 'text', text: note }],
-    structuredContent: { receipt: null, result: result ?? null },
+    content: [
+      {
+        type: 'text',
+        text: `✓ ${hp.plan.summary} happened, but ${what}; ${undo}.`,
+      },
+    ],
+    structuredContent: { receipt, result: null },
+    // A guarded tool's outputSchema only describes the original's own results.
+    ...(call.job.ownResultsAreErrors?.() ? { isError: true } : {}),
   };
 }

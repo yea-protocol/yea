@@ -186,3 +186,12 @@ describe('assertIntegers (SPEC-approval §1)', () => {
     );
   });
 });
+
+describe('isMemoryStore', () => {
+  it('reads the brand, not the class, so another SDK copy’s MemoryStore still counts', () => {
+    expect(P.isMemoryStore(new P.MemoryStore())).toBe(true);
+    expect(P.isMemoryStore({ yeaStore: 'memory' })).toBe(true);
+    expect(P.isMemoryStore(new FileStore(tmp()))).toBe(false);
+    expect(P.isMemoryStore(null)).toBe(false);
+  });
+});

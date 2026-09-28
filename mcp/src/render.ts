@@ -24,7 +24,10 @@ export function planView(hp: HashedPlan) {
     effects: p.effects,
     ...(p.uses && Object.keys(p.uses).length ? { uses: p.uses } : {}),
     risk: hp.risk,
-    undo: hp.undoable && p.undoWindow ? { window: p.undoWindow } : null,
+    undo:
+      hp.undoable && p.undoWindow !== undefined
+        ? { window: p.undoWindow }
+        : null,
   };
 }
 

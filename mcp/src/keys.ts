@@ -4,7 +4,19 @@
  * tightening. The policy and tightening are read on every call, so a new grant applies without
  * a restart; the keys are read once.
  */
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   atLeast,
@@ -35,57 +47,124 @@ export const defaultKeyPath = (name: string) =>
 
 const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
 
-/** Create the key file only if it doesn't exist (O_EXCL), private to this user; false if it did. */
-function createKey(path: string): boolean {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+const POSIX = typeof process.getuid === 'function';
+const uid = () => (POSIX && process.getuid ? process.getuid() : -1);
 
+/**
+ * Why the key's directory can't be trusted, or null: it must be this user's, and not writable by
+ * group or others (who could replace the key file).
+ */
+function unsafeKeyDir(dir: string): string | null {
+  const st = statSync(dir);
+
+  if (!st.isDirectory()) {
+    return `${dir} is not a directory`;
+  }
+
+  if (!POSIX) {
+    return null;
+  }
+
+  if (st.uid !== uid()) {
+    return `${dir} is not owned by this user`;
+  }
+
+  return (st.mode & 0o022) !== 0
+    ? `${dir} can be written by other users (chmod 700 it)`
+    : null;
+}
+
+/**
+ * Create the key file only if it doesn't exist, private to this user. The seed is written to a
+ * temp file first and linked into place (which fails if the key exists, like O_EXCL), so a
+ * concurrent reader never sees an empty key.
+ */
+function createKey(path: string) {
   const seed = b64u(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+  const tmp = `${path}.${b64u(globalThis.crypto.getRandomValues(new Uint8Array(9)))}.tmp`;
+
+  writeFileSync(tmp, `${seed}\n`, { flag: 'wx', mode: 0o600 });
 
   try {
-    writeFileSync(path, `${seed}\n`, { flag: 'wx', mode: 0o600 });
-
-    return true;
+    linkSync(tmp, path);
   } catch (e) {
-    if (errno(e) === 'EEXIST') {
-      return false;
+    if (errno(e) !== 'EEXIST') {
+      throw e;
     }
-
-    throw e;
+  } finally {
+    rmSync(tmp, { force: true });
   }
 }
 
-/** Why an existing key file can't be used, or null. */
-function unsafeKeyFile(path: string): string | null {
-  const st = lstatSync(path);
-
-  if (st.isSymbolicLink()) {
-    return `${path} is a symlink`;
-  }
+/** Why an open key file can't be used, or null. */
+function unsafeKeyFile(path: string, fd: number): string | null {
+  const st = fstatSync(fd);
 
   if (!st.isFile()) {
     return `${path} is not a regular file`;
   }
 
+  if (!POSIX) {
+    return null;
+  }
+
+  if (st.uid !== uid()) {
+    return `${path} is not owned by this user`;
+  }
+
   // Group and other bits: a key others can read (or write) is not this server's alone.
-  return process.platform !== 'win32' && (st.mode & 0o077) !== 0
+  return (st.mode & 0o077) !== 0
     ? `${path} can be read by other users (chmod 600 it)`
     : null;
 }
 
+/** Open the key without following a symlink (O_NOFOLLOW), then check and read that same file. */
+function readKeyFile(path: string): string {
+  let fd: number;
+
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch (e) {
+    throw new Error(
+      `yea(): refusing the server key: ${errno(e) === 'ELOOP' ? `${path} is a symlink` : (e as Error).message}`,
+    );
+  }
+
+  try {
+    const why = unsafeKeyFile(path, fd);
+
+    if (why) {
+      throw new Error(`yea(): refusing the server key: ${why}`);
+    }
+
+    return readFileSync(fd, 'utf8').trim();
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
- * The server's Ed25519 seed: created on first run with O_EXCL, mode 0600, in a 0700 directory.
- * A key file that is a symlink, readable by others, or not a seed is refused.
+ * The server's Ed25519 seed: created on first run, mode 0600, in a 0700 directory. A key file
+ * that is a symlink, someone else's, readable by others, or not a seed is refused, and so is a
+ * key directory others can write.
  */
 export function loadServerSeed(path: string): string {
-  createKey(path);
+  const dir = dirname(path);
 
-  const why = unsafeKeyFile(path);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+
+  const why = unsafeKeyDir(dir);
 
   if (why) {
     throw new Error(`yea(): refusing the server key: ${why}`);
   }
 
-  const seed = readFileSync(path, 'utf8').trim();
+  // A dangling symlink doesn't exist either: linking fails on it, and reading refuses it.
+  if (!existsSync(path)) {
+    createKey(path);
+  }
+
+  const seed = readKeyFile(path);
 
   if (!SEED.test(seed)) {
     throw new Error(`yea(): ${path} does not hold an Ed25519 seed`);

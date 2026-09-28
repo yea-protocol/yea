@@ -19,6 +19,7 @@ import {
   type Clarification,
   type Effect,
   type HashedPlan,
+  isMemoryStore,
   isReceiptId,
   type JobPlan,
   keyPair,
@@ -113,6 +114,8 @@ export interface JobConfig<S extends StandardSchemaWithJSON> {
 
 export interface GuardConfig {
   describe(input: Record<string, unknown>): Described | Promise<Described>;
+  /** The tool's default plan risk, and its `_meta` risk; `describe`'s own `risk` wins. Default `medium`. */
+  risk?: Risk;
   revert?: RevertFn;
   confirmWith?(plan: HashedPlan, input: Record<string, unknown>): string;
 }
@@ -137,7 +140,7 @@ export interface Approvals {
 }
 
 /** The start-up refusals (SPEC-mcp-ts `yea()`): nothing is served when one applies. */
-function checkOptions(o: YeaOptions, store: ApprovalStore) {
+function checkOptions(o: YeaOptions, memory: boolean) {
   if (o.transport !== 'stdio' && o.transport !== 'http') {
     throw new TypeError("yea(): transport must be 'stdio' or 'http'");
   }
@@ -148,17 +151,13 @@ function checkOptions(o: YeaOptions, store: ApprovalStore) {
     );
   }
 
-  if (o.stateKey !== undefined && store instanceof MemoryStore) {
+  if (o.stateKey !== undefined && memory) {
     throw new TypeError(
       'yea(): a shared stateKey needs a shared store; with a MemoryStore each process would accept the same approval once',
     );
   }
 
-  if (
-    o.transport === 'http' &&
-    store instanceof MemoryStore &&
-    o.singleProcess !== true
-  ) {
+  if (o.transport === 'http' && memory && o.singleProcess !== true) {
     throw new TypeError(
       'yea(): HTTP on a MemoryStore needs singleProcess: true, or pass a store every process shares',
     );
@@ -181,9 +180,12 @@ const randomKey = () => globalThis.crypto.getRandomValues(new Uint8Array(32));
 export function yea(o: YeaOptions): Approvals {
   checkName(o.name);
 
-  const store = o.store ?? defaultStore(o);
+  // The default store is a MemoryStore on HTTP; it is only made once the options pass.
+  const memory = o.store ? isMemoryStore(o.store) : o.transport === 'http';
 
-  checkOptions(o, store);
+  checkOptions(o, memory);
+
+  const store = o.store ?? defaultStore(o);
 
   const seed = loadServerSeed(o.serverKey ?? defaultKeyPath(o.name));
   const sub = o.sub ?? (() => '');
@@ -206,7 +208,7 @@ export function yea(o: YeaOptions): Approvals {
   const y: Yea = {
     transport: o.transport,
     store,
-    sharedMemory: store instanceof MemoryStore && o.singleProcess !== true,
+    memoryStore: memory,
     principal,
     policy: o.policy,
     tighten: o.tighten ?? {},
@@ -238,6 +240,10 @@ function approvalsFor(y: Yea): Approvals {
     serverOptions: () => ({ requestState: { verify: y.codec.verify } }),
     serviceId: () => y.serviceId(),
     job: (server, name, config) => {
+      if (config.revert) {
+        undoFree(server, undo);
+      }
+
       const tool = registerJob(y, server, name, config);
 
       addRevert(server, name, config.revert as RevertFn | undefined);
@@ -245,6 +251,10 @@ function approvalsFor(y: Yea): Approvals {
       return tool;
     },
     guard: (server, tool, config) => {
+      if (config.revert) {
+        undoFree(server, undo);
+      }
+
       const name = guardTool(y, server, tool, config);
 
       addRevert(server, name, config.revert);
@@ -252,6 +262,15 @@ function approvalsFor(y: Yea): Approvals {
       return tool;
     },
   };
+}
+
+/** Throw before registering anything if the server has an `undo` tool that isn't ours. */
+function undoFree(server: McpServer, ours: WeakMap<McpServer, unknown>) {
+  if (!ours.has(server) && Object.hasOwn(registryOf(server), 'undo')) {
+    throw new Error(
+      "this server already has a tool named undo; a job with revert needs YEA's undo tool",
+    );
+  }
 }
 
 /** The tool's risk metadata (SPEC-mcp-ts, "Risk metadata"). */
@@ -304,16 +323,21 @@ function registerJob<S extends StandardSchemaWithJSON>(
 }
 
 /**
- * The name `server` registered `tool` under. SDK seam: `RegisteredTool` doesn't carry its name
- * and the registry is private, so this reads it through a narrow cast, and refuses if it can't.
+ * The server's tool registry. SDK seam: `RegisteredTool` doesn't carry its name and the registry
+ * is private, so this reads it through a narrow cast; an empty object if it isn't there.
  */
-function registeredName(server: McpServer, tool: RegisteredTool): string {
+function registryOf(server: McpServer): Record<string, unknown> {
   const registry = (server as unknown as { _registeredTools?: unknown })
     ._registeredTools;
-  const found =
-    registry && typeof registry === 'object'
-      ? Object.entries(registry).find(([, t]) => t === tool)
-      : undefined;
+
+  return registry && typeof registry === 'object'
+    ? (registry as Record<string, unknown>)
+    : {};
+}
+
+/** The name `server` registered `tool` under; refuses a tool it can't find there. */
+function registeredName(server: McpServer, tool: RegisteredTool): string {
+  const found = Object.entries(registryOf(server)).find(([, t]) => t === tool);
 
   if (!found) {
     throw new Error('guard(): this tool is not registered on this server');
@@ -380,6 +404,12 @@ function guardTool(
   config: GuardConfig,
 ): string {
   const name = registeredName(server, tool);
+
+  // Guarding twice would wrap the wrapper; a job() tool is already guarded.
+  if (tool._meta?.['dev.yea/job'] !== undefined) {
+    throw new Error(`guard(): ${name} is already a job tool`);
+  }
+
   const wasEnabled = tool.enabled;
 
   // Off first, so the original handler can't run in between; if anything below throws, it stays off.
@@ -391,6 +421,7 @@ function guardTool(
     server,
     {
       name,
+      risk: config.risk,
       describe: (input) => config.describe(input),
       revert: config.revert,
       confirmWith: config.confirmWith,
@@ -408,7 +439,7 @@ function guardTool(
     annotations: jobAnnotations(tool.annotations),
     _meta: {
       ...tool._meta,
-      ...jobMeta(undefined, config.revert !== undefined),
+      ...jobMeta(config.risk, config.revert !== undefined),
     },
   });
 

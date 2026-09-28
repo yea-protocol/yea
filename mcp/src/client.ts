@@ -2,9 +2,10 @@
  * Can the client ask (SPEC-mcp-ts, "Can the client ask?"). This follows the SDK's own check, so
  * we never return an `inputRequired` the SDK would then refuse.
  *
- * SDK seams: 2.1.0 types `ctx.mcpReq.envelope` loosely, so the capabilities key is read through a
- * narrow cast; on the 2025 era the capabilities come from `initialize`, through the deprecated
- * `getClientCapabilities()`, which is the SDK's own source for that era.
+ * SDK seams: the era is the deprecated `getNegotiatedProtocolVersion()`, which is what the SDK
+ * itself branches on; 2.1.0 types `ctx.mcpReq.envelope` loosely, so the capabilities key is read
+ * through a narrow cast; on the 2025 era the capabilities come from `initialize`, through the
+ * deprecated `getClientCapabilities()`, the SDK's own source for that era.
  */
 import {
   CLIENT_CAPABILITIES_META_KEY,
@@ -28,20 +29,36 @@ export function canElicitForm(caps: unknown): boolean {
   return e.form !== undefined || e.url === undefined;
 }
 
-/** The capabilities this request was made with, by era; undefined when there are none. */
+/** The first protocol revision whose requests carry their own capabilities. */
+const MODERN = '2026-07-28';
+
+/**
+ * Whether this server instance is serving the 2026-07-28 era: the SDK's own test
+ * (`_servedModernEra`), on the negotiated revision. Revisions are dates, so they order as text.
+ */
+export const servesModern = (server: McpServer) => {
+  const v = server.server.getNegotiatedProtocolVersion();
+
+  return v !== undefined && v >= MODERN;
+};
+
+/**
+ * The capabilities this request was made with, by era, as the SDK's `_inputRequestCapabilityView`
+ * reads them; undefined when there are none.
+ */
 export function clientCapabilities(
   server: McpServer,
   ctx: ServerContext,
 ): unknown {
-  const envelope = ctx.mcpReq.envelope as Obj | undefined;
-
   // A 2026-07-28 request carries its own capabilities; use only those.
-  if (envelope !== undefined) {
-    return envelope[CLIENT_CAPABILITIES_META_KEY];
+  if (servesModern(server)) {
+    return (ctx.mcpReq.envelope as Obj | undefined)?.[
+      CLIENT_CAPABILITIES_META_KEY
+    ];
   }
 
-  // A 2025-era request: what the client declared at `initialize`. A legacy stateless HTTP
-  // request never saw `initialize`, so this is undefined and the client can't ask.
+  // A 2025-era request: what the client declared at `initialize`, whatever its envelope claims.
+  // A legacy stateless HTTP request never saw `initialize`, so this is undefined: it can't ask.
   return server.server.getClientCapabilities();
 }
 

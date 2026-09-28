@@ -21,19 +21,18 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "test": "vitest run",
-    "typecheck": "tsc -p . --noEmit"
-  },
-  "dependencies": {
-    "@yea-protocol/sdk": "0.1.0"
+    "test": "tsc -p tsconfig.test.json && vitest run",
+    "typecheck": "tsc -p tsconfig.test.json"
   },
   "peerDependencies": {
-    "@modelcontextprotocol/server": "^2.1.0"
+    "@modelcontextprotocol/server": "^2.1.0",
+    "@yea-protocol/sdk": "0.1.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.1.0",
     "@modelcontextprotocol/server": "2.1.0",
     "@types/node": "^22",
+    "@yea-protocol/sdk": "0.1.0",
     "typescript": "^7.0",
     "vitest": "^5.0.1",
     "zod": "^4.2.0"

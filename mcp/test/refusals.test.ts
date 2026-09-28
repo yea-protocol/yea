@@ -1,6 +1,7 @@
 import {
   chmodSync,
   existsSync,
+  readdirSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -88,6 +89,24 @@ describe('start-up refusals: yea() throws, so nothing is served', () => {
     expect(start({ serverKey: real })).toThrow(/does not hold an Ed25519 seed/);
   });
 
+  it('a key directory others can write is refused', () => {
+    const dir = tmp();
+
+    chmodSync(dir, 0o770);
+    expect(start({ serverKey: join(dir, 'k.key') })).toThrow(
+      /can be written by other users/,
+    );
+  });
+
+  it('a dangling symlink is refused, not replaced', () => {
+    const dir = tmp();
+    const link = join(dir, 'k.key');
+
+    symlinkSync(join(dir, 'nowhere'), link);
+    expect(start({ serverKey: link })).toThrow(/is a symlink/);
+    expect(existsSync(join(dir, 'nowhere'))).toBe(false);
+  });
+
   it('creates the key file on first run: 0600 in a 0700 directory, then reuses it', async () => {
     const home = tmp();
 
@@ -97,6 +116,8 @@ describe('start-up refusals: yea() throws, so nothing is served', () => {
     const key = join(home, 'server', 'billing.key');
 
     expect(existsSync(key)).toBe(true);
+    // Written to a temp file and linked into place; the temp file is gone.
+    expect(readdirSync(join(home, 'server'))).toEqual(['billing.key']);
     expect(statSync(key).mode & 0o777).toBe(0o600);
     expect(statSync(join(home, 'server')).mode & 0o777).toBe(0o700);
     expect(await yea({ name: 'billing', transport: 'stdio' }).serviceId()).toBe(
@@ -139,21 +160,24 @@ describe('per-call refusals', () => {
     expect(w.applied).toEqual([]);
   });
 
-  it('a policy with a total, on a MemoryStore without singleProcess, refuses the call', async () => {
+  it('stdio is one process: a MemoryStore keeps a total for it, and the policy is re-read', async () => {
     const w = await world({ store: new MemoryStore() });
 
-    await grantPolicy(w);
+    await grantPolicy(w, [
+      { can: ['refund'] },
+      { risk: 'low' },
+      { total: { of: 'emails', max: 1 } },
+    ]);
 
-    const conn = await connect('2025', refundServer(w));
-    const r = await conn.call({ charge: 'ch_1' });
+    const conn = await connect('2025-no-elicit', refundServer(w));
 
-    expect(r.isError).toBe(true);
-    expect(textOf(r)).toMatch(/total limit, which a MemoryStore can only keep/);
-    expect(w.applied).toEqual([]);
+    expect((await conn.call({ charge: 'ch_1' })).isError).toBeFalsy();
+    expect((await conn.call({ charge: 'ch_2' })).isError).toBe(true);
+    expect(w.applied).toEqual(['ch_1']);
 
     // The policy is read on every call: one without a total runs.
     await grantPolicy(w, [{ can: ['refund'] }]);
-    expect((await conn.call({ charge: 'ch_1' })).isError).toBeFalsy();
+    expect((await conn.call({ charge: 'ch_2' })).isError).toBeFalsy();
   });
 });
 

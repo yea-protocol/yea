@@ -155,3 +155,29 @@ it('an irreversible job has no undo, and its receipt says so', async () => {
 
   expect(tools.map((t) => t.name)).toEqual(['refund']);
 });
+
+it('a job with revert on a server that already has its own undo tool is refused before registering', async () => {
+  const w = await world();
+  const server = new McpServer({ name: 'b', version: '1' });
+
+  server.registerTool('undo', {}, () => ({ content: [] }));
+  expect(() => w.approvals.job(server, 'refund', refundJob(w))).toThrow(
+    /already has a tool named undo/,
+  );
+
+  const { tools } = await connectedTools(server);
+
+  expect(tools.map((t) => t.name)).toEqual(['undo']);
+});
+
+async function connectedTools(server: McpServer) {
+  const { InMemoryTransport } = await import('@modelcontextprotocol/server');
+  const { Client } = await import('@modelcontextprotocol/client');
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'c', version: '1' });
+
+  await server.connect(st);
+  await client.connect(ct);
+
+  return client.listTools();
+}

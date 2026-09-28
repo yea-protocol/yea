@@ -376,3 +376,57 @@ describe('guard failure detection reads the value the original returned', () => 
 
 const filesIn = (root: string, dir: string) =>
   existsSync(join(root, dir)) ? readdirSync(join(root, dir)) : [];
+
+describe('guard refuses what is already a job', () => {
+  it('a tool it already guarded, or a job() tool, is refused and left as it was', async () => {
+    const w = await world();
+    const server = new McpServer({ name: 'b', version: '1' });
+    const tool = registerCharge(server, { charged: [] });
+
+    w.approvals.guard(server, tool, describeCharge);
+
+    const handler = tool.handler;
+
+    expect(() => w.approvals.guard(server, tool, describeCharge)).toThrow(
+      /charge is already a job tool/,
+    );
+    expect(tool.handler).toBe(handler);
+    expect(tool.enabled).toBe(true);
+
+    const job = w.approvals.job(server, 'refund', {
+      inputSchema: z.object({ charge: z.string() }),
+      plan: () => [],
+    });
+
+    expect(() => w.approvals.guard(server, job, describeCharge)).toThrow(
+      /refund is already a job tool/,
+    );
+  });
+
+  it('takes the tool’s risk for its metadata and as the plans’ default', async () => {
+    const w = await world();
+    const conn = await connect(
+      '2025',
+      guarded(
+        w,
+        { charged: [] },
+        {
+          risk: 'high',
+          describe: () => ({ summary: 'Charge', effects: [] }),
+        },
+      ),
+    );
+    const { tools } = await conn.client.listTools();
+
+    expect(tools[0]._meta?.['dev.yea/job']).toEqual({
+      risk: 'high',
+      undoable: false,
+    });
+
+    const preview = await conn.call({ amount: '5', preview: true }, 'charge');
+
+    expect(preview.structuredContent).toMatchObject({
+      plans: [{ risk: 'high' }],
+    });
+  });
+});

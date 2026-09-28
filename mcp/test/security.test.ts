@@ -8,7 +8,7 @@ import {
   createRequestStateCodec,
   McpServer,
 } from '@modelcontextprotocol/server';
-import { quantity } from '@yea-protocol/sdk';
+import { MemoryStore, quantity } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   approve,
@@ -258,5 +258,105 @@ describe('MCP-side approval security', () => {
     expect((await conn.call(ch1)).isError).toBeFalsy();
     expect(conn.elicited[0].message).toMatch(/emails would pass/);
     expect(await w.store.used(await ledgerKeyOf(token))).toBe(0n);
+  });
+});
+
+describe('requestState that isn’t this call’s', () => {
+  /** A codec an author shares between their own tools and yea({ codec }). */
+  const sharedCodec = (bind: (ctx: { mcpReq: { method: string } }) => string) =>
+    createRequestStateCodec<unknown>({ key: new Uint8Array(32).fill(3), bind });
+
+  it('[M9] a verified state without our yea key (another tool’s, on a shared codec) is refused', async () => {
+    const codec = sharedCodec((ctx) => `${ctx.mcpReq.method}\0`);
+    const w = await world({ codec });
+    const conn = await connect('2026', refundServer(w));
+    const theirs = await codec.mint({ inner: 'step-2' }, {
+      mcpReq: { method: 'tools/call' },
+    } as never);
+    const r = await conn.raw({
+      name: 'refund',
+      arguments: ch1,
+      requestState: theirs,
+      inputResponses: {
+        yea: { action: 'accept', content: { confirm: 'ch_1' } },
+      },
+    });
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/requestState belongs to something else/);
+    expect(w.applied).toEqual([]);
+  });
+
+  it('[M7] a state from another job on the same server runs nothing there', async () => {
+    const w = await world();
+    const conn = await connect('2026', () => {
+      const server = refundServer(w)();
+
+      w.approvals.job(server, 'refund_other', refundJob(w));
+
+      return server;
+    });
+    const first = await conn.raw({ name: 'refund', arguments: ch1 });
+    const r = await conn.raw({
+      name: 'refund_other',
+      arguments: ch1,
+      requestState: first.requestState,
+      inputResponses: {
+        yea: { action: 'accept', content: { confirm: 'ch_1' } },
+      },
+    });
+
+    expect(textOf(r)).toMatch(
+      /invalid, expired, already used, or for another call/,
+    );
+    expect(w.applied).toEqual([]);
+  });
+
+  /** An HTTP server whose caller is whoever `who` says. */
+  async function httpAs(over: Record<string, unknown> = {}) {
+    const who = { sub: 'ana' };
+    const w = await world({
+      transport: 'http',
+      store: new MemoryStore(),
+      singleProcess: true,
+      sub: () => who.sub,
+      ...over,
+    });
+    const conn = await connect('2026', refundServer(w));
+    const first = await conn.raw({ name: 'refund', arguments: ch1 });
+
+    who.sub = 'ben';
+
+    const replay = () =>
+      conn.raw({
+        name: 'refund',
+        arguments: ch1,
+        requestState: first.requestState,
+        inputResponses: {
+          yea: { action: 'accept', content: { confirm: 'ch_1' } },
+        },
+      });
+
+    return { w, replay };
+  }
+
+  it('[M10] an HTTP state minted for one sub, replayed by another, fails the codec’s bind', async () => {
+    const { w, replay } = await httpAs();
+
+    await expect(replay()).rejects.toThrow(/Invalid or expired requestState/);
+    expect(w.applied).toEqual([]);
+  });
+
+  it('[M10] with an author’s codec that doesn’t bind sub, checkState still refuses it', async () => {
+    const { w, replay } = await httpAs({
+      codec: sharedCodec((ctx) => ctx.mcpReq.method),
+    });
+    const r = await replay();
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(
+      /invalid, expired, already used, or for another call/,
+    );
+    expect(w.applied).toEqual([]);
   });
 });
