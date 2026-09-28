@@ -846,8 +846,12 @@ describe('approval security (SPEC-approval)', () => {
       0x3164, 0xffa0, 0x034f, 0x17b4, 0x17b5, 0x2028, 0x2029, 0xe0001, 0xe0020,
       0xe0041, 0xe007f,
     ];
+    // Default-ignorable, some unassigned: tags, variation selectors 17–256, specials.
+    const ignorable = [
+      0xe0000, 0xe0010, 0xe0100, 0xe01ef, 0xfff0, 0x180b, 0x2065,
+    ];
 
-    for (const cp of invisible) {
+    for (const cp of [...invisible, ...ignorable]) {
       const c = String.fromCodePoint(cp);
 
       expect(printable(`acct${c}_1`)).toBe(`acct\\u{${cp.toString(16)}}_1`);
@@ -861,6 +865,8 @@ describe('approval security (SPEC-approval)', () => {
     expect(printable(`ok${tagged.join('')}`)).toBe(
       'ok\\u{e0070}\\u{e0061}\\u{e0079}',
     );
+    // Some format characters are visible marks (Arabic number sign); escaped, which is fine.
+    expect(printable('\u0600123')).toBe('\\u{600}123');
     // A zero-width joiner inside an emoji is escaped too; acceptable on a consent screen.
     expect(printable('\u{1f469}\u200d\u{1f4bb}')).toBe(
       '\u{1f469}\\u{200d}\u{1f4bb}',

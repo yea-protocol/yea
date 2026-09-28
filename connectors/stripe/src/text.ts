@@ -19,12 +19,16 @@ function cap(s: string): string {
   return chars.length > MAX_TEXT ? `${chars.slice(0, MAX_TEXT).join('')}…` : s;
 }
 
-/** Capped, with control and bidi characters escaped. */
+/**
+ * Capped, with control, format, line/paragraph-separator and invisible filler characters shown
+ * as `\u{…}` escapes.
+ */
 export const safeText = (s: string) => printable(cap(s));
 
 /**
  * Untrusted text in double quotes: `\` and `"` escaped first, so it can't end the quote, then
- * control and bidi characters.
+ * control, format, line/paragraph-separator and invisible filler characters shown as `\u{…}`
+ * escapes.
  */
 export const quoted = (s: string) =>
   `"${printable(cap(s).replace(/[\\"]/g, (c) => `\\${c}`))}"`;
