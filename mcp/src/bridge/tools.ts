@@ -5,7 +5,6 @@
 import type {
   CallToolResult,
   ServerContext,
-  ToolAnnotations,
 } from '@modelcontextprotocol/server';
 import { type CapabilityInfo, printable } from '@yea-protocol/sdk';
 import {
@@ -17,7 +16,7 @@ import {
 } from '../result.js';
 import { errorMessage, isObject, type Obj, warnOnce } from '../util.js';
 import type { Service } from './greet.js';
-import { type Bridge, type JobCall, runJobCall } from './job.js';
+import { type Bridge, runJobCall } from './job.js';
 import { assignNames, genericBase, sanitize, type ToNames } from './names.js';
 import {
   badParamNames,
@@ -27,22 +26,13 @@ import {
   withJobFields,
 } from './params.js';
 import { clip } from './render.js';
+import type { JobCall, ToolSpec } from './types.js';
 import { readCall } from './utility.js';
 
 /** Past this many capabilities, a service gets two generic tools instead (decision 1). */
 const GENERIC_PAST = 25;
 
 export type ToolMode = 'auto' | 'generic' | 'per-capability';
-
-/** A tool as the server factory registers it. */
-export interface ToolSpec {
-  name: string;
-  description: string;
-  schema: Obj;
-  annotations: ToolAnnotations;
-  meta: Obj;
-  run(args: Obj, ctx: ServerContext): Promise<CallToolResult>;
-}
 
 type Unnamed = Omit<ToolSpec, 'name'>;
 
