@@ -336,3 +336,35 @@ async def test_a_tool_with_injected_dependencies_can_be_guarded(world, fm):
     async with Client(fm, elicitation_handler=person([])) as c:
         r = await c.call_tool("drop", {"table": "users"})
     assert calls == [("users", True)] and r.meta["dev.yea/receipt"]["input"] == {"table": "users"}
+
+
+async def test_a_provider_rule_that_copies_tools_fails_closed(world, fm):
+    calls = []
+
+    @fm.tool(tags={"public"})
+    def wipe(target: str) -> str:
+        calls.append(target)
+        return "wiped"
+
+    fm.local_provider.enable(tags={"public"})
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+    async with Client(fm, elicitation_handler=person([])) as c:
+        r = await c.call_tool("wipe", {"target": "db"}, raise_on_error=False)
+    assert r.is_error and "hands out copies" in text(r) and calls == []
+
+
+async def test_the_same_function_under_another_name_is_refused(world, fm):
+    from fastmcp.tools import Tool
+
+    calls = []
+
+    def wipe(target: str) -> str:
+        calls.append(target)
+        return "wiped"
+
+    fm.add_tool(Tool.from_function(wipe, name="wipe"))
+    fm.add_tool(Tool.from_function(wipe, name="erase"))
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+    async with Client(fm) as c:
+        r = await c.call_tool("erase", {"target": "db"}, raise_on_error=False)
+    assert r.is_error and "same function as a guarded tool" in text(r) and calls == []

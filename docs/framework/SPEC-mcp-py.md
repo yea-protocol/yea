@@ -305,9 +305,11 @@ seam:
 - **Guard a tool where it's defined.** A mounted server's tool is guarded on that server (the
   parent's calls go through the child's own middleware); an app's tool isn't supported in v0. A
   guard that can't be kept (the tool isn't the server's own, isn't a function tool, has its own
-  `preview`, or runs as a background task), or a transform built from a copy of a guarded tool
-  taken before it was wrapped, refuses **every** tool call on that server with the reason, since
-  the unguarded tool might be reachable by another name.
+  `preview`, or runs as a background task), a transform built from a copy of a guarded tool
+  taken before it was wrapped, a provider-level rule (`enable`/`disable`) that hands out copies so
+  the wrap can't reach the stored tool, or the same function registered under another name,
+  refuses **every** tool call on that server with the reason, since the unguarded tool might be
+  reachable. Each wrap is verified on a fresh listing.
 - `@approvals.job(mcp, ...)` registers the wrapper with `Tool.from_function`, which honours the
   same `__signature__`/`__annotations__` construction.
 - On 2026 it returns `InputRequiredToolResult(InputRequiredResult(...))`, the documented way for

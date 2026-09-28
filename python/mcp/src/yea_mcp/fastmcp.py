@@ -116,8 +116,21 @@ class FastMCPGuard(Middleware):
         for tool in tools:
             if tool.name in self.tools and not _wrapped(tool):
                 self._wrap_in_place(tool, self.tools[tool.name])  # no await: nothing runs mid-swap
-        for tool in tools:
-            self._check_parents(tool)
+        # Verify on a fresh listing: a provider rule (enable/disable) hands out copies, and a wrap
+        # that landed on a copy leaves the stored tool as it was. Every call path would then re-copy
+        # the unwrapped original, so refuse rather than trust the first listing.
+        for tool in await self.server.local_provider.list_tools():
+            self._check_wrapped(tool)
+            self._check_parents(tool)  # local tools only: a wrap in place also covers other holders
+
+    def _check_wrapped(self, tool: Any) -> None:
+        if _wrapped(tool):
+            return
+        if tool.name in self.tools:
+            raise ValueError(f"guard(): {tool.name} couldn't be wrapped: a rule on this server's provider (enable or "
+                             "disable) hands out copies of it; guard it without provider-level rules")
+        if id(getattr(tool, "fn", None)) in self._originals:
+            raise ValueError(f"{tool.name} runs the same function as a guarded tool under another name")
 
     def _check_parents(self, tool: Any) -> None:
         """A transform built from a copy of a guarded tool taken before it was wrapped would run
