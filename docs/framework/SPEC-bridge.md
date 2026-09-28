@@ -109,9 +109,12 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
 - **Bounded** to 256 entries, the oldest dropped first.
 - **Expiring one by one.** Only proposals with at least 2 minutes left are kept, and only
   those get codes, so a code is never handed out for a proposal the bridge doesn't keep or
-  just before it expires. A kept proposal is dropped, with its code, once it has less than 2
-  minutes left; the entry, once none are left or once it commits. Proposals that arrive with
-  less than 2 minutes left are shown as not offered.
+  just before it expires. Proposals that arrive with less than 2 minutes left are shown as
+  not offered. The 2-minute rule is for handing out codes only: a kept proposal with less
+  left loses its code ("no new codes") but stays, so an approval already saved still commits
+  it, until it really expires. The entry goes once it commits, once none of its proposals are
+  left, or when a call finds only uncoded proposals and no saved approval (it then starts over
+  with a fresh `INTENT` rather than wait out the last minutes).
 
 1. **Deny.** If the capability is in the local unsigned `deny` list (`~/.yea/policy.json`,
    SPEC-approval §2), refuse before anything else, previews included. Entries match either
@@ -131,7 +134,9 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      and return the receipt. If that `COMMIT` fails without the proposal going stale (a
      `forbidden`, a bad proof, the service refusing the consent), the service's error is
      returned and that consent is set aside for this entry: it's never retried, so identical
-     calls don't replay the failure, and a fresh approval of the same proposal can replace it.
+     calls don't replay the failure, and a fresh approval of the same proposal can replace it. `yea_consent`
+     refuses a consent set aside this way, saying the service refused it and to approve
+     again.
    - **An approval round?** If the call carries our state (below), go to step 7. A call
      carrying our state with no pending entry is refused as a bad state; it never falls
      through to a fresh `INTENT`. Until `--approve-here` exists the bridge mints no state, so

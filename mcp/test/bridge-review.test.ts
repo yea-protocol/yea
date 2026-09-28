@@ -74,7 +74,7 @@ describe('R1: proposals expire one by one, and only kept ones get codes', () => 
     expect(proposals.map((p) => p.summary)).toEqual(['plan 1']);
     expect(codes.map((c) => c.proposal)).toEqual([proposals[0].id]);
     expect(textOf(r)).toMatch(
-      /1 proposal from the service expires in under 2 minutes/,
+      /1 proposal expires in under 2 minutes, so it isn't offered/,
     );
     expect(textOf(r)).not.toContain('plan 0');
   });
@@ -90,13 +90,13 @@ describe('R1: proposals expire one by one, and only kept ones get codes', () => 
 
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(
-      /2 proposals from the service expire in under 2 minutes/,
+      /2 proposals expire in under 2 minutes, so they aren't offered/,
     );
     await conn.call({}, 'lab_pick');
     expect(rec.verbs('INTENT')).toHaveLength(2);
   });
 
-  it('a kept proposal nearing expiry is dropped alone, with its code; its consent is then refused', async () => {
+  it('a kept proposal near expiry loses its code, but a saved approval still commits it until it expires', async () => {
     const k = await keys();
     let now = nowS();
     const rec = recorded(twoTimes(k, 300, 900));
@@ -109,18 +109,40 @@ describe('R1: proposals expire one by one, and only kept ones get codes', () => 
     expect(first.codes).toHaveLength(2);
     now = first.proposals[0].expires - 100;
 
-    const again = proposalsOf(await conn.call({}, 'lab_pick'));
+    // No new code for the first; the second still has one.
+    const again = await conn.call({}, 'lab_pick');
 
     expect(rec.verbs('INTENT')).toHaveLength(1);
-    expect(again.proposals.map((p) => p.id)).toEqual([first.proposals[1].id]);
-    expect(again.codes.map((c) => c.proposal)).toEqual([first.proposals[1].id]);
+    expect(proposalsOf(again).codes.map((c) => c.proposal)).toEqual([
+      first.proposals[1].id,
+    ]);
+    expect(textOf(again)).toMatch(
+      /1 pending proposal expires in under 2 minutes/,
+    );
 
-    const late = await conn.call(
+    // An approval of the first (from its earlier code) is still taken, and commits it.
+    const saved = await conn.call(
       { token: await approveCode(k.principal, first.codes[0].code) },
       'yea_consent',
     );
 
-    expect(textOf(late)).toMatch(/no pending proposal/);
+    expect(saved.isError).toBeFalsy();
+    expect(textOf(await conn.call({}, 'lab_pick'))).toMatch(/^✓ plan 0/);
+  });
+
+  it('once only uncoded proposals are left and none is approved, the call starts over', async () => {
+    const k = await keys();
+    let now = nowS();
+    const rec = recorded(twoTimes(k, 300, 300));
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)], { now: () => now }),
+    );
+    const first = proposalsOf(await conn.call({}, 'lab_pick'));
+
+    now = first.proposals[0].expires - 100;
+    await conn.call({}, 'lab_pick');
+    expect(rec.verbs('INTENT')).toHaveLength(2);
   });
 });
 
@@ -161,6 +183,14 @@ describe('R2: a failed consent never wedges the call, and a named proposal is th
       /^nothing was run: still waiting for approval/,
     );
     expect(rec.verbs('COMMIT')).toHaveLength(1);
+
+    // The same consent again is refused as refused, not saved.
+    const again = await conn.call({ token }, 'yea_consent');
+
+    expect(again.isError).toBe(true);
+    expect(textOf(again)).toMatch(
+      /refused by the service when it was used; ask the user to approve the code again/,
+    );
 
     // A fresh approval of the same proposal replaces the one that failed.
     const fresh = await approveCode(k.principal, codes[0].code);

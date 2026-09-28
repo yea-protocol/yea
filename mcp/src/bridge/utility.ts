@@ -114,6 +114,12 @@ export async function consentCall(
     );
   }
 
+  if (entry.refused.has(token as string)) {
+    return refused(
+      'this consent was refused by the service when it was used; ask the user to approve the code again',
+    );
+  }
+
   const o = { entry, agent, now: c.now };
   const check = await checkConsent(token, o);
 

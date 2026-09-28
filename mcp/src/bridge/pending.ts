@@ -8,7 +8,7 @@ import { type Proposal, sha256 } from '@yea-protocol/sdk';
 /** At most this many entries; the oldest is dropped first. */
 export const MAX_PENDING = 256;
 
-/** A proposal is dropped once it has less than this many seconds left; an entry, once it has none. */
+/** A proposal gets no new code once it has less than this many seconds left. */
 export const MIN_LEFT = 120;
 
 /** One call's proposals, the principal they need consent from, and their consent codes. */
@@ -48,21 +48,24 @@ export async function pendingKey(
   return `${tool}\0${capability}\0${await sha256(sortedJson(params))}`;
 }
 
-/** Whether a proposal still has enough time left to be approved and committed. */
+/** Whether a proposal has enough time left to hand out a code for it: approved, then committed. */
 export const fresh = (p: Proposal, now: number) => p.expires - now >= MIN_LEFT;
 
-/** `e` with only its fresh proposals, and codes only for those. */
-function freshOnly(e: Pending, now: number): Pending {
-  const proposals = e.proposals.filter((p) => fresh(p, now));
+/** Whether a proposal hasn't expired: an approval already saved can still commit it. */
+const alive = (p: Proposal, now: number) => p.expires > now;
 
-  if (proposals.length === e.proposals.length) {
-    return e;
-  }
+/**
+ * `e` with its expired proposals dropped, and codes only for the fresh ones: a proposal with
+ * under 2 minutes left stays, marked "no new codes", until it really expires.
+ */
+function prune(e: Pending, now: number): Pending {
+  e.proposals = e.proposals.filter((p) => alive(p, now));
 
-  const ids = new Set(proposals.map((p) => p.id));
+  const coded = new Set(
+    e.proposals.filter((p) => fresh(p, now)).map((p) => p.id),
+  );
 
-  e.proposals = proposals;
-  e.codes = e.codes.filter((c) => ids.has(c.proposal));
+  e.codes = e.codes.filter((c) => coded.has(c.proposal));
 
   return e;
 }
@@ -72,13 +75,13 @@ export class PendingProposals {
   private entries = new Map<string, Pending>();
 
   /**
-   * The live entry for `key`. Proposals near expiry are dropped one by one, with their codes,
-   * and the entry once none are left.
+   * The live entry for `key`. A proposal loses its code at 2 minutes left and is dropped when it
+   * expires; the entry, once none are left.
    */
   get(key: string, now: number): Pending | undefined {
     const e = this.entries.get(key);
 
-    if (e && !freshOnly(e, now).proposals.length) {
+    if (e && !prune(e, now).proposals.length) {
       this.entries.delete(key);
 
       return undefined;

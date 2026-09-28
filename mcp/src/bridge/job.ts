@@ -244,7 +244,20 @@ async function pendingCall(
     }
   }
 
-  return proposalsResult(entry, 'still waiting for approval', []);
+  const coded = entry.proposals.filter((p) => fresh(p, b.now()));
+
+  // Nothing left to approve here: rather than wait out the last minutes, start over.
+  if (!coded.length) {
+    b.pending.drop(entry.key);
+
+    return null;
+  }
+
+  return proposalsResult(
+    { ...entry, proposals: coded },
+    'still waiting for approval',
+    expiringNote(entry.proposals.length - coded.length, 'pending'),
+  );
 }
 
 /**
@@ -351,13 +364,25 @@ async function principalsOf(c: Client): Promise<string[]> {
   return [...new Set(iss.filter((x): x is string => typeof x === 'string'))];
 }
 
-/** A line for proposals that arrived too close to expiry to be offered. */
-const expiringNote = (n: number) =>
-  n
-    ? [
-        `✗ ${n} proposal${n === 1 ? '' : 's'} from the service expire${n === 1 ? 's' : ''} in under 2 minutes, so ${n === 1 ? "it isn't" : "they aren't"} offered; call again later for fresh ones`,
-      ]
-    : [];
+/**
+ * A line for proposals too close to expiry for a new code: ones that just arrived aren't kept,
+ * and pending ones can still be committed with an approval already saved.
+ */
+function expiringNote(n: number, which: 'arrived' | 'pending' = 'arrived') {
+  if (!n) {
+    return [];
+  }
+
+  const one = n === 1;
+  const tail =
+    which === 'arrived'
+      ? `so ${one ? "it isn't" : "they aren't"} offered; call again later for fresh ones`
+      : 'so no new code is given; an approval already saved still commits until it expires';
+
+  return [
+    `✗ ${n} ${which === 'arrived' ? 'proposal' : 'pending proposal'}${one ? '' : 's'} expire${one ? 's' : ''} in under 2 minutes, ${tail}`,
+  ];
+}
 
 /**
  * Steps 5–6: check the proposals, keep the ones with at least 2 minutes left pending, and hand
