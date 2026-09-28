@@ -1,0 +1,3266 @@
+{
+  "seeds": {
+    "principal": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+    "server": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+    "stranger": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY"
+  },
+  "keys": {
+    "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+    "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E"
+  },
+  "policyBlockId": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
+  "now": 1790000000,
+  "hash": [
+    {
+      "name": "move",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 3600
+      },
+      "risk": "low",
+      "undoable": true,
+      "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U"
+    },
+    {
+      "name": "email",
+      "tool": {
+        "name": "send_email",
+        "risk": "low"
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Email the team the notes",
+        "effects": [
+          {
+            "op": "send",
+            "target": "team@example.com"
+          }
+        ],
+        "uses": {
+          "emails": {
+            "amount": 1
+          }
+        }
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "bW8WQ-9GaaH70xFGNAWD5rNnlVb5e1yPb9o4A3nxFzI"
+    },
+    {
+      "name": "refund",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Refund 30.00 USD to Chen",
+        "effects": [
+          {
+            "op": "create",
+            "target": "refund",
+            "detail": "30.00 USD to card ••42"
+          }
+        ],
+        "uses": {
+          "spend": {
+            "amount": 3000,
+            "scale": 2,
+            "unit": "USD"
+          }
+        },
+        "risk": "low",
+        "undoWindow": 60
+      },
+      "risk": "low",
+      "undoable": true,
+      "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+    },
+    {
+      "name": "unrated",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move standup",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e1"
+          }
+        ],
+        "undoWindow": 60
+      },
+      "risk": "medium",
+      "undoable": true,
+      "planHash": "UIstb--i53BhNVIkSbRYt1q5DSXuIGQmM2BHAO7IgTA"
+    },
+    {
+      "name": "a non-integer input fails closed",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "input": {
+        "amount": 1.5
+      },
+      "plan": {
+        "summary": "Refund 30.00 USD to Chen",
+        "effects": [
+          {
+            "op": "create",
+            "target": "refund",
+            "detail": "30.00 USD to card ••42"
+          }
+        ],
+        "uses": {
+          "spend": {
+            "amount": 3000,
+            "scale": 2,
+            "unit": "USD"
+          }
+        },
+        "risk": "low",
+        "undoWindow": 60
+      },
+      "error": true
+    }
+  ],
+  "decide": [
+    {
+      "name": "an undoable plan the policy allows runs",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+        "reserve": []
+      }
+    },
+    {
+      "name": "a denied tool is refused first",
+      "plans": [
+        {
+          "tool": "delete_customer",
+          "plan": {
+            "summary": "Delete customer Chen",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "customer/c9"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "denied",
+        "why": "your policy never allows delete_customer"
+      }
+    },
+    {
+      "name": "high risk goes out of band",
+      "plans": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch main",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/main"
+              }
+            ],
+            "risk": "high",
+            "undoWindow": 86400
+          },
+          "planHash": "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA",
+          "risk": "high",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "out-of-band",
+        "why": "risk is high, which needs approval outside the chat"
+      }
+    },
+    {
+      "name": "a lower outOfBand catches medium",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move standup",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e1"
+              }
+            ],
+            "undoWindow": 60
+          },
+          "planHash": "UIstb--i53BhNVIkSbRYt1q5DSXuIGQmM2BHAO7IgTA",
+          "risk": "medium",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "medium"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "out-of-band",
+        "why": "risk is medium, which needs approval outside the chat"
+      }
+    },
+    {
+      "name": "an irreversible plan always asks",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Email the team the notes",
+            "effects": [
+              {
+                "op": "send",
+                "target": "team@example.com"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            }
+          },
+          "planHash": "bW8WQ-9GaaH70xFGNAWD5rNnlVb5e1yPb9o4A3nxFzI",
+          "risk": "low",
+          "undoable": false
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "send_email can't be undone"
+      }
+    },
+    {
+      "name": "no signed policy asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": null,
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "no signed policy lets reschedule run without asking"
+      }
+    },
+    {
+      "name": "a policy signed by someone else asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsiKiJdfV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2RmX3g2emhGRlhlczFhX3VRRlJXVm8zWHlKNEpDR09nVlh2SHIwbnhjIiwibm9uY2UiOiJwb2wyIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJMTmRsNUpLRG1GQW1NbUpwOHFmRmdtdWFzZV9LN3pvTzRQNWZJLThocklxQTNkanVGd3pZWU90UDhwM1BYc0RpNGtjT2NIemV5dGIwNElsRGNrOWlBQSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "grant is issued by a principal this service does not trust"
+      }
+    },
+    {
+      "name": "a tool outside can asks",
+      "plans": [
+        {
+          "tool": "archive",
+          "plan": {
+            "summary": "Archive project apollo",
+            "effects": [
+              {
+                "op": "update",
+                "target": "project/apollo",
+                "field": "archived",
+                "from": false,
+                "to": true
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "RAyQLvdDzG5SGbQ9WGcPBglRGbOKqQ7Qy63VrWjQdso",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "does not cover archive"
+      }
+    },
+    {
+      "name": "over an each limit asks",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "spend over the per-commit limit of 25.00 USD"
+      }
+    },
+    {
+      "name": "within an each limit runs",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+        "reserve": []
+      }
+    },
+    {
+      "name": "a total with room runs and reserves",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails": {
+          "amount": 2
+        }
+      },
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+        "reserve": [
+          {
+            "key": {
+              "block": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
+              "of": "emails"
+            },
+            "amount": "1000000000000000000",
+            "max": "3000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a full total asks",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails": {
+          "amount": 3
+        }
+      },
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "emails would pass the total limit of 3"
+      }
+    },
+    {
+      "name": "an expired policy asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790003600,
+      "expect": {
+        "kind": "ask",
+        "why": "grant has expired"
+      }
+    },
+    {
+      "name": "denied beats out of band",
+      "plans": [
+        {
+          "tool": "delete_customer",
+          "plan": {
+            "summary": "Delete customer Chen",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "customer/c9"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "low"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "denied",
+        "why": "your policy never allows delete_customer"
+      }
+    },
+    {
+      "name": "out of band beats not undoable",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Email the team the notes",
+            "effects": [
+              {
+                "op": "send",
+                "target": "team@example.com"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            }
+          },
+          "planHash": "bW8WQ-9GaaH70xFGNAWD5rNnlVb5e1yPb9o4A3nxFzI",
+          "risk": "low",
+          "undoable": false
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "low"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "out-of-band",
+        "why": "risk is low, which needs approval outside the chat"
+      }
+    },
+    {
+      "name": "only plans[0] is judged",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Email the team the notes",
+            "effects": [
+              {
+                "op": "send",
+                "target": "team@example.com"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            }
+          },
+          "planHash": "bW8WQ-9GaaH70xFGNAWD5rNnlVb5e1yPb9o4A3nxFzI",
+          "risk": "low",
+          "undoable": false
+        },
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "send_email can't be undone"
+      }
+    },
+    {
+      "name": "no plans",
+      "plans": [],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "nothing"
+      }
+    },
+    {
+      "name": "a policy that names no tools asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJyaXNrIjoibG93In1dLCJpYXQiOjE3OTAwMDAwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoicG9sMyIsInN1YiI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSJ9LCJzIjoiUnJ3X3JDZ3ZNX2hkSGpNM3hzcmk4Z2NsZEJwUWxWUEtJUHNLRXdUUkJBT1NybVU2dFZNbFAxdG1NaERTN29IbE1TNk1RUnFvQ3UxYWw2Qm9JQnhmQkEifV0",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "the signed policy names no tools, so it doesn't let reschedule run without asking"
+      }
+    },
+    {
+      "name": "an undecodable policy asks with the grant reason",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.bm9wZQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "malformed grant: not valid b64url JSON"
+      }
+    },
+    {
+      "name": "a policy for another server asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSJdfSx7InN2YyI6WyJlZDI1NTE5OmlvZGZfeDZ6aEZGWGVzMWFfdVFGUldWbzNYeUo0SkNHT2dWWHZIcjBueGMiXX1dLCJpYXQiOjE3OTAwMDAwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoicG9sNCIsInN1YiI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSJ9LCJzIjoiM3lndFFqSHAwTG1ueEhjc1dTQVFiUWlfamJXb0FEMzhuX3hEYlFkdkoxREtBWWUyRk52OE81Q0VXOUNzdnY1NGJpN2NySm8weTBTWlVqYXdDMG9UQlEifV0",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "not valid for service ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E"
+      }
+    },
+    {
+      "name": "a policy for INTENT only asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSJdfSx7InZlcmJzIjpbIklOVEVOVCJdfV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2w1Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJJU2hCXzlqNGM4SHNzc1FfZ1Z6ZTRTSnBxbjNIeFlSWXZoMWUyanZxYUpIa2FCcFJCTXk1R0JvY2JBbW1uY0p0ckl6Y2NxdXQ5dVM2M3dlUTh5MmJCdyJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "does not allow COMMIT"
+      }
+    },
+    {
+      "name": "a policy issued to another key asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 3600
+          },
+          "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSJdfV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2w2Iiwic3ViIjoiZWQyNTUxOTppb2RmX3g2emhGRlhlczFhX3VRRlJXVm8zWHlKNEpDR09nVlh2SHIwbnhjIn0sInMiOiJ1NDktd0xvRzlrZGtPZTJMZ29FNDd5RGZoVl83XzEza0RtTWZIYnphd052VEJNNmlfWTJVLWRUVnFXQWRfOHZlX1NTbDNHZzRxZ0txVTFpMGYxdkRCQSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "proof key is not the grant holder"
+      }
+    },
+    {
+      "name": "over the risk ceiling asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move standup",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e1"
+              }
+            ],
+            "undoWindow": 60
+          },
+          "planHash": "UIstb--i53BhNVIkSbRYt1q5DSXuIGQmM2BHAO7IgTA",
+          "risk": "medium",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSJdfSx7InJpc2siOiJsb3cifV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2w3Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJBOUhHN3FwbjdfdVBSNWlnR0lRdlltMFA4Z0JEck9DSHdEd3B4SThmaDRDaHFvZlNJWVJqeG80RFhrcGR5ZHQtSGtDYXd6c3d4eUh3Q3o5MFQtRUNEZyJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "risk medium exceeds ceiling low"
+      }
+    },
+    {
+      "name": "an undo window without a revert asks",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "plan": {
+            "summary": "Move standup (the tool has no revert)",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e1"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "oss1Ot3FdI_7g559oEh247B2Z2Vchz9jxA0UgOPYO2g",
+          "risk": "low",
+          "undoable": false
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "reschedule can't be undone"
+      }
+    },
+    {
+      "name": "a repeated total reserves once with the smallest max",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7Im1heCI6Mywib2YiOiJlbWFpbHMifX0seyJ0b3RhbCI6eyJtYXgiOjIsIm9mIjoiZW1haWxzIn19XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDgiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldEd2s4SXNmWUFDaXFMNEptalF3VUJabVJxYUJmSGtUd0twUTZrOVgzRkUyQ1VJWUxxR0l3eG1FMXhwbTduSkJGRUVtWVUwcVJWZXlGWUhOcHdJSkJnIn1d",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails": {
+          "amount": 1
+        }
+      },
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+        "reserve": [
+          {
+            "key": {
+              "block": "0CrGCb94ZQAH5vZXJyKvatl96ydH7AHfC1JO7dse3kM",
+              "of": "emails"
+            },
+            "amount": "1000000000000000000",
+            "max": "2000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a repeated total at its smallest max asks",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7Im1heCI6Mywib2YiOiJlbWFpbHMifX0seyJ0b3RhbCI6eyJtYXgiOjIsIm9mIjoiZW1haWxzIn19XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDgiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldEd2s4SXNmWUFDaXFMNEptalF3VUJabVJxYUJmSGtUd0twUTZrOVgzRkUyQ1VJWUxxR0l3eG1FMXhwbTduSkJGRUVtWVUwcVJWZXlGWUhOcHdJSkJnIn1d",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails": {
+          "amount": 2
+        }
+      },
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "emails would pass the total limit of 2"
+      }
+    },
+    {
+      "name": "a unit mismatch asks",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 10.00 EUR to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "10.00 EUR"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 1000,
+                "scale": 2,
+                "unit": "EUR"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "-ssieiU9QiJKG6PkZqF-9-Uael2Fgz_M0XAtoJcC3Cc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "spend is in EUR, but the limit is in USD"
+      }
+    },
+    {
+      "name": "a malformed total in the policy asks",
+      "plans": [
+        {
+          "tool": "send_email",
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7Im1heCI6LTEsIm9mIjoiZW1haWxzIn19XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDkiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkZVS2xsLVRRMWdCS3FyN2o0Yk50U1M5LUtpNV9mX2V2MmtEbW00b3hRd0hJTWh2RWNMWWR6U3o1c2tmVmgwRHFUalRoWVdtMVZWQV91V0VuaHlhd0NRIn1d",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "malformed caveat {\"total\":{\"max\":-1,\"of\":\"emails\"}}"
+      }
+    }
+  ],
+  "phrases": [
+    {
+      "typed": "  Approve ",
+      "phrase": "approve",
+      "match": true
+    },
+    {
+      "typed": " old-nav﻿\t",
+      "phrase": "old-nav",
+      "match": true
+    },
+    {
+      "typed": "old-nav​",
+      "phrase": "old-nav",
+      "match": false
+    },
+    {
+      "typed": "café",
+      "phrase": "café",
+      "match": true
+    },
+    {
+      "typed": "STRASSE",
+      "phrase": "straße",
+      "match": false
+    },
+    {
+      "typed": "OLD-NAV",
+      "phrase": "old-nav",
+      "match": true
+    },
+    {
+      "typed": "old nav",
+      "phrase": "old-nav",
+      "match": false
+    },
+    {
+      "typed": " approve",
+      "phrase": "approve",
+      "match": false
+    },
+    {
+      "typed": "",
+      "phrase": "approve",
+      "match": false
+    },
+    {
+      "typed": "",
+      "phrase": "",
+      "match": false
+    },
+    {
+      "typed": " ",
+      "phrase": " \t",
+      "match": false
+    },
+    {
+      "typed": "approve",
+      "phrase": "approve",
+      "match": false
+    },
+    {
+      "typed": "approve\u001f",
+      "phrase": "approve",
+      "match": false
+    },
+    {
+      "typed": "İSTANBUL",
+      "phrase": "istanbul",
+      "match": false
+    },
+    {
+      "typed": "ΟΔΟΣ",
+      "phrase": "οδος",
+      "match": true
+    },
+    {
+      "typed": "ὈΔΥΣΣΕΎΣ",
+      "phrase": "ὀδυσσεύς",
+      "match": true
+    }
+  ],
+  "forms": [
+    {
+      "name": "one plan",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "spend over the per-commit limit of 25.00 USD",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: spend over the per-commit limit of 25.00 USD.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"approve\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ]
+      }
+    },
+    {
+      "name": "a high plan is held back",
+      "plans": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch old-nav (restorable at a1b2c3d)",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/old-nav"
+              }
+            ],
+            "undoWindow": 86400
+          },
+          "planHash": "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg",
+          "risk": "medium",
+          "undoable": true
+        },
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch main",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/main"
+              }
+            ],
+            "risk": "high",
+            "undoWindow": 86400
+          },
+          "planHash": "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA",
+          "risk": "high",
+          "undoable": true
+        }
+      ],
+      "why": "delete_branch can't be undone",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg": "old-nav",
+        "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA": "old-nav"
+      },
+      "expect": {
+        "message": "Approval needed: delete_branch can't be undone.\n\n[1] Delete branch old-nav (restorable at a1b2c3d)\n  - delete branch/old-nav\n  risk: medium · undo: 1d\n  to approve, type: old-nav\n[2] Delete branch main\n  - delete branch/main\n  risk: high · undo: 1d\n\nNot offered here (approve outside the chat): [2]",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"old-nav\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
+        ]
+      }
+    },
+    {
+      "name": "two plans offered",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        },
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "spend over the per-commit limit of 25.00 USD",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve",
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: spend over the per-commit limit of 25.00 USD.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve\n[2] Refund 20.00 USD to Chen\n  + create refund — 20.00 USD to card ••42\n  uses: spend 20.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "plan": {
+              "type": "string",
+              "title": "Plan",
+              "oneOf": [
+                {
+                  "const": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+                  "title": "Refund 30.00 USD to Chen"
+                },
+                {
+                  "const": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+                  "title": "Refund 20.00 USD to Chen"
+                }
+              ]
+            },
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type the chosen plan's phrase, shown next to it above."
+            }
+          },
+          "required": [
+            "plan",
+            "confirm"
+          ]
+        },
+        "offered": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc"
+        ]
+      }
+    },
+    {
+      "name": "a denied plan is listed apart",
+      "plans": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        },
+        {
+          "tool": "delete_customer",
+          "plan": {
+            "summary": "Delete customer Chen",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "customer/c9"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "spend over the per-commit limit of 25.00 USD",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve",
+        "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: spend over the per-commit limit of 25.00 USD.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve\n[2] Delete customer Chen\n  - delete customer/c9\n  risk: low · undo: 1m\n\nNever allowed by your policy: [2]",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"approve\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ]
+      }
+    },
+    {
+      "name": "nothing to offer",
+      "plans": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch main",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/main"
+              }
+            ],
+            "risk": "high",
+            "undoWindow": 86400
+          },
+          "planHash": "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA",
+          "risk": "high",
+          "undoable": true
+        },
+        {
+          "tool": "delete_customer",
+          "plan": {
+            "summary": "Delete customer Chen",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "customer/c9"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "risk is high, which needs approval outside the chat",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA": "old-nav",
+        "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8": "approve"
+      },
+      "expect": null
+    },
+    {
+      "name": "out of band and denied lines",
+      "plans": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch old-nav (restorable at a1b2c3d)",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/old-nav"
+              }
+            ],
+            "undoWindow": 86400
+          },
+          "planHash": "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg",
+          "risk": "medium",
+          "undoable": true
+        },
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch main",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/main"
+              }
+            ],
+            "risk": "high",
+            "undoWindow": 86400
+          },
+          "planHash": "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA",
+          "risk": "high",
+          "undoable": true
+        },
+        {
+          "tool": "delete_customer",
+          "plan": {
+            "summary": "Delete customer Chen",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "customer/c9"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "why": "delete_branch can't be undone",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg": "old-nav",
+        "93yz2zgppNRIB4SF0gBNjhItL8PVu0lkIa3bZHYtdfA": "old-nav",
+        "o3BUuvv2_QcB4lI8H7VtLYRrpe4vYoj7egYjBIRv1h8": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: delete_branch can't be undone.\n\n[1] Delete branch old-nav (restorable at a1b2c3d)\n  - delete branch/old-nav\n  risk: medium · undo: 1d\n  to approve, type: old-nav\n[2] Delete branch main\n  - delete branch/main\n  risk: high · undo: 1d\n[3] Delete customer Chen\n  - delete customer/c9\n  risk: low · undo: 1m\n\nNot offered here (approve outside the chat): [2]\n\nNever allowed by your policy: [3]",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"old-nav\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
+        ]
+      }
+    },
+    {
+      "name": "an empty phrase falls back to approve",
+      "plans": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch old-nav (restorable at a1b2c3d)",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/old-nav"
+              }
+            ],
+            "undoWindow": 86400
+          },
+          "planHash": "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg",
+          "risk": "medium",
+          "undoable": true
+        }
+      ],
+      "why": "delete_branch can't be undone",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg": "  "
+      },
+      "expect": {
+        "message": "Approval needed: delete_branch can't be undone.\n\n[1] Delete branch old-nav (restorable at a1b2c3d)\n  - delete branch/old-nav\n  risk: medium · undo: 1d\n  to approve, type: approve",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"approve\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
+        ]
+      }
+    }
+  ],
+  "states": [
+    {
+      "name": "a good state",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "now": 1790000000
+      },
+      "valid": true
+    },
+    {
+      "name": "another tool",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "delete_branch",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "now": 1790000000
+      },
+      "valid": false
+    },
+    {
+      "name": "other input",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "refund",
+        "inputHash": "x",
+        "sub": "",
+        "now": 1790000000
+      },
+      "valid": false
+    },
+    {
+      "name": "another principal",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "client-2",
+        "now": 1790000000
+      },
+      "valid": false
+    },
+    {
+      "name": "expired",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "now": 1790000600
+      },
+      "valid": false
+    },
+    {
+      "name": "missing nonce",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "now": 1790000000
+      },
+      "valid": false
+    },
+    {
+      "name": "wrong version",
+      "state": {
+        "v": 2,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "H1"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "expect": {
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "now": 1790000000
+      },
+      "valid": false
+    },
+    {
+      "name": "not an object",
+      "state": "x",
+      "expect": {
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "now": 1790000000
+      },
+      "valid": false
+    }
+  ],
+  "judge": [
+    {
+      "name": "the right phrase runs",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": " APPROVE "
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "kind": "run",
+        "plan": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+      }
+    },
+    {
+      "name": "decline",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "decline"
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "kind": "not-approved"
+      }
+    },
+    {
+      "name": "cancel",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "cancel"
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "kind": "not-approved"
+      }
+    },
+    {
+      "name": "a bare accept",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept"
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "kind": "ask-again",
+        "why": "type \"approve\" exactly to approve",
+        "round": 2
+      }
+    },
+    {
+      "name": "a wrong phrase asks again",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch old-nav (restorable at a1b2c3d)",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/old-nav"
+              }
+            ],
+            "undoWindow": 86400
+          },
+          "planHash": "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg",
+          "risk": "medium",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg": "old-nav"
+      },
+      "expect": {
+        "kind": "ask-again",
+        "why": "type \"old-nav\" exactly to approve",
+        "round": 2
+      }
+    },
+    {
+      "name": "a third wrong phrase refuses",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg"
+        ],
+        "round": 3,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "yes"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "delete_branch",
+          "plan": {
+            "summary": "Delete branch old-nav (restorable at a1b2c3d)",
+            "effects": [
+              {
+                "op": "delete",
+                "target": "branch/old-nav"
+              }
+            ],
+            "undoWindow": 86400
+          },
+          "planHash": "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg",
+          "risk": "medium",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Xfu3tygP0jGNGPVu7RvoO6gEAbd2puRFNRPHhHx12hg": "old-nav"
+      },
+      "expect": {
+        "kind": "refuse",
+        "why": "not approved after 3 tries"
+      }
+    },
+    {
+      "name": "a plan that was not offered",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "plan": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        },
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve",
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "kind": "refuse",
+        "why": "that plan was not offered"
+      }
+    },
+    {
+      "name": "choosing among two",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "plan": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        },
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve",
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "kind": "run",
+        "plan": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc"
+      }
+    },
+    {
+      "name": "two offered and no choice",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        },
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve",
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "kind": "refuse",
+        "why": "that plan was not offered"
+      }
+    },
+    {
+      "name": "the plans changed",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "kind": "ask-again",
+        "why": "the plans changed; choose again",
+        "round": 2
+      }
+    },
+    {
+      "name": "the plans changed on the last round",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 3,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 20.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "20.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 2000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
+      },
+      "expect": {
+        "kind": "refuse",
+        "why": "not approved after 3 tries"
+      }
+    },
+    {
+      "name": "a tool denied since",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "refund"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "kind": "denied",
+        "why": "your policy never allows refund"
+      }
+    },
+    {
+      "name": "a chosen plan now out of band",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "low",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "approve"
+      },
+      "expect": {
+        "kind": "out-of-band",
+        "plan": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+      }
+    },
+    {
+      "name": "an empty phrase falls back to approve: an empty answer asks again",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": ""
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": " "
+      },
+      "expect": {
+        "kind": "ask-again",
+        "why": "type \"approve\" exactly to approve",
+        "round": 2
+      }
+    },
+    {
+      "name": "an empty phrase falls back to approve: approve runs",
+      "state": {
+        "v": 1,
+        "tool": "refund",
+        "inputHash": "du1iyVbfcqcoI7mv6ij1Wq8Z09XyJuZbAZq5MykRsGc",
+        "sub": "",
+        "plans": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+        ],
+        "round": 1,
+        "nonce": "n_x",
+        "exp": 1790000600
+      },
+      "answer": {
+        "action": "accept",
+        "content": {
+          "confirm": "approve"
+        }
+      },
+      "recomputed": [
+        {
+          "tool": "refund",
+          "plan": {
+            "summary": "Refund 30.00 USD to Chen",
+            "effects": [
+              {
+                "op": "create",
+                "target": "refund",
+                "detail": "30.00 USD to card ••42"
+              }
+            ],
+            "uses": {
+              "spend": {
+                "amount": 3000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            },
+            "risk": "low",
+            "undoWindow": 60
+          },
+          "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": " "
+      },
+      "expect": {
+        "kind": "run",
+        "plan": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4"
+      }
+    }
+  ],
+  "tightening": [
+    {
+      "name": "defaults",
+      "file": {},
+      "expect": {
+        "deny": [],
+        "outOfBand": "high",
+        "warnings": []
+      }
+    },
+    {
+      "name": "deny and outOfBand",
+      "file": {
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "medium"
+      },
+      "expect": {
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "medium",
+        "warnings": []
+      }
+    },
+    {
+      "name": "unknown fields are ignored",
+      "file": {
+        "deny": [
+          "x"
+        ],
+        "can": [
+          "*"
+        ]
+      },
+      "expect": {
+        "deny": [
+          "x"
+        ],
+        "outOfBand": "high",
+        "warnings": [
+          "ignored \"can\": unknown field"
+        ]
+      }
+    },
+    {
+      "name": "a bad outOfBand is ignored",
+      "file": {
+        "outOfBand": "never"
+      },
+      "expect": {
+        "deny": [],
+        "outOfBand": "high",
+        "warnings": [
+          "ignored \"outOfBand\": bad value"
+        ]
+      }
+    },
+    {
+      "name": "a bad deny is ignored",
+      "file": {
+        "deny": "x"
+      },
+      "expect": {
+        "deny": [],
+        "outOfBand": "high",
+        "warnings": [
+          "ignored \"deny\": bad value"
+        ]
+      }
+    },
+    {
+      "name": "not an object",
+      "file": [
+        "x"
+      ],
+      "expect": {
+        "deny": [],
+        "outOfBand": "high",
+        "warnings": [
+          "the policy file is not a JSON object; ignored"
+        ]
+      }
+    }
+  ],
+  "consents": {
+    "plan": {
+      "tool": "refund",
+      "plan": {
+        "summary": "Refund 30.00 USD to Chen",
+        "effects": [
+          {
+            "op": "create",
+            "target": "refund",
+            "detail": "30.00 USD to card ••42"
+          }
+        ],
+        "uses": {
+          "spend": {
+            "amount": 3000,
+            "scale": 2,
+            "unit": "USD"
+          }
+        },
+        "risk": "low",
+        "undoWindow": 60
+      },
+      "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+      "risk": "low",
+      "undoable": true
+    },
+    "cases": [
+      {
+        "name": "a consent for this plan",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkZmbm05enNJTkRuNHhBa0FJMjdJc0FRX3J2U1I4VXloOEs5ZXZ1N05Cd1VrWUUyaUE0X3ItOGhqdElxWlgwencyd0RDV2Ixc0tlRHZ5YWdrUVAtRkJBIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": true,
+          "id": "gvvqI6rkJ3xhEeTpcLzWL4455Mh74zt8J002A9QKV-s"
+        }
+      },
+      {
+        "name": "a consent delegated by the server key onto the policy grant",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9LHsicCI6eyJjYXZlYXRzIjpbeyJvbmx5IjoiVVBwV0x4UWNjQzVDa2pfZ2o5ZGt2YjdvdXJIYW9QeWt1SFJtOHg1Q1B5NCJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwicHJldiI6ImNSdnlWdUZTRHZGbVhWR3ZNQU9ySktxR29qVzdrdk43THhIdVViZE5RRzgiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6Ik5FdkdyRF9iSlRmbXItNmFTUlhnNnBNTFJ4aHREdGg2SFdqaDRyNm51UWFJUlhrNlBRZV83RG5ULW5oNkVOLWJ1VXB2S2ZsMDNCSmhkS0VFNkZEV0RRIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this plan"
+        }
+      },
+      {
+        "name": "the policy grant copied into the store",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this plan"
+        }
+      },
+      {
+        "name": "a consent for another plan",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJPVEhFUiJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJjLU9USEVSLTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldQT2dNaWhjYmlZV1E1VGhCQTBXWTFoNjFKRVA5a3FNa0RDbkFjT1d4TTBfSDRHelAySXZvaGRfQmVTRlFrcFNkZG5jQnpIQ2RPVVMtVmlVa3lSZ0FBIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this plan"
+        }
+      },
+      {
+        "name": "an expired consent",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkZmbm05enNJTkRuNHhBa0FJMjdJc0FRX3J2U1I4VXloOEs5ZXZ1N05Cd1VrWUUyaUE0X3ItOGhqdElxWlgwencyd0RDV2Ixc0tlRHZ5YWdrUVAtRkJBIn1d",
+        "now": 1790000600,
+        "expect": {
+          "ok": false,
+          "why": "grant has expired"
+        }
+      },
+      {
+        "name": "a consent from another principal",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvZGZfeDZ6aEZGWGVzMWFfdVFGUldWbzNYeUo0SkNHT2dWWHZIcjBueGMiLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6InZmZ050VmtRMHlxUlg0QmhzeEdsdllCTURBUmxPZEZtSnJ2X2tWU1hCMF9VM1A2cm5LbkJvR1hwVU91WVdQN2dObElsaHhyQlE0SWpocVUxTFF3NkNnIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "grant is issued by a principal this service does not trust"
+        }
+      },
+      {
+        "name": "not a grant at all",
+        "grant": "pg1.bm9wZQ",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this plan"
+        }
+      }
+    ]
+  },
+  "consentCode": {
+    "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+    "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+    "input": {
+      "who": "Chen",
+      "n": 2
+    },
+    "plan": {
+      "tool": "refund",
+      "plan": {
+        "summary": "Refund 30.00 USD to Chen",
+        "effects": [
+          {
+            "op": "create",
+            "target": "refund",
+            "detail": "30.00 USD to card ••42"
+          }
+        ],
+        "uses": {
+          "spend": {
+            "amount": 3000,
+            "scale": 2,
+            "unit": "USD"
+          }
+        },
+        "risk": "low",
+        "undoWindow": 60
+      },
+      "planHash": "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+      "risk": "low",
+      "undoable": true
+    },
+    "phrase": "approve",
+    "now": 1790000000,
+    "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0IiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+  },
+  "fileStore": {
+    "ops": [
+      "consumeOnce(\"n_1\", now + 600)",
+      "reserve({block: policyBlockId, of: \"emails\"}, 5, 10), then settle it",
+      "putConsent(<refund plan hash>, \"pg1.example\")",
+      "claimUndo(\"r_AAAAAAAAAAAA\"), then markUndone"
+    ],
+    "files": {
+      "consents/UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "pg1.example",
+      "consumed/WDKSoRuiQ4FKzxcrRUH-G1gXsfj5_6UGiyP1fzmW1Ac": "1790000600",
+      "ledger/cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8/emails.json": "{\"settled\":\"5\",\"reserved\":{}}",
+      "undo/r_AAAAAAAAAAAA.claim": "*",
+      "undo/r_AAAAAAAAAAAA.done": ""
+    }
+  }
+}

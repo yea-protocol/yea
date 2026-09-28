@@ -1177,4 +1177,5 @@ out(
     '  lead\n    deep\n z',
   ].map((text) => ({ text, est: P.est(text) })),
 );
+out('approval', (await import('./approval-vectors.mjs')).approval);
 console.log('vectors written');

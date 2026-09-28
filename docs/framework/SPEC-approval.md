@@ -120,9 +120,10 @@ approval, on every path (auto-run, the form, and `yea approve`).
 
 A plan runs without asking only when **all** of these hold:
 
-1. a valid signed policy authorizes a `COMMIT` of the tool at this server: its `can` covers
-   the tool name, its `svc` (if any) includes the server's service id, its `verbs` (if any)
-   include `COMMIT`, and it hasn't expired;
+1. a valid signed policy authorizes a `COMMIT` of the tool at this server: it has a `can`
+   caveat, which covers the tool name (a grant with no `can` covers every tool, so a policy
+   must name its tools), its `svc` (if any) includes the server's service id, its `verbs` (if
+   any) include `COMMIT`, and it hasn't expired at the time of the call;
 2. its risk is at most the `risk` caveat, and below `outOfBand` (default `high`);
 3. **it can be undone**: it has an `undoWindow` and the tool has `revert` (§7);
 4. what it `uses` fits every `each` and `total` limit, by SPEC.md §6.3's rules (units match
@@ -185,8 +186,11 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
   makes them read it. A tool can name a phrase for each plan with
   `confirmWith(plan, input): string`, the way GitHub asks you to type a repository's name
   before deleting it: the branch name, the recipient, the amount as written in the summary.
-  If the tool names none, the phrase is `approve`. The field's description shows the exact
-  phrase; with several plans, the message names each plan's phrase next to it.
+  If the tool names none, or names one that is empty once normalized, the phrase is
+  `approve`. The field's description shows the exact phrase; with several plans, the message
+  names each plan's phrase next to it. Denied plans are listed apart as never allowed, and
+  when no plan can be offered at all, there is no form: the call fails closed with consent
+  codes (§6).
 
 An accepted form counts as approval **only** when `confirm` matches the phrase: both sides are
 NFC-normalized, then stripped of leading and trailing characters in **exactly** this set:
@@ -276,19 +280,28 @@ chosen plan at or above `outOfBand`, then returns an error result with:
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
 plan's details. For a job, its fields are `proposal` and `hash` = the plan hash, `service` =
 the server's service id, `capability` = the tool, `principal` = the pinned principal key,
-`summary`, and `expires` = now + 10 minutes. Its `detail` is the full plan-hash preimage
-(`tool`, `input`, `summary`, `effects`, `uses`, `risk`, `undoWindow`).
+`summary`, and `expires` = now + 10 minutes. Its `detail` is `{ job, phrase }`: `job` is the
+full plan-hash preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`,
+`undoWindow`), and `phrase` is what the person types. Nothing outside `job` is trusted: the
+phrase only checks that the person read the plan.
 
 `yea approve <code>`:
-1. recomputes the plan hash from the preimage and refuses on a mismatch;
-2. shows the plan in Lens, never only a summary;
-3. asks the person to type the plan's phrase (§3), the same check as the form;
+1. recomputes the plan hash from the preimage, and refuses if it doesn't equal the code's
+   `hash` and `proposal`, if the code's `capability` isn't the plan's `tool`, or if the code
+   has expired; it caps `expires` at 10 minutes from now, whatever the code says;
+2. shows the plan, never only a summary, with control characters and bidi overrides escaped
+   so the text can't rewrite what the person reads;
+3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
+   phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
    with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: planHash}, {exp}]`, and
-   saves it in the store under the plan hash.
+   saves it in the store under the plan hash (`YEA_STORE`, else `~/.yea/store`).
 
-On the next identical call, the server looks up a consent for each recomputed plan's hash,
-verifies it against the pinned principal key (§2), consumes it with
+On the next identical call, the server looks up a consent for each recomputed plan's hash
+and checks it: it must be a single root block that itself carries `only` = that plan hash
+and an `exp` (so neither a copied policy grant nor a block the server's key appended to one
+ever counts), and pass the grant check as a `COMMIT` of the tool at this server, signed by
+the pinned principal key (§2). It then consumes it with
 `consumeOnce(<consent grant id>, exp)`, and runs that plan. Consents are keyed by plan hash,
 not by code, so a fresh code for the same plan still finds them; a consumed or expired one
 counts as absent, and the server issues fresh codes. Denied tools and plans that aren't
@@ -355,17 +368,30 @@ cases so the TypeScript and Python servers and the `yea` command share one store
 
 ```
 consumed/<b64url(sha256(id))>        empty marker, created with O_EXCL; holds exp as text
-undo/<receipt id>.claim, .done       markers, created with O_EXCL
-receipts/<receipt id>.json           the JobReceipt, canonical JSON
+undo/<receipt id>.claim, .done       markers, created with O_EXCL; the claim holds a random token and stays after done
+receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
 ```
 
-Ledger files are updated under an exclusive lock file (`<of>.lock`, `O_EXCL`, retried), and
-bigints are written as decimal strings. Expired markers may be removed after `exp`.
+Ledger files are `{"settled": "<decimal>", "reserved": {"<v_ id>": "<decimal>"}}`, updated under
+an exclusive lock file (`<of>.lock` beside them, `O_EXCL`, retried every 10 ms for up to 2 s,
+then a store error). The lock holds a random token: its holder re-checks the token before and
+after writing, deletes the lock only if it still holds it, and reports a store error (nothing
+runs) if the token changed. A lock older than 30 s is stale: a waiter reads its token, renames
+it aside, and deletes it only if the moved file still holds that token; otherwise it links it
+back. Undo claims hold a token too, and one older than 10 minutes with no `done` marker (the
+process died) may be claimed again the same way. A holder paused for more than 30 s between
+its checks is the one case lock files can't fully close; the check after writing turns it
+into a store error instead of a silent overshoot. Files are written to a uniquely named temp file
+(`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids
+are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be
+removed after `exp`.
 
 ## 9. Security
 
+- **The key file check fails closed.** The plugin refuses the pinned key when it runs as root
+  (root can write anything) and on platforms where it can't check file ownership.
 - **Keep the agent away from three things.** The principal key (or it signs for itself), the
   pinned principal public key (or it swaps in its own), and the store (or it resets totals,
   deletes a `consumeOnce` marker to replay a consent within its `exp`, or deletes receipts).
