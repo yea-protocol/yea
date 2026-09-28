@@ -49,14 +49,11 @@ export const RATCHET = {
   'python/src/yea/service.py': ['length'], // #108: split
   'python/src/yea/store.py': ['length'], // #108: split
   'site/.vitepress/theme/components/Landing.vue': ['length'], // #108: split
-  'ts/src/approval.ts': ['length'], // #108: split
   'ts/src/ask.ts': ['length'], // #108: split
-  'ts/src/client.ts': ['length'], // #108: split
   'ts/src/examples/billing.ts': ['length'], // #108: split
   'ts/src/examples/calendar.ts': ['length'], // #108: split
   'ts/src/examples/demo.ts': ['length'], // #108: split
   'ts/src/filestore.ts': ['length', 'name'], // #108: file-store/ split
-  'ts/src/grants.ts': ['length'], // #108: split
   'ts/src/keyfile.ts': ['name'], // #108: rename to key-file.ts
   'ts/src/lens.ts': ['length'], // #108: split
   'ts/src/openapi.ts': ['length'], // #108: split
