@@ -1,5 +1,7 @@
-// `yea mcp [<url> …]`: YEA services as MCP tools over stdio, one per capability
-// (docs/framework/SPEC-bridge.md). With no URLs it serves the services added with `yea add`.
+/**
+ * `yea mcp [<url> …]`: YEA services as MCP tools over stdio, one per capability
+ * (docs/framework/SPEC-bridge.md). With no URLs it serves the services added with `yea add`.
+ */
 import { parseArgs } from 'node:util';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { bridge } from '@yea-protocol/mcp/bridge';

@@ -12,9 +12,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
-      - name: lint (Biome), style (oxlint) and the site's types (vue-tsc)
+      - name: lint (Biome), style (oxlint), structure and the site's types (vue-tsc)
         if: matrix.node == 22
-        run: npm run lint && npm run lint:style && npm run typecheck:site
+        run: npm run lint && npm run lint:style && npm run lint:structure && npm run typecheck:site
       - run: npm run build
       - run: npm test
         env:

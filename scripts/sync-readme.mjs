@@ -1,5 +1,7 @@
-// Copies the root README into ts/ (npm) with relative links made absolute, so the npm
-// page renders images and links correctly. Runs before `npm publish`.
+/**
+ * Copies the root README into ts/ (npm) with relative links made absolute, so the npm
+ * page renders images and links correctly. Runs before `npm publish`.
+ */
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const RAW = 'https://raw.githubusercontent.com/yea-protocol/yea/main/';

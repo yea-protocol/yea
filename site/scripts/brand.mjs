@@ -1,4 +1,4 @@
-// Copy docs/brand into site/public/brand so the site always ships the repo's brand files.
+/** Copy docs/brand into site/public/brand so the site always ships the repo's brand files. */
 import { cpSync, existsSync, mkdirSync } from 'node:fs';
 
 const src = new URL('../../docs/brand/', import.meta.url),

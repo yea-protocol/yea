@@ -50,6 +50,7 @@
         "useMaxParams": "error"
       },
       "style": {
+        "noDefaultExport": "error",
         "noNonNullAssertion": "error",
         "useConsistentTypeDefinitions": {
           "level": "error",
@@ -78,6 +79,22 @@
           "correctness": {
             "noUnusedImports": "off",
             "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "site/.vitepress/config.ts",
+        "site/.vitepress/theme/index.ts",
+        "**/vitest.config.ts",
+        "deploy/demo/src/worker.ts",
+        "examples/worker.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
           }
         }
       }

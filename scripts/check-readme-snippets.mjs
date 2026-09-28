@@ -1,6 +1,8 @@
-// Fails when a README snippet drifts from the example it was copied from. GitHub can't
-// include files, so the README copies code; a `<!-- snippet: path#region -->` line marks the
-// fenced block after it as a copy of that region, extracted the way VitePress's `<<<` does.
+/**
+ * Fails when a README snippet drifts from the example it was copied from. GitHub can't
+ * include files, so the README copies code; a `<!-- snippet: path#region -->` line marks the
+ * fenced block after it as a copy of that region, extracted the way VitePress's `<<<` does.
+ */
 import { readFileSync } from 'node:fs';
 
 const root = new URL('../', import.meta.url);

@@ -1,3 +1,4 @@
+/** The public API of `@yea-protocol/sdk`: everything the package's main entry exports. */
 export {
   assertIntegers,
   checkJobConsent,

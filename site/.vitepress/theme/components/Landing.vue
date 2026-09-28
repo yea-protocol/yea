@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/** The landing page: the hero's animated YEA exchange, and the sections below it. */
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { withBase } from "vitepress";
 

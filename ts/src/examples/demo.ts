@@ -1,6 +1,8 @@
-// A narrated, end-to-end YEA session over real TCP.  Run:  npm run demo
-// A human (the principal) delegates to an agent with a policy; the agent does real work
-// against two services; one purchase exceeds the policy and needs the human's consent.
+/**
+ * A narrated, end-to-end YEA session over real TCP.  Run:  npm run demo
+ * A human (the principal) delegates to an agent with a policy; the agent does real work
+ * against two services; one purchase exceeds the policy and needs the human's consent.
+ */
 import type { AddressInfo, Server } from 'node:net';
 import {
   type Answer,

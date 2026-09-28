@@ -1,7 +1,9 @@
-// Subscription billing that speaks YEA: the worked example in the service design guide
-// (site/guide/service-design.md). It covers the jobs a support or finance agent does with
-// a payments API such as Stripe's: look a customer up, refund, change plan, cancel. Here
-// they're designed as outcomes instead of resources. The data is made up.
+/**
+ * Subscription billing that speaks YEA: the worked example in the service design guide
+ * (site/guide/service-design.md). It covers the jobs a support or finance agent does with
+ * a payments API such as Stripe's: look a customer up, refund, change plan, cancel. Here
+ * they're designed as outcomes instead of resources. The data is made up.
+ */
 import {
   clarify,
   create,

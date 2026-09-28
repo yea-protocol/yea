@@ -1,7 +1,9 @@
-// Hosted YEA demo: the example calendar and shop, one private copy per agent key.
-//   https://<worker>/calendar/yea   https://<worker>/shop/yea   (+ /.well-known/yea)
-// Each agent key (from the request's proof) gets its own Durable Object, so demo users never
-// see each other's data. The demo trusts any principal, so bring your own keys (`yea init`).
+/**
+ * Hosted YEA demo: the example calendar and shop, one private copy per agent key.
+ *   https://<worker>/calendar/yea   https://<worker>/shop/yea   (+ /.well-known/yea)
+ * Each agent key (from the request's proof) gets its own Durable Object, so demo users never
+ * see each other's data. The demo trusts any principal, so bring your own keys (`yea init`).
+ */
 import { DurableObject } from 'cloudflare:workers';
 import { fetchHandler, type Service } from '@yea-protocol/sdk';
 import { calendar, shop } from '@yea-protocol/sdk/examples';

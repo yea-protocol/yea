@@ -1,4 +1,6 @@
-// Runtime-neutral (Workers, Bun, Deno, browsers). The Node-only narrated demo is at @yea-protocol/sdk/demo.
+/**
+ * Runtime-neutral (Workers, Bun, Deno, browsers). The Node-only narrated demo is at @yea-protocol/sdk/demo.
+ */
 
 export { billing } from './billing.js';
 export { calendar } from './calendar.js';
