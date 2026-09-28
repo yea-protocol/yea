@@ -113,7 +113,8 @@ def test_key_file_owned_or_writable_by_this_user_is_refused(tmp_path):
     f = tmp_path / "principal.pub"
     f.write_text(PRINCIPAL.public)
     why = check_key_file(f)
-    assert why is not None and "owned by this server's user" in why
+    # Refused either for the file itself or for a directory above it (on Linux, /tmp is world-writable).
+    assert why is not None and ("owned by this server's user" in why or "writable by this server's user" in why)
     assert check_key_file(tmp_path / "missing.pub") is not None
 
 
@@ -582,7 +583,7 @@ def test_an_intermediate_symlink_in_a_writable_directory_is_refused(tmp_path):
 def test_load_principal_key_refuses_a_reachable_file(tmp_path):
     f = tmp_path / "principal.pub"
     f.write_text(PRINCIPAL.public + "\n")
-    with pytest.raises(ValueError, match="owned by this server's user"):
+    with pytest.raises(ValueError, match="(owned|writable) by this server's user"):
         load_principal_key(f)
 
 
