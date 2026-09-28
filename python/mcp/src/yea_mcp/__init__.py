@@ -119,6 +119,8 @@ class Approvals:
 
         def register(plan_fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or plan_fn.__name__
+            if revert is not None:
+                self._undo_free(server)
             job = JobDef(tool_name, risk, revert, confirm_with)
 
             async def run(input: dict, plan: Any, preview: bool, ctx: Context) -> Any:
@@ -142,7 +144,7 @@ class Approvals:
 
     def guard(self, server: Any, name: str, *, describe: Callable[[dict], Any],
               revert: Callable[..., Any] | None = None,
-              confirm_with: Callable[[HashedPlan, dict], str] | None = None) -> None:
+              confirm_with: Callable[[HashedPlan, dict], str] | None = None, risk: str | None = None) -> None:
         """Turn the tool ``name`` already registered on ``server`` into a job, without touching it."""
         mw = self._guards.get(server)
         if mw is None:
@@ -153,9 +155,16 @@ class Approvals:
                 server.middleware.insert(0, mw)  # first, so no other middleware can run the tool before it's wrapped
             else:
                 server.middleware.append(mw)
-        mw.add(name, Guarded(describe, revert, confirm_with))
+        if revert is not None:
+            self._undo_free(server)
+        mw.add(name, Guarded(describe, revert, confirm_with, risk))
         if revert is not None:
             self._undo_for(server)[name] = revert
+
+    def _undo_free(self, server: Any) -> None:
+        """Refuse, before registering anything, a server whose ``undo`` tool isn't ours (as mcp-ts)."""
+        if server not in self._reverts and _has_tool(server, "undo"):
+            raise ValueError("this server already has a tool named undo; a job with revert needs YEA's undo tool")
 
     def _undo_for(self, server: Any) -> dict[str, Callable[..., Any]]:
         """The ``undo`` tool, registered once per server, the first time a job with ``revert`` is added."""
@@ -186,6 +195,15 @@ def _fastmcp(server: Any) -> Any:
     from . import fastmcp
 
     return fastmcp
+
+
+def _has_tool(server: Any, name: str) -> bool:
+    """Whether ``server`` already has a tool ``name``. The SDKs' lookups are async and job()/guard()
+    aren't, so this reads each SDK's registry (a provisional seam, like ``server.middleware``)."""
+    if (fm := _fastmcp(server)) is not None:
+        return fm.has_tool(server, name)
+    manager = getattr(server, "_tool_manager", None)
+    return manager is not None and manager.get_tool(name) is not None
 
 
 def _as_dict(a: t.ToolAnnotations | dict | None) -> dict:

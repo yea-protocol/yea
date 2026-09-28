@@ -127,8 +127,10 @@ keyword-only `ctx: Context`, with matching `__annotations__` (the SDK finds the 
 parameter through `typing.get_type_hints`, so both are needed) and the return annotation
 `CallToolResult`. The listed schema then shows `preview`, the SDK validates the rest, and the
 wrapper takes `preview` off before calling the plan function. A plan function with its own
-`preview` parameter, or with `*args`/`**kwargs`, fails registration. A tool with background
-tasks enabled (FastMCP `task=True`) is refused too, until that path is checked.
+`preview` parameter, or with `*args`/`**kwargs`, fails registration. On FastMCP a job tool is
+built with background tasks off (FastMCP's default), so it never runs as a task. A job with
+`revert` on a server that already has a tool named `undo` (not YEA's) fails registration, as in
+`mcp-ts`.
 
 **What `input` is.** The SDK hands the wrapper validated Python objects (a pydantic model, a
 `date`, an enum). The approval core needs JSON, for the plan hash, the consent code, the
@@ -142,9 +144,12 @@ with the core's "use a string or an integer" message (SPEC-approval §1).
 
 Turns a tool that's already registered into a job without rewriting it. `config` has
 `describe(input)`, which returns `{summary, effects, uses?, risk?, undo_window?}`, plus the
-optional `revert` and `confirm_with`.
+optional `revert`, `confirm_with` and `risk` (the default plan risk, and the risk its listing
+shows, as `mcp-ts`'s `GuardConfig.risk`).
 
-`guard()` refuses a tool that's already guarded on that server. It installs the plugin's
+`guard()` refuses a tool that's already guarded on that server, and one registered with `job()`
+(already a job: on `MCPServer` its calls are refused, since the listing is read per call). Like
+`job()`, a guard with `revert` refuses a server whose `undo` tool isn't YEA's. It installs the plugin's
 middleware on **that** server, once (`server.middleware` is a
 public list the SDK lets you extend after construction). So a guard can't be forgotten or
 attached to the wrong server: the middleware only acts on `server`, and only for tools guarded
@@ -409,7 +414,9 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
 - the start-up and per-call refusals listed under `yea()`;
 - a legacy stateless HTTP request takes the consent-code path;
 - FastMCP: a transform over a guarded tool is refused at call time, and a task-enabled tool is
-  refused by `job()` and `guard()`.
+  refused by `guard()`;
+- `guard()` refuses a `job()` tool, and a job or guard with `revert` refuses a server with its own
+  `undo` tool.
 
 Security cases in `test_security.py`, the approval core's list from the MCP side; any fix that
 lands in the SDK core also gets its regression test in the core's security tests (repo rule 3):

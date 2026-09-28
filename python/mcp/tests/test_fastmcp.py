@@ -368,3 +368,24 @@ async def test_the_same_function_under_another_name_is_refused(world, fm):
     async with Client(fm) as c:
         r = await c.call_tool("erase", {"target": "db"}, raise_on_error=False)
     assert r.is_error and "same function as a guarded tool" in text(r) and calls == []
+
+
+async def test_fastmcp_refuses_guarding_a_job_tool_and_a_taken_undo(world, fm):
+    """The FastMCP adapter applies the same two refusals as MCPServer (#151)."""
+    @world.approvals.job(fm, risk="low")
+    async def move(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: None)]
+
+    world.approvals.guard(fm, "move", describe=lambda a: {"summary": "Move", "effects": []})
+    async with Client(fm) as c:
+        r = await c.call_tool("move", {"event": "e1"}, raise_on_error=False)
+    assert r.is_error and "already a job tool" in text(r)
+
+    other = FastMCP("other", request_state_security=world.approvals.request_state_security())
+
+    @other.tool
+    def undo(receipt: str) -> str:
+        return "mine"
+
+    with pytest.raises(ValueError, match="already has a tool named undo"):
+        world.approvals.job(other, revert=lambda r, ctx: None)(lambda event: [])
