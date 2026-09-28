@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import mcp_types as t
 import pytest
-from mcp.server.mcpserver import MCPServer
-
 from conftest import MODES, Person, text
+from mcp.server.mcpserver import MCPServer
+from yea import Plan, create
 
 pytestmark = pytest.mark.anyio
 
@@ -130,3 +130,85 @@ async def test_guarding_one_server_doesnt_guard_another(world):
     async with Client(other, mode="auto") as c:
         r = await c.call_tool("delete_branch", {"branch": "x"})
     assert not r.is_error and calls == [("other", "x")]
+
+
+async def test_guarding_a_job_tool_is_refused(world, tmp_path):
+    """A job() tool is already guarded: a second routine around it would ask twice (#151, as mcp-ts).
+    Its own job() tools are refused at once; one registered another way, by what the listing says."""
+    from yea_mcp import yea
+
+    done = []
+
+    @world.approvals.job(world.server, risk="low")
+    async def move(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event))]
+
+    with pytest.raises(ValueError, match="guard\\(\\): move is already a job tool"):
+        world.approvals.guard(world.server, "move", describe=lambda a: {"summary": "Move", "effects": []})
+
+    other = yea(name="other", transport="stdio", store=world.store, server_key=tmp_path / "other.key")
+    other.guard(world.server, "move", describe=lambda a: {"summary": "Move", "effects": []})
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("move", {"event": "e1"})
+    assert r.is_error and "guard(): move is already a job tool; nothing was run" in text(r) and done == []
+
+
+async def test_guard_risk_is_the_default_plan_risk_and_what_the_listing_shows(world):
+    @world.server.tool()
+    async def wipe(target: str) -> str:
+        return "wiped"
+
+    world.approvals.guard(world.server, "wipe", risk="high", describe=lambda a: {"summary": "Wipe", "effects": []})
+    async with world.client("auto") as c:
+        listed = {tool.name: tool for tool in (await c.list_tools()).tools}
+        pv = await c.call_tool("wipe", {"target": "x", "preview": True})
+    assert listed["wipe"].meta["dev.yea/job"]["risk"] == "high"
+    assert pv.structured_content["plans"][0]["risk"] == "high"
+
+
+async def test_a_tool_re_registered_after_a_listing_is_read_again(world):
+    """The listing is re-read after each tools/list, so a re-registered tool isn't judged by stale info."""
+    @world.server.tool()
+    async def publish(target: str) -> str:
+        return "published"
+
+    world.approvals.guard(world.server, "publish", describe=lambda a: {"summary": "Publish", "effects": []})
+    async with world.client("auto", Person(["decline"])) as c:
+        first = await c.call_tool("publish", {"target": "x"})  # learns the listing
+        world.server.remove_tool("publish")
+
+        @world.server.tool()
+        async def publish(target: str, preview: bool = False) -> str:  # noqa: F811 — now with its own preview
+            return "published"
+
+        await c.list_tools()
+        second = await c.call_tool("publish", {"target": "x"})
+    assert first.is_error and "not approved" in text(first)
+    assert second.is_error and "own preview argument" in text(second)
+
+
+def test_a_revert_needs_the_undo_name_free(world):
+    """As mcp-ts: a job or guard with revert refuses a server whose undo tool isn't YEA's (#151)."""
+    @world.server.tool()
+    async def undo(receipt: str) -> str:
+        return "the server's own undo"
+
+    with pytest.raises(ValueError, match="already has a tool named undo"):
+        @world.approvals.job(world.server, revert=lambda r, ctx: None)
+        async def move(event: str) -> list[Plan]:
+            return []
+    assert world.server._tool_manager.get_tool("move") is None  # refused before anything was registered
+    with pytest.raises(ValueError, match="already has a tool named undo"):
+        world.approvals.guard(world.server, "undo", describe=lambda a: {"summary": "x", "effects": []},
+                              revert=lambda r, ctx: None)
+
+
+def test_a_second_job_with_revert_reuses_yeas_own_undo(world):
+    for name in ("a", "b"):
+        world.approvals.job(world.server, name=name, revert=lambda r, ctx: None)(lambda event: [])
+    assert world.server._tool_manager.get_tool("undo") is not None
+
+
+def test_a_job_with_revert_named_undo_is_refused(world):
+    with pytest.raises(ValueError, match="can't be named undo"):
+        world.approvals.job(world.server, name="undo", revert=lambda r, ctx: None)(lambda event: [])

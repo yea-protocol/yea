@@ -40,6 +40,7 @@ def add_job(y: Yea, server: FastMCP, plan_fn: Callable[..., Any], job: JobDef, t
         return await run_job(y, job, input, preview, _req(ctx), plan)
 
     fn = job_wrapper(plan_fn, job.name, FastContext, run)
+    # Built with FastMCP's default task mode (forbidden), so a job never runs as a background task.
     server.add_tool(Tool.from_function(fn, name=job.name, title=title, description=description,
                                        annotations=t.ToolAnnotations(**annotations), meta=meta))
 
@@ -53,6 +54,17 @@ def add_undo(server: FastMCP, undo: Callable[..., Any]) -> None:
                                        description="Undo a job by its receipt id, within its undo window.",
                                        annotations=t.ToolAnnotations(read_only_hint=False, destructive_hint=True,
                                                                      idempotent_hint=True)))
+
+
+def _runs_as_task(tool: Any) -> bool:
+    return getattr(tool, "task_config", None) is not None and tool.task_config.supports_tasks()
+
+
+def has_tool(server: FastMCP, name: str) -> bool:
+    """Whether ``server`` itself registers a tool named ``name`` (any version). FastMCP's lookups
+    are async and job()/guard() aren't, so this reads the local provider's registry, matching by
+    name as FastMCP's own ``remove_tool`` does (a provisional seam: a rename raises, never passes)."""
+    return any(isinstance(c, Tool) and c.name == name for c in server.local_provider._components.values())
 
 
 def _failed(r: Any) -> bool:
@@ -147,14 +159,16 @@ class FastMCPGuard(Middleware):
         fn = getattr(tool, "fn", None)
         if fn is None:
             raise ValueError(f"guard(): {tool.name} isn't a function tool, so it can't be wrapped")
-        if getattr(tool, "task_config", None) is not None and tool.task_config.supports_tasks():
+        if "dev.yea/job" in (tool.meta or {}):
+            raise ValueError(f"guard(): {tool.name} is already a job tool")
+        if _runs_as_task(tool):
             raise ValueError(f"guard(): {tool.name} runs as a background task, which a guard doesn't support yet")
         if "preview" in ((tool.parameters or {}).get("properties") or {}):
             raise ValueError(f"guard(): {tool.name} has its own preview argument, which the guard would shadow")
         inner = tool.model_copy()  # the original behaviour, reachable only through apply
         injected = _injected(fn)
         has_output = tool.output_schema is not None
-        job = JobDef(tool.name, None, g.revert, g.confirm_with, guarded=True,
+        job = JobDef(tool.name, g.risk, g.revert, g.confirm_with, guarded=True,
                      own_results_are_errors=lambda: has_output, failed=_failed, with_receipt=_with_receipt,
                      with_note=_with_note)
 
@@ -169,7 +183,7 @@ class FastMCPGuard(Middleware):
         tool.fn = wrapper_fn
         tool.parameters = shape.parameters
         tool.annotations = t.ToolAnnotations(**job_annotations(given))
-        tool.meta = {**(tool.meta or {}), **job_meta(None, g.revert is not None)}
+        tool.meta = {**(tool.meta or {}), **job_meta(g.risk, g.revert is not None)}
 
 
 def _wrapped(tool: Any) -> bool:

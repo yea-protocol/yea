@@ -25,12 +25,14 @@ class Guarded:
     describe: Callable[[dict], Any]
     revert: Callable[..., Any] | None
     confirm_with: Callable[..., str] | None
+    risk: str | None = None  # the default plan risk, and the risk its listing shows
 
 
 @dataclass
 class _Info:
     has_preview: bool
     has_output: bool
+    is_job: bool  # registered with job(): already guarded
 
 
 @dataclass
@@ -40,7 +42,6 @@ class GuardMiddleware:
     y: Yea
     server: Any
     tools: dict[str, Guarded] = field(default_factory=dict)
-    _info: dict[str, _Info] | None = None
 
     async def __call__(self, ctx: Any, call_next: Callable[[Any], Any]) -> Any:
         params = ctx.params if isinstance(ctx.params, dict) else {}
@@ -54,16 +55,15 @@ class GuardMiddleware:
         if name in self.tools:
             raise ValueError(f"guard(): {name} is already guarded on this server")
         self.tools[name] = g
-        self._info = None  # re-read the listing, which now has to cover this tool
 
-    async def _learn(self) -> dict[str, _Info]:
-        """What the public listing says about each guarded tool, read once."""
-        if self._info is None:
-            listed = {t.name: t for t in await self.server.list_tools()}
-            self._info = {name: _Info("preview" in ((listed[name].input_schema or {}).get("properties") or {}),
-                                      listed[name].output_schema is not None)
-                          for name in self.tools if name in listed}
-        return self._info
+    async def _learn(self, name: str) -> _Info | None:
+        """What the listing says about the guarded tool ``name`` now: read on every guarded call (it's
+        in memory), so a tool re-registered since is judged by what's there."""
+        tool = next((t for t in await self.server.list_tools() if t.name == name), None)
+        if tool is None:
+            return None
+        return _Info("preview" in ((tool.input_schema or {}).get("properties") or {}), tool.output_schema is not None,
+                     "dev.yea/job" in (tool.meta or {}))
 
     def _advertise(self, result: Any) -> Any:
         """Add ``preview`` and the job annotations to guarded tools in a copy of the listing."""
@@ -77,17 +77,19 @@ class GuardMiddleware:
             props = tool.setdefault("inputSchema", {"type": "object"}).setdefault("properties", {})
             props.setdefault("preview", {"type": "boolean", "default": False})
             tool["annotations"] = {**job_annotations(), **(tool.get("annotations") or {})}
-            tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(None, g.revert is not None)}
+            tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(g.risk, g.revert is not None)}
         return out
 
     async def _call(self, ctx: Any, params: dict, call_next: Callable[[Any], Any]) -> Any:
         name = params["name"]
         g = self.tools[name]
-        info = (await self._learn()).get(name)
+        info = await self._learn(name)
         args = params.get("arguments")
         args = {} if args is None else args
         if info is None:
             return error_result([f"✗ guard(): {name} isn't registered on this server; nothing was run"])
+        if info.is_job:  # guarding it would run two approval routines, one inside the other
+            return error_result([f"✗ guard(): {name} is already a job tool; nothing was run"])
         if not isinstance(args, dict):
             return error_result([f"✗ {name}'s arguments must be an object; nothing was run"])
         if info.has_preview:
@@ -105,7 +107,7 @@ class GuardMiddleware:
             return [Plan(d["summary"], d["effects"], apply=lambda: call_next(stripped), uses=d.get("uses"),
                          risk=described_risk(d), undo_window=d.get("undo_window"))]
 
-        job = JobDef(name, None, g.revert, g.confirm_with, guarded=True, own_results_are_errors=lambda: info.has_output)
+        job = JobDef(name, g.risk, g.revert, g.confirm_with, guarded=True, own_results_are_errors=lambda: info.has_output)
         req = Req(ctx, ctx.session, ctx.request_id, ctx.protocol_version, params.get("requestState"),
                   params.get("inputResponses"))
         return await run_job(self.y, job, args, preview, req, plan)

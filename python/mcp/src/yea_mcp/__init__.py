@@ -102,6 +102,7 @@ class Approvals:
         self._state_key = state_key
         self._guards: weakref.WeakKeyDictionary[Any, GuardMiddleware] = weakref.WeakKeyDictionary()
         self._reverts: weakref.WeakKeyDictionary[Any, dict[str, Callable[..., Any]]] = weakref.WeakKeyDictionary()
+        self._jobs: weakref.WeakKeyDictionary[Any, set[str]] = weakref.WeakKeyDictionary()  # job() names per server
 
     def service_id(self) -> str:
         """This server's service id (its public key): pass it to ``yea grant --to``."""
@@ -119,6 +120,10 @@ class Approvals:
 
         def register(plan_fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or plan_fn.__name__
+            if revert is not None:
+                if tool_name == "undo":
+                    raise ValueError("job(): a job with revert can't be named undo; that's YEA's undo tool")
+                self._undo_free(server)
             job = JobDef(tool_name, risk, revert, confirm_with)
 
             async def run(input: dict, plan: Any, preview: bool, ctx: Context) -> Any:
@@ -134,6 +139,7 @@ class Approvals:
                 fn = job_wrapper(plan_fn, tool_name, Context, run)
                 server.add_tool(fn, name=tool_name, title=title, description=description or plan_fn.__doc__,
                                 annotations=t.ToolAnnotations(**given), meta=meta)
+            self._jobs.setdefault(server, set()).add(tool_name)
             if revert is not None:
                 self._undo_for(server)[tool_name] = revert
             return plan_fn
@@ -142,8 +148,12 @@ class Approvals:
 
     def guard(self, server: Any, name: str, *, describe: Callable[[dict], Any],
               revert: Callable[..., Any] | None = None,
-              confirm_with: Callable[[HashedPlan, dict], str] | None = None) -> None:
+              confirm_with: Callable[[HashedPlan, dict], str] | None = None, risk: str | None = None) -> None:
         """Turn the tool ``name`` already registered on ``server`` into a job, without touching it."""
+        if name in self._jobs.get(server, ()):  # the listing's meta refuses one registered elsewhere, per call
+            raise ValueError(f"guard(): {name} is already a job tool")
+        if revert is not None:
+            self._undo_free(server)
         mw = self._guards.get(server)
         if mw is None:
             fm = _fastmcp(server)
@@ -153,9 +163,15 @@ class Approvals:
                 server.middleware.insert(0, mw)  # first, so no other middleware can run the tool before it's wrapped
             else:
                 server.middleware.append(mw)
-        mw.add(name, Guarded(describe, revert, confirm_with))
+        mw.add(name, Guarded(describe, revert, confirm_with, risk))
         if revert is not None:
             self._undo_for(server)[name] = revert
+
+    def _undo_free(self, server: Any) -> None:
+        """Refuse, before registering anything, a server whose ``undo`` tool isn't ours (as mcp-ts)."""
+        if server not in self._reverts and _has_tool(server, "undo"):
+            raise ValueError("this server already has a tool named undo (its own, or another yea() instance's); a job "
+                             "with revert needs YEA's undo tool")
 
     def _undo_for(self, server: Any) -> dict[str, Callable[..., Any]]:
         """The ``undo`` tool, registered once per server, the first time a job with ``revert`` is added."""
@@ -186,6 +202,14 @@ def _fastmcp(server: Any) -> Any:
     from . import fastmcp
 
     return fastmcp
+
+
+def _has_tool(server: Any, name: str) -> bool:
+    """Whether ``server`` already has a tool ``name``. The SDKs' lookups are async and job()/guard()
+    aren't, so this reads each SDK's registry (a provisional seam, like ``server.middleware``)."""
+    if (fm := _fastmcp(server)) is not None:
+        return fm.has_tool(server, name)
+    return server._tool_manager.get_tool(name) is not None  # a rename in the SDK raises here, never passes
 
 
 def _as_dict(a: t.ToolAnnotations | dict | None) -> dict:
