@@ -191,20 +191,20 @@ def read_tightening(doc: Any) -> Tightening:
     if doc is None:
         return Tightening()
     if not isinstance(doc, dict):
-        return Tightening(warnings=("ignored the unsigned policy: it isn't a JSON object",))
-    warnings = [f"ignored unknown field {k!r} in the unsigned policy" for k in doc if k not in ("deny", "outOfBand")]
+        return Tightening(warnings=("the policy file is not a JSON object; ignored",))
+    warnings = [f'ignored "{k}": unknown field' for k in doc if k not in ("deny", "outOfBand")]
     deny: tuple[str, ...] = ()
     if "deny" in doc:
         if isinstance(doc["deny"], list) and all(isinstance(t, str) for t in doc["deny"]):
             deny = tuple(doc["deny"])
         else:
-            warnings.append("ignored deny: it must be a list of tool names")
+            warnings.append('ignored "deny": bad value')
     oob = DEFAULT_OUT_OF_BAND
     if "outOfBand" in doc:
         if doc["outOfBand"] in RISK_ORDER:
             oob = doc["outOfBand"]
         else:
-            warnings.append("ignored outOfBand: it must be low, medium or high")
+            warnings.append('ignored "outOfBand": bad value')
     return Tightening(deny, oob, tuple(warnings))
 
 
@@ -213,32 +213,31 @@ class Policy:
     """The person's standing rules: a verified signed grant (or none) plus unsigned tightenings.
     Without a grant nothing runs without asking, but ``deny`` and ``out_of_band`` still apply."""
 
-    grant: Grant | None = None
+    grant: Grant | str | None = None
     principal: str | None = None
     server_key: str | None = None
     deny: tuple[str, ...] = ()
     out_of_band: str = DEFAULT_OUT_OF_BAND
     totals: tuple[tuple[str, dict], ...] = field(default=())  # (block id, limit), one per block and measure
-    problem: str | None = None  # why a grant that was given wasn't accepted (for logs)
 
 
 def load_policy(grant: str | Grant | None, server_key: str, principal_key: str | None, tightening: Tightening,
-                now: int) -> Policy:
-    """Verify the signed policy grant as a COMMIT at this server (service id = the server key),
-    issued to the server key by the pinned principal. A grant that fails is treated as none."""
-    base = {"deny": tightening.deny, "out_of_band": tightening.out_of_band, "server_key": server_key}
+                now: int = 0) -> Policy:
+    """The policy for this server: the signed grant as given (it is verified on every decision,
+    as a COMMIT of the tool at service id = the server key, issued to the server key by the
+    pinned principal) plus the unsigned tightenings. ``now`` is unused; kept for symmetry."""
+    base = {"deny": tightening.deny, "out_of_band": tightening.out_of_band, "server_key": server_key,
+            "principal": principal_key}
     if grant is None:
-        return Policy(**base, problem="there's no signed policy")
-    if principal_key is None:
-        return Policy(**base, problem="the principal key isn't pinned")
-    try:
-        g = grant if isinstance(grant, Grant) else decode_grant(grant)
-    except ValueError as e:
-        return Policy(**base, problem=f"the signed policy is malformed: {e}")
-    probe = verify_grant(g, [principal_key], server_key, GrantContext(server_key, "INTENT", None, now))
-    if probe.code == "unauthorized":
-        return Policy(**base, problem=f"the signed policy doesn't verify: {probe.message}")
-    return Policy(**base, grant=g, principal=principal_key, totals=_smallest_totals(g))
+        return Policy(**base)
+    g: Grant | str = grant
+    if isinstance(grant, str):
+        try:
+            g = decode_grant(grant)
+        except ValueError:
+            pass  # kept as text: the grant check refuses it with its reason
+    totals = _smallest_totals(g) if isinstance(g, Grant) else ()
+    return Policy(**base, grant=g, totals=totals)
 
 
 def _smallest_totals(g: Grant) -> tuple[tuple[str, dict], ...]:
@@ -297,17 +296,19 @@ def needs_approval(p: HashedPlan, policy: Policy, used: Callable[[LedgerKey], in
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": p.plan_hash, "risk": p.risk, **({"uses": uses} if uses is not None else {})}
     spent = {(bid, lim["of"]): used(LedgerKey(bid, lim["of"])) for bid, lim in policy.totals}
-    if not _names_tools(policy.grant):
-        return f"the signed policy names no tools, so it doesn't let {p.tool} run without asking"
     ctx = GrantContext(policy.server_key, "COMMIT", p.tool, now, proposal, spent)
     v = verify_grant(policy.grant, [policy.principal], policy.server_key, ctx)
-    return None if v.ok else v.message
+    if not v.ok:
+        return v.reason
+    if not _names_tools(v.grant):
+        return f"the signed policy names no tools, so it doesn't let {p.tool} run without asking"
+    return None
 
 
-def _names_tools(g: Grant) -> bool:
+def _names_tools(g: Grant | None) -> bool:
     """§2 condition 1 needs a ``can`` that covers the tool: a grant with no ``can`` at all
     (which the protocol reads as "any capability") doesn't auto-run job tools."""
-    return any(isinstance(c, dict) and "can" in c for b in g.blocks for c in b["p"]["caveats"])
+    return g is not None and any(isinstance(c, dict) and "can" in c for b in g.blocks for c in b["p"]["caveats"])
 
 
 def denied_reason(tool: str) -> str:
@@ -346,7 +347,7 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
             lines.append(f"  to approve, type: {phrase_of(p, phrase_for)}")
     held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered]
     if held:
-        lines.append(f"Not offered here (approve outside the chat): {', '.join(held)}")
+        lines.extend(["", f"Not offered here (approve outside the chat): {', '.join(held)}"])
     return {"message": "\n".join(lines), "requested_schema": _schema(offered, phrase_for), "offered": [p.plan_hash for p in offered]}
 
 
@@ -364,7 +365,7 @@ def _schema(offered: list[HashedPlan], phrase_for: Callable[[HashedPlan], str]) 
         confirm = {"type": "string", "title": "Confirm", "description": f'Type "{phrase_of(offered[0], phrase_for)}" to approve.'}
         return {"type": "object", "properties": {"confirm": confirm}, "required": ["confirm"]}
     plan = {"type": "string", "title": "Plan", "oneOf": [{"const": p.plan_hash, "title": p.plan.summary} for p in offered]}
-    confirm = {"type": "string", "title": "Confirm", "description": "Type the phrase shown for the plan you chose."}
+    confirm = {"type": "string", "title": "Confirm", "description": "Type the chosen plan's phrase, shown next to it above."}
     return {"type": "object", "properties": {"plan": plan, "confirm": confirm}, "required": ["plan", "confirm"]}
 
 
@@ -445,12 +446,12 @@ def _again(state: dict, why: str) -> Verdict:
 # ------------------------------------------------------------------ §6 consent codes
 
 
-def job_consent_code(server_key: str, principal: str, tool: str, input: Any, plan: Any, plan_hash_: str,
-                     risk: str, now: int) -> str:
-    """The unsigned ``pc1.`` consent request for one plan, carrying the plan-hash preimage."""
-    consent = {"proposal": plan_hash_, "hash": plan_hash_, "service": server_key, "capability": tool,
-               "principal": principal, "summary": plan.summary, "expires": now + CONSENT_TTL}
-    return consent_code(consent, plan_preimage(tool, input, plan, risk))
+def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan, phrase: str, now: int) -> str:
+    """The unsigned ``pc1.`` consent request for one plan. Its detail carries the plan-hash
+    preimage (``job``), so ``yea approve`` can re-check the hash, and the phrase to type."""
+    consent = {"proposal": p.plan_hash, "hash": p.plan_hash, "service": server_key, "capability": p.tool,
+               "principal": principal, "summary": p.plan.summary, "expires": now + CONSENT_TTL}
+    return consent_code(consent, {"job": plan_preimage(p.tool, input, p.plan, p.risk), "phrase": phrase})
 
 
 # ------------------------------------------------------------------ §5 reservations, §7 undo, §8 store choice

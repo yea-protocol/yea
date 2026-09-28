@@ -131,7 +131,8 @@ def test_unsigned_or_foreign_policy_never_auto_runs():
     assert decide([hashed()], policy({"can": ["*"]}, {"svc": ["elsewhere"]}), no_use, NOW).kind == "ask"
     assert decide([hashed()], policy({"can": ["*"]}, {"exp": NOW}), no_use, NOW).kind == "ask"
     p = load_policy("pg1.not-a-grant", SERVER.public, PRINCIPAL.public, Tightening(), NOW)
-    assert p.grant is None and decide([hashed()], p, no_use, NOW).kind == "ask"
+    d = decide([hashed()], p, no_use, NOW)
+    assert d.kind == "ask" and d.why.startswith("malformed grant")
 
 
 # ------------------------------------------------------------------ decide
@@ -163,8 +164,8 @@ def test_reasons_in_the_pinned_order():
     assert decide([hashed(undoable=False)], none, no_use, NOW).why == "delete_branch can't be undone"
     assert decide([hashed()], none, no_use, NOW).why == "no signed policy lets delete_branch run without asking"
     risky = decide([hashed(risk="medium")], policy({"can": ["*"]}, {"risk": "low"}), no_use, NOW)
-    assert risky.kind == "ask" and '{"risk":"low"}' in risky.why
-    assert '{"can":["reschedule"]}' in decide([hashed()], policy({"can": ["reschedule"]}), no_use, NOW).why
+    assert risky.kind == "ask" and risky.why == "risk medium exceeds ceiling low"
+    assert decide([hashed()], policy({"can": ["reschedule"]}), no_use, NOW).why == "does not cover delete_branch"
     over = hashed(p=plan(uses={"spend": spend("25.01", "USD")}))
     d = decide([over], policy({"can": ["*"]}, {"each": {"of": "spend", "max": 2500, "scale": 2, "unit": "USD"}}), no_use, NOW)
     assert d.kind == "ask" and "spend over the per-commit limit of 25.00 USD" in d.why
@@ -210,6 +211,7 @@ def test_form_leaves_out_of_band_and_denied_plans_out_of_the_choice():
         "[2] Force-delete old-nav",
         "  + create branch/old-nav",
         "  risk: high · undo: 1h",
+        "",
         "Not offered here (approve outside the chat): [2]",
     ])
     two = [low, hashed(p=plan("Archive old-nav", uses={"emails": quantity(1)}))]
@@ -298,11 +300,12 @@ def test_denied_tool_never_runs_even_with_approval():
 
 def test_job_consent_code_carries_the_preimage():
     h = hashed()
-    code = job_consent_code(SERVER.public, PRINCIPAL.public, h.tool, {"repo": "site", "branch": "old-nav"}, h.plan, h.plan_hash, h.risk, NOW)
+    code = job_consent_code(SERVER.public, PRINCIPAL.public, {"repo": "site", "branch": "old-nav"}, h, "old-nav", NOW)
     c = decode_consent_code(code)
     assert c["hash"] == c["proposal"] == h.plan_hash and c["service"] == SERVER.public and c["capability"] == "delete_branch"
     assert c["expires"] == NOW + 600
-    assert sha256_b64url(canonical(c["detail"]).encode()) == h.plan_hash  # an approver can re-check it
+    assert sha256_b64url(canonical(c["detail"]["job"]).encode()) == h.plan_hash  # an approver can re-check it
+    assert c["detail"]["phrase"] == "old-nav"
 
 
 # ------------------------------------------------------------------ the store
