@@ -656,3 +656,34 @@ def test_oversized_frames_and_inflight_cap_over_tcp():
             srv.close()
 
     run(go())
+
+
+def test_a_reply_that_cant_be_serialized_still_gets_a_final_reply():
+    """§2.2: exactly one final reply. NaN can't be written as JSON, so the reply becomes an ERROR
+    rather than a hung stream or a cut-off HTTP body (#146, as ts/src/node.ts and http.ts do)."""
+    svc = Service("odd.example", "Odd")
+
+    @svc.ask("odd.nan")
+    def nan(ctx):
+        return float("nan")
+
+    @svc.ask("odd.ok")
+    def ok(ctx):
+        return 1
+
+    async def go():
+        tcp = await serve_tcp(svc, "127.0.0.1", 0)
+        http = await serve_http(svc, "127.0.0.1", 0)
+        try:
+            for url in (f"yea://127.0.0.1:{tcp.sockets[0].getsockname()[1]}",
+                        f"http://127.0.0.1:{http.sockets[0].getsockname()[1]}/yea"):
+                async with await connect(url, key=AGENT.seed) as c:
+                    r = await asyncio.wait_for(c.ask("odd.nan"), 5)
+                    assert (r.kind, r.code, r.message, r.frame["id"]) == (
+                        "ERROR", "internal", "reply could not be serialized", "s_err"), url
+                    assert (await c.ask("odd.ok")).data == 1  # the connection still works
+        finally:
+            tcp.close()
+            http.close()
+
+    run(go())

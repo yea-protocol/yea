@@ -32,6 +32,19 @@ def _error(re: str, code: str, message: str) -> dict:
     return {"yea": 1, "id": "s_" + code, "re": re, "kind": "ERROR", "code": code, "message": message}
 
 
+def _frame_id(frame: Any) -> str:
+    return frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
+
+
+def _final_line(reply: dict, frame: Any) -> str:
+    """The final reply as one line. A reply that can't be serialized (NaN, a datetime) is replaced
+    by an ERROR, so every request still gets exactly one final reply (§2.2)."""
+    try:
+        return dumps(reply) + "\n"
+    except (TypeError, ValueError):
+        return dumps({**_error(_frame_id(frame), "internal", "reply could not be serialized"), "id": "s_err"}) + "\n"
+
+
 async def _lines(reader: asyncio.StreamReader):
     """Yield complete lines, or None for each line over MAX_FRAME. An oversized line is
     discarded as it streams in (never buffered whole) and the stream stays usable (§2.1)."""
@@ -65,7 +78,9 @@ async def serve_stream(service: Service, reader: asyncio.StreamReader, writer: A
             writer.write((dumps(frame) + "\n").encode("utf-8"))
 
     async def run(frame: Any) -> None:
-        send(await service.handle(frame, send))
+        line = _final_line(await service.handle(frame, send), frame)
+        if not writer.is_closing():
+            writer.write(line.encode("utf-8"))
         try:
             await writer.drain()
         except (ConnectionError, RuntimeError):
@@ -80,8 +95,7 @@ async def serve_stream(service: Service, reader: asyncio.StreamReader, writer: A
                 continue
             frame = _parse(line)
             if len(tasks) >= MAX_INFLIGHT:
-                re = frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
-                send(_error(re, "limit", f"too many requests in flight on this connection (max {MAX_INFLIGHT})"))
+                send(_error(_frame_id(frame), "limit", f"too many requests in flight on this connection (max {MAX_INFLIGHT})"))
                 continue
             t = asyncio.create_task(run(frame))
             tasks.add(t)
@@ -161,11 +175,15 @@ async def _http_conn(service: Service, path: str, reader: asyncio.StreamReader, 
                 b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
             )
 
-            def send(frame: dict) -> None:
-                data = (dumps(frame) + "\n").encode("utf-8")
+            def chunk(line: str) -> None:
+                data = line.encode("utf-8")
                 writer.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
 
-            send(await service.handle(_parse(await reader.readexactly(length)), send))
+            def send(frame: dict) -> None:
+                chunk(dumps(frame) + "\n")
+
+            request = _parse(await reader.readexactly(length))
+            chunk(_final_line(await service.handle(request, send), request))
             writer.write(b"0\r\n\r\n")
             await writer.drain()
         else:
