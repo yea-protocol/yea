@@ -15,99 +15,142 @@ Issue: [#40](https://github.com/yea-protocol/yea/issues/40). Map: [README.md](RE
 yea mcp yeas://shop.example https://cal.example.com/yea
 ```
 
-The MCP client sees one tool per remote capability, named for it (`shop.order`,
-`calendar.reschedule`, `calendar.find`), plus `yea_undo` and `yea_expand`. From the model's
-side, `calendar.reschedule` is an ordinary tool:
+The MCP client sees one tool per remote capability, named for it (`shop_order`,
+`calendar_reschedule`, `calendar_find`), plus the utilities `yea_undo`, `yea_expand` and
+`yea_consent`. From the model's side, `calendar_reschedule` is an ordinary tool:
 
 - It runs and returns a receipt when the **remote service's own grant check** lets it
   auto-commit.
-- Otherwise the person sees the proposals in their client and types the phrase to approve
-  one, and the bridge signs the consent and commits it.
-- When the client can't ask, or the principal key isn't on this machine, the call returns
-  consent codes for `yea approve`, and the next identical call commits.
+- Otherwise the call returns the proposals and a consent code for each. The person approves
+  one with `yea approve <code>` (where the principal key is), then hands the signed consent
+  back, and the next identical call commits it.
+- With `--approve-here`, a person at a client that can show forms approves by typing the
+  phrase instead, and the bridge signs the consent with a principal key on this machine
+  (decision 4).
 
 **The authority stays with the service.** Unlike a server built with `@yea-protocol/mcp`, the
 bridge has no policy of its own. The remote service checks the agent's grants, auto-commits
 what they allow, and demands a consent grant for the rest (SPEC.md §4.3.1, §6.6). The bridge
-only carries that to MCP: it shows the proposals, collects the person's approval, and signs
-or relays the consent.
+only carries that to MCP: it shows the proposals, relays the consent, and commits.
 
 ## Tools
 
-On start, the bridge sends `HELLO` to each service and builds its tools from the `BRIEF`:
+On start, the bridge sends `HELLO` to each service with a large budget. It `EXPAND`s any
+`more` handles, so it gets every capability and its `params`, then builds the tools:
 
 | Remote capability | MCP tool | Input schema |
 |---|---|---|
-| `kind: ask` | read tool, named for the capability, `readOnlyHint: true` | from the capability's compact `params` (SPEC.md §4.1.1) |
-| `kind: intent` | job tool, named for the capability, `destructiveHint: true` | the same, plus optional `goal` and `preview` |
+| `kind: ask` | read tool, `readOnlyHint: true` | from the capability's compact `params` (SPEC.md §4.1.1) |
+| `kind: intent` | job tool, `destructiveHint: true` | the same, plus optional `goal` and `preview` |
 | — | `yea_expand({ service, handle })` | fetches an elided part of any result (`EXPAND`) |
 | — | `yea_undo({ service, receipt })` | undoes a receipt within its window (`UNDO`) |
+| — | `yea_consent({ token })` | hands a consent signed with `yea approve` back to the bridge |
 
-- **Tool names.** The capability name, with any character outside `A–Z a–z 0–9 _ . -` replaced
-  by `_`. Two services with the same capability name get the service's short id as a
-  prefix (`cal.example.com/calendar.find`). The service id goes in `_meta['dev.yea/service']`.
-- **Schemas.** The compact schema maps to JSON Schema:
+- **Tool names are deterministic and safe everywhere.** Many clients, and model APIs behind
+  them, accept only `[A-Za-z0-9_-]{1,64}`. So the name is the capability name with every
+  other character replaced by `_`, cut to 64 characters.
+  - Two tools that would get the same name (two services sharing a capability, or `a.b`
+    and `a_b`) both get a suffix: `_` and the first 6 b64url characters of
+    `sha256(service id + "/" + capability)`.
+  - The `yea_` prefix is reserved: a capability whose name starts with it gets the suffix.
+  - `_meta['dev.yea/service']` and `_meta['dev.yea/capability']` carry the real names.
+- **Service ids must be unique.** Two URLs whose `BRIEF`s claim the same `service.id` make the
+  bridge refuse to start, naming both. The id is self-declared, and it's what proofs and
+  consents bind to.
+- **Parameters.** The compact schema maps to JSON Schema:
   - `string`, `int`, `number`, `bool`, `date` and `datetime` map to string, integer, number,
     boolean, and string with `format: date` or `date-time`;
-  - a `"a|b|c"` enum maps to `enum`;
-  - `T[]` maps to arrays;
+  - `any` maps to no constraint;
+  - a `"a|b|c"` enum maps to `enum`, and `T[]` (enum arrays included) to arrays;
+  - a one-element array of an object schema (`[{…}]`) maps to an array of that object;
   - nested objects map to objects, and a name ending in `?` is optional;
   - the text after ` — ` becomes the `description`.
 
-  The service validates params itself, so the MCP schema is a guide for the model, not the
-  check.
-- **Too many tools.** A service with many capabilities (the OpenAPI adapter can expose
-  hundreds) would swamp the client. Past 40 tools in total, or with `--tools generic`, the
-  bridge falls back to two generic tools, `yea_ask({ service, capability, params })` and
-  `yea_intent({ service, capability, params, goal? })`, plus `yea_expand` and `yea_undo`. It
-  says so on stderr and in the server's instructions. `--tools per-capability` forces one
-  tool per capability.
-- **Refreshing.** Capabilities are read at start. A `yea mcp --watch` that re-reads them and
-  sends `notifications/tools/list_changed` comes later.
+  The service validates params itself, so the tool's Standard Schema passes values through
+  unchanged. A capability param named `goal` or `preview` makes that tool refuse to be built
+  (named on stderr), rather than shadow the bridge's own fields.
+- **Too many tools, per service.** A service with more than 25 capabilities (the OpenAPI
+  adapter can expose hundreds) gets two generic tools instead: `<service>_ask` and
+  `<service>_intent`, taking `{ capability, params, goal? }`. Other services keep their
+  per-capability tools. `--tools generic|per-capability` forces one mode for every service.
+  A generic intent call runs the same steps as a per-capability one.
+- **Refreshing.** Capabilities are read at start; a `--watch` that re-reads them comes later.
 
 ## How a job tool call runs
 
-1. **Preview.** With `preview: true`, send `INTENT` without `auto`, and return the proposals
+The bridge keeps **pending proposals** in the `bridge()` closure, which lives for the
+process, not in the server factory (`serveStdio` calls the factory more than once). They're
+keyed by tool and input hash (`goal` and `preview` left out), bounded to 256 entries with the
+oldest dropped first, and each entry is dropped once it expires or commits.
+
+1. **Deny.** If the capability is in the local unsigned `deny` list (`~/.yea/policy.json`,
+   SPEC-approval §2), refuse before anything else, previews included. Entries match either
+   the capability name or `service-id/capability`, never the tool name, so a suffix can't
+   dodge them. The bridge honours local tightening, and never loosens anything.
+2. **Preview.** With `preview: true`, send `INTENT` without `auto`, and return the proposals
    as Lens. Nothing is stored.
-2. **Deny.** If the tool is in the local unsigned `deny` list (`~/.yea/policy.json`,
-   SPEC-approval §2), refuse before anything else. The bridge honours local tightening. It
-   never loosens anything, because it has no policy that could.
-3. **A stored consent?** For this tool and input, is there a pending proposal the person has
-   since approved with `yea approve`? That is, a saved consent grant for its proposal hash,
-   in the principal's consent store, that hasn't expired. If so, `COMMIT` that proposal with
-   the consent, and return the receipt.
+3. **Pending.** If there are pending, unexpired proposals for this tool and input:
+   - **A consent for one of them?** If the bridge's consent store holds one for a pending
+     proposal's hash (from `yea_consent`, or saved by `yea approve` on this machine),
+     `COMMIT` that proposal with the agent's grants plus the consent, then drop the entry
+     and return the receipt.
+   - **An approval round?** If the call carries our state (below), go to step 7.
+   - **Otherwise,** return the same proposals and codes again, so an approval in progress
+     isn't orphaned.
+
+   A `not_found`, `expired` or `conflict` from the service drops the entry and continues at
+   step 4.
 4. **Auto.** Send `INTENT` with `auto: true` and the agent's grants and proof.
    - A `RECEIPT` means the service's grant check allowed it: return the receipt.
    - `CLARIFY` becomes a clarification result.
    - An error is returned as `isError`.
-5. **Proposals.** The service didn't auto-commit, so the person has to approve. Each proposal
-   is turned into a `HashedPlan` for the approval core:
-   - `planHash` = the proposal's own hash, which a consent grant must bind;
-   - `risk` and `undoable` (undo not null) come from the proposal;
-   - `plan.summary`, `effects` and `uses` come from the proposal.
+5. **Proposals.** Check each proposal as the current bridge's `consentFor` does:
+   - its hash recomputes;
+   - its `uses` is well formed;
+   - its capability is this tool's.
 
-   The proposals are remembered for step 3, keyed by tool and input hash, until they expire.
-6. **Ask**, if the client can take a form (SPEC-mcp-ts's rule) and the principal key is on
-   this machine and matches the service's `consent.principal`:
-   - `buildForm` the proposals: `high` ones and denied ones aren't offered;
-   - return `inputRequired` with a sealed state (`newState`), as `@yea-protocol/mcp` does.
-7. **Answer.** Run `checkState`, then `consumeOnce(nonce)`, then `judgeAnswer`. On `run`:
-   - re-check the proposal against the one the service sent (`consentFor`'s rules: same id,
-     hash, capability and service, and the proposal hash recomputes);
-   - sign a consent grant for it with the principal key (the protocol's consent grant, issued
-     to the agent's key);
-   - `COMMIT` with it, and return the receipt.
+   Proposals that fail are dropped, and said so. The rest are stored as pending. Each also
+   becomes a `HashedPlan` for the approval core: `planHash` is the proposal's hash, which the
+   consent must bind; `risk`, `undoable` (undo not null), `summary`, `effects` and `uses`
+   come from the proposal.
 
-   `ask-again`, `refuse`, `not-approved`, `denied` and `out-of-band` behave as in mcp-ts.
-8. **Fail closed.** Return the proposals and a protocol consent code (`consentCode` with the
-   proposal as detail) for each offerable proposal. The message says: *Ask the user to run
-   `yea approve <code>`, then call again.* The next identical call finds the approval at
-   step 3.
+   Auto-commit only ever covers the first proposal, and only if it's undoable (SPEC.md
+   §4.3.1). So an irreversible proposal, or any other than the first, asks even when the
+   grant would allow it: the commit in step 7 or 8 then succeeds without a consent.
+6. **Codes, or a form.** The principal is the root `iss` of the grants sent on the `INTENT`;
+   §4.4 requires the same principal for the commit. Grants from more than one principal get
+   no codes and an `isError` saying why.
+   - **By default, and whenever the form can't be used:** return the proposals and, for each
+     offerable one (not denied), a protocol consent code. The code is `consentCode`, with a
+     `ConsentRequest` built from the proposal (`proposal`, `hash`, `service`, `capability`,
+     `summary`, `expires` = the proposal's `expires`) and that principal, plus the proposal
+     as detail and the agent's public key as `agent`, so `yea approve` elsewhere signs to the
+     right key. The message says: *Ask the user to run `yea approve <code>` where their
+     principal key is, then paste the printed consent back to you and call `yea_consent`
+     with it, then call this tool again.* (`yea approve` asks y/N for protocol proposals; it
+     doesn't ask for a phrase.)
+   - **With `--approve-here`**, when the client can take a form and the principal key on this
+     machine matches: `buildForm` the pending proposals (`high` and denied ones aren't
+     offered), and return `inputRequired` with a sealed state (`newState`), as
+     `@yea-protocol/mcp` does.
+7. **Answer** (`--approve-here` only).
+   - The retry does **not** send `INTENT` again: the pending proposals are the recomputed
+     plans, so the chosen hash still matches.
+   - `checkState`, then `consumeOnce(nonce)`, then `judgeAnswer`. On `run`:
+     1. `COMMIT` the proposal with the agent's grants.
+     2. A `RECEIPT` means the grant allowed it; done.
+     3. On `consent_required`, run `consentFor(err, proposal)`, unchanged from today, which
+        checks the service's consent request against the proposal the person saw.
+     4. Sign the consent grant with the principal key, issued to the agent's key.
+     5. `COMMIT` again with it.
+   - `ask-again`, `refuse`, `not-approved`, `denied` and `out-of-band` behave as in mcp-ts.
+     Out-of-band proposals fall back to codes.
 
-The principal key signs only after the person has typed the phrase for that exact proposal.
-The model never approves. A principal key on the agent's own machine is weak, as the security
-guide already says: an agent with a shell could sign for itself. So the bridge prefers the
-key elsewhere, and falls back to consent codes when it isn't here.
+**`yea_consent({ token })`** checks that the token is a `pg1.` consent grant (single root
+block with `only` and `exp`) held by the agent's key. It saves it in the agent's
+`~/.yea/consents`, keyed by its `only` hash, and says which pending proposal it's for. It
+signs nothing and commits nothing. The token is safe to pass through the model: it's signed
+by the principal and bound to one proposal.
 
 ## Read tools, expand and undo
 
@@ -121,16 +164,31 @@ key elsewhere, and falls back to consent codes when it isn't here.
 ## Package and compatibility
 
 - **Code.** The bridge becomes `mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`,
-  with `bridge(clients, options)` returning a server factory. The CLI (`@yea-protocol/cli`)
-  depends on `@yea-protocol/mcp`, and `yea mcp` serves it with `serveStdio`.
+  with `bridge(clients, options)` returning a server factory. It uses mcp-ts's result
+  helpers (render.ts) and the approval core's form and state; the ones it needs are
+  exported. It doesn't reuse `runJob`, whose plans come from a local handler and a local
+  policy.
+- **The command.** `yea mcp` moves to the CLI package (`cli/`), which depends on
+  `@yea-protocol/mcp`: `cli/bin/yea.js` handles `mcp` itself and passes everything else to
+  the SDK's CLI. The SDK can't import `@yea-protocol/mcp` without a cycle.
 - **The SDK core.** It drops `ts/src/mcp.ts` and its `./mcp` export, so it stays
-  zero-dependency. `ts/src/tools.ts` stays, because `yea test-drive` uses its four generic
-  tools with the Claude API. `bench/run.ts` imports `TOOLS` and `INSTRUCTIONS` from the SDK
-  root instead of `./mcp`.
+  zero-dependency. `ts/src/tools.ts` stays, because `yea test-drive` uses its generic tools
+  with the Claude API, and the SDK root exports `TOOLS` and `INSTRUCTIONS` for
+  `bench/run.ts`.
+- **`yea approve`.** A protocol code's `agent` field sets the key the consent is issued to,
+  unless `--to` overrides it.
 - **`yea install`.** The config it writes (`npx -y @yea-protocol/cli mcp <urls>`) doesn't
-  change. The tool names do, so `plugins/yea/skills/yea/SKILL.md` and the server
-  instructions are updated to "call the capability's tool; approval appears in your client".
+  change. The tool names do, so these are updated:
+  - `plugins/yea/skills/yea/SKILL.md`;
+  - the server instructions;
+  - `AGENT_BLOCK` in `ts/src/setup.ts` (written into CLAUDE.md and AGENTS.md);
+  - site/guide/integrations.md: "don't auto-approve `yea_commit`" becomes "don't
+    auto-approve tools marked `destructiveHint`".
+
   Nothing has been released with the old names, so there's no migration.
+- **Benchmarks.** The live agent-eval numbers in the README were measured with the old tools.
+  Re-running them costs money, so it waits for James; until then, the README says which
+  version they measured.
 - **Tests.** `ts/test/mcp.test.ts` and the bridge's cases in `ts/test/security.test.ts` move
   with the code, and are rewritten for the new tools.
 
@@ -139,46 +197,67 @@ key elsewhere, and falls back to consent codes when it isn't here.
 Against the example services (`calendar`, `shop`) served in-process, with the in-memory MCP
 clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no elicitation):
 
-- tools are built from `HELLO`: names, schemas, annotations, and the collision prefix;
-- a call the agent's grant allows auto-commits in one call, and returns the receipt;
-- a call over the grant asks. Typing the phrase signs a consent, commits, and returns the
-  receipt. A wrong phrase asks again; decline commits nothing;
-- a `high` proposal is never offered in the form, and gets a code;
-- without elicitation, or without a local principal, the call gets consent codes. After
-  `yea approve` (the existing protocol path), the next identical call commits that proposal,
-  once;
-- `preview` commits nothing; `deny` refuses first;
-- `yea_expand` and `yea_undo` work;
-- past 40 capabilities, the generic tools appear instead;
+- tools are built from `HELLO` with `EXPAND`ed `more`: names, suffixes on collision, the
+  reserved `yea_` prefix, schemas (including `any`, `[{…}]` and enum arrays), annotations,
+  and a refused `goal`/`preview` param;
+- duplicate service ids refuse to start;
+- the per-service generic fallback past 25 capabilities;
+- a call the agent's grant allows auto-commits in one call;
+- by default, a call over the grant returns codes;
+- `yea approve` (with the code's `agent`) plus `yea_consent` plus the same call commits that
+  proposal, once;
+- a re-call before approval returns the same codes, and doesn't orphan the approval;
+- an expired or discarded pending proposal falls back to a fresh `INTENT`;
+- with `--approve-here`:
+  - a typed phrase commits;
+  - the retry sends no `INTENT`;
+  - a consent is signed only after `consent_required`;
+  - a wrong phrase asks again, and decline commits nothing;
+  - a `high` proposal gets a code, not the form;
+- `preview` commits nothing; `deny` refuses first, including previews, and matches the
+  capability after a suffix;
+- `yea_expand`, `yea_undo` and `yea_consent` work, and `yea_consent` refuses a policy grant
+  or someone else's grant;
 - security:
   - the model can't approve by any argument;
   - a consent for one proposal never commits another;
   - a state replayed after use commits nothing;
-  - a proposal that changed at the service since it was shown is refused (the consent
-    check).
+  - a proposal that fails its hash check is never shown or signed;
+  - a hostile service's names and summaries can't shadow utility tools or forge lines.
 
 ## Boundaries
 
-- **Always:** the service decides; the bridge shows, collects and relays. Sign only after a
-  typed approval of that exact proposal. Fail closed to consent codes.
-- **Ask first:** any policy of the bridge's own; auto-approving anything the service didn't
-  auto-commit.
-- **Never:** sign a consent the person didn't type the phrase for; loosen anything.
+- **Always:**
+  - the service decides; the bridge shows, relays and commits;
+  - codes by default;
+  - sign only with `--approve-here`, after a typed approval of that exact proposal and the
+    service's own consent request;
+  - fail closed.
+- **Ask first:**
+  - any policy of the bridge's own;
+  - auto-approving anything the service didn't auto-commit;
+  - making in-client signing the default.
+- **Never:**
+  - sign a consent the person didn't type the phrase for;
+  - loosen anything;
+  - pass the principal key or any unsigned approval through the model.
 
 ## Success criteria
 
-- `yea install` then `yea mcp` in Claude Code shows the example services' capabilities as
-  tools. An order over the grant asks with the typed phrase and then commits. In Claude
-  Desktop (no elicitation), the same order returns a code, and after `yea approve` it
-  commits.
+- In Claude Code, `yea install` then `yea mcp` shows the example services' capabilities as
+  tools. An order over the grant returns a code; `yea approve` plus `yea_consent` then
+  commits it. With `--approve-here` and a local principal key, the same order asks for the
+  typed phrase in the client and commits.
+- In Claude Desktop (no elicitation), the code path works the same.
 - The SDK core has no MCP code, and still has no dependencies.
 
 ## Decisions
 
 Adopted for v0 under the standing go-ahead; any can be reopened.
 
-1. **One tool per capability, with a generic fallback past 40 tools.** This follows the map's
-   rule without drowning clients.
+1. **One tool per capability, with a per-service generic fallback past 25 capabilities.**
+   This follows the map's rule without drowning clients, and one large service doesn't change
+   the others.
 2. **No local policy.** The service's grant is the policy, so a second policy in the bridge
    could only confuse. Local unsigned `deny` and `outOfBand` still apply, because they only
    tighten.
@@ -186,3 +265,12 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
    consent to the exact proposal, so the bridge must commit the one the person approved, not
    a fresh one. A bridge restarted between `yea approve` and the re-call finds no pending
    proposal, and asks again.
+4. **In-client signing is opt-in (`--approve-here`), pending James.** Signing with the
+   principal key inside the chat client is the path SPEC.md §6.6 warns about:
+   - some clients auto-fill forms or route elicitation to a model;
+   - the phrase is printed in the form;
+   - a principal key on the agent's machine is reachable by a shell-capable agent.
+
+   So the default is consent codes approved where the key is, and signing here takes an
+   explicit flag the person sets. Whether to offer the flag at all is on the issue as
+   `status/needs-james`.
