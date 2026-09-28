@@ -1,11 +1,14 @@
 // Regression tests for the security audit findings (see docs/design.md).
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,7 +18,7 @@ import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { shop } from '../../examples/shop.ts';
 import { consentFrom, consentLines, consentView } from '../src/approve.js';
 import * as P from '../src/index.js';
@@ -24,9 +27,30 @@ import {
   FileStore,
   listen,
   readPinnedKey,
+  readPrivateFile,
+  readServerSeed,
   serveHttp,
 } from '../src/node.js';
 import { printable } from '../src/text.js';
+
+// A pass-through `openSync` that can run a hook right after the real open, to swap a key file
+// between the open and the read (the private key files block below). Null leaves fs alone.
+const fsHook = vi.hoisted(() => ({
+  afterOpen: null as ((path: string) => void) | null,
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs')>();
+  const openSync = (...args: Parameters<typeof real.openSync>) => {
+    const fd = real.openSync(...args);
+
+    fsHook.afterOpen?.(String(args[0]));
+
+    return fd;
+  };
+
+  return { ...real, default: { ...real, openSync }, openSync };
+});
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const closers: (() => void)[] = [];
@@ -1076,3 +1100,156 @@ for await (const line of createInterface({ input: process.stdin })) {
     20_000,
   );
 });
+
+// `yea service-id` used to lstat the seed file and then read it again by path, so a swap between
+// the two could make it print (and a person grant to) a key the checks never saw. Every private
+// key file (server seeds, connector API keys) is now opened once with O_NOFOLLOW and checked on
+// that descriptor.
+describe.skipIf(typeof process.getuid !== 'function')(
+  'private key files (#81)',
+  () => {
+    const seedFile = async (mode: number) => {
+      const dir = mkdtempSync(join(tmpdir(), 'yea-keyfile-'));
+      const path = join(dir, 'files.key');
+
+      writeFileSync(path, `${(await P.keyPair()).seed}\n`, { mode });
+      chmodSync(path, mode);
+
+      return path;
+    };
+
+    it('reads a seed that is 0600 or 0400 and this user’s', async () => {
+      for (const mode of [0o600, 0o400]) {
+        expect(readServerSeed(await seedFile(mode))).toMatch(
+          /^[A-Za-z0-9_-]{43}$/,
+        );
+      }
+    });
+
+    it('refuses a symlink, even to a good seed, and a dangling one', async () => {
+      const good = await seedFile(0o600);
+      const link = `${good}.link`;
+      const dangling = `${good}.dangling`;
+
+      symlinkSync(good, link);
+      symlinkSync(`${good}.nowhere`, dangling);
+      expect(() => readServerSeed(link)).toThrow(
+        /^refusing the server key: .* is a symlink$/,
+      );
+      expect(() => readServerSeed(dangling)).toThrow(/is a symlink/);
+    });
+
+    it.each(['640', '604', '644', '660', '620'])(
+      'refuses mode %s: group or others have access',
+      async (octal) => {
+        const path = await seedFile(Number.parseInt(octal, 8));
+
+        expect(() => readServerSeed(path)).toThrow(
+          /^refusing the server key: .* can be read by other users \(chmod 600 it\)$/,
+        );
+      },
+    );
+
+    it('refuses a directory and a file another user owns', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'yea-keyfile-'));
+      const sub = join(dir, 'k.key');
+
+      mkdirSync(sub, { mode: 0o700 });
+      expect(() => readServerSeed(sub)).toThrow(/is not a regular file/);
+
+      const owner = (process.getuid?.() ?? 0) + 1;
+      const path = await seedFile(0o600);
+
+      expect(() => readPrivateFile(path, { label: 'x', owner })).toThrow(
+        new RegExp(`^refusing x: .* is not owned by uid ${owner}$`),
+      );
+    });
+
+    it('a missing file is refused with its ENOENT as the cause', () => {
+      const missing = join(tmpdir(), 'yea-keyfile-none', 'k.key');
+
+      try {
+        readServerSeed(missing);
+        expect.unreachable();
+      } catch (e) {
+        expect((e as Error).message).toMatch(/^refusing the server key:/);
+        expect(((e as Error).cause as NodeJS.ErrnoException).code).toBe(
+          'ENOENT',
+        );
+      }
+    });
+
+    it('reads the file it checked, even if another is renamed over the path after the open', async () => {
+      const path = await seedFile(0o600);
+      const original = readServerSeed(path);
+      const other = await seedFile(0o600);
+
+      fsHook.afterOpen = (opened) => {
+        if (opened === path) {
+          renameSync(other, path);
+        }
+      };
+
+      try {
+        expect(readServerSeed(path)).toBe(original);
+      } finally {
+        fsHook.afterOpen = null;
+      }
+
+      expect(readServerSeed(path)).not.toBe(original);
+    });
+
+    it('refuses a FIFO without blocking on the open', async (ctx) => {
+      const path = join(mkdtempSync(join(tmpdir(), 'yea-keyfile-')), 'k.key');
+
+      try {
+        execFileSync('mkfifo', ['-m', '600', path]);
+      } catch {
+        ctx.skip();
+      }
+
+      expect(() => readServerSeed(path)).toThrow(/is not a regular file/);
+    });
+
+    it('refuses a file over 64 KiB', () => {
+      const path = join(mkdtempSync(join(tmpdir(), 'yea-keyfile-')), 'k.key');
+
+      writeFileSync(path, 'A'.repeat(64 * 1024 + 1), { mode: 0o600 });
+      expect(() => readServerSeed(path)).toThrow(/is larger than 64 KiB/);
+    });
+
+    it('where owners can’t be checked (Windows), warns once on stderr and reads', async () => {
+      const path = await seedFile(0o644);
+      const getuid = Object.getOwnPropertyDescriptor(process, 'getuid');
+      const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      Object.defineProperty(process, 'getuid', {
+        value: undefined,
+        configurable: true,
+      });
+
+      try {
+        expect(readServerSeed(path)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringMatching(/^yea: warning: can't check who owns /),
+        );
+      } finally {
+        if (getuid) {
+          Object.defineProperty(process, 'getuid', getuid);
+        }
+
+        warn.mockRestore();
+      }
+    });
+
+    it('a file that holds no seed is refused', async () => {
+      const path = await seedFile(0o600);
+
+      writeFileSync(path, 'not a seed\n');
+      expect(() => readServerSeed(path)).toThrow(
+        /does not hold an Ed25519 seed/,
+      );
+    });
+  },
+);

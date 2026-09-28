@@ -5,36 +5,34 @@
  * a restart; the keys are read once.
  */
 import {
-  closeSync,
-  constants,
   existsSync,
-  fstatSync,
   linkSync,
   mkdirSync,
-  openSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   atLeast,
   b64u,
+  isPublicKey,
   type Risk,
   readTightening,
   type Tightening,
 } from '@yea-protocol/sdk';
-import { home, readPinnedKey } from '@yea-protocol/sdk/node';
+import {
+  checkServerKeyDir,
+  home,
+  readPinnedKey,
+  readServerSeed,
+  SERVER_NAME,
+} from '@yea-protocol/sdk/node';
 import { errorMessage, warnOnce } from './util.js';
-
-const NAME = /^[a-z0-9._-]{1,64}$/;
-const SEED = /^[A-Za-z0-9_-]{43}$/;
-const PUBLIC_KEY = /^ed25519:[A-Za-z0-9_-]{43}$/;
 
 /** Server names name a key file and appear in consent codes. */
 export function checkName(name: unknown): string {
-  if (typeof name !== 'string' || !NAME.test(name)) {
+  if (typeof name !== 'string' || !SERVER_NAME.test(name)) {
     throw new TypeError(
       `yea(): name must match [a-z0-9._-]{1,64}, got ${JSON.stringify(name)}`,
     );
@@ -43,61 +41,7 @@ export function checkName(name: unknown): string {
   return name;
 }
 
-export const defaultKeyPath = (name: string) =>
-  join(home(), 'server', `${name}.key`);
-
 const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
-
-const POSIX = typeof process.getuid === 'function';
-const uid = () => (POSIX && process.getuid ? process.getuid() : -1);
-
-/**
- * Why the key's directory can't be trusted, or null: it must be this user's, and not writable by
- * group or others (who could replace the key file).
- */
-function unsafeKeyDir(dir: string): string | null {
-  const st = statSync(dir);
-
-  if (!st.isDirectory()) {
-    return `${dir} is not a directory`;
-  }
-
-  if (!POSIX) {
-    return null;
-  }
-
-  if (st.uid !== uid()) {
-    return `${dir} is not owned by this user`;
-  }
-
-  return (st.mode & 0o022) !== 0
-    ? `${dir} can be written by other users (chmod 700 it)`
-    : null;
-}
-
-/**
- * Whoever can write the key directory's parent can swap the key directory for their own. So
- * the parent must be owned by this user or root, and not writable by others unless it has the
- * sticky bit (like /tmp), which stops them renaming a directory they don't own.
- */
-function unsafeParentDir(dir: string): string | null {
-  if (!POSIX) {
-    return null;
-  }
-
-  const st = statSync(dir);
-  const owner = st.uid === uid() || st.uid === 0;
-  const othersWrite = (st.mode & 0o022) !== 0;
-  const sticky = (st.mode & 0o1000) !== 0;
-
-  if (!owner) {
-    return `${dir} is owned by another user`;
-  }
-
-  return othersWrite && !sticky
-    ? `${dir} can be written by other users (chmod 755 it)`
-    : null;
-}
 
 /**
  * Create the key file only if it doesn't exist, private to this user. The seed is written to a
@@ -121,53 +65,6 @@ function createKey(path: string) {
   }
 }
 
-/** Why an open key file can't be used, or null. */
-function unsafeKeyFile(path: string, fd: number): string | null {
-  const st = fstatSync(fd);
-
-  if (!st.isFile()) {
-    return `${path} is not a regular file`;
-  }
-
-  if (!POSIX) {
-    return null;
-  }
-
-  if (st.uid !== uid()) {
-    return `${path} is not owned by this user`;
-  }
-
-  // Group and other bits: a key others can read (or write) is not this server's alone.
-  return (st.mode & 0o077) !== 0
-    ? `${path} can be read by other users (chmod 600 it)`
-    : null;
-}
-
-/** Open the key without following a symlink (O_NOFOLLOW), then check and read that same file. */
-function readKeyFile(path: string): string {
-  let fd: number;
-
-  try {
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-  } catch (e) {
-    throw new Error(
-      `yea(): refusing the server key: ${errno(e) === 'ELOOP' ? `${path} is a symlink` : errorMessage(e)}`,
-    );
-  }
-
-  try {
-    const why = unsafeKeyFile(path, fd);
-
-    if (why) {
-      throw new Error(`yea(): refusing the server key: ${why}`);
-    }
-
-    return readFileSync(fd, 'utf8').trim();
-  } finally {
-    closeSync(fd);
-  }
-}
-
 /**
  * The server's Ed25519 seed: created on first run, mode 0600, in a 0700 directory. A key file
  * that is a symlink, someone else's, readable by others, or not a seed is refused, and so is a
@@ -178,7 +75,7 @@ export function loadServerSeed(path: string): string {
 
   mkdirSync(dir, { recursive: true, mode: 0o700 });
 
-  const why = unsafeKeyDir(dir) ?? unsafeParentDir(dirname(dir));
+  const why = checkServerKeyDir(dir);
 
   if (why) {
     throw new Error(`yea(): refusing the server key: ${why}`);
@@ -189,13 +86,11 @@ export function loadServerSeed(path: string): string {
     createKey(path);
   }
 
-  const seed = readKeyFile(path);
-
-  if (!SEED.test(seed)) {
-    throw new Error(`yea(): ${path} does not hold an Ed25519 seed`);
+  try {
+    return readServerSeed(path);
+  } catch (e) {
+    throw new Error(`yea(): ${errorMessage(e)}`, { cause: e });
   }
-
-  return seed;
 }
 
 export type Pinned = { key: string } | { why: string };
@@ -206,7 +101,7 @@ export function pinnedPrincipal(option: string | undefined): Pinned {
     return readPinnedKey();
   }
 
-  return PUBLIC_KEY.test(option)
+  return isPublicKey(option)
     ? { key: option }
     : { why: 'the principal option is not an ed25519 public key' };
 }

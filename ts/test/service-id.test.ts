@@ -56,7 +56,23 @@ describe('yea service-id', () => {
     symlinkSync(join(dir, 'open.key'), join(dir, 'link.key'));
 
     expect(run(home, 'bad').err).toMatch(/does not hold an Ed25519 seed/);
-    expect(run(home, 'open').err).toMatch(/private \(chmod 600\)/);
-    expect(run(home, 'link').err).toMatch(/not a regular file/);
+    expect(run(home, 'open').err).toMatch(
+      /can be read by other users \(chmod 600 it\)/,
+    );
+    expect(run(home, 'link').err).toMatch(/is a symlink/);
+  });
+
+  it('refuses a key directory others can write, as the server does', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-sid-'));
+    const dir = join(home, 'server');
+
+    mkdirSync(dir, { mode: 0o700 });
+    writeFileSync(join(dir, 'files.key'), `${(await P.keyPair()).seed}\n`, {
+      mode: 0o600,
+    });
+    chmodSync(dir, 0o770);
+    expect(run(home, 'files').err).toMatch(
+      /refusing the server key: .* can be written by other users \(chmod 700 it\)/,
+    );
   });
 });

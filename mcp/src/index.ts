@@ -28,7 +28,7 @@ import {
   type Uses,
   undoJob,
 } from '@yea-protocol/sdk';
-import { FileStore } from '@yea-protocol/sdk/node';
+import { defaultFileStore, serverKeyPath } from '@yea-protocol/sdk/node';
 import {
   callerOf,
   isPartial,
@@ -37,12 +37,7 @@ import {
   runJob,
   type Yea,
 } from './call.js';
-import {
-  checkName,
-  defaultKeyPath,
-  loadServerSeed,
-  pinnedPrincipal,
-} from './keys.js';
+import { checkName, loadServerSeed, pinnedPrincipal } from './keys.js';
 import {
   errorResult,
   JOB_ANNOTATIONS,
@@ -183,9 +178,7 @@ function checkOptions(o: YeaOptions, memory: boolean) {
 }
 
 const defaultStore = (o: YeaOptions): ApprovalStore =>
-  o.transport === 'http'
-    ? new MemoryStore()
-    : new FileStore(process.env.YEA_STORE || undefined);
+  o.transport === 'http' ? new MemoryStore() : defaultFileStore();
 
 /** A random per-process codec key: only safe while one process handles every round. */
 const randomKey = () => globalThis.crypto.getRandomValues(new Uint8Array(32));
@@ -201,7 +194,7 @@ export function yea(o: YeaOptions): Approvals {
 
   const store = o.store ?? defaultStore(o);
 
-  const seed = loadServerSeed(o.serverKey ?? defaultKeyPath(o.name));
+  const seed = loadServerSeed(o.serverKey ?? serverKeyPath(o.name));
   const sub = o.sub ?? (() => '');
   const codec =
     o.codec ??

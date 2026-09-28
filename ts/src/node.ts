@@ -341,7 +341,12 @@ export async function connect(
   return new Client(await transport(url, { tls: opts.tls }), opts);
 }
 
-export { checkKeyFile, FileStore, readPinnedKey } from './filestore.js';
+export {
+  checkKeyFile,
+  defaultFileStore,
+  FileStore,
+  readPinnedKey,
+} from './filestore.js';
 
 export {
   agentKey,
@@ -350,5 +355,16 @@ export {
   loadGrants,
   saveGrant,
 } from './home.js';
+
+export {
+  canCheckOwners,
+  checkServerKeyDir,
+  type PrivateFileOptions,
+  readPrivateFile,
+  readServerSeed,
+  SERVER_NAME,
+  serverKeyPath,
+  uid,
+} from './keyfile.js';
 
 export { listServices } from './setup.js';
