@@ -6,7 +6,8 @@ import pytest
 
 from yea import Client, GrantContext, Plan, Service, create, issue_grant, key_from_seed, local, verify_grant
 from yea.approval import Policy, at_least, plan_hash
-from yea.client import Reply, _checked_reply
+from yea.client import Reply
+from yea.client.reply import _checked_reply
 from yea.risk import exceeds, known_risk, resolve_risk
 
 ALICE = key_from_seed(bytes(32))
