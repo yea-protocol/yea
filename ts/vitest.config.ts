@@ -8,6 +8,9 @@ export default defineConfig({
       '@yea-protocol/stripe/api': fileURLToPath(
         new URL('../connectors/stripe/src/api.ts', import.meta.url),
       ),
+      '@yea-protocol/stripe/currency': fileURLToPath(
+        new URL('../connectors/stripe/src/currency.ts', import.meta.url),
+      ),
       '@yea-protocol/sdk/examples': fileURLToPath(
         new URL('./src/examples/index.ts', import.meta.url),
       ),

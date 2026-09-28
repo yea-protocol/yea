@@ -12,8 +12,10 @@ beforeAll(async () => {
   agent = await P.keyPair();
 });
 
-async function setup(caveats: P.Caveat[] = []) {
-  const stripe = fakeStripe();
+async function setup(
+  caveats: P.Caveat[] = [],
+  stripe: ReturnType<typeof fakeStripe> = fakeStripe(),
+) {
   const grant = await P.issueGrant({ principal, to: agent.public, caveats });
   const client = new P.Client(
     P.local(
@@ -101,5 +103,44 @@ describe("Stripe-backed billing (the guide's full example)", () => {
 
     expect(r.kind === 'ERROR' && r.code).toBe('not_found');
     expect(r.lens).toContain('fix:');
+  });
+
+  it('a refund whose result is unknown is not retryable: it may have happened', async () => {
+    const { client, stripe } = await setup([{ risk: 'medium' }]);
+    const r = await client.intent('billing.refund', { who: 'Chen' });
+
+    if (r.kind !== 'PROPOSALS') {
+      throw new Error(r.kind);
+    }
+
+    // Every answer is lost; the client's own retries (which wait 0.5 s, then 1 s) reuse the key.
+    stripe.fail({ path: '/refunds', network: true, times: 3 });
+
+    const out = await client.commit(r.proposals[0]);
+
+    expect(out.kind).toBe('ERROR');
+
+    if (out.kind !== 'ERROR') {
+      return;
+    }
+
+    expect(out.code).toBe('conflict');
+    expect(out.retry ?? null).toBeNull();
+    expect(out.lens).toMatch(/may have happened; check the Stripe dashboard/);
+  });
+
+  it('amounts follow the currency: yen have no decimals', async () => {
+    const stripe = fakeStripe();
+
+    for (const ch of stripe.charges) {
+      ch.currency = 'jpy';
+      ch.amount = 4900;
+    }
+
+    const { client } = await setup([], stripe);
+    const r = await client.ask('billing.customer', { who: 'Chen' });
+
+    expect(r.lens).toContain('ch_2,');
+    expect(r.lens).toContain('4900 JPY');
   });
 });

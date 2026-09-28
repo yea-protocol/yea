@@ -12,7 +12,6 @@ import {
   clarify,
   fix,
   type Plan,
-  quantity,
   send,
   service,
   update,
@@ -31,9 +30,15 @@ import {
   type Subscription,
   stripeApi,
 } from '@yea-protocol/stripe/api';
+// Stripe's currency rules: zero- and three-decimal currencies, ISK and UGX.
+import {
+  formatMoney as amt,
+  formatNumber,
+  parseMoney,
+  roundDown as roundToStep,
+  toQuantity,
+} from '@yea-protocol/stripe/currency';
 
-const amt = (minor: number, cur: string) =>
-  `${(minor / 100).toFixed(2)} ${cur.toUpperCase()}`;
 const day = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 10);
 const roundDown = (secs: number) =>
   secs >= 86400
@@ -97,7 +102,7 @@ function connect(key: string, f: typeof fetch): Stripe {
     try {
       return await call;
     } catch (e) {
-      throw e instanceof StripeError ? teach(e.status, e.message) : e;
+      throw e instanceof StripeError ? teach(e) : e;
     }
   };
 
@@ -108,7 +113,17 @@ function connect(key: string, f: typeof fetch): Stripe {
   };
 }
 
-function teach(status: number, message: string) {
+function teach(e: StripeError) {
+  const { status, message } = e;
+
+  // A write that may have happened must not be retried: with a fresh
+  // idempotency key, a retry would be a second refund.
+  if (e.unknown) {
+    return new YeaError('conflict', message, {
+      fix: [fix('ASK billing.customer to see whether it happened')],
+    });
+  }
+
   if (status === 404) {
     return new YeaError('not_found', message, {
       fix: [fix('ASK billing.customer with a name or email')],
@@ -241,7 +256,8 @@ async function refundPlans(
 
   // The choices a person would offer: all of it, or the unused part.
   const plans = [refund(left, 'full')];
-  const unused = sub && ch.id === chs[0]?.id ? unusedPart(left, sub) : null;
+  const unused =
+    sub && ch.id === chs[0]?.id ? unusedPart(left, sub, ch.currency) : null;
 
   if (unused) {
     plans.push(refund(unused.amount, `unused ${unused.days} days`));
@@ -273,9 +289,15 @@ function refundable(chs: Charge[], c: Customer, payment?: string) {
   );
 }
 
-/** A partial refund, converted to minor units and checked against `left`. */
+/** A partial refund, converted to Stripe's units and checked against `left`. */
 function partial(major: number, left: number, cur: string) {
-  const amount = Math.round(major * 100);
+  let amount = 0;
+
+  try {
+    amount = parseMoney(String(major), cur);
+  } catch {
+    amount = 0;
+  }
 
   if (amount > 0 && amount <= left) {
     return amount;
@@ -283,18 +305,25 @@ function partial(major: number, left: number, cur: string) {
 
   throw new YeaError(
     'invalid_params',
-    `refund must be between 0.01 and ${amt(left, cur)}`,
+    `refund must be more than 0 and at most ${amt(left, cur)}, in amounts ${cur.toUpperCase()} allows`,
     {
-      fix: [fix(`refund the rest (${amt(left, cur)})`, { amount: left / 100 })],
+      fix: [
+        fix(`refund the rest (${amt(left, cur)})`, {
+          amount: Number(formatNumber(left, cur)),
+        }),
+      ],
     },
   );
 }
 
 /** The part of `left` that pays for the rest of the period, if it's less. */
-function unusedPart(left: number, sub: Subscription) {
+function unusedPart(left: number, sub: Subscription, cur: string) {
   const { start, end } = period(sub);
   const now = Date.now() / 1000;
-  const amount = Math.round(left * Math.max(0, (end - now) / (end - start)));
+  const amount = roundToStep(
+    Math.round(left * Math.max(0, (end - now) / (end - start))),
+    cur,
+  );
 
   if (amount <= 0 || amount >= left) {
     return null;
@@ -320,7 +349,7 @@ function refunder(stripe: Stripe, c: Customer, ch: Charge) {
     ],
     // What the refund spends, by the `spend` convention (docs/conventions.md).
     uses: {
-      spend: quantity(amount, { scale: 2, unit: ch.currency.toUpperCase() }),
+      spend: toQuantity(amount, ch.currency),
     },
     // YEA runs apply() at most once. write() sends a fresh idempotency key,
     // which only its own network retries reuse: a key derived from the plan
