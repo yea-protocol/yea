@@ -6,19 +6,20 @@
     "ts",
     "cli",
     "mcp",
+    "connectors/stripe",
     "examples",
     "bench",
     "site",
     "deploy/demo"
   ],
   "scripts": {
-    "build": "npm run build -w @yea-protocol/sdk && npm run build -w @yea-protocol/mcp",
-    "test": "npm test -w @yea-protocol/sdk && npm test -w @yea-protocol/mcp",
+    "build": "npm run build -w @yea-protocol/sdk && npm run build -w @yea-protocol/mcp && npm run build -w @yea-protocol/stripe",
+    "test": "npm test -w @yea-protocol/sdk && npm test -w @yea-protocol/mcp && npm test -w @yea-protocol/stripe",
     "demo": "npm run build && node examples/demo.ts",
     "bench": "npm run build && node bench/run.ts && node bench/estimator.ts",
     "site": "npm run build -w yea-site",
     "lint": "biome check .",
-    "lint:style": "oxlint --config .oxlintrc.json ts/src ts/test ts/scripts mcp/src mcp/test examples bench deploy/demo/src scripts site/scripts site/.vitepress/config.ts site/.vitepress/theme/index.ts",
+    "lint:style": "oxlint --config .oxlintrc.json ts/src ts/test ts/scripts mcp/src mcp/test connectors/stripe/src connectors/stripe/test examples bench deploy/demo/src scripts site/scripts site/.vitepress/config.ts site/.vitepress/theme/index.ts",
     "lint:style:fix": "npm run lint:style -- --fix",
     "format": "biome format --write .",
     "prepare": "lefthook install || true"

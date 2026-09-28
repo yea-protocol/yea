@@ -8,6 +8,8 @@
       "ts/*.ts",
       "mcp/src/**",
       "mcp/test/**",
+      "connectors/*/src/**",
+      "connectors/*/test/**",
       "examples/**",
       "bench/**",
       "deploy/demo/src/**",
@@ -67,7 +69,12 @@
   },
   "overrides": [
     {
-      "includes": ["ts/test/**", "mcp/test/**", "bench/**"],
+      "includes": [
+        "ts/test/**",
+        "mcp/test/**",
+        "connectors/*/test/**",
+        "bench/**"
+      ],
       "linter": {
         "rules": {
           "complexity": {
