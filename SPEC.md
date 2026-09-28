@@ -129,6 +129,9 @@ Reply: `BRIEF`
  ]}
 ```
 
+`agent` is OPTIONAL and informational: a display `name` and, when the agent has a key, its
+public `key` (§6.1). Services MUST NOT authorize anything on it; grants and proofs (§6) do that.
+
 `service.id` is the service's **audience identifier** and MUST be stable. Proofs are bound to it (§6.5).
 
 Capabilities MAY omit `params` when the budget is small. The service then adds a `more`
@@ -237,6 +240,10 @@ the window has closed. `UNDO` MUST be authorized by a grant rooted in the same p
 as the original commit. Undoing an already-undone receipt returns the original reversal
 receipt with `"replay": true`.
 
+The reversal receipt's effects invert the original's: `create` and `delete` swap, an
+`update` swaps `from` and `to` (a side the original left out stays left out, never `null`),
+a `send` becomes an `other` effect on the same target, and `other` stays `other`.
+
 ### 4.6 `EXPAND` — get the rest
 
 ```json
@@ -316,7 +323,8 @@ A service MUST NOT perform effects beyond those declared in the committed propos
  "at":1790000100,"effects":[…],"undo":{"until":1790003700},"result":{…}}
 ```
 
-A receipt carries the committed proposal's `uses` when it had one.
+A receipt carries the committed proposal's `uses` when it had one. `result` is what the commit
+returned; it is left out when the commit returned nothing (`null`).
 
 `undo` is `null` when the action cannot be undone. An undo receipt has `"undoes"` set and `"undo": null`.
 
@@ -422,6 +430,10 @@ A leaked grant alone is useless. Requests with grants carry
 | `EXPAND` | the handle |
 
 Services MUST reject proofs with `|now − ts| > 300`.
+
+`serviceId` is the `service.id` from the service's `BRIEF` (§4.1). A client that has not
+learned it (its `HELLO` failed) MUST NOT sign for any other audience, such as `""`; the
+request fails on the client instead.
 
 ### 6.6 Multiple grants and consent
 

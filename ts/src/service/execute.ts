@@ -131,6 +131,6 @@ function receiptFor(proposal: Proposal, result: unknown, at: number): Receipt {
     effects: proposal.effects,
     ...(proposal.uses ? { uses: proposal.uses } : {}),
     undo: proposal.undo ? { until: at + proposal.undo.window } : null,
-    ...(result !== undefined ? { result } : {}),
+    ...(result !== undefined && result !== null ? { result } : {}),
   };
 }

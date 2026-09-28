@@ -34,7 +34,7 @@ export class UndoHandler {
     if (!stored || stored.receipt.undoes) {
       throw new YeaError(
         'not_found',
-        `no undoable receipt ${JSON.stringify(req.receipt)}`,
+        `no undoable receipt ${JSON.stringify(req.receipt ?? null)}`,
       );
     }
 
@@ -123,11 +123,20 @@ const INVERSE_OP: Record<Effect['op'], Effect['op']> = {
   other: 'other',
 };
 
+/** An update with `from` and `to` swapped; a side the original left out stays out (SPEC §4.5). */
+function swapSides({ from, to, ...rest }: Effect): Effect {
+  return {
+    ...rest,
+    ...(to !== undefined ? { from: to } : {}),
+    ...(from !== undefined ? { to: from } : {}),
+  };
+}
+
 /** The effect an undo receipt reports for reversing `e`. */
 function invertEffect(e: Effect): Effect {
   switch (e.op) {
     case 'update':
-      return { ...e, from: e.to, to: e.from };
+      return swapSides(e);
     case 'send':
       return {
         op: 'other',

@@ -163,6 +163,10 @@ const positiveInt = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
 
 const unknownVerb = (req: { verb?: unknown }) =>
-  new YeaError('bad_frame', `unknown verb ${JSON.stringify(req.verb)}`, {
-    fix: [fix('use one of HELLO, ASK, INTENT, COMMIT, UNDO, EXPAND')],
-  });
+  new YeaError(
+    'bad_frame',
+    `unknown verb ${JSON.stringify(req.verb ?? null)}`,
+    {
+      fix: [fix('use one of HELLO, ASK, INTENT, COMMIT, UNDO, EXPAND')],
+    },
+  );

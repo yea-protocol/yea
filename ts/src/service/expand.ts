@@ -16,7 +16,7 @@ export async function onExpand(
   if (!parked) {
     throw new YeaError(
       'expired',
-      `handle ${JSON.stringify(req.handle)} is unknown or expired`,
+      `handle ${JSON.stringify(req.handle ?? null)} is unknown or expired`,
       { fix: [fix('repeat the original request')] },
     );
   }
