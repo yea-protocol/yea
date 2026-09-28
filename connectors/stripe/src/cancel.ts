@@ -120,12 +120,6 @@ function atPeriodEnd(ctx: Ctx, t: Target): JobPlan {
   };
 }
 
-/**
- * Cancel at once. Stripe ignores idempotency keys on DELETE, so it isn't retried: a lost answer
- * is reported as unknown. The SDK still retries once after a reset connection, and if the first
- * try went through, that retry fails; so a plain failure is checked against the subscription,
- * and one that's cancelled counts as done.
- */
 /** Whether Stripe says the subscription is cancelled; a failed read says no. */
 const isCancelled = (ctx: Ctx, id: string) =>
   ctx.stripe
@@ -135,6 +129,12 @@ const isCancelled = (ctx: Ctx, id: string) =>
       () => false,
     );
 
+/**
+ * Cancel at once. Stripe ignores idempotency keys on DELETE, so it isn't retried: a lost answer
+ * is reported as unknown. The SDK still retries once after a reset connection, and if the first
+ * try went through, that retry fails; so a plain failure is checked against the subscription,
+ * and one that's cancelled counts as done.
+ */
 async function cancelNow(ctx: Ctx, id: string) {
   try {
     await ctx.stripe.write((s, o) =>
