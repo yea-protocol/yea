@@ -34,7 +34,7 @@ A valid grant doesn't cover this request, and `need` lists the caveats that bloc
 
 ## `consent_required`
 
-That's working as intended: the action is outside the policy (per-action cap, total spend or risk ceiling). The human approves it with `yea approve <pc1.code>`, or in the client's own prompt when it supports MCP elicitation. The approval covers that one proposal only.
+That's working as intended: the action is outside the policy (per-action cap, total spend or risk ceiling). The human approves it with `yea approve <pc1.code>` where their principal key is, and the agent passes the printed consent to `yea_consent` and calls the tool again. The approval covers that one proposal only.
 
 ## `expired`
 

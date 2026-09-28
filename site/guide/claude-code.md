@@ -8,7 +8,7 @@ editLink: false
 
 ## What the model gets
 
-Four generic tools (`yea_ask`, `yea_intent`, `yea_commit`, `yea_undo`) and each service's brief. It needs no YEA documentation: in [a real session](/reference/claude-session), Claude Sonnet 5 read Lens cold, moved a meeting within policy, stopped at a purchase over its limit, and asked the human to approve it.
+One tool per capability of each service (`calendar_reschedule`, `shop_order`, …), with read-only and destructive hints, plus `yea_consent`, `yea_undo` and `yea_expand`. It needs no YEA documentation: in [a real session](/reference/claude-session) (on the bridge's earlier, generic tools), Claude Sonnet 5 read Lens cold, moved a meeting within policy, stopped at a purchase over its limit, and asked the human to approve it.
 
 ## Try it without running anything
 

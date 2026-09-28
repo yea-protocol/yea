@@ -28,8 +28,8 @@ Just trying it out? `yea install --with-principal` creates the principal key loc
 
 Every client runs the same command: `npx -y @yea-protocol/cli mcp`, optionally followed by service URLs. With no URLs, it serves the services you added with `yea add`.
 
-::: danger Don't auto-approve commits
-Whatever the client, don't add `yea_commit` or `yea_undo` to an auto-approve or "trusted" list. Your client's own confirmation is a second check on top of your signed policy. Auto-approving `yea_ask` is fine: it's read-only by definition.
+::: danger Don't auto-approve destructive tools
+Whatever the client, don't add tools marked `destructiveHint` (each capability that changes something, and `yea_undo`) to an auto-approve or "trusted" list. Your client's own confirmation is a second check on top of your signed policy. Auto-approving tools marked `readOnlyHint` is fine: they're reads by definition.
 :::
 
 ### Claude Code
@@ -160,7 +160,7 @@ mcp_servers:
     args: ["-y", "@yea-protocol/cli", "mcp"]
 ```
 
-Consent works well here: when a commit needs the human's approval and the client supports MCP elicitation, the bridge asks through it, and Hermes routes form-mode elicitation through its own approval surface. If you restrict which tools a server exposes (`tools.include`), include all four YEA tools; the agent needs `yea_intent` to see proposals before `yea_commit`.
+When a commit needs the human's approval, the tool returns a consent code for `yea approve`, and the agent hands the signed consent back through `yea_consent`. If you restrict which tools a server exposes (`tools.include`), keep `yea_consent`, `yea_undo` and `yea_expand` alongside the capability tools you want.
 
 ## MCP registry
 

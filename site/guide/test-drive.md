@@ -6,7 +6,7 @@ Watch a real Claude model use YEA, live, in your terminal:
 npx @yea-protocol/cli test-drive
 ```
 
-It runs the example calendar and shop in-process, gives the model the same four tools the MCP bridge exposes, and hands it a task. The default task: move your 1:1 with Ana to a free slot, then order four vegan meals under 700 calories.
+It runs the example calendar and shop in-process, gives the model four generic tools (`yea_ask`, `yea_intent`, `yea_commit`, `yea_undo`), and hands it a task. The default task: move your 1:1 with Ana to a free slot, then order four vegan meals under 700 calories.
 
 ## What you'll see
 

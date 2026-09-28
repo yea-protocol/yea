@@ -9,6 +9,10 @@ consent is typed, not yes/no.
 
 Issue: [#40](https://github.com/yea-protocol/yea/issues/40). Map: [README.md](README.md).
 
+Status: built in [#73](https://github.com/yea-protocol/yea/issues/73), except `--approve-here`
+(steps 6–7's form and in-client signing), which waits for decision 4. Until then the bridge
+signs nothing: consent codes are the only way to approve.
+
 ## Objective
 
 ```sh
@@ -52,7 +56,10 @@ On start, the bridge sends `HELLO` to each service with a large budget. It `EXPA
   - Two tools that would get the same name (two services sharing a capability, or `a.b`
     and `a_b`) both get a suffix: `_` and the first 6 b64url characters of
     `sha256(service id + "/" + capability)`.
-  - The `yea_` prefix is reserved: a capability whose name starts with it gets the suffix.
+  - The `yea_` prefix is reserved: a capability whose name starts with it gets the suffix. So
+    does an empty name.
+  - A name that still clashes after its suffix (with another tool, or a utility) isn't served,
+    and stderr says so. Nothing is ever shadowed.
   - `_meta['dev.yea/service']` and `_meta['dev.yea/capability']` carry the real names.
 - **Service ids must be unique.** Two URLs whose `BRIEF`s claim the same `service.id` make the
   bridge refuse to start, naming both. The id is self-declared, and it's what proofs and
@@ -67,13 +74,16 @@ On start, the bridge sends `HELLO` to each service with a large budget. It `EXPA
   - the text after ` — ` becomes the `description`.
 
   The service validates params itself, so the tool's Standard Schema passes values through
-  unchanged. A capability param named `goal`, `preview` or `proposal` makes that tool refuse to
-  be built (named on stderr), rather than shadow the bridge's own fields.
+  unchanged. A job capability's param named `goal`, `preview` or `proposal` makes that tool
+  refuse to be built (named on stderr), rather than shadow the bridge's own fields. Read tools
+  have no such fields, so they're built as usual.
 - **Too many tools, per service.** A service with more than 25 capabilities (the OpenAPI
   adapter can expose hundreds) gets two generic tools instead: `<service>_ask` and
   `<service>_intent`, taking `{ capability, params, goal?, preview?, proposal? }`.
   - `<service>` is the service id, sanitized and cut to 40 characters, so the two names never
-    truncate into each other. They go through the same collision and `yea_` rules.
+    truncate into each other. They go through the same collision and `yea_` rules; their suffix
+    hashes `service id + "/" + "ask"` (or `"intent"`).
+  - A service with no capabilities of a kind gets no generic tool for it.
   - Other services keep their per-capability tools.
   - `--tools generic|per-capability` forces one mode for every service.
   - A generic intent call runs the same steps as a per-capability one.
@@ -86,10 +96,12 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
 - **Keyed** by tool and input hash, with `goal`, `preview` and `proposal` left out. The input
   hash is `sha256` of the params as JSON with sorted keys, not `canonical`: a service's
   `number` params may be floats, which canonical JSON refuses. The hash never leaves the
-  process.
+  process. (A generic tool's key includes the capability too.)
 - **Bounded** to 256 entries, the oldest dropped first.
 - **Dropped** once the entry commits, and once its proposals have less than 2 minutes left, so
-  a code is never handed out just before it expires.
+  a code is never handed out just before it expires. "Its proposals" means the first of them
+  to expire. Proposals that already have less than 2 minutes left when they arrive get no
+  codes and aren't stored.
 
 1. **Deny.** If the capability is in the local unsigned `deny` list (`~/.yea/policy.json`,
    SPEC-approval §2), refuse before anything else, previews included. Entries match either
@@ -104,7 +116,8 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      and return the receipt.
    - **An approval round?** If the call carries our state (below), go to step 7. A call
      carrying our state with no pending entry is refused as a bad state; it never falls
-     through to a fresh `INTENT`.
+     through to a fresh `INTENT`. Until `--approve-here` exists the bridge mints no state, so
+     a call carrying any state is refused, pending entry or not.
    - **A chosen proposal?** If the call names `proposal` (an id from this entry's list),
      `COMMIT` it with the agent's grants only. The service decides: a `RECEIPT` means the
      grant allowed it (an irreversible action within the grant, say), and
@@ -114,7 +127,11 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      isn't orphaned.
 
    A `not_found`, `expired` or `conflict` from the service drops the entry and continues at
-   step 4.
+   step 4. A consent from the store is used only if it passes every `yea_consent` check below.
+
+   A call naming `proposal` with no pending entry for its input (it expired, was used, or the
+   bridge restarted) is refused, not sent as a fresh `INTENT`: the id the model names could
+   be for any of the old proposals, and a fresh `auto` would commit only the first.
 4. **Auto.** Send `INTENT` with `auto: true` and the agent's grants and proof.
    - A `RECEIPT` means the service's grant check allowed it: return the receipt.
    - `CLARIFY` becomes a clarification result.
@@ -147,6 +164,9 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      principal key is, then paste the printed consent back to you and call `yea_consent`
      with it, then call this tool again.* (`yea approve` asks y/N for protocol proposals; it
      doesn't ask for a phrase.)
+   - A result that returns proposals for approval isn't `isError`: nothing ran, the first line
+     says so, and the model may still commit one within the grant with `proposal`. The no-grants
+     and many-principals results are `isError`.
    - **With `--approve-here`**, when the client can take a form and the principal key on this
      machine matches: `buildForm` the pending proposals (`high` and denied ones aren't
      offered), and return `inputRequired` with a sealed state (`newState`), as
@@ -188,6 +208,9 @@ one exact proposal at one service, and still needs the agent key's proof.
   Elided parts come back with a `yea_expand` hint.
 - **`yea_expand`** sends `EXPAND` with the handle. Handles are bound to the agent's key by
   the service (SPEC.md §4.6).
+- **Every result is rendered by the bridge.** A reply's own `lens` field is ignored, and every
+  service-written string outside `data` and `result` is made one line (control characters, line
+  separators and bidi marks escaped), so a hostile summary can't forge a line of ours.
 - **`yea_undo`** sends `UNDO` with the agent's grants. The service checks the window and the
   principal.
 
@@ -212,6 +235,10 @@ one exact proposal at one service, and still needs the agent key's proof.
   - on a machine without one (the key-on-another-device case), uses it, after the y/N that
     already shows it.
 
+  After the y/N, it prints the signed consent on stdout, to paste back to the agent (which
+  hands it to `yea_consent`), and saves it in `~/.yea/consents` only when this machine's agent
+  key is the one it's issued to.
+
   `agent` changes no bytes SPEC.md pins, since codes are a tooling format and decoders ignore
   unknown fields. Python's protocol code builder mirrors it, and a protocol-code vector is
   added.
@@ -229,6 +256,13 @@ one exact proposal at one service, and still needs the agent key's proof.
   version they measured.
 - **Tests.** `ts/test/mcp.test.ts` and the bridge's cases in `ts/test/security.test.ts` move
   with the code, and are rewritten for the new tools.
+
+## Start-up limits
+
+- `HELLO` is sent with a budget of 100,000, and at most 64 `EXPAND`s read the capability list.
+  A capability entry that doesn't parse, or repeats a name, is skipped and reported.
+- The bridge's clients send the agent's grants only. Consents stay in `~/.yea/consents` and are
+  read by proposal hash when a pending proposal is committed.
 
 ## Testing
 
@@ -250,7 +284,7 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   proposal, once;
 - a re-call before approval returns the same codes, and doesn't orphan the approval;
 - an expired or discarded pending proposal falls back to a fresh `INTENT`;
-- with `--approve-here`:
+- with `--approve-here` (not built yet, TODO #73):
   - a typed phrase commits;
   - the retry sends no `INTENT`;
   - a consent is signed only after `consent_required`;
