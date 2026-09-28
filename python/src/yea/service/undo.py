@@ -21,8 +21,13 @@ _INVERSE = {"create": "delete", "delete": "create"}
 
 def _inverse(e: dict) -> dict:
     op = e.get("op")
-    if op == "update":
-        return {**e, "from": e.get("to"), "to": e.get("from")}
+    if op == "update":  # swap the sides; one the original left out stays left out, never null (§4.5)
+        swapped = {k: v for k, v in e.items() if k not in ("from", "to")}
+        if "to" in e:
+            swapped["from"] = e["to"]
+        if "from" in e:
+            swapped["to"] = e["from"]
+        return swapped
     if op == "send":
         return {"op": "other", "target": e["target"], "detail": "cannot unsend; follow-up sent if supported"}
     return {**e, "op": _INVERSE.get(op, "other")}

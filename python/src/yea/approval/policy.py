@@ -34,7 +34,7 @@ def read_tightening(doc: Any) -> Tightening:
             warnings.append('ignored "deny": bad value')
     oob = DEFAULT_OUT_OF_BAND
     if "outOfBand" in doc:
-        if doc["outOfBand"] in RISK_ORDER:
+        if isinstance(doc["outOfBand"], str) and doc["outOfBand"] in RISK_ORDER:
             oob = doc["outOfBand"]
         else:
             warnings.append('ignored "outOfBand": bad value')
