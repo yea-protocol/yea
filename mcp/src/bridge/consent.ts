@@ -5,7 +5,7 @@
  */
 import { checkGrant, decodeGrant, type Proposal } from '@yea-protocol/sdk';
 import { loadConsent, saveGrant } from '@yea-protocol/sdk/node';
-import { isObject, type Obj } from '../util.js';
+import { errorMessage, isObject, type Obj } from '../util.js';
 import type { Pending } from './pending.js';
 
 /** Where consents are kept, by the proposal hash they commit. */
@@ -78,7 +78,7 @@ export function readConsent(token: unknown): ConsentFields | { why: string } {
   try {
     blocks = decodeGrant(token);
   } catch (e) {
-    return { why: `not a readable grant (${(e as Error).message})` };
+    return { why: `not a readable grant (${errorMessage(e)})` };
   }
 
   if (blocks.length !== 1) {

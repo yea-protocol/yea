@@ -48,13 +48,13 @@ import {
   JOB_ANNOTATIONS,
   textResult,
   UNDO_ANNOTATIONS,
-} from './render.js';
+} from './result.js';
 import { previewSchema, takePreview } from './schema.js';
 import { errorMessage, warnOnce } from './util.js';
 
 export type { RevertFn, RevertInput } from './call.js';
 
-export { errorResult, textResult } from './render.js';
+export { errorResult, textResult } from './result.js';
 
 export { PREVIEW } from './schema.js';
 

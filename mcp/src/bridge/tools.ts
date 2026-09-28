@@ -11,10 +11,10 @@ import { type CapabilityInfo, printable } from '@yea-protocol/sdk';
 import {
   errorResult,
   JOB_ANNOTATIONS,
+  NOTHING_RAN,
   READ_ANNOTATIONS,
   refused,
-  UNMINTED_STATE,
-} from '../render.js';
+} from '../result.js';
 import { errorMessage, isObject, type Obj, warnOnce } from '../util.js';
 import type { Service } from './greet.js';
 import { type Bridge, type JobCall, runJobCall } from './job.js';
@@ -45,6 +45,9 @@ export interface ToolSpec {
 }
 
 type Unnamed = Omit<ToolSpec, 'name'>;
+
+/** Any approval state on a job call: the bridge mints none yet (TODO(#73)). */
+const UNMINTED_STATE = `this approval state is invalid, expired or already used; ${NOTHING_RAN}. Call the tool again without it.`;
 
 /** Whether a service gets the two generic tools. */
 export const isGeneric = (svc: Service, mode: ToolMode) =>

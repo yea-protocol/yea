@@ -5,7 +5,7 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { lens, type Proposal, printable, type Reply } from '@yea-protocol/sdk';
-import { textResult } from '../render.js';
+import { textResult } from '../result.js';
 import type { Obj } from '../util.js';
 
 /** Lens renders these as lean values (strings quoted), so they keep their own text. */

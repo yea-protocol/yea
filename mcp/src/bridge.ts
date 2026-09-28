@@ -30,7 +30,7 @@ import {
   type ToolSpec,
 } from './bridge/tools.js';
 import { consentCall, expandCall, undoCall } from './bridge/utility.js';
-import { errorResult, READ_ANNOTATIONS, UNDO_ANNOTATIONS } from './render.js';
+import { errorResult, READ_ANNOTATIONS, UNDO_ANNOTATIONS } from './result.js';
 import type { Obj } from './util.js';
 
 export type { ConsentStore } from './bridge/consent.js';

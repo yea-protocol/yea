@@ -319,6 +319,8 @@ whether the request carries an envelope, which a 2025 client can spoof:
     `guard`).
   - The one exception is a `requestState` the codec rejects: the SDK answers that with a
     JSON-RPC `-32602` error before our callback runs.
+  - The package exports the helpers it builds these with, `textResult(lines, structured?)` and
+    `errorResult(lines, structured?)`, so a server's own read tools answer in the same shape.
 - **Annotations.**
   - Defaults: `readOnlyHint: false`, `idempotentHint: false`.
   - `destructiveHint` is `true` unless the author sets it, since a job changes things.
@@ -361,6 +363,8 @@ mcp/src/schema.ts      the wrapper Standard Schema that carries `preview`
 mcp/src/client.ts      can the client ask, per era
 mcp/src/keys.ts        server key, pinned principal, policy and tightening loading
 mcp/src/render.ts      Lens text and structuredContent for plans, receipts and codes
+mcp/src/result.ts      tool results, refusals and annotations, shared with the bridge
+mcp/src/util.ts        small internal helpers (isObject, errorMessage, warnOnce)
 mcp/test/*.test.ts     in-memory client tests; security cases in mcp/test/security.test.ts
 ```
 

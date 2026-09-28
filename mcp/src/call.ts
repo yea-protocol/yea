@@ -43,16 +43,16 @@ import { type Pinned, readPolicy, readTighteningFor } from './keys.js';
 import {
   clarifyResult,
   consentResult,
-  errorResult,
-  INVALID_APPROVAL,
   previewResult,
   receiptResult,
-  refused,
-  textResult,
 } from './render.js';
+import { errorResult, NOTHING_RAN, refused, textResult } from './result.js';
 import { errorMessage, isObject, type Obj } from './util.js';
 
 type Result = CallToolResult | InputRequiredResult;
+
+/** A retry whose approval state (ours, from `ask`) is invalid, expired or already consumed. */
+const INVALID_APPROVAL = `this approval is invalid, expired, already used, or for another call; ${NOTHING_RAN}. Call the tool again to ask again.`;
 
 /** What `revert` gets from the receipt, so any process can undo the job. */
 export interface RevertInput {

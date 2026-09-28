@@ -4,7 +4,7 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { type Answer, type ErrorReply, printable } from '@yea-protocol/sdk';
-import { errorResult, textResult } from '../render.js';
+import { errorResult, textResult } from '../result.js';
 import type { Obj } from '../util.js';
 import { type ConsentStore, checkConsent, readConsent } from './consent.js';
 import type { Service } from './greet.js';

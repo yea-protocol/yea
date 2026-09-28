@@ -10,7 +10,7 @@ import {
   type More,
   printable,
 } from '@yea-protocol/sdk';
-import { isObject } from '../util.js';
+import { errorMessage, isObject } from '../util.js';
 
 /** Large enough that a service lists every capability with its params at once. */
 const HELLO_BUDGET = 100_000;
@@ -151,7 +151,7 @@ export async function greet(
       services.push(await greetOne(client, url, problems));
     } catch (e) {
       problems.push(
-        `${printable(url)} could not be reached: ${printable((e as Error).message)}`,
+        `${printable(url)} could not be reached: ${printable(errorMessage(e))}`,
       );
     }
   }
