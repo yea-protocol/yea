@@ -1,12 +1,19 @@
 /**
  * Consents the person signed with `yea approve` (SPEC.md §6.6), as the bridge checks and keeps
- * them (SPEC-bridge, `yea_consent`). The bridge signs nothing: it only accepts a consent that
- * commits one pending proposal, for this agent, from the principal the call's grants name.
+ * them (SPEC-bridge, `yea_consent`), and the consent codes it hands out for them. The bridge
+ * signs nothing: it only accepts a consent that commits one pending proposal, for this agent,
+ * from the principal the call's grants name.
  */
-import { checkGrant, decodeGrant, type Proposal } from '@yea-protocol/sdk';
+import {
+  checkGrant,
+  consentCode,
+  decodeGrant,
+  type Proposal,
+} from '@yea-protocol/sdk';
 import { loadConsent, saveGrant } from '@yea-protocol/sdk/node';
 import { errorMessage, isObject, type Obj } from '../util.js';
 import type { Pending } from './pending.js';
+import type { JobCall } from './types.js';
 
 /** Where consents are kept, by the proposal hash they commit. */
 export interface ConsentStore {
@@ -160,4 +167,31 @@ export async function checkConsent(
   return r.ok
     ? { ok: true, proposal: p, fields: f }
     : { ok: false, why: `its check failed: ${r.reason}` };
+}
+
+/** A consent code per kept proposal: `yea approve` elsewhere signs to `agent`. */
+export function codesFor(call: JobCall, entry: Pending) {
+  const principal = entry.principal;
+  const agent = call.svc.agent;
+
+  if (!principal || !agent) {
+    return [];
+  }
+
+  return entry.proposals.map((p) => ({
+    proposal: p.id,
+    code: consentCode(
+      {
+        proposal: p.id,
+        hash: p.hash,
+        service: entry.service,
+        capability: p.capability,
+        principal,
+        summary: p.summary,
+        expires: p.expires,
+      },
+      p,
+      { agent },
+    ),
+  }));
 }

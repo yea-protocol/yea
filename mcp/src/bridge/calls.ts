@@ -8,8 +8,8 @@ import { errorResult, textResult } from '../result.js';
 import type { Obj } from '../util.js';
 import { type ConsentStore, checkConsent, readConsent } from './consent.js';
 import type { Service } from './greet.js';
+import { replyResult } from './lens.js';
 import type { Pending, PendingProposals } from './pending.js';
-import { replyResult } from './render.js';
 
 /** An ANSWER, and how to fetch what it elided. */
 function answerResult(svc: Service, r: Answer | ErrorReply): CallToolResult {
