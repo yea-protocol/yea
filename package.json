@@ -19,7 +19,7 @@
     "bench": "npm run build && node bench/run.ts && node bench/estimator.ts",
     "site": "npm run build -w yea-site",
     "lint": "biome check .",
-    "lint:style": "oxlint --config .oxlintrc.json ts/src ts/test ts/scripts mcp/src mcp/test cli/bin connectors/stripe/src connectors/stripe/test examples bench deploy/demo/src scripts site/scripts site/.vitepress/config.ts site/.vitepress/theme/index.ts",
+    "lint:style": "oxlint --config .oxlintrc.json ts/src ts/test ts/scripts mcp/src mcp/test cli/bin connectors/stripe/src connectors/stripe/test examples bench deploy/demo/src scripts site/scripts site/.vitepress/config.ts site/.vitepress/theme/index.ts site/.vitepress/theme/components/Playground.vue site/.vitepress/theme/components/playground",
     "lint:style:fix": "npm run lint:style -- --fix",
     "format": "biome format --write .",
     "prepare": "lefthook install || true"
