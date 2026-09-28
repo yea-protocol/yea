@@ -269,9 +269,9 @@ As in `mcp-ts`:
 **Guarded tools with an output schema.** A client validates `structured_content` against a
 tool's `outputSchema` unless the result is an error (checked: `mcp`'s client raises "has an
 output schema but did not return structured content"). So for a guarded tool that has one, the
-routine's own results (preview, questions answered with a refusal, consent codes) are returned
-with `is_error: true`. Only `apply`'s result, which is the tool's own, is returned as a success.
-This needs the same rule in `mcp-ts` (open question 1).
+routine's own results (preview, consent codes, refusals, not approved) are returned with
+`is_error: true`. Only `apply`'s result, which is the tool's own, is returned as a success.
+`mcp-ts` adopts the same rule (decision 6).
 
 ## The SDK-dependent seams
 
@@ -367,13 +367,13 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
 4. **The request-state key and audience come from `yea()`**, passed to the server as
    `request_state_security`. The SDK does the sealing; the plugin only adds the nonce.
 5. **Package:** `yea-mcp` (import `yea_mcp`), with FastMCP as an extra.
+6. **Guarded tools with an output schema.** The routine's own results (preview, consent codes,
+   refusals, not approved) are `is_error: true`, because clients reject a success result whose
+   `structured_content` doesn't match the tool's `outputSchema`. Only the original's result is a
+   success, with the receipt in `_meta["dev.yea/receipt"]`. `mcp-ts` does the same (#64).
 
 ## Open questions
 
-1. **Guarded tools with an output schema** (both languages). A guarded tool's preview, refusals
-   and consent codes can't match the tool's own `outputSchema`, and clients reject a success
-   result without matching `structured_content`. Proposed: those results are `is_error: true`
-   for tools that have an output schema, in `mcp-ts` too.
-2. **Timeouts for in-call asks on 2025.** An in-call `elicit_form` waits on the person. The
+1. **Timeouts for in-call asks on 2025.** An in-call `elicit_form` waits on the person. The
    SDK's request timeout, if the client sets one, can cut it off; the call then runs nothing,
    which is safe. Proposed: document it; no extra timer in v0.
