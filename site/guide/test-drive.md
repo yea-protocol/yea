@@ -27,6 +27,6 @@ The default model is `claude-opus-5`, with server-side fallbacks if a request is
 ## Requirements
 
 - An Anthropic API key in `ANTHROPIC_API_KEY`, or an `ant auth login` profile.
-- Node 20 or newer. If `@anthropic-ai/sdk` isn't installed, `yea` re-runs itself once through `npx -p @yea-protocol/cli@<its version> -p @anthropic-ai/sdk`; if that run still can't load it, it stops and asks you to `npm install @anthropic-ai/sdk`. The SDK itself (`@yea-protocol/sdk`) has no runtime dependencies.
+- Node 20 or newer. If `@anthropic-ai/sdk` isn't installed, `yea` re-runs itself once through `npx -p @yea-protocol/cli@<its version> -p @anthropic-ai/sdk@<the range it supports>` (npx asks before installing when you're at a terminal). If npx can't run, fails, or the re-run still can't load the SDK, it stops and asks you to `npm install @anthropic-ai/sdk`. `@yea-protocol/sdk` itself has no runtime dependencies.
 
 The test drive never touches your real keys or grants: its principal, agent and policy exist only for the session. To connect your own AI tools instead, see [Integrations](/guide/integrations).
