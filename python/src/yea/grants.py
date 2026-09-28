@@ -153,22 +153,22 @@ def _is_int(v: Any) -> bool:
 def decode_grant(token: str) -> Grant:
     """Decode and structurally validate a token. Does not check signatures. Raises ValueError."""
     if not isinstance(token, str) or not token.startswith(TOKEN_PREFIX):
-        raise ValueError("grant tokens start with pg1.")
+        raise ValueError("not a pg1 grant")
     try:
         blocks = loads(b64url_decode(token[len(TOKEN_PREFIX):]).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError) as e:
-        raise ValueError(f"grant token is not valid b64url JSON: {e}") from None
+    except (ValueError, UnicodeDecodeError):
+        raise ValueError("not valid b64url JSON") from None
     if not isinstance(blocks, list) or not blocks:
-        raise ValueError("a grant is a non-empty list of blocks")
+        raise ValueError("grant has no blocks")
     for i, b in enumerate(blocks):
         if not isinstance(b, dict) or not isinstance(b.get("p"), dict) or not isinstance(b.get("s"), str):
-            raise ValueError(f"block {i} must be {{p, s}}")
+            raise ValueError("malformed block")
         p = b["p"]
         need = ("iss", "sub", "nonce") if i == 0 else ("prev", "sub")
         if not all(isinstance(p.get(k), str) for k in need):
-            raise ValueError(f"block {i} payload is missing {', '.join(need)}")
+            raise ValueError("malformed block")
         if not isinstance(p.get("caveats"), list) or not _is_int(p.get("iat")):
-            raise ValueError(f"block {i} payload needs caveats[] and an integer iat")
+            raise ValueError("malformed block")
     return Grant(tuple(blocks))
 
 

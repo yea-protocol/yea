@@ -350,12 +350,10 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
             lines.append(f"  to approve, type: {phrase_of(p, phrase_for)}")
     held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered and p.tool not in policy.deny]
     denied = [f"[{i}]" for i, p in enumerate(plans, 1) if p.tool in policy.deny]
-    if held or denied:
-        lines.append("")
     if held:
-        lines.append(f"Not offered here (approve outside the chat): {', '.join(held)}")
+        lines.extend(["", f"Not offered here (approve outside the chat): {', '.join(held)}"])
     if denied:
-        lines.append(f"Never allowed by your policy: {', '.join(denied)}")
+        lines.extend(["", f"Never allowed by your policy: {', '.join(denied)}"])
     return {"message": "\n".join(lines), "requested_schema": _schema(offered, phrase_for), "offered": [p.plan_hash for p in offered]}
 
 
