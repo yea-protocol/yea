@@ -5,13 +5,30 @@ import { describe, expect, it } from 'vitest';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
 
-const load = (n: string) =>
-  JSON.parse(
-    readFileSync(
-      new URL(`../../conformance/${n}.json`, import.meta.url),
-      'utf8',
-    ),
-  );
+const DIR = new URL('../../conformance/', import.meta.url);
+
+/** Each vector file this runner loaded, with the top-level sections it read (none for a list). */
+const read = new Map<string, Set<string>>();
+
+/** A vector file; reading an object's sections is recorded, so an unread one fails below. */
+function load(n: string) {
+  const data = JSON.parse(readFileSync(new URL(`${n}.json`, DIR), 'utf8'));
+  const seen = read.get(n) ?? new Set<string>();
+
+  read.set(n, seen);
+
+  return Array.isArray(data)
+    ? data
+    : new Proxy(data, {
+        get(target, key, receiver) {
+          if (typeof key === 'string') {
+            seen.add(key);
+          }
+
+          return Reflect.get(target, key, receiver);
+        },
+      });
+}
 
 describe('conformance vectors', () => {
   it('canonical', () => {
@@ -68,6 +85,31 @@ describe('conformance vectors', () => {
       ).toEqual(c.expect);
     }
   });
+  it("grants: the total block ids and seeds are the cases' own", async () => {
+    const { cases, rootTotalBlockId, countsTotalBlockId, seeds } =
+      load('grants');
+    const ids = new Set<string>();
+    // Some cases are malformed on purpose; they have no block ids.
+    const blocksOf = (token: string) => {
+      try {
+        return P.decodeGrant(token);
+      } catch {
+        return [];
+      }
+    };
+
+    for (const c of cases) {
+      for (const b of blocksOf(c.token)) {
+        ids.add(await P.sha256(b.s));
+      }
+    }
+
+    expect(ids).toContain(rootTotalBlockId);
+    expect(ids).toContain(countsTotalBlockId);
+    expect(cases[0].trusted).toContain(
+      (await P.keyPair(seeds.principal)).public,
+    );
+  });
   it('protocol consent code', () => {
     const { consentCode: v } = load('grants');
     const code = P.consentCode(v.consent, v.detail, { agent: v.agent });
@@ -98,6 +140,11 @@ describe('conformance vectors', () => {
     const v = load('approval');
 
     type HP = P.HashedPlan;
+
+    expect(v.keys).toEqual({
+      principal: (await P.keyPair(v.seeds.principal)).public,
+      server: (await P.keyPair(v.seeds.server)).public,
+    });
 
     const asHashed = (x: HP): HP => ({
       ...x,
@@ -151,6 +198,16 @@ describe('conformance vectors', () => {
       expect(P.phraseMatches(c.typed, c.phrase), JSON.stringify(c.typed)).toBe(
         c.match,
       );
+    }
+
+    for (const c of v.phraseChecks) {
+      const check = () => P.checkedPhrase(c.phrase);
+
+      if (c.expect === null) {
+        expect(check, c.name).toThrow(TypeError);
+      } else {
+        expect(check(), c.name).toBe(c.expect);
+      }
     }
 
     for (const c of v.forms) {
@@ -274,6 +331,17 @@ describe('conformance vectors', () => {
   it('estimate', () => {
     for (const c of load('estimate')) {
       expect(P.est(c.text)).toBe(c.est);
+    }
+  });
+  // Last: every vector file is loaded, and every section of one is read.
+  it('reads every section of every vector file', () => {
+    for (const f of readdirSync(DIR).filter((n) => n.endsWith('.json'))) {
+      const n = f.slice(0, -'.json'.length);
+      const data = JSON.parse(readFileSync(new URL(f, DIR), 'utf8'));
+      const sections = Array.isArray(data) ? [] : Object.keys(data).sort();
+
+      expect(read.has(n), `${f} is never loaded`).toBe(true);
+      expect([...(read.get(n) ?? [])].sort(), f).toEqual(sections);
     }
   });
 });

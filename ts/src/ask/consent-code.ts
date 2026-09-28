@@ -12,7 +12,7 @@ import type { KeyPair } from '../crypto.js';
 import { isRisk } from '../risk.js';
 import type { ConsentRequest, Effect } from '../types.js';
 import { isUses } from '../uses.js';
-import { effectivePhrase } from './phrase.js';
+import { checkedPhrase } from './phrase.js';
 
 /** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */
 export interface JobConsent {
@@ -49,7 +49,7 @@ export function jobConsentCode(o: {
   };
   const detail = {
     job: planPreimage(o.hp.tool, o.input, o.hp.plan, o.hp.risk),
-    phrase: effectivePhrase(o.phrase),
+    phrase: checkedPhrase(o.phrase),
   };
 
   return encodeConsentCode({ ...consent, detail });
@@ -108,7 +108,7 @@ export async function readJobConsent(
   return {
     consent: { ...consent, expires: Math.min(c.expires, now + CONSENT_TTL) },
     job,
-    phrase: effectivePhrase(d.phrase),
+    phrase: checkedPhrase(d.phrase, "this consent code's phrase"),
     planHash,
   };
 }

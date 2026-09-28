@@ -16,7 +16,11 @@
  * The Braille blank U+2800 isn't in the set: it shows as a blank cell, not as nothing.
  * `\p{Cf}` also escapes a few visible marks, such as the Arabic number signs U+0600–0605,
  * U+06DD, U+070F and U+08E2, which is acceptable on a consent screen. What matches follows the
- * runtime's Unicode version; that's fine, as this is for display only and never wire bytes.
+ * runtime's Unicode version. That's fine for display, which is never wire bytes. `printable` also
+ * gates approval phrases (SPEC-approval §3: a phrase must equal its printable form), where two
+ * runtimes on different Unicode versions could disagree about a newly assigned code point; that
+ * fails closed, since the phrase is refused and never shown raw. The conformance vectors use
+ * only long-assigned code points.
  */
 const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 

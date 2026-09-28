@@ -14,6 +14,7 @@ import {
   type ApprovalStore,
   assertIntegers,
   type Clarification,
+  checkedPhrase,
   type HashedPlan,
   type JobPlan,
   type Policy,
@@ -132,7 +133,11 @@ export async function begin(
   };
 }
 
-/** The phrase the person types for a plan: the tool's, or `approve`. */
+/**
+ * The phrase the person types for a plan: the tool's, or `approve`. One that isn't a string, or
+ * isn't printable text (SPEC-approval §3), is the developer's error: the call is refused before
+ * anyone is asked.
+ */
 export function phraseFor(call: Call): (hp: HashedPlan) => string {
   const confirm = call.job.confirmWith;
 
@@ -143,6 +148,6 @@ export function phraseFor(call: Call): (hp: HashedPlan) => string {
       throw new TypeError('confirmWith() must return a string');
     }
 
-    return phrase;
+    return checkedPhrase(phrase, 'the phrase from confirmWith()');
   };
 }

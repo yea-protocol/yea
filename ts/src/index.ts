@@ -40,6 +40,7 @@ export {
   type ApprovalState,
   buildForm,
   CONSENT_TTL,
+  checkedPhrase,
   checkState,
   DEFAULT_PHRASE,
   inputHashOf,

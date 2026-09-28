@@ -605,6 +605,40 @@ const phrases = [
   return { typed, phrase, match };
 });
 
+// ---- a tool's phrase, checked before anyone is asked (§3) ----
+// `expect` is the phrase the person types, or null when the phrase is refused. Only
+// long-assigned code points, so runtimes on different Unicode versions agree.
+const phraseChecks = [
+  ['a plain phrase', 'old-nav', 'old-nav'],
+  ['no phrase falls back to approve', '', 'approve'],
+  ['edge whitespace only falls back to approve', ' \t', 'approve'],
+  ['a plain space inside', 'old nav', 'old nav'],
+  ['no-break space and tab at the edges', '\u00a0old-nav\t', '\u00a0old-nav\t'],
+  ['an accented letter', 'café', 'café'],
+  ['an emoji with its variation selector', '👍\ufe0f', '👍\ufe0f'],
+  ['a tab inside', 'old\tnav', null],
+  ['a no-break space inside', 'old\u00a0nav', null],
+  ['an em space inside', 'old\u2003nav', null],
+  ['an em space at the edge, which is not stripped', 'old-nav\u2003', null],
+  ['a bidi override', 'go\u202e', null],
+  ['a newline', 'approve\n', null],
+  ['a zero-width space', 'old\u200bnav', null],
+  ['only a BOM, refused before the fallback', '\ufeff', null],
+  ['a C1 control', 'ch_1\u0085', null],
+].map(([name, phrase, want]) => {
+  let got;
+
+  try {
+    got = P.checkedPhrase(phrase);
+  } catch {
+    got = null;
+  }
+
+  must(`checked phrase: ${name}`, got, want);
+
+  return { name, phrase, expect: want };
+});
+
 // ---- the form (§3) ----
 const phraseFor = (hp) =>
   hp.tool === 'delete_branch' ? 'old-nav' : P.DEFAULT_PHRASE;
@@ -1262,6 +1296,7 @@ export const approval = {
   hash,
   decide: decideOut,
   phrases,
+  phraseChecks,
   forms,
   states,
   judge,
