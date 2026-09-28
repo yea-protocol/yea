@@ -1,6 +1,7 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   readdirSync,
   statSync,
   symlinkSync,
@@ -96,6 +97,20 @@ describe('start-up refusals: yea() throws, so nothing is served', () => {
     expect(start({ serverKey: join(dir, 'k.key') })).toThrow(
       /can be written by other users/,
     );
+  });
+
+  it('a key directory whose parent others can write is refused, unless the parent is sticky', () => {
+    const parent = tmp();
+    const dir = join(parent, 'server');
+
+    mkdirSync(dir, { mode: 0o700 });
+    chmodSync(parent, 0o777);
+    expect(start({ serverKey: join(dir, 'k.key') })).toThrow(
+      /can be written by other users \(chmod 755 it\)/,
+    );
+
+    chmodSync(parent, 0o1777);
+    expect(start({ serverKey: join(dir, 'k.key') })).not.toThrow();
   });
 
   it('a dangling symlink is refused, not replaced', () => {

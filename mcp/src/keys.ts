@@ -75,6 +75,30 @@ function unsafeKeyDir(dir: string): string | null {
 }
 
 /**
+ * Whoever can write the key directory's parent can swap the key directory for their own. So
+ * the parent must be owned by this user or root, and not writable by others unless it has the
+ * sticky bit (like /tmp), which stops them renaming a directory they don't own.
+ */
+function unsafeParentDir(dir: string): string | null {
+  if (!POSIX) {
+    return null;
+  }
+
+  const st = statSync(dir);
+  const owner = st.uid === uid() || st.uid === 0;
+  const othersWrite = (st.mode & 0o022) !== 0;
+  const sticky = (st.mode & 0o1000) !== 0;
+
+  if (!owner) {
+    return `${dir} is owned by another user`;
+  }
+
+  return othersWrite && !sticky
+    ? `${dir} can be written by other users (chmod 755 it)`
+    : null;
+}
+
+/**
  * Create the key file only if it doesn't exist, private to this user. The seed is written to a
  * temp file first and linked into place (which fails if the key exists, like O_EXCL), so a
  * concurrent reader never sees an empty key.
@@ -153,8 +177,7 @@ export function loadServerSeed(path: string): string {
 
   mkdirSync(dir, { recursive: true, mode: 0o700 });
 
-  // The directory above counts too: whoever can write it can swap `server/` for their own.
-  const why = unsafeKeyDir(dir) ?? unsafeKeyDir(dirname(dir));
+  const why = unsafeKeyDir(dir) ?? unsafeParentDir(dirname(dir));
 
   if (why) {
     throw new Error(`yea(): refusing the server key: ${why}`);
