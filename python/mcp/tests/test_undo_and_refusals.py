@@ -6,6 +6,7 @@ import os
 import time
 
 import pytest
+from mcp import Client
 from mcp.server.mcpserver import MCPServer
 from mcp.shared.exceptions import NoBackChannelError
 from yea import Plan, create
@@ -191,3 +192,19 @@ def test_the_default_store_reads_yea_store_before_yea_home(tmp_path, monkeypatch
     assert str(yea(name="s", transport="stdio")._y.store.root) == str(tmp_path / "shared")
     monkeypatch.setenv("YEA_STORE", "")  # empty counts as unset
     assert str(yea(name="s", transport="stdio")._y.store.root) == str(tmp_path / "home" / "store")
+
+
+async def test_a_memory_store_says_why_no_consent_code_and_what_to_do(tmp_path, monkeypatch):
+    """The same words as mcp-ts: where `yea approve` can't reach, and the two ways out (#145)."""
+    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+    mem = yea(name="m", transport="stdio", store=MemoryStore(), server_key=tmp_path / "m", principal=PRINCIPAL.public)
+    srv = MCPServer("m", request_state_security=mem.request_state_security())
+
+    @mem.job(srv, risk="low")
+    async def move(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: None)]
+
+    async with Client(srv, mode="auto") as c:  # a client that can't show forms
+        r = await c.call_tool("move", {"event": "e1"})
+    assert r.is_error and ("this server keeps approvals in memory, where `yea approve` can't reach them; use a "
+                           "client that can show approval forms, or run the server with a FileStore") in text(r)
