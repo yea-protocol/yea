@@ -17,10 +17,10 @@ import mcp_types as t
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.mcpserver import Context
 from mcp.server.request_state import RequestStateSecurity
-from yea.approval import HashedPlan, undo_receipt
+from yea.approval import STATE_TTL, HashedPlan, undo_receipt
 from yea.store import ApprovalStore, FileStore, MemoryStore, default_store_dir, is_receipt_id
 
-from .call import JobDef, Req, Yea, caller_of, run_job
+from .call import JobDef, Req, Yea, _maybe, caller_of, is_memory_store, run_job
 from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
 from .keys import check_name, default_key_path, load_server_key, pinned_principal
 from .render import error_result
@@ -28,7 +28,6 @@ from .signature import job_wrapper
 
 __all__ = ["Approvals", "token_subject", "yea"]
 
-STATE_TTL = 600
 
 
 def token_subject(ctx: Any = None) -> str:
@@ -61,10 +60,10 @@ def _check_options(transport: str, sub: Any, store: ApprovalStore, single_proces
         raise ValueError("yea(): transport must be 'stdio' or 'http'")
     if transport == "http" and not callable(sub):
         raise ValueError("yea(): HTTP needs sub(ctx), the authenticated person calling (see token_subject)")
-    if state_key is not None and isinstance(store, MemoryStore):
+    if state_key is not None and is_memory_store(store):
         raise ValueError("yea(): a shared state_key needs a shared store; with a MemoryStore each process "
                          "would accept the same approval once")
-    if transport == "http" and isinstance(store, MemoryStore) and not single_process:
+    if transport == "http" and is_memory_store(store) and not single_process:
         raise ValueError("yea(): HTTP on a MemoryStore needs single_process=True, or pass a store every process shares")
 
 
@@ -78,7 +77,7 @@ def yea(*, name: str, transport: str, store: ApprovalStore | None = None, single
     _check_options(transport, sub, chosen, single_process, state_key)
     key = load_server_key(server_key if server_key is not None else default_key_path(name))
     y = Yea(name=name, transport=transport, store=chosen,
-            shared_memory=isinstance(chosen, MemoryStore) and not single_process,
+            shared_memory=is_memory_store(chosen) and not single_process,
             principal=pinned_principal(principal), policy=policy, tighten=tighten, service_id=key.public,
             sub=sub if sub is not None else (lambda rctx: ""))
     return Approvals(y, _state_key(state_key))
@@ -143,9 +142,7 @@ class Approvals:
                 server.add_middleware(mw)
             else:
                 server.middleware.append(mw)
-        mw.tools[name] = Guarded(describe, revert, confirm_with)
-        if isinstance(mw, GuardMiddleware):
-            mw._info = None  # re-read the listing, which now has to cover this tool
+        mw.add(name, Guarded(describe, revert, confirm_with))
         if revert is not None:
             self._undo_for(server)[name] = revert
 
@@ -197,8 +194,8 @@ async def undo_call(y: Yea, reverts: dict[str, Callable[..., Any]], id: str, ctx
         revert = reverts.get(found["tool"]) if found else None  # no revert here: unknown, like another server's
 
         async def call_revert(r: dict) -> Any:
-            out = revert({"input": r.get("input"), "planHash": r.get("planHash"), "result": r.get("result")}, ctx)
-            return await out if hasattr(out, "__await__") else out
+            return await _maybe(revert({"input": r.get("input"), "planHash": r.get("planHash"),
+                                        "result": r.get("result")}, ctx))
 
         out = await undo_receipt(y.store, id if revert else None, y.service_id, sub, int(time.time()), call_revert)
         if out.kind == "undone" and out.receipt is not None:

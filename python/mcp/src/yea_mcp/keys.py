@@ -41,39 +41,60 @@ def default_key_path(name: str) -> Path:
     return home() / "server" / f"{name}.key"
 
 
-def _create_key(path: Path) -> bool:
-    """Create the key file only if it doesn't exist (O_EXCL), private to this user."""
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+def _check_dir(d: Path) -> None:
+    """The key's directory is this user's and 0700; its parent is this user's or root's, and not
+    writable by others unless sticky (like /tmp)."""
+    st = d.lstat()
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid() or st.st_mode & 0o077:
+        raise ValueError(f"yea(): refusing the server key: {d} must be a directory owned by this user, mode 0700")
+    p = d.parent.stat()
+    if p.st_uid not in (os.geteuid(), 0) or (p.st_mode & 0o002 and not p.st_mode & stat.S_ISVTX):
+        raise ValueError(f"yea(): refusing the server key: {d.parent} can be changed by other users")
+
+
+def _create_key(path: Path) -> None:
+    """Write the seed to a temp file, then link it into place: the link fails if a key exists, and
+    a reader never sees a half-written file."""
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError:
-        return False
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(b64url_encode(secrets.token_bytes(32)) + "\n")
-    return True
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(b64url_encode(secrets.token_bytes(32)) + "\n")
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            pass
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
-def _unsafe_key_file(path: Path) -> str | None:
-    st = path.lstat()
-    if stat.S_ISLNK(st.st_mode):
-        return f"{path} is a symlink"
-    if not stat.S_ISREG(st.st_mode):
-        return f"{path} is not a regular file"
-    if sys.platform != "win32" and st.st_mode & 0o077:
-        return f"{path} can be read by other users (chmod 600 it)"
-    return None
+def _read_key(path: Path) -> str:
+    """Open without following a symlink, check the open file, and read that same file."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as e:
+        raise ValueError(f"yea(): refusing the server key: {path} is a symlink or unreadable ({e.strerror})") from None
+    with os.fdopen(fd, encoding="utf-8") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode):
+            raise ValueError(f"yea(): refusing the server key: {path} is not a regular file")
+        if st.st_uid != os.geteuid():
+            raise ValueError(f"yea(): refusing the server key: {path} is not owned by this user")
+        if sys.platform != "win32" and st.st_mode & 0o077:
+            raise ValueError(f"yea(): refusing the server key: {path} can be read by other users (chmod 600 it)")
+        return f.read().strip()
 
 
 def load_server_key(path: str | os.PathLike[str]) -> KeyPair:
-    """The server's Ed25519 key: created on first run with O_EXCL, mode 0600, in a 0700 directory
-    (the same one-line b64url seed as mcp-ts). A symlink, a file others can read, or a file that
-    isn't a seed is refused."""
+    """The server's Ed25519 key: created on first run (0600, in a 0700 directory, via a temp file
+    and a link), the same one-line b64url seed as mcp-ts. A symlink, a file or directory others
+    can change or read, or a file that isn't a seed is refused."""
     p = Path(path)
-    _create_key(p)
-    why = _unsafe_key_file(p)
-    if why:
-        raise ValueError(f"yea(): refusing the server key: {why}")
-    seed = p.read_text(encoding="utf-8").strip()
+    p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _check_dir(p.parent)
+    if not p.exists() and not p.is_symlink():
+        _create_key(p)
+    seed = _read_key(p)
     if not SEED.fullmatch(seed):
         raise ValueError(f"yea(): {p} does not hold an Ed25519 seed")
     return KeyPair.from_seed(seed)

@@ -139,3 +139,17 @@ async def test_the_2025_ask_fails_closed_without_a_back_channel(world, monkeypat
     async with world.client("legacy", Person()) as c:
         r = await c.call_tool("send", {"to": "ana"})
     assert r.is_error and "yea approve" in text(r) and done == []
+
+
+def test_the_server_key_directory_and_file_are_checked(tmp_path, monkeypatch):
+    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+    open_dir = tmp_path / "open"
+    open_dir.mkdir(mode=0o777)
+    os.chmod(open_dir, 0o777)
+    with pytest.raises(ValueError, match="owned by this user, mode 0700"):
+        yea(name="s", transport="stdio", server_key=open_dir / "k.key")
+    good = tmp_path / "good"
+    ap = yea(name="s", transport="stdio", server_key=good / "k.key")
+    assert (good.stat().st_mode & 0o777) == 0o700 and ((good / "k.key").stat().st_mode & 0o777) == 0o600
+    assert yea(name="s", transport="stdio", server_key=good / "k.key").service_id() == ap.service_id()
+    assert not list(good.glob("*.tmp"))

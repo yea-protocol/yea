@@ -59,7 +59,7 @@ assume it.
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
 | `store` | `FileStore()` for stdio (under `YEA_STORE` when set), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
-| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run with `O_EXCL`, mode `0600`, in a `0700` directory; the same file format as `mcp-ts`. A key file that is a symlink, or readable by others, is refused. Its public key is the service id, and the holder of policy and consent grants. |
+| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and `0700`, and that directory's parent this user's or root's and not writable by others unless sticky. It's read with `O_NOFOLLOW` and checked on the open file (a regular file, this user's, readable by no one else). Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
@@ -144,7 +144,8 @@ Turns a tool that's already registered into a job without rewriting it. `config`
 `describe(input)`, which returns `{summary, effects, uses?, risk?, undo_window?}`, plus the
 optional `revert` and `confirm_with`.
 
-`guard()` installs the plugin's middleware on **that** server, once (`server.middleware` is a
+`guard()` refuses a tool that's already guarded on that server. It installs the plugin's
+middleware on **that** server, once (`server.middleware` is a
 public list the SDK lets you extend after construction). So a guard can't be forgotten or
 attached to the wrong server: the middleware only acts on `server`, and only for tools guarded
 on it.
@@ -226,7 +227,8 @@ and §6, and the same order as `mcp-ts`):
 9. **Fail closed.** Return `is_error: true` with the plans in Lens, a `job_consent_code` for
    each plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their
    terminal, then call again.* `structured_content` carries `{"plans", "codes"}`. With no
-   pinned principal there can be no valid consent, so the result has no codes and says why.
+   pinned principal there can be no valid consent, and on a `MemoryStore` `yea approve` can't
+   reach the store, so in both cases the result has no codes and says why.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then
     `consume_once(nonce, exp)`; any failure refuses with one message. The answer is the `yea`
     entry of the input responses (`ctx.input_responses` in a job, `params["inputResponses"]`
@@ -237,7 +239,8 @@ and §6, and the same order as `mcp-ts`):
     - `ask-again`: step 8 with the verdict's round;
     - `out-of-band`: step 9 for that plan;
     - `denied`, `refuse`, `not-approved`: an `is_error` result saying so.
-11. **Run.** Call `apply()`.
+11. **Run.** Call `apply()`. From the moment it returns, no result may say "nothing was run", or
+    the client would retry and run it again.
     - If it raises (for `guard`: or returns a mapping with `isError: true` or an input-required
       result): `release_all` and say the approval was used and nothing changed.
     - If it succeeds: `settle_all`, then `put_receipt` a job receipt with `id =
@@ -246,8 +249,9 @@ and §6, and the same order as `mcp-ts`):
       `None`), `tool`, `input`, `planHash`, `sub` and `result`. Return the receipt as Lens
       text with `structured_content: {"receipt", "result"}`, or for `guard`, a copy of the
       original result mapping with the receipt in `_meta`.
-    - If `settle_all` or `put_receipt` fails after `apply()` succeeded: say the action happened
-      and that undo isn't available.
+    - If anything fails after `apply()` succeeded (the result can't be turned into JSON, a
+      circular object for example, or `settle_all` or `put_receipt` fails): say the action
+      happened and that undo isn't available.
 
 ### Asking, per era
 
@@ -264,9 +268,11 @@ own `request_state` (they can't carry our nonce). So the plugin asks in one of t
   `await session.elicit_form(message=…, requested_schema=…, related_request_id=…)`, which
   takes the core's form schema as is. The state still goes through `new_state`, `check_state`
   and `consume_once` in-process, so rounds, the three-try cap and one-time use are the same;
-  ask-again loops inside the same call. Nothing is sealed, because nothing leaves the process.
-  If the connection can't send requests to the client (`NoBackChannelError`, for example on
-  some 2025 HTTP set-ups), the routine takes step 9.
+  ask-again loops inside the same call. After each answer the routine refreshes the clock and
+  re-plans, as a 2026 retry (or `mcp-ts`'s re-run) would, so a changed plan asks again and the
+  state can expire. Nothing is sealed, because nothing leaves the process. If the client can't
+  be asked from here (`NoBackChannelError` on some 2025 HTTP set-ups, or a client that claimed
+  elicitation and fails it), the routine takes step 9.
 
 The core's `build_form` output is passed as is in both eras: `message`, and
 `requested_schema` with `oneOf` const/title for the plan and a `confirm` string. `elicit_form`
@@ -299,13 +305,16 @@ seam:
 - `FastMCP(request_state_security=approvals.request_state_security())` seals the state.
 - Capabilities come from `session.client_capabilities`, as above (not `client_params`, which is
   `None` on 2026 when a client omits `clientInfo`).
-- **Transforms and tasks.** A transformed tool calls its parent's `run` directly and skips
-  middleware, and a transform (added later, or by a parent server that mounts this one) can
-  rename a tool. So `on_call_tool` resolves the called tool and refuses it when it is a
-  `TransformedTool` whose `parent_tool` chain reaches a guarded tool. `job()` needs no such
-  check: its routine is inside the tool function, which `parent_tool.run` still calls. A tool
-  with background tasks enabled (`task_config`, readable at registration) is refused by `job()`
-  and `guard()` until that path is checked.
+- **Other names for a tool.** `on_call_tool` resolves the called name the way FastMCP does (by
+  name, then an app tool's hashed `<12 hex>_<name>`) and decides on the resolved tool's name. A
+  transformed tool calls its parent's `run` directly and skips middleware, and a transform can
+  rename a tool, so a `TransformedTool` whose `parent_tool` chain reaches a guarded tool is
+  refused. `job()` needs no such check: its routine is inside the tool function, which
+  `parent_tool.run` still calls.
+- **Tasks.** FastMCP has no public synchronous tool lookup, so `guard()` can't see a tool's
+  `task_config` when it registers; a guarded task-enabled tool is refused when called. Running
+  task tools needs FastMCP's tasks extension, whose dispatch path hasn't been checked, so a server
+  with that extension isn't supported under `guard` in v0.
 
 ## Results and annotations
 

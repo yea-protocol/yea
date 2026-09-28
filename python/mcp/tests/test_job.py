@@ -137,7 +137,6 @@ class Item(BaseModel):
 
 
 async def test_input_is_the_json_mode_dump(world):
-    seen = []
     ap, srv = world.approvals, world.server
 
     @ap.job(srv, risk="low")
@@ -154,4 +153,41 @@ async def test_input_is_the_json_mode_dump(world):
     h1, h2 = (r.structured_content["plans"][0]["planHash"] for r in (r1, r2))
     assert h1 == h2 and not r1.is_error  # 1.0 and 1 hash the same
     assert bad.is_error and "use a string or an integer" in text(bad)
-    assert seen == []
+    # The order job has no revert, so it asks; approve it and read the receipt's input.
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("order", {"item": {"sku": "a", "qty": 1}, "when": "2026-10-01", "colour": "red", "amount": 1})
+    assert r.structured_content["receipt"]["input"] == {"item": {"sku": "a", "qty": 1}, "when": "2026-10-01",
+                                                        "colour": "red", "amount": 1}
+
+
+@pytest.mark.parametrize("mode", MODES)
+async def test_a_result_that_cant_be_json_says_the_action_happened(world, mode):
+    done = []
+
+    @world.approvals.job(world.server, risk="low")
+    async def odd(x: int) -> list[Plan]:
+        loop = {}
+        loop["self"] = loop
+        return [Plan("Odd", [create("o/1")], apply=lambda: done.append(x) or loop)]
+
+    async with world.client(mode, Person()) as c:
+        r = await c.call_tool("odd", {"x": 1})
+    assert done == [1] and not r.is_error
+    assert "✓ Odd happened, but its receipt couldn't be saved" in text(r) and "nothing was run" not in text(r)
+
+
+async def test_the_2025_in_call_ask_rejudges_against_fresh_plans(world):
+    """Each 2025 round re-plans, as a 2026 retry would: plans that changed ask again."""
+    done, rounds = [], []
+
+    @world.approvals.job(world.server, risk="low")
+    async def price(item: str) -> list[Plan]:
+        rounds.append(1)
+        cost = 10 if len(rounds) == 1 else 12  # the price moved while the person was reading
+        return [Plan(f"Buy {item} for {cost}", [create("order/1")], apply=lambda: done.append(cost))]
+
+    person = Person()
+    async with world.client("legacy", person) as c:
+        r = await c.call_tool("price", {"item": "pen"})
+    assert not r.is_error and done == [12] and len(person.seen) == 2
+    assert "the plans changed" in person.seen[1].message

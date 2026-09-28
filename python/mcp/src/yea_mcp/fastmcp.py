@@ -18,6 +18,7 @@ import mcp_types as t
 from fastmcp import Context as FastContext
 from fastmcp import FastMCP
 from fastmcp.server.middleware import Middleware
+from fastmcp.server.providers.addressing import parse_hashed_backend_name
 from fastmcp.tools import Tool
 from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from fastmcp.tools.tool_transform import TransformedTool
@@ -27,10 +28,6 @@ from .call import JobDef, Req, Yea, run_job
 from .guard import Guarded, job_annotations, job_meta
 from .render import error_result
 from .signature import job_wrapper
-
-
-def is_fastmcp(server: Any) -> bool:
-    return isinstance(server, FastMCP)
 
 
 def _req(ctx: FastContext) -> Req:
@@ -90,6 +87,11 @@ class FastMCPGuard(Middleware):
         self.server = server
         self.tools: dict[str, Guarded] = {}
 
+    def add(self, name: str, g: Guarded) -> None:
+        if name in self.tools:
+            raise ValueError(f"guard(): {name} is already guarded on this server")
+        self.tools[name] = g
+
     async def on_list_tools(self, context: Any, call_next: Any) -> Any:
         return [self._advertise(tool) for tool in await call_next(context)]
 
@@ -106,16 +108,27 @@ class FastMCPGuard(Middleware):
 
     async def on_call_tool(self, context: Any, call_next: Any) -> Any:
         name = context.message.name
-        tool = await self.server.get_tool(name)
+        tool = await self._resolve(name)
         if tool is None:
+            if name in self.tools:
+                return _as_tool_result(error_result([f"✗ guard(): {name} isn't registered on this server; "
+                                                     "nothing was run"]))
             return await call_next(context)
         if isinstance(tool, TransformedTool) and self._reaches_guarded(tool):
             return _as_tool_result(error_result([f"✗ {name} is a transform of a guarded tool, which would skip its "
                                                  "approval; nothing was run"]))
-        g = self.tools.get(name)
+        g = self.tools.get(tool.name)  # the tool the call resolves to, not the name it was asked for
         if g is None:
             return await call_next(context)
         return _as_tool_result(await self._call(context, call_next, tool, g))
+
+    async def _resolve(self, name: str) -> Tool | None:
+        """The tool a call runs, the way FastMCP finds it: by name, then by an app tool's hashed
+        name (``<12 hex>_<name>``), which reaches the same tool under another name."""
+        tool = await self.server.get_tool(name)
+        if tool is None and (hashed := parse_hashed_backend_name(name)) is not None:
+            tool = await self.server.get_tool_by_hash(*hashed)
+        return tool
 
     def _reaches_guarded(self, tool: Any) -> bool:
         while isinstance(tool, TransformedTool):

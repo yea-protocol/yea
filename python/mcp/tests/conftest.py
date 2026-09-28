@@ -12,7 +12,7 @@ import pytest
 from mcp import Client
 from mcp.server.mcpserver import MCPServer
 from yea import issue_grant, key_from_seed
-from yea.store import MemoryStore
+from yea.store import FileStore, MemoryStore
 
 from yea_mcp import yea
 
@@ -42,14 +42,14 @@ class Person:
 class World:
     approvals: Any
     server: MCPServer
-    store: MemoryStore
+    store: FileStore
     home: str
 
     def grant(self, *caveats: dict, principal: Any = PRINCIPAL) -> None:
         """Install a signed policy grant, issued to this server's key."""
         os.environ["YEA_POLICY"] = issue_grant(principal, self.approvals.service_id(), list(caveats)).encode()
 
-    def client(self, mode: str, person: Person | None = None) -> Client:
+    def client(self, mode: str, person: Any = None) -> Client:
         if person is None:
             return Client(self.server, mode=mode)
         return Client(self.server, mode=mode, elicitation_callback=person)
@@ -60,8 +60,8 @@ def world(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> World:
     monkeypatch.setenv("YEA_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("YEA_POLICY", raising=False)
     monkeypatch.delenv("YEA_PRINCIPAL_PUB", raising=False)
-    store = MemoryStore()
-    approvals = yea(name="billing", transport="stdio", store=store, single_process=True,
+    store = FileStore(tmp_path / "store")  # stdio's default kind: `yea approve` can reach it
+    approvals = yea(name="billing", transport="stdio", store=store,
                     server_key=tmp_path / "server.key", principal=PRINCIPAL.public)
     server = MCPServer("billing", request_state_security=approvals.request_state_security())
     return World(approvals, server, store, str(tmp_path / "home"))

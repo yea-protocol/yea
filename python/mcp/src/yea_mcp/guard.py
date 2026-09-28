@@ -50,6 +50,12 @@ class GuardMiddleware:
             return await self._call(ctx, params, call_next)
         return await call_next(ctx)
 
+    def add(self, name: str, g: Guarded) -> None:
+        if name in self.tools:
+            raise ValueError(f"guard(): {name} is already guarded on this server")
+        self.tools[name] = g
+        self._info = None  # re-read the listing, which now has to cover this tool
+
     async def _learn(self) -> dict[str, _Info]:
         """What the public listing says about each guarded tool, read once."""
         if self._info is None:
@@ -78,9 +84,12 @@ class GuardMiddleware:
         name = params["name"]
         g = self.tools[name]
         info = (await self._learn()).get(name)
-        args = params.get("arguments") or {}
-        if info is None or not isinstance(args, dict):
-            return error_result([f"✗ {name} can't be checked: its arguments must be an object; nothing was run"])
+        args = params.get("arguments")
+        args = {} if args is None else args
+        if info is None:
+            return error_result([f"✗ guard(): {name} isn't registered on this server; nothing was run"])
+        if not isinstance(args, dict):
+            return error_result([f"✗ {name}'s arguments must be an object; nothing was run"])
         if info.has_preview:
             return error_result([f"✗ guard(): {name} has its own preview argument, which the guard would shadow; "
                                  "nothing was run"])

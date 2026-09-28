@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 import mcp_types as t
-from mcp.shared.exceptions import NoBackChannelError
+from mcp.shared.exceptions import MCPError
 from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 from pydantic import ValidationError
 
@@ -42,11 +42,12 @@ def input_required(form: dict, state: dict) -> t.InputRequiredResult:
 
 async def ask_in_call(session: Any, request_id: Any, form: dict) -> dict | None:
     """The 2025 ask, inside the call. The answer as the core judges it, or None when the client
-    can't be reached (the caller fails closed with consent codes)."""
+    can't be asked from here: no back-channel (``NoBackChannelError``), or a client that claimed
+    elicitation it doesn't have. The caller then fails closed with consent codes."""
     try:
         r = await session.elicit_form(message=form["message"], requested_schema=form["requested_schema"],
                                       related_request_id=request_id)
-    except NoBackChannelError:
+    except MCPError:
         return None
     return {"action": r.action, **({"content": r.content} if r.content is not None else {})}
 

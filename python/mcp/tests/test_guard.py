@@ -71,13 +71,34 @@ async def test_the_listing_advertises_preview_and_the_job_annotations(world):
 
 @pytest.mark.parametrize("mode", MODES)
 async def test_a_failing_original_writes_no_receipt_and_releases(world, mode):
+    import os
+
+    from yea import decode_grant
+    from yea.store import LedgerKey
+
     calls = []
-    existing(world, calls)
-    world.grant({"can": ["flaky"]})
+
+    @world.server.tool()
+    async def charge(cents: int):
+        calls.append(cents)
+        return t.CallToolResult(content=[t.TextContent(type="text", text="card declined")], is_error=True)
+
+    world.approvals.guard(world.server, "charge", revert=lambda r, ctx: None,
+                          describe=lambda a: {"summary": "Charge", "effects": [], "risk": "low", "undo_window": 60,
+                                              "uses": {"spend": {"amount": a["cents"], "scale": 2, "unit": "USD"}}})
+    world.grant({"can": ["charge"]}, {"total": {"of": "spend", "max": 10000, "scale": 2, "unit": "USD"}})
     async with world.client(mode, Person()) as c:
-        r = await c.call_tool("flaky", {"x": 1})
-    assert r.is_error and text(r) == "upstream down" and calls == [("flaky", 1)]
+        r = await c.call_tool("charge", {"cents": 500})
+    assert r.is_error and text(r) == "card declined" and calls == [500]  # auto-run, with a reservation
     assert not (r.meta or {}).get("dev.yea/receipt")
+    block = decode_grant(os.environ["YEA_POLICY"]).id
+    assert await world.store.used(LedgerKey(block, "spend")) == 0  # released
+
+
+async def test_guarding_a_tool_twice_is_refused(world):
+    existing(world, [])
+    with pytest.raises(ValueError, match="already guarded"):
+        world.approvals.guard(world.server, "delete_branch", describe=lambda a: {"summary": "x", "effects": []})
 
 
 async def test_a_tool_with_its_own_preview_is_refused(world):

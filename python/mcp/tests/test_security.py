@@ -55,15 +55,17 @@ async def test_a_denied_tool_never_runs_even_with_a_stored_consent(world):
     assert r.is_error and done == []
 
 
-async def test_a_high_plan_is_never_offered_in_the_form(world):
+async def test_a_high_plan_is_never_offered_in_the_form_and_cant_be_chosen(world):
     done = []
     jobs(world, done)
-    person = Person([{"plan": "anything", "confirm": "approve"}])
+    (_, high) = await plan_hashes(world, "refund", {"amount": 5})
+    person = Person([{"plan": high, "confirm": "approve"}])
     async with world.client("auto", person) as c:
-        await c.call_tool("refund", {"amount": 5})
+        r = await c.call_tool("refund", {"amount": 5})
     schema = person.seen[0].requested_schema
     assert "plan" not in schema["properties"]  # only the low plan is offered
     assert "Not offered here" in person.seen[0].message
+    assert r.is_error and ("force", 5) not in done
 
 
 async def test_an_irreversible_plan_never_auto_runs(world):
@@ -96,18 +98,100 @@ async def test_a_stored_copy_of_the_policy_grant_never_counts_as_a_consent(world
     assert r.is_error and done == []
 
 
-async def test_a_request_state_that_isnt_ours_is_refused(world):
+async def test_a_verified_state_without_yea_is_refused(world, monkeypatch):
+    """A state the SDK sealed for this very tool and input, but that isn't our approval."""
     done = []
     jobs(world, done)
-    async with world.client("auto") as c:
-        foreign = await c.session.call_tool("refund", {"amount": 5}, input_responses={}, request_state=None,
-                                            allow_input_required=True)
-        assert foreign.is_error  # no elicitation: consent codes, nothing run
-    # A state the SDK sealed for us but without our `yea` object.
-    from yea_mcp.ask import parse_state
+    import yea_mcp.call as call_mod
 
-    assert parse_state(json.dumps({"other": 1}))[0] == "foreign" and parse_state("not json")[0] == "foreign"
+    real = call_mod.input_required
+    monkeypatch.setattr(call_mod, "input_required", lambda form, state: t.InputRequiredResult(
+        input_requests=real(form, state).input_requests, request_state=json.dumps({"other": state})))
+    async with world.client("auto", Person()) as c:
+        first = await c.session.call_tool("refund", {"amount": 5}, allow_input_required=True)
+        assert isinstance(first, t.InputRequiredResult)
+        answer = {"yea": t.ElicitResult(action="accept", content={"confirm": "approve"})}
+        r = await c.session.call_tool("refund", {"amount": 5}, input_responses=answer,
+                                      request_state=first.request_state, allow_input_required=True)
+    assert r.is_error and "belongs to something else" in text(r) and done == []
+
+
+async def test_another_jobs_state_is_refused(world):
+    done = []
+    jobs(world, done)
+
+    @world.approvals.job(world.server, risk="low")
+    async def refund_other(amount: int) -> list[Plan]:
+        return [Plan("Other", [create("x")], apply=lambda: done.append("other"))]
+
+    async with world.client("auto", Person()) as c:
+        first = await c.session.call_tool("refund", {"amount": 5}, allow_input_required=True)
+        answer = {"yea": t.ElicitResult(action="accept", content={"confirm": "approve"})}
+        try:
+            r = await c.session.call_tool("refund_other", {"amount": 5}, input_responses=answer,
+                                          request_state=first.request_state, allow_input_required=True)
+            assert r.is_error
+        except Exception:  # noqa: BLE001 — the SDK's binding rejects it before our code runs
+            pass
     assert done == []
+
+
+async def test_a_state_replayed_by_another_caller_is_refused(tmp_path, monkeypatch):
+    import contextvars
+
+    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+    who = contextvars.ContextVar("who", default="alice")
+    done = []
+    ap = yea(name="s", transport="http", sub=lambda r: who.get(), store=FileStore(tmp_path / "st"),
+             server_key=tmp_path / "k", principal=PRINCIPAL.public)
+    srv = MCPServer("s", request_state_security=ap.request_state_security())
+
+    @ap.job(srv, risk="low")
+    async def send(to: str) -> list[Plan]:
+        return [Plan(f"Send to {to}", [create("mail/x")], apply=lambda: done.append(to))]
+
+    async with Client(srv, mode="auto", elicitation_callback=Person()) as c:
+        first = await c.session.call_tool("send", {"to": "ana"}, allow_input_required=True)
+        who.set("bob")
+        answer = {"yea": t.ElicitResult(action="accept", content={"confirm": "approve"})}
+        r = await c.session.call_tool("send", {"to": "ana"}, input_responses=answer,
+                                      request_state=first.request_state, allow_input_required=True)
+    assert r.is_error and "invalid, expired, already used, or for another call" in text(r) and done == []
+
+
+async def test_a_client_that_claims_elicitation_but_cant_answer_gets_codes(world):
+    done = []
+    jobs(world, done)
+
+    async def broken(ctx, params):
+        raise RuntimeError("no UI here")
+
+    async with world.client("legacy", broken) as c:
+        r = await c.call_tool("refund", {"amount": 5})
+    assert r.is_error and "yea approve" in text(r) and done == []
+
+
+async def test_the_fastmcp_guard_cant_be_skipped_by_a_hashed_name(world):
+    from fastmcp import Client as FastClient
+    from fastmcp import FastMCP
+    from fastmcp.apps.app import FastMCPApp
+    from fastmcp.server.providers.addressing import hash_tool
+
+    fm = FastMCP("b", request_state_security=world.approvals.request_state_security())
+    app = FastMCPApp("dash")
+    calls = []
+
+    @app.tool(model=True)
+    def wipe(target: str) -> str:
+        calls.append(target)
+        return "wiped " + target
+
+    fm.add_provider(app)
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+    async with FastClient(fm) as c:
+        by_name = await c.call_tool("wipe", {"target": "db"}, raise_on_error=False)
+        by_hash = await c.call_tool(hash_tool("dash", "wipe") + "_wipe", {"target": "db"}, raise_on_error=False)
+    assert by_name.is_error and by_hash.is_error and calls == []
 
 
 async def test_a_guarded_original_never_runs_before_approval(world):
