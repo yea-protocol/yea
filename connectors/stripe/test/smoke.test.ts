@@ -19,6 +19,7 @@
  *   STRIPE_TEST_KEY=rk_test_… STRIPE_TEST_CUSTOMER=cus_… STRIPE_TEST_PRICE=price_… \
  *     [STRIPE_TEST_WRITES=1] npx vitest run test/smoke.test.ts
  */
+import { unixNow } from '@yea-protocol/sdk';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { isLiveKey } from '../src/api.js';
 import { cancelJob } from '../src/cancel.js';
@@ -61,7 +62,7 @@ describe.skipIf(!key)('real Stripe, test mode', () => {
           subscription_details: {
             items: [{ id: item?.id, price, quantity: item?.quantity ?? 1 }],
             proration_behavior: 'always_invoice',
-            proration_date: Math.floor(Date.now() / 1000),
+            proration_date: unixNow(),
           },
         }),
       );

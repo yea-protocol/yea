@@ -11,6 +11,7 @@ import { expect } from 'vitest';
 import {
   freshHome,
   type Home,
+  tmp as harnessTmp,
   installGrant,
 } from '../../../mcp/test/harness.js';
 import type { Ctx, JobSpec } from '../src/context.js';
@@ -28,7 +29,6 @@ export {
   connect,
   type Kind,
   textOf,
-  tmp,
 } from '../../../mcp/test/harness.js';
 
 /** Sunday 2026-09-27, 10:00 UTC. */
@@ -38,6 +38,8 @@ export const TEST_KEY = 'sk_test_51abcDEF';
 export const LIVE_KEY = 'sk_live_51abcDEF';
 
 export { D };
+
+export const tmp = () => harnessTmp('yea-stripe-');
 
 export interface Setup {
   stripe: ReturnType<typeof fakeStripe>;

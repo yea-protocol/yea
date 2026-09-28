@@ -50,6 +50,7 @@ export async function freshHome(prefix?: string): Promise<Home> {
   delete process.env.YEA_POLICY;
   delete process.env.YEA_STORE;
   delete process.env.YEA_PRINCIPAL_PUB;
+  delete process.env.YEA_PRINCIPAL_HOME;
 
   return {
     home,
@@ -116,7 +117,7 @@ export interface Conn {
   elicited: { message: string; requestedSchema: Record<string, unknown> }[];
   /** Answers the person gives, in order; once they run out, the form is cancelled. */
   answers: AnswerStep[];
-  call(args: Record<string, unknown>, tool?: string): Promise<CallToolResult>;
+  call(args: Record<string, unknown>, tool: string): Promise<CallToolResult>;
   /** A raw `tools/call`, for retries a well-behaved client wouldn't send. */
   raw(params: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
@@ -151,7 +152,7 @@ function elicitingClient(kind: Kind, conn: Pick<Conn, 'elicited' | 'answers'>) {
   return client;
 }
 
-/** Connect a client of `kind` to servers made by `factory`. `call` defaults to the `refund` tool. */
+/** Connect a client of `kind` to servers made by `factory`. */
 export async function connect(
   kind: Kind,
   factory: () => McpServer,
@@ -182,7 +183,7 @@ export async function connect(
   return {
     ...partial,
     client,
-    call: (args, tool = 'refund') =>
+    call: (args, tool) =>
       client.callTool({
         name: tool,
         arguments: args,

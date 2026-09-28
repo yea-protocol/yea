@@ -12,11 +12,16 @@ import {
   type YeaOptions,
   yea,
 } from '../src/index.js';
-import { freshHome, type Home, installGrant } from './harness.js';
+import {
+  connect as connectClient,
+  freshHome,
+  type Home,
+  installGrant,
+  type Kind,
+} from './harness.js';
 
 export {
   approve,
-  connect,
   type Kind,
   textOf,
   tmp,
@@ -58,6 +63,17 @@ export const grantPolicy = (
     { total: { of: 'emails', max: 2 } },
   ],
 ): Promise<string> => installGrant(w, caveats, 3600);
+
+/** The harness's `connect`, with `call` defaulting to the `refund` tool these tests serve. */
+export async function connect(kind: Kind, factory: () => McpServer) {
+  const conn = await connectClient(kind, factory);
+
+  return {
+    ...conn,
+    call: (args: Record<string, unknown>, tool = 'refund') =>
+      conn.call(args, tool),
+  };
+}
 
 /** The ledger key a policy's root-block `total` uses. */
 export const ledgerKeyOf = async (token: string, of = 'emails') => ({
