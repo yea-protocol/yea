@@ -3,8 +3,9 @@
     YEA_TRUST=ed25519:... uv run python examples/serve.py
     calendar → yea://127.0.0.1:7457  and  http://127.0.0.1:8457/yea
 
-YEA_TRUST is a comma-separated list of trusted principal keys. --stdio serves NDJSON on
-stdin/stdout instead (for ``stdio:`` URLs).
+YEA_TRUST is a comma-separated list of trusted principal keys. YEA_PORT and YEA_HTTP_PORT
+move the ports; 0 binds a free one, and the line printed on stderr names the ports actually
+bound. --stdio serves NDJSON on stdin/stdout instead (for ``stdio:`` URLs).
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ async def main() -> None:
         await serve_stdio(cal)
         return
     servers = [await serve_tcp(cal, host, tcp_port), await serve_http(cal, host, http_port)]
+    tcp_port, http_port = (s.sockets[0].getsockname()[1] for s in servers)
     print(
         f"yea python example up · calendar yea://{host}:{tcp_port} http://{host}:{http_port}/yea"
         f" · trusting {len(trust)} principal(s)",
