@@ -213,8 +213,16 @@ function sidebar() {
     {
       text: 'Start',
       items: [
-        { text: 'Why YEA', link: '/why' },
+        {
+          text: 'Add YEA to your MCP server (TypeScript)',
+          link: '/guide/mcp-typescript',
+        },
+        {
+          text: 'Add YEA to your MCP server (Python)',
+          link: '/guide/mcp-python',
+        },
         { text: 'Quickstart', link: '/guide/quickstart' },
+        { text: 'Why YEA', link: '/why' },
         { text: 'Playground', link: '/playground' },
         { text: 'Test drive', link: '/guide/test-drive' },
         { text: 'Use it from Claude Code', link: '/guide/claude-code' },
