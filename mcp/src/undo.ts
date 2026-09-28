@@ -8,7 +8,7 @@ import {
   type McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
-import { isReceiptId, undoJob, unixNow } from '@yea-protocol/sdk';
+import { isReceiptId, printable, undoJob, unixNow } from '@yea-protocol/sdk';
 import { isPartial } from './call/apply.js';
 import { callerOf, type RevertFn, type Yea } from './call/context.js';
 import { errorResult, textResult, UNDO_ANNOTATIONS } from './result.js';
@@ -88,18 +88,21 @@ async function undoCall(
     });
 
     return out.kind === 'undone'
-      ? textResult([`↶ undid ${out.receipt.id}: ${out.receipt.summary}`], {
-          undone: out.receipt.id,
-        })
+      ? textResult(
+          [`↶ undid ${out.receipt.id}: ${printable(out.receipt.summary)}`],
+          {
+            undone: out.receipt.id,
+          },
+        )
       : errorResult([`✗ ${out.why}; nothing was undone`]);
   } catch (e) {
     // A revert that may have half-happened says so, never "nothing was undone".
     if (isPartial(e)) {
-      return errorResult([`✗ undo failed part-way: ${e.message}`]);
+      return errorResult([`✗ undo failed part-way: ${printable(e.message)}`]);
     }
 
     return errorResult([
-      `✗ undo failed: ${errorMessage(e)}; nothing was undone, and it can be tried again`,
+      `✗ undo failed: ${printable(errorMessage(e))}; nothing was undone, and it can be tried again`,
     ]);
   }
 }

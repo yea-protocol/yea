@@ -10,6 +10,7 @@ import {
   decide,
   type HashedPlan,
   hashPlans,
+  printable,
   reserveAll,
 } from '@yea-protocol/sdk';
 import { runPlan } from './call/apply.js';
@@ -65,7 +66,7 @@ export async function runJob(
       ? previewResult(call.plans, call.job.ownResultsAreErrors?.() ?? false)
       : await route(call);
   } catch (e) {
-    return refused(errorMessage(e));
+    return refused(printable(errorMessage(e)));
   }
 }
 

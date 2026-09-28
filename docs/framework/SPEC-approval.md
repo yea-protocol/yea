@@ -196,6 +196,14 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
   when no plan can be offered at all, there is no form: the call fails closed with consent
   codes (§6).
 
+Service text is untrusted, even when the server's own code writes it: a summary often carries
+a customer's name or a remote record. So every string the form shows goes through `printable`
+(control, format, line/paragraph-separator and invisible filler characters become `\u{…}`
+escapes, as in §6): the reason, each summary, each phrase, and each `oneOf` title. An effect
+line is rendered from its fields made one line (`oneLine`), keeping `from` and `to`, which Lens
+quotes itself, and the whole line then goes through `printable`. A summary can't add a line to
+the message or hide characters in it. The conformance cases pin this.
+
 An accepted form counts as approval **only** when `confirm` matches the phrase: both sides are
 NFC-normalized, then stripped of leading and trailing characters in **exactly** this set:
 U+0009 to U+000D, U+0020, U+00A0 and U+FEFF (not `trim()` or `strip()`, which strip different
@@ -477,7 +485,8 @@ export function decide(
   languages agree on:
   - the decision, and the reason text;
   - the plan hashes, and the refusal of non-integer inputs;
-  - the form schema, including plans left out for `outOfBand`;
+  - the form schema, including plans left out for `outOfBand`, and service text escaped in the
+    message and titles;
   - the state plaintext;
   - how every answer is judged: accept, decline, cancel, a wrong confirmation (and three),
     an unknown plan, a replayed or resent state, other input, and plans that changed;

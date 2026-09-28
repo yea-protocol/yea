@@ -1,17 +1,19 @@
 /**
  * What a job call returns (SPEC-mcp-ts, "Results and annotations"): Lens text for the model,
- * and the same as data in `structuredContent`.
+ * and the same as data in `structuredContent`. Service text in the Lens (summaries, effects,
+ * questions, a receipt) is untrusted, so it's escaped with `printable`; the data stays raw.
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Clarification,
-  effectLine,
   fmtDuration,
   fmtUses,
   type HashedPlan,
   type JobReceipt,
   lean,
-  lens,
+  printable,
+  safeEffectLine,
+  untrustedLens,
 } from '@yea-protocol/sdk';
 import { errorResult, NOTHING_RAN, refused, textResult } from './result.js';
 
@@ -42,8 +44,8 @@ function planLines(n: number, hp: HashedPlan): string[] {
   ];
 
   return [
-    `[${n}] ${v.summary}`,
-    ...v.effects.map((e) => `  ${effectLine(e)}`),
+    `[${n}] ${printable(v.summary)}`,
+    ...v.effects.map((e) => `  ${safeEffectLine(e)}`),
     `  ${attrs.join(' · ')}`,
   ];
 }
@@ -88,10 +90,14 @@ export function consentResult(
         ...codes.map((c) => `  code for [${codeNumber(plans, c)}]: ${c.code}`),
       ];
 
-  return refused(`approval needed: ${why}`, [...plansText(plans), ...tail], {
-    plans: plans.map(planView),
-    codes,
-  });
+  return refused(
+    `approval needed: ${printable(why)}`,
+    [...plansText(plans), ...tail],
+    {
+      plans: plans.map(planView),
+      codes,
+    },
+  );
 }
 
 const codeNumber = (plans: HashedPlan[], c: { planHash: string }) =>
@@ -102,7 +108,7 @@ export function receiptResult(
   receipt: JobReceipt,
   auto: boolean,
 ): CallToolResult {
-  const line = lens({
+  const line = untrustedLens({
     yea: 1,
     id: receipt.id,
     re: receipt.proposal,
@@ -120,10 +126,11 @@ export function clarifyResult(c: Clarification): CallToolResult {
 
   return textResult(
     [
-      `? ${question}`,
-      ...options.map(
-        (o, i) =>
-          `  ${i + 1}. ${o.label} → ${lean(o.params).split('\n').join(', ')}`,
+      `? ${printable(question)}`,
+      ...options.map((o, i) =>
+        printable(
+          `  ${i + 1}. ${printable(o.label)} → ${lean(o.params).split('\n').join(', ')}`,
+        ),
       ),
     ],
     { clarify: c.clarify },
