@@ -50,7 +50,7 @@ def test_fmt_quantity():
     # Malformed input renders as "?", never a crash or "0.-5".
     assert fmt_uses(None) == "?" and fmt_uses([]) == "?"
     assert fmt_quantity({"amount": -5, "scale": 1}) == "?" and fmt_quantity({"amount": 1, "scale": 99}) == "?"
-    assert fmt_uses({"spend": {"amount": "x"}}) == "spend ?"
+    assert fmt_uses({"spend": {"amount": "x"}}) == "?" and fmt_uses({"Bad": {"amount": 1}}) == "?"  # as a whole (§9.2)
 
 
 @pytest.mark.parametrize("uses,ok", [

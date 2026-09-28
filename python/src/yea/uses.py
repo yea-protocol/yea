@@ -109,9 +109,10 @@ def fmt_quantity(q: Mapping[str, Any]) -> str:
 
 
 def fmt_uses(uses: Any) -> str | None:
-    """``emails 1, spend 22.90 USD`` in canonical key order, None when empty, ``?`` when malformed."""
-    if not isinstance(uses, dict):
-        return "?"
-    if not uses:
+    """``emails 1, spend 22.90 USD`` in canonical key order, None when empty, ``?`` as a whole when
+    malformed (§9.2), its names not shown."""
+    if uses == {}:
         return None
+    if not is_uses(uses):
+        return "?"
     return ", ".join(f"{name} {fmt_quantity(uses[name])}" for name in sorted(uses))

@@ -66,6 +66,7 @@ def _error(r: dict) -> list[str]:
 
 def _event(r: dict) -> list[str]:
     line = f"… {r.get('message', '')}"
-    if r.get("progress") is not None:
-        line += f" ({math.floor(r['progress'] * 100 + 0.5)}%)"  # JS Math.round semantics
+    p = r.get("progress")
+    if type(p) in (int, float) and 0 <= p <= 1:  # anything else is left out (§9.2 malformed values)
+        line += f" ({math.floor(p * 100 + 0.5)}%)"  # JS Math.round semantics
     return [line]
