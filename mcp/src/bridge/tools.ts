@@ -30,7 +30,7 @@ import { clip } from './render.js';
 import { readCall } from './utility.js';
 
 /** Past this many capabilities, a service gets two generic tools instead (decision 1). */
-export const GENERIC_PAST = 25;
+const GENERIC_PAST = 25;
 
 export type ToolMode = 'auto' | 'generic' | 'per-capability';
 

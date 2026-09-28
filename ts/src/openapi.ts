@@ -79,7 +79,7 @@ export interface OpenApiOptions {
   project?: Record<string, string[]>;
 }
 
-const isObject = (v: unknown): v is Json => !!v && typeof v === 'object';
+const isObjectOrArray = (v: unknown): v is Json => !!v && typeof v === 'object';
 
 /** `v?.[k]` for an unknown value (primitives box, as in plain JS). */
 const prop = (v: unknown, k: string): unknown =>
@@ -136,14 +136,14 @@ export function projectFields(data: unknown, fields: string[]): unknown {
     return data.map(one);
   }
 
-  if (isObject(data) && Array.isArray(data.items)) {
+  if (isObjectOrArray(data) && Array.isArray(data.items)) {
     return {
       ...('total_count' in data ? { total: data.total_count } : {}),
       items: data.items.map(one),
     };
   }
 
-  return isObject(data) ? one(data) : data;
+  return isObjectOrArray(data) ? one(data) : data;
 }
 
 const WRITE: Record<string, Effect['op']> = {
@@ -161,7 +161,7 @@ const slug = (s: string) =>
 
 /** Follow local `$ref` pointers (`#/…`), bounded against cycles. */
 function resolve(spec: Json, v: unknown, depth = 0): unknown {
-  if (!isObject(v) || depth > 20) {
+  if (!isObjectOrArray(v) || depth > 20) {
     return v;
   }
 

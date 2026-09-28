@@ -21,6 +21,7 @@ import type {
 } from './store.js';
 import type { Effect, Risk } from './types.js';
 import { exact, isLimit, isUses, type Uses } from './uses.js';
+import { isObject } from './util.js';
 
 /** What a job tool's handler returns for each way it could do the job (SPEC-approval §1). */
 export interface JobPlan {
@@ -85,7 +86,7 @@ export interface Tightening {
 export function readTightening(v: unknown): Tightening {
   const out: Tightening = { deny: [], outOfBand: 'high', warnings: [] };
 
-  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+  if (!isObject(v)) {
     out.warnings.push('the policy file is not a JSON object; ignored');
 
     return out;

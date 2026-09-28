@@ -18,6 +18,7 @@ import {
   sameUnit,
   type Uses,
 } from './uses.js';
+import { unixNow } from './util.js';
 
 export type Caveat =
   | { svc: string[] }
@@ -36,7 +37,6 @@ export interface Block {
 }
 
 const PREFIX = 'pg1.';
-const now = () => Math.floor(Date.now() / 1000);
 
 export function encodeGrant(blocks: Block[]): string {
   return PREFIX + b64u(utf8(canonical(blocks)));
@@ -91,7 +91,7 @@ export async function issueGrant(opts: {
     iss: principal.public,
     sub: opts.to,
     caveats: opts.caveats ?? [],
-    iat: opts.iat ?? now(),
+    iat: opts.iat ?? unixNow(),
     nonce:
       opts.nonce ?? b64u(globalThis.crypto.getRandomValues(new Uint8Array(12))),
   };
@@ -122,7 +122,7 @@ export async function delegateGrant(
     prev: await blockId(last),
     sub: opts.to,
     caveats: opts.caveats ?? [],
-    iat: opts.iat ?? now(),
+    iat: opts.iat ?? unixNow(),
   };
 
   return encodeGrant([
@@ -352,7 +352,7 @@ function malformed(k: string, v: unknown, env: CaveatEnv): string | null {
     : null;
 }
 
-export function matchCapability(pattern: string, cap: string): boolean {
+function matchCapability(pattern: string, cap: string): boolean {
   return (
     pattern === '*' ||
     pattern === cap ||
@@ -565,7 +565,7 @@ async function evaluateCaveats(
   blocks: Block[],
   ctx: CheckContext,
 ): Promise<CaveatResults> {
-  const t = ctx.now ?? now();
+  const t = ctx.now ?? unixNow();
   const p = ctx.verb === 'COMMIT' ? ctx.proposal : undefined;
   const out: CaveatResults = { hard: [], soft: [], totals: [] };
 
@@ -660,7 +660,7 @@ export interface ProofTarget {
 export async function makeProof(
   seed: string,
   t: ProofTarget,
-  ts = now(),
+  ts = unixNow(),
 ): Promise<Proof> {
   const kp = await keyPair(seed);
 
@@ -677,7 +677,7 @@ export async function makeProof(
 export async function checkProof(
   proof: Proof | undefined,
   t: ProofTarget,
-  at = now(),
+  at = unixNow(),
 ): Promise<string | null> {
   if (
     !proof ||

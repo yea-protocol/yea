@@ -33,6 +33,7 @@ import type {
   Verb,
 } from './types.js';
 import { exact, isUses, type Uses } from './uses.js';
+import { unixNow } from './util.js';
 import { closest, validateParams } from './validate.js';
 
 export interface ServiceOptions {
@@ -173,7 +174,7 @@ export class Service {
   constructor(private opts: ServiceOptions) {
     this.id = opts.id;
     this.handles = opts.handles ?? new MemoryHandleStore();
-    this.now = opts.now ?? (() => Math.floor(Date.now() / 1000));
+    this.now = opts.now ?? unixNow;
   }
 
   /** Register a read-only capability. */

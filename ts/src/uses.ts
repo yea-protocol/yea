@@ -3,6 +3,7 @@
  * Measure names and units mean nothing to the protocol; values compare exactly.
  */
 import { byCodePoint } from './canonical.js';
+import { isObject } from './util.js';
 
 /** An amount of one measure: its value is `amount × 10^−scale`. */
 export interface Quantity {
@@ -26,9 +27,6 @@ const MAX_SCALE = 18;
 const NAME = /^[a-z][a-z0-9_.-]{0,63}$/;
 const UNIT = /^[A-Za-z0-9_./%-]{1,32}$/;
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
-
 const isAmount = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 0;
 
 const isScale = (v: unknown) =>
@@ -38,14 +36,14 @@ const isScale = (v: unknown) =>
 const isUnit = (v: unknown) =>
   v === undefined || (typeof v === 'string' && UNIT.test(v));
 
-export const isMeasureName = (v: unknown): v is string =>
+const isMeasureName = (v: unknown): v is string =>
   typeof v === 'string' && NAME.test(v);
 
 /** Whether `v` has only the given keys. */
 const onlyKeys = (v: Record<string, unknown>, keys: string[]) =>
   Object.keys(v).every((k) => keys.includes(k));
 
-export function isQuantity(v: unknown): v is Quantity {
+function isQuantity(v: unknown): v is Quantity {
   return (
     isObject(v) &&
     onlyKeys(v, ['amount', 'scale', 'unit']) &&

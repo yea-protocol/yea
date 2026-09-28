@@ -35,7 +35,6 @@ export {
   CONSENT_TTL,
   checkState,
   DEFAULT_PHRASE,
-  effectivePhrase,
   inputHashOf,
   type JobConsent,
   type JudgeContext,
@@ -43,7 +42,6 @@ export {
   judgeAnswer,
   MAX_ROUNDS,
   newState,
-  normalizePhrase,
   type PhraseFor,
   phraseMatches,
   readJobConsent,
@@ -52,7 +50,7 @@ export {
   type Verdict,
 } from './ask.js';
 
-export { b64u, unb64u } from './b64.js';
+export { b64u } from './b64.js';
 
 export {
   fit,
@@ -78,7 +76,6 @@ export {
   type KeyPair,
   keyPair,
   proposalHash,
-  randomId,
   sha256,
   sign,
   verify,
@@ -104,7 +101,6 @@ export {
   isPublicKey,
   issueGrant,
   makeProof,
-  matchCapability,
 } from './grants.js';
 
 export { fetchHandler } from './http.js';
@@ -113,7 +109,6 @@ export {
   effectLine,
   est,
   fmtDuration,
-  fmtTime,
   lean,
   lens,
   oneLine,
@@ -143,12 +138,11 @@ export {
   isMemoryStore,
   type JobReceipt,
   type LedgerKey,
-  ledgerId,
   MemoryStore,
   type Reservation,
 } from './store.js';
 
-export { printable } from './text.js';
+export { clip, printable } from './text.js';
 
 export { INSTRUCTIONS, TOOLS } from './tooldefs.js';
 
@@ -158,8 +152,6 @@ export {
   exact,
   fmtQuantity,
   fmtUses,
-  isLimit,
-  isQuantity,
   isUses,
   type Limit,
   type Quantity,
@@ -168,4 +160,4 @@ export {
   type Uses,
 } from './uses.js';
 
-export { validateParams } from './validate.js';
+export { unixNow } from './util.js';

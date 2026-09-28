@@ -1,8 +1,9 @@
 /** Light validation of params against the compact schema (SPEC §4.1.1), producing teaching errors. */
 import { fix, YeaError } from './errors.js';
 import type { Fix, ParamSchema } from './types.js';
+import { isObject } from './util.js';
 
-export function distance(a: string, b: string): number {
+function distance(a: string, b: string): number {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [
     i,
     ...Array(b.length).fill(0),
@@ -104,9 +105,6 @@ function checkType(type: string, v: unknown): string | null {
   return null;
 }
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
 /** Problems inside a nested object, each already prefixed with `path`. */
 function nestedProblems(
   schema: ParamSchema | undefined,
@@ -132,7 +130,7 @@ function arrayOfObjectsProblems(
   }
 
   return v.flatMap((item, i) =>
-    isPlainObject(item)
+    isObject(item)
       ? nestedProblems(schema, item, `${label}.${i}.`)
       : [`\`${label}.${i}\` must be an object`],
   );
@@ -165,7 +163,7 @@ function fieldProblems(
     return arrayOfObjectsProblems(label, type[0], v);
   }
 
-  if (!isPlainObject(v)) {
+  if (!isObject(v)) {
     return [`\`${label}\` must be an object`];
   }
 

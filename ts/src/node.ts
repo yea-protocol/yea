@@ -20,7 +20,8 @@ import { fetchHandler } from './http.js';
 import type { Service } from './service.js';
 
 export const DEFAULT_PORT = 7447;
-export const DEFAULT_TLS_PORT = 7448;
+
+const DEFAULT_TLS_PORT = 7448;
 
 const MAX_FRAME = 1 << 20;
 
@@ -127,7 +128,7 @@ function frameHandler(svc: Service, send: (s: string) => void) {
 }
 
 /** Serve NDJSON frames on a duplex stream. Requests are handled concurrently, up to MAX_INFLIGHT. */
-export function serveStream(
+function serveStream(
   svc: Service,
   input: NodeJS.ReadableStream,
   write: (s: string) => void,

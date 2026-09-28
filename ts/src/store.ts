@@ -5,6 +5,7 @@
  */
 import { randomId } from './crypto.js';
 import type { Receipt } from './types.js';
+import { unixNow } from './util.js';
 
 /** A `total` limit's ledger entry: a policy grant block id and a measure name. */
 export interface LedgerKey {
@@ -191,7 +192,7 @@ export class MemoryStore implements ApprovalStore {
       return;
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const now = unixNow();
 
     for (const [id, exp] of this.consumed) {
       if (exp <= now) {

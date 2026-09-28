@@ -18,6 +18,7 @@ import {
 } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { afterEach, describe, expect, it } from 'vitest';
+import { clip } from '../src/bridge/render.js';
 import { bridge } from '../src/bridge.js';
 import {
   agentClient,
@@ -295,6 +296,15 @@ describe('bridge security', () => {
         /principalKey|consentGrant|issueGrant|signJobConsent|\bsign\(|\.seed\b.*sign/,
       );
     }
+  });
+
+  it('service text is cut between code points, never inside a surrogate pair', () => {
+    const cut = clip(`${'a'.repeat(8)}😀 and more`, 10);
+
+    expect(cut).toBe(`${'a'.repeat(8)}😀…`);
+    expect(cut).not.toMatch(/\p{Cs}/u);
+    expect(clip(`${'a'.repeat(9)}😀`, 10)).toBe(`${'a'.repeat(9)}😀`);
+    expect(clip(`${'a'.repeat(9)}😀!`, 10)).toBe(`${'a'.repeat(9)}…`);
   });
 });
 

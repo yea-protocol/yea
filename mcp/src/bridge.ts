@@ -20,6 +20,7 @@ import {
   Client,
   est,
   printable,
+  unixNow,
   untrustedLens,
 } from '@yea-protocol/sdk';
 import { type ConsentStore, homeConsents } from './bridge/consent.js';
@@ -283,7 +284,7 @@ export async function bridge(
     consents: o.consents ?? homeConsents,
     budget: o.budget ?? 1500,
     tighten: o.tighten ?? {},
-    now: o.now ?? (() => Math.floor(Date.now() / 1000)),
+    now: o.now ?? unixNow,
   };
   const { services: greeted, problems } = await greet(services.map(asEntry));
   const byId = new Map(greeted.map((s) => [s.id, s]));
