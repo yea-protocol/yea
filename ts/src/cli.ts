@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import { lstatSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
@@ -13,7 +11,7 @@ import {
 } from './ask.js';
 import type { Client } from './client.js';
 import { type KeyPair, keyPair } from './crypto.js';
-import { FileStore } from './filestore.js';
+import { defaultFileStore } from './filestore.js';
 import {
   type Caveat,
   consentGrant,
@@ -24,6 +22,7 @@ import {
   issueGrant,
 } from './grants.js';
 import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
+import { readServerSeed, SERVER_NAME, serverKeyPath } from './keyfile.js';
 import {
   effectLine,
   fmtDuration,
@@ -349,50 +348,29 @@ async function cmdWhoami() {
 async function cmdServiceId(rest: string[]) {
   const name = rest[0] ?? die('usage: yea service-id <name>');
 
-  if (!/^[a-z0-9._-]{1,64}$/.test(name)) {
+  if (!SERVER_NAME.test(name)) {
     die(
       `bad server name ${JSON.stringify(name)}: it matches [a-z0-9._-]{1,64}`,
     );
   }
 
-  const path = join(home(), 'server', `${name}.key`);
-  const seed = readServerSeed(path);
-
-  console.log((await keyPair(seed)).public);
+  console.log((await keyPair(serverSeed(serverKeyPath(name)))).public);
 }
 
 /**
- * The seed in a server key file, held to the rules the server itself applies: not a symlink,
- * owned by this user and private (0600 or 0400), so the id printed is the one the server uses.
+ * The seed in a server key file, held to the rules the server itself applies (not a symlink,
+ * owned by this user, 0600 or 0400), so the id printed is the one the server uses.
  */
-function readServerSeed(path: string): string {
-  let st: ReturnType<typeof lstatSync>;
-
+function serverSeed(path: string): string {
   try {
-    st = lstatSync(path);
+    return readServerSeed(path);
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
+    const cause = (e as Error).cause as NodeJS.ErrnoException | undefined;
 
-    return code === 'ENOENT'
+    return cause?.code === 'ENOENT'
       ? die(`no server key at ${path}: start the server once to create it`)
-      : die(`can't read ${path}: ${(e as Error).message}`);
+      : die((e as Error).message);
   }
-
-  const posix = typeof process.getuid === 'function';
-
-  if (!st.isFile()) {
-    die(`${path} is not a regular file (a symlink or directory is refused)`);
-  }
-
-  if (posix && (st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0)) {
-    die(`${path} must be owned by this user and private (chmod 600)`);
-  }
-
-  const seed = readFileSync(path, 'utf8').trim();
-
-  return /^[A-Za-z0-9_-]{43}$/.test(seed)
-    ? seed
-    : die(`${path} does not hold an Ed25519 seed`);
 }
 
 async function cmdGrant() {
@@ -550,17 +528,11 @@ async function approveJob(p: KeyPair, code: string) {
     die('not approved');
   }
 
-  await jobStore().putConsent(j.planHash, await signJobConsent(p, j));
+  await defaultFileStore().putConsent(j.planHash, await signJobConsent(p, j));
   console.log(
     '✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.',
   );
 }
-
-/** The store the MCP server reads consents from: YEA_STORE, else ~/.yea/store. */
-const jobStore = () =>
-  process.env.YEA_STORE
-    ? new FileStore(process.env.YEA_STORE)
-    : new FileStore();
 
 /** The plan as the person reads it: summary, effects, then what it uses, risk and undo. */
 function jobLines(job: JobConsent['job']): string[] {

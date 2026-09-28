@@ -2,7 +2,9 @@
 
 import { spawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -24,6 +26,8 @@ import {
   FileStore,
   listen,
   readPinnedKey,
+  readPrivateFile,
+  readServerSeed,
   serveHttp,
 } from '../src/node.js';
 import { printable } from '../src/text.js';
@@ -1076,3 +1080,92 @@ for await (const line of createInterface({ input: process.stdin })) {
     20_000,
   );
 });
+
+// `yea service-id` used to lstat the seed file and then read it again by path, so a swap between
+// the two could make it print (and a person grant to) a key the checks never saw. Every private
+// key file (server seeds, connector API keys) is now opened once with O_NOFOLLOW and checked on
+// that descriptor.
+describe.skipIf(typeof process.getuid !== 'function')(
+  'private key files (#81)',
+  () => {
+    const seedFile = async (mode: number) => {
+      const dir = mkdtempSync(join(tmpdir(), 'yea-keyfile-'));
+      const path = join(dir, 'files.key');
+
+      writeFileSync(path, `${(await P.keyPair()).seed}\n`, { mode });
+      chmodSync(path, mode);
+
+      return path;
+    };
+
+    it('reads a seed that is 0600 or 0400 and this user’s', async () => {
+      for (const mode of [0o600, 0o400]) {
+        expect(readServerSeed(await seedFile(mode))).toMatch(
+          /^[A-Za-z0-9_-]{43}$/,
+        );
+      }
+    });
+
+    it('refuses a symlink, even to a good seed, and a dangling one', async () => {
+      const good = await seedFile(0o600);
+      const link = `${good}.link`;
+      const dangling = `${good}.dangling`;
+
+      symlinkSync(good, link);
+      symlinkSync(`${good}.nowhere`, dangling);
+      expect(() => readServerSeed(link)).toThrow(
+        /^refusing the server key: .* is a symlink$/,
+      );
+      expect(() => readServerSeed(dangling)).toThrow(/is a symlink/);
+    });
+
+    it.each(['640', '604', '644', '660', '620'])(
+      'refuses mode %s: group or others have access',
+      async (octal) => {
+        const path = await seedFile(Number.parseInt(octal, 8));
+
+        expect(() => readServerSeed(path)).toThrow(
+          /^refusing the server key: .* can be read by other users \(chmod 600 it\)$/,
+        );
+      },
+    );
+
+    it('refuses a directory and a file another user owns', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'yea-keyfile-'));
+      const sub = join(dir, 'k.key');
+
+      mkdirSync(sub, { mode: 0o700 });
+      expect(() => readServerSeed(sub)).toThrow(/is not a regular file/);
+
+      const owner = (process.getuid?.() ?? 0) + 1;
+      const path = await seedFile(0o600);
+
+      expect(() => readPrivateFile(path, { label: 'x', owner })).toThrow(
+        /^refusing x: .* is not owned by this user$/,
+      );
+    });
+
+    it('a missing file is refused with its ENOENT as the cause', () => {
+      const missing = join(tmpdir(), 'yea-keyfile-none', 'k.key');
+
+      try {
+        readServerSeed(missing);
+        expect.unreachable();
+      } catch (e) {
+        expect((e as Error).message).toMatch(/^refusing the server key:/);
+        expect(((e as Error).cause as NodeJS.ErrnoException).code).toBe(
+          'ENOENT',
+        );
+      }
+    });
+
+    it('a file that holds no seed is refused', async () => {
+      const path = await seedFile(0o600);
+
+      writeFileSync(path, 'not a seed\n');
+      expect(() => readServerSeed(path)).toThrow(
+        /does not hold an Ed25519 seed/,
+      );
+    });
+  },
+);

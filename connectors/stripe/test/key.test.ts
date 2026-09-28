@@ -33,7 +33,7 @@ describe('STRIPE_SECRET_KEY_FILE', () => {
     const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
 
     expect(() => readKeyFile(keyFile(), uid + 1)).toThrow(
-      /is not owned by the user running the server/,
+      /is not owned by this user/,
     );
   });
 

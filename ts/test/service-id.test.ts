@@ -56,7 +56,9 @@ describe('yea service-id', () => {
     symlinkSync(join(dir, 'open.key'), join(dir, 'link.key'));
 
     expect(run(home, 'bad').err).toMatch(/does not hold an Ed25519 seed/);
-    expect(run(home, 'open').err).toMatch(/private \(chmod 600\)/);
-    expect(run(home, 'link').err).toMatch(/not a regular file/);
+    expect(run(home, 'open').err).toMatch(
+      /can be read by other users \(chmod 600 it\)/,
+    );
+    expect(run(home, 'link').err).toMatch(/is a symlink/);
   });
 });

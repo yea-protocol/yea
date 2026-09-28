@@ -18,7 +18,9 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { randomId, sha256 } from './crypto.js';
+import { isPublicKey } from './grants.js';
 import { home } from './home.js';
+import { uid } from './keyfile.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -287,6 +289,13 @@ export class FileStore implements ApprovalStore {
   }
 }
 
+/**
+ * The store the MCP servers and the `yea` command share: `YEA_STORE` if set, else
+ * `~/.yea/store`. An empty `YEA_STORE` counts as unset.
+ */
+export const defaultFileStore = () =>
+  new FileStore(process.env.YEA_STORE || undefined);
+
 /** Names are b64url ids, receipt ids or measure names; anything else is refused. */
 function safeName(s: string): string {
   if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/.test(s)) {
@@ -315,9 +324,6 @@ async function acquire(lock: string): Promise<string> {
 }
 
 // ---- the pinned principal key (§2) ----
-
-const uid = () =>
-  typeof process.getuid === 'function' ? process.getuid() : -1;
 
 /** Whether this OS user could change `path`: owns it, or can write it. */
 function changeable(path: string): boolean {
@@ -398,7 +404,7 @@ export function readPinnedKey(
 
   const key = readFileSync(path, 'utf8').trim();
 
-  return /^ed25519:[A-Za-z0-9_-]{43}$/.test(key)
+  return isPublicKey(key)
     ? { key }
     : { why: `${path} does not hold an ed25519 public key` };
 }
