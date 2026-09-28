@@ -1,58 +1,53 @@
 #!/usr/bin/env node
-import { dirname } from 'node:path';
-import { createInterface, type Interface } from 'node:readline/promises';
-/** yea — command line for the YEA protocol. */
-import { parseArgs } from 'node:util';
+/** yea — command line for the YEA protocol. The commands live in ./cli/, one module per group. */
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { cmdApprove } from './cli/approve.js';
+import { cmdDoctor } from './cli/doctor.js';
 import {
-  approveConsentCode,
-  consentFrom,
-  consentLines,
-  NO_DETAIL,
-} from './approve.js';
+  cmdDelegate,
+  cmdGrant,
+  cmdGrantImport,
+  cmdInit,
+  cmdInspect,
+  cmdServiceId,
+  cmdWhoami,
+} from './cli/identity.js';
 import {
-  type JobConsent,
-  phraseMatches,
-  readJobConsent,
-  signJobConsent,
-} from './ask.js';
-import type { Client } from './client.js';
-import { consentGrant, decodeConsentCode } from './consent.js';
-import { type KeyPair, keyPair } from './crypto.js';
-import { defaultFileStore } from './filestore.js';
+  cmdAdd,
+  cmdInstall,
+  cmdRemove,
+  cmdServices,
+  cmdUninstall,
+} from './cli/install.js';
 import {
-  type Caveat,
-  delegateGrant,
-  type GrantInfo,
-  inspectGrant,
-  issueGrant,
-} from './grants.js';
-import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
+  cmdDemo,
+  cmdExamples,
+  cmdMcp,
+  cmdOpenapi,
+  cmdTestDrive,
+} from './cli/run.js';
 import {
-  checkServerKeyDir,
-  readServerSeed,
-  SERVER_NAME,
-  serverKeyPath,
-} from './keyfile.js';
+  type Command,
+  client,
+  die,
+  type Options,
+  parseCommandLine,
+  type ServiceCommand,
+} from './cli/shared.js';
 import {
-  effectLine,
-  fmtDuration,
-  fmtTime,
-  lean,
-  untrustedLens,
-} from './lens.js';
-import { connect } from './node.js';
-import { isRisk } from './risk.js';
-import {
-  addService,
-  CLIENTS,
-  detectedClients,
-  listServices,
-  removeService,
-} from './setup.js';
-import { jsonPrintable, printable } from './text.js';
-import type { ConsentRequest, Proposal, Reply, Verb } from './types.js';
-import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
-import { unixNow } from './util.js';
+  cmdAsk,
+  cmdCommit,
+  cmdDo,
+  cmdExpand,
+  cmdHello,
+  cmdIntent,
+  cmdUndo,
+} from './cli/talk.js';
+import { home } from './home.js';
+import { printable } from './text.js';
+
+export { die } from './cli/shared.js';
 
 const HELP = `yea — the protocol agents speak
 
@@ -96,162 +91,6 @@ bridges
 caveats: --svc <id> --can <pattern> --verbs ASK,INTENT --exp 24h --each spend=50.00USD --total emails=20 --risk low|medium|high
 options: --budget <tokens> --json`;
 
-const { values: o, positionals: args } = parseArgs({
-  allowPositionals: true,
-  options: {
-    svc: { type: 'string', multiple: true },
-    can: { type: 'string', multiple: true },
-    verbs: { type: 'string' },
-    exp: { type: 'string' },
-    each: { type: 'string', multiple: true },
-    total: { type: 'string', multiple: true },
-    risk: { type: 'string' },
-    to: { type: 'string' },
-    goal: { type: 'string' },
-    budget: { type: 'string' },
-    expires: { type: 'string' },
-    json: { type: 'boolean' },
-    help: { type: 'boolean', short: 'h' },
-    name: { type: 'string' },
-    model: { type: 'string' },
-    base: { type: 'string' },
-    header: { type: 'string', multiple: true },
-    port: { type: 'string' },
-    http: { type: 'string' },
-    id: { type: 'string' },
-    prefix: { type: 'string' },
-    target: { type: 'string' },
-    local: { type: 'boolean' },
-    yes: { type: 'boolean', short: 'y' },
-    'no-principal': { type: 'boolean' },
-    'with-principal': { type: 'boolean' },
-    host: { type: 'string' },
-    preset: { type: 'string' },
-  },
-});
-
-function die(msg: string): never {
-  console.error(msg);
-  process.exit(1);
-}
-
-function duration(s: string): number {
-  const m =
-    /^(\d+)([smhd])$/.exec(s) ??
-    die(`bad duration ${s} (use e.g. 30m, 24h, 7d)`);
-
-  return Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's'];
-}
-
-/** `spend=25.00USD` or `emails=20` → a limit on that measure (SPEC §6.3). */
-function limit(s: string): Limit {
-  const m =
-    /^([a-z][a-z0-9_.-]*)=(\d+)(?:\.(\d+))?\s*([A-Za-z%][A-Za-z0-9_./%-]*)?$/.exec(
-      s,
-    ) ?? die(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
-  const decimals = m[3] ?? '';
-  const l = {
-    of: m[1],
-    max: Number(m[2] + decimals),
-    ...(decimals ? { scale: decimals.length } : {}),
-    ...(m[4] ? { unit: m[4] } : {}),
-  };
-
-  return isLimit(l) ? l : die(`bad limit ${s} (amount or unit out of range)`);
-}
-
-function caveats(): Caveat[] {
-  const c: Caveat[] = [];
-
-  if (o.svc) {
-    c.push({ svc: o.svc });
-  }
-
-  if (o.can) {
-    c.push({ can: o.can });
-  }
-
-  if (o.verbs) {
-    c.push({
-      verbs: o.verbs.split(',').map((v) => v.trim().toUpperCase()) as Verb[],
-    });
-  }
-
-  if (o.exp) {
-    c.push({ exp: unixNow() + duration(o.exp) });
-  }
-
-  for (const l of o.each ?? []) {
-    c.push({ each: limit(l) });
-  }
-
-  for (const l of o.total ?? []) {
-    c.push({ total: limit(l) });
-  }
-
-  if (o.risk !== undefined) {
-    c.push({
-      risk: isRisk(o.risk)
-        ? o.risk
-        : die(`bad risk ${o.risk} (low|medium|high)`),
-    });
-  }
-
-  return c;
-}
-
-function kv(pairs: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-
-  for (const p of pairs) {
-    const i = p.indexOf('=');
-
-    if (i < 0) {
-      die(`expected key=value, got ${p}`);
-    }
-
-    const v = p.slice(i + 1);
-
-    try {
-      out[p.slice(0, i)] = JSON.parse(v);
-    } catch {
-      out[p.slice(0, i)] = v;
-    }
-  }
-
-  return out;
-}
-
-async function client(url: string): Promise<Client> {
-  const agent = await agentKey();
-
-  return connect(url, {
-    key: agent?.seed,
-    grants: [...loadGrants('grants'), ...loadGrants('consents')],
-    name: o.name ?? 'yea-cli',
-    budget: o.budget ? Number(o.budget) : undefined,
-  });
-}
-
-/** Print a service's reply (`yea do`, and every command that shows one) as `untrustedLens`. */
-const say = (r: Reply) => console.log(untrustedLens(r));
-
-/** A service's reply as `--json` (without its `lens`, invisible characters escaped), or as escaped Lens. */
-const show = (r: Reply) =>
-  o.json
-    ? console.log(
-        jsonPrintable(JSON.stringify({ ...r, lens: undefined }, null, 2)),
-      )
-    : say(r);
-
-/** A reply's progress events, on stderr and escaped like the reply itself. */
-const onEvent = (e: Reply) => console.error(untrustedLens(e));
-
-/** A command that works locally (keys, grants, setup, servers). */
-type Command = (rest: string[]) => Promise<void>;
-/** A command that talks to the service at the first argument; `args` are the rest. */
-type ServiceCommand = (c: Client, args: string[]) => Promise<void>;
-
 const COMMANDS = new Map<string, Command>([
   ['init', cmdInit],
   ['whoami', cmdWhoami],
@@ -282,13 +121,10 @@ const SERVICE_COMMANDS = new Map<string, ServiceCommand>([
   ['commit', cmdCommit],
   ['undo', cmdUndo],
   ['expand', cmdExpand],
-  [
-    'do',
-    (c, [capability, ...params]) => interactive(c, capability, kv(params)),
-  ],
+  ['do', cmdDo],
 ]);
 
-async function main() {
+async function main(o: Options, args: string[]) {
   const [cmd, ...rest] = args;
 
   if (!cmd || o.help) {
@@ -298,7 +134,7 @@ async function main() {
   const command = COMMANDS.get(cmd);
 
   if (command) {
-    return command(rest);
+    return command(rest, o);
   }
 
   const [url, ...more] = rest;
@@ -307,886 +143,42 @@ async function main() {
     die(HELP);
   }
 
-  const c = await client(url);
+  const c = await client(url, o);
 
   try {
     const talk =
       SERVICE_COMMANDS.get(cmd) ?? die(`unknown command ${cmd}\n\n${HELP}`);
 
-    await talk(c, more);
+    await talk(c, more, o);
   } finally {
     c.close();
   }
 }
 
-const budgetFlag = () => (o.budget ? Number(o.budget) : undefined);
-
-/** Where to install for AI tools: this project (--local) or the user's home. */
-const installScope = () => ({ local: !!o.local, cwd: process.cwd() });
-
-/** Ask a yes/no question on the terminal; only an answer starting with y counts as yes. */
-async function confirm(question: string): Promise<boolean> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const yes = /^y/i.test(await rl.question(question));
-
-  rl.close();
-
-  return yes;
-}
-
-/** Principals whose grants a local service trusts: YEA_TRUST, else the principal key here. */
-async function trustedPrincipals(): Promise<string[]> {
-  const trust = (process.env.YEA_TRUST ?? '').split(',').filter(Boolean);
-  const p = await principalKey();
-
-  if (p && !trust.length) {
-    trust.push(p.public);
-  }
-
-  return trust;
-}
-
-// ---- identity ----
-
-async function cmdInit() {
-  const p = await principalKey(true),
-    a = await agentKey(true);
-
-  console.log(
-    `principal ${p.public}\nagent     ${a.public}\n\nnext: yea grant --exp 24h --total spend=100.00USD --risk low`,
-  );
-}
-
-async function cmdWhoami() {
-  const p = await principalKey(),
-    a = await agentKey();
-
-  console.log(
-    `principal ${p?.public ?? '(none — run yea init)'}\nagent     ${a?.public ?? '(none)'}`,
-  );
-}
-
 /**
- * The service id of an MCP server built with `@yea-protocol/mcp` or `yea-mcp`: the public key
- * of its seed in `~/.yea/server/<name>.key`, which `yea grant --to` needs.
+ * Run the `yea` command line `argv` (the arguments after `yea`). A bad flag throws here, before
+ * any command runs; a command's error is printed and exits with status 1, as `die` does.
  */
-async function cmdServiceId(rest: string[]) {
-  const name = rest[0] ?? die('usage: yea service-id <name>');
+export function run(argv: string[]): Promise<void> {
+  const { values: o, positionals: args } = parseCommandLine(argv);
 
-  if (!SERVER_NAME.test(name)) {
-    die(
-      `bad server name ${JSON.stringify(name)}: it matches [a-z0-9._-]{1,64}`,
-    );
-  }
-
-  console.log((await keyPair(serverSeed(serverKeyPath(name)))).public);
+  // An error can quote a service's reply (a JSON.parse SyntaxError does), escapes and all.
+  return main(o, args).catch((e) =>
+    die(`✗ ${printable((e as Error).message)}`),
+  );
 }
 
-/**
- * The seed in a server key file, held to the rules the server itself applies: a key directory
- * only this user can change, and a key file that is not a symlink, is this user's and is
- * private (0600 or 0400). So the id printed is the one the server uses.
- */
-function serverSeed(path: string): string {
+/** Whether node was started with this file (`node dist/cli.js …`) rather than importing it. */
+function isEntry(): boolean {
+  const script = process.argv[1];
+
   try {
-    return checkedServerSeed(path);
-  } catch (e) {
-    return missing(e)
-      ? die(`no server key at ${path}: start the server once to create it`)
-      : die((e as Error).message);
-  }
-}
-
-/** The key directory's check, then the key file's; throws why either is refused. */
-function checkedServerSeed(path: string): string {
-  const why = checkServerKeyDir(dirname(path));
-
-  if (why) {
-    throw new Error(`refusing the server key: ${why}`);
-  }
-
-  return readServerSeed(path);
-}
-
-/** Whether `e`, or the error it wraps, is ENOENT. */
-function missing(e: unknown): boolean {
-  const err = e as NodeJS.ErrnoException & { cause?: unknown };
-  const cause = err.cause as NodeJS.ErrnoException | undefined;
-
-  return err.code === 'ENOENT' || cause?.code === 'ENOENT';
-}
-
-async function cmdGrant() {
-  // Bad caveat flags are refused before any key is read.
-  const cav = caveats();
-  const p = (await principalKey()) ?? die('no principal key — run yea init');
-  const to = o.to ?? (await agentKey())?.public ?? die('no agent key');
-  const token = await issueGrant({ principal: p, to, caveats: cav });
-  const info = await inspectGrant(token);
-
-  if (!o.to) {
-    saveGrant(token, 'grants', info.id.slice(0, 16));
-  }
-
-  console.log(token);
-  console.error(
-    `\ngrant ${info.id.slice(0, 16)} → ${to}\n${lean({ caveats: info.blocks[0].caveats })}${o.to ? '' : `\nsaved to ${home()}/grants`}`,
-  );
-}
-
-async function cmdGrantImport(rest: string[]) {
-  const token = rest[0] ?? die('usage: yea grant-import <pg1.… token>');
-  const info = await inspectGrant(token);
-  const a = await agentKey();
-
-  if (!a || info.holder !== a.public) {
-    die(
-      `this grant is for ${info.holder}, not this machine's agent key ${a?.public ?? '(none: run yea install)'}`,
-    );
-  }
-
-  saveGrant(token, 'grants', info.id.slice(0, 16));
-  console.log(`✓ imported grant ${info.id.slice(0, 16)} from ${info.iss}`);
-}
-
-async function cmdDelegate(rest: string[]) {
-  const a = (await agentKey()) ?? die('no agent key');
-
-  console.log(
-    await delegateGrant(
-      rest[0] ?? die('usage: yea delegate <token> --to <key>'),
-      {
-        holder: a,
-        to: o.to ?? die('--to required'),
-        caveats: caveats(),
-      },
-    ),
-  );
-}
-
-async function cmdInspect(rest: string[]) {
-  const info = await inspectGrant(rest[0] ?? die('usage: yea inspect <token>'));
-
-  console.log(
-    lean({
-      id: info.id,
-      principal: info.iss,
-      holder: info.holder,
-      chain: info.blocks.map((b) => ({
-        to: b.sub,
-        issued: fmtTime(b.iat),
-        caveats: b.caveats.map((c) => JSON.stringify(c)),
-      })),
-    }),
-  );
-}
-
-async function cmdApprove(rest: string[]) {
-  const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
-  const consent = decodeConsentCode(code);
-
-  // Refused before any key is loaded: there's nothing here a person could check (SPEC §6.6).
-  if (!consent.detail) {
-    die(`✗ ${NO_DETAIL}: refusing`);
-  }
-
-  const p =
-    (await principalKey()) ??
-    die('no principal key here: approve on the machine that holds it');
-
-  if (consent.principal !== p.public) {
-    die(
-      printable(
-        `this consent is for principal ${consent.principal}, not ${p.public}`,
-      ),
-    );
-  }
-
-  if (isJobCode(code)) {
-    return approveJob(p, code);
-  }
-
-  const r = await approveConsentCode({
-    principal: p,
-    code,
-    localAgent: (await agentKey())?.public ?? null,
-    to: o.to,
-    io: {
-      print: (line) => console.log(line),
-      confirm: async (question) => {
-        if (!process.stdin.isTTY) {
-          die(
-            '✗ approval needs an interactive terminal: a human has to confirm',
-          );
-        }
-
-        return confirm(question);
-      },
-    },
-    save: (token, hash) => saveGrant(token, 'consents', hash),
-  });
-
-  if (!r.ok) {
-    die(r.why === 'not approved' ? r.why : `✗ ${r.why}: refusing`);
-  }
-
-  // Printed to paste back to the agent: its bridge takes it through yea_consent.
-  console.log(r.token);
-  console.error(
-    `\n✓ approved: a one-time consent for this proposal only${r.saved ? ", saved for this machine's agent" : ''}. Paste the consent above back to the agent (it passes it to yea_consent), then it can commit.`,
-  );
-}
-
-/** Whether a consent code carries a job (an MCP tool's plan) rather than a proposal. */
-function isJobCode(code: string): boolean {
-  try {
-    const d = decodeConsentCode(code).detail as unknown as
-      | { job?: unknown }
-      | undefined;
-
-    return d?.job !== undefined;
+    return !!script && realpathSync(script) === fileURLToPath(import.meta.url);
   } catch {
     return false;
   }
 }
 
-/**
- * Approve one job plan for an MCP server (SPEC-approval §6): re-check the plan hash, show the
- * plan, have the person type its phrase, and store a consent signed to the server's key.
- */
-async function approveJob(p: KeyPair, code: string) {
-  const now = unixNow();
-  let j: JobConsent;
-
-  try {
-    j = await readJobConsent(code, now);
-  } catch (e) {
-    die(`✗ ${printable((e as Error).message)}: refusing`);
-  }
-
-  console.log(printable(`at server ${j.consent.service}, tool ${j.job.tool}:`));
-  console.log(jobLines(j.job).map(printable).join('\n'));
-  console.log(`  approval expires: ${fmtTime(j.consent.expires)}`);
-
-  if (!process.stdin.isTTY) {
-    die('✗ approval needs an interactive terminal: a human has to confirm');
-  }
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const typed = await rl.question(
-    `\nto approve, type: ${printable(j.phrase)}\n› `,
-  );
-
-  rl.close();
-
-  if (!phraseMatches(typed, j.phrase)) {
-    die('not approved');
-  }
-
-  await defaultFileStore().putConsent(j.planHash, await signJobConsent(p, j));
-  console.log(
-    '✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.',
-  );
+if (isEntry()) {
+  await run(process.argv.slice(2));
 }
-
-/** The plan as the person reads it: summary, effects, then what it uses, risk and undo. */
-function jobLines(job: JobConsent['job']): string[] {
-  const uses =
-    isUses(job.uses) && Object.keys(job.uses).length
-      ? `uses: ${fmtUses(job.uses)} · `
-      : '';
-  const undo =
-    typeof job.undoWindow === 'number' ? fmtDuration(job.undoWindow) : 'never';
-
-  return [
-    job.summary,
-    ...job.effects.map((e) => `  ${effectLine(e)}`),
-    `  ${uses}risk: ${String(job.risk)} · undo: ${undo}`,
-    `  input: ${JSON.stringify(job.input)}`,
-  ];
-}
-
-// ---- try it ----
-
-async function cmdTestDrive(rest: string[]) {
-  try {
-    await import('@anthropic-ai/sdk');
-  } catch {
-    // Keep @yea-protocol/sdk dependency-free: fetch the SDK only for this command.
-    const { spawnSync } = await import('node:child_process');
-    const { createRequire } = await import('node:module');
-    const version = createRequire(import.meta.url)('../package.json').version;
-
-    console.error('fetching @anthropic-ai/sdk for the test drive…');
-
-    const r = spawnSync(
-      'npx',
-      [
-        '-y',
-        '-p',
-        '@anthropic-ai/sdk',
-        '-p',
-        `@yea-protocol/sdk@${version}`,
-        'yea',
-        ...process.argv.slice(2),
-      ],
-      { stdio: 'inherit' },
-    );
-
-    process.exit(r.status ?? 1);
-  }
-
-  const { testDrive } = await import('./testdrive.js');
-
-  await testDrive({ model: o.model, prompt: rest.join(' ') || undefined });
-  process.exit(0);
-}
-
-async function cmdDemo() {
-  const { runDemo } = await import('./examples/demo.js');
-
-  await runDemo();
-  process.exit(0);
-}
-
-async function cmdExamples() {
-  const { calendar, shop, billing } = await import('./examples/index.js');
-  const { listen } = await import('./node.js');
-  const trust = await trustedPrincipals();
-  const port = Number(o.port ?? 7447);
-
-  await listen(calendar({ trust }), { port, host: o.host });
-  await listen(shop({ trust }), { port: port + 2, host: o.host });
-  await listen(billing({ trust }), { port: port + 4, host: o.host });
-  console.error(
-    `✓ calendar yea://127.0.0.1:${port} · shop yea://127.0.0.1:${port + 2} · billing yea://127.0.0.1:${port + 4} · trusting ${trust.length} principal(s)${trust.length ? '' : ' (run yea init first to commit anything)'}\n  try: yea do yea://127.0.0.1:${port} calendar.reschedule event=Ana`,
-  );
-}
-
-// ---- bridges ----
-
-async function cmdOpenapi(rest: string[]) {
-  const { fromOpenAPI, loadOpenAPI } = await import('./openapi.js');
-  const { listen, serveHttp } = await import('./node.js');
-  const { PRESETS, presetOptions } = await import('./presets.js');
-  const preset = o.preset
-    ? (PRESETS[o.preset] ??
-      die(
-        `unknown preset ${o.preset}; one of: ${Object.keys(PRESETS).join(', ')}`,
-      ))
-    : null;
-
-  for (const e of preset?.env ?? []) {
-    if (!process.env[e]) {
-      console.error(
-        `note: ${e} is not set; ${o.preset} will only do what works without it`,
-      );
-    }
-  }
-
-  const spec = await loadOpenAPI(
-    preset?.spec ??
-      rest[0] ??
-      die(
-        'usage: yea openapi <spec.json|url> [--base <url>]  (or --preset ' +
-          Object.keys(PRESETS).join('|') +
-          ')',
-      ),
-  );
-  const headers = {
-    ...(preset ? presetOptions(preset).headers : {}),
-    ...headerFlags(),
-  };
-  const trust = await trustedPrincipals();
-  const svc = fromOpenAPI(spec, {
-    ...(preset ? presetOptions(preset) : {}),
-    ...(o.base ? { baseUrl: o.base } : {}),
-    ...(o.id ? { id: o.id } : {}),
-    ...(o.prefix ? { prefix: o.prefix } : {}),
-    headers,
-    trust,
-  });
-  const port = Number(o.port ?? 7447);
-
-  await listen(svc, { port, host: o.host });
-
-  if (o.http) {
-    await serveHttp(svc, { port: Number(o.http), host: o.host });
-  }
-
-  const count = (kind: string) =>
-    svc.capabilities.filter((c) => c.kind === kind).length;
-
-  console.error(
-    `✓ ${svc.id}: ${svc.capabilities.length} capabilities (${count('ask')} ask, ${count('intent')} intent)\n  yea://127.0.0.1:${port}${o.http ? `  ·  http://127.0.0.1:${o.http}/yea` : ''}\n  trusting ${trust.length} principal(s) for writes\n  try: yea hello yea://127.0.0.1:${port}`,
-  );
-}
-
-/** --header "K: V" flags as a header map. */
-const headerFlags = () =>
-  Object.fromEntries(
-    (o.header ?? []).map((h) => [
-      h.slice(0, h.indexOf(':')).trim(),
-      h.slice(h.indexOf(':') + 1).trim(),
-    ]),
-  );
-
-/** `yea mcp` lives in @yea-protocol/cli, which depends on @yea-protocol/mcp; the SDK can't. */
-async function cmdMcp() {
-  die(
-    'yea mcp runs from @yea-protocol/cli: npx -y @yea-protocol/cli mcp [<url> …]',
-  );
-}
-
-// ---- services for your AI tools ----
-
-async function cmdAdd(rest: string[]) {
-  const url = rest[0] ?? die('usage: yea add <url>');
-  const c = await client(url);
-  const b = await c.hello(400);
-
-  c.close();
-
-  if (b.kind !== 'BRIEF') {
-    return die(untrustedLens(b));
-  }
-
-  addService(url);
-  console.log(
-    printable(
-      `✓ added ${b.service.name} (${b.service.id}) · ${b.capabilities.length} capabilities`,
-    ),
-  );
-  console.log('  restart your AI tool to pick it up');
-}
-
-async function cmdRemove(rest: string[]) {
-  removeService(rest[0] ?? die('usage: yea remove <url>'));
-  console.log(`✓ removed ${rest[0]}`);
-}
-
-async function cmdServices() {
-  const s = listServices();
-
-  console.log(s.length ? s.join('\n') : 'no services yet: yea add <url>');
-}
-
-async function cmdInstall() {
-  const scope = installScope();
-  const names = o.target
-    ? o.target.split(',').map((t) => t.trim())
-    : detectedClients();
-
-  for (const n of names) {
-    if (!CLIENTS[n]) {
-      die(`unknown target ${n}; one of: ${Object.keys(CLIENTS).join(', ')}`);
-    }
-  }
-
-  const a = (await agentKey()) ?? (await agentKey(true));
-
-  console.log(`agent key   ${a.public} (${home()})`);
-
-  const p = await installPrincipal(a);
-
-  if (p && !loadGrants('grants').length) {
-    await installDefaultPolicy(p, a);
-  }
-
-  if (!names.length) {
-    console.log(
-      `\nno AI tools detected. Pick some: yea install --target ${Object.keys(CLIENTS).join(',')}`,
-    );
-  }
-
-  for (const n of names) {
-    try {
-      for (const line of CLIENTS[n].install(scope)) {
-        console.log(`✓ ${CLIENTS[n].name}: ${line}`);
-      }
-    } catch (e) {
-      console.log(`✗ ${CLIENTS[n].name}: ${(e as Error).message}`);
-    }
-  }
-
-  const s = listServices();
-
-  console.log(
-    s.length
-      ? `\nservices    ${s.join(', ')}`
-      : '\nnext: add a service with `yea add <url>`, or try the examples: `yea examples`, then `yea add yea://127.0.0.1:7447`',
-  );
-  console.log(
-    'restart your AI tool, then ask it to do something. Check anything with: yea doctor',
-  );
-}
-
-/**
- * The principal (approval) key should live where agents can't read it. Only create it here
- * when asked: --with-principal, or a yes at the interactive prompt.
- */
-async function installPrincipal(a: KeyPair): Promise<KeyPair | null> {
-  const existing = await principalKey();
-
-  if (existing) {
-    console.log(`principal   ${existing.public}`);
-
-    return existing;
-  }
-
-  let create = !!o['with-principal'];
-
-  if (!create && process.stdin.isTTY && !o.yes) {
-    create = await confirm(
-      'Create your approval (principal) key on this machine too? Handy for trying YEA, but an agent with shell access could read it. [y/N] › ',
-    );
-  }
-
-  if (!create) {
-    console.log(
-      `principal   not on this machine (recommended). On the device that holds it, run:\n              yea grant --to ${a.public} --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d\n            and save the token here with: yea grant-import <token>   (or re-run with --with-principal to try things quickly)`,
-    );
-
-    return null;
-  }
-
-  const p = await principalKey(true);
-
-  console.log(
-    `principal   ${p.public} (on this machine: fine for trying things; see SECURITY.md for real use)`,
-  );
-
-  return p;
-}
-
-/** Grant the agent a safe default policy: low risk, ≤ 25 USD each, ≤ 100 USD total, 30 days. */
-async function installDefaultPolicy(p: KeyPair, a: KeyPair) {
-  const caveats: Caveat[] = [
-    { risk: 'low' },
-    { each: { of: 'spend', max: 2500, scale: 2, unit: 'USD' } },
-    { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
-    { exp: unixNow() + 30 * 86400 },
-  ];
-  const token = await issueGrant({ principal: p, to: a.public, caveats });
-
-  saveGrant(token, 'grants', (await inspectGrant(token)).id.slice(0, 16));
-  console.log(
-    'policy      low-risk actions, ≤ 25.00 USD each, ≤ 100.00 USD total, 30 days. Anything else asks you. (change: yea grant …)',
-  );
-}
-
-async function cmdUninstall() {
-  const scope = installScope();
-  const names = o.target
-    ? o.target.split(',').map((t) => t.trim())
-    : Object.keys(CLIENTS);
-  let n = 0;
-
-  for (const name of names) {
-    try {
-      for (const line of CLIENTS[name]?.uninstall(scope) ?? []) {
-        console.log(`✓ ${CLIENTS[name].name}: ${line}`);
-        n++;
-      }
-    } catch (e) {
-      console.log(`✗ ${CLIENTS[name]?.name ?? name}: ${(e as Error).message}`);
-    }
-  }
-
-  console.log(
-    n
-      ? `done. Keys and grants in ${home()} were left in place (delete that folder to remove them).`
-      : 'nothing to remove.',
-  );
-}
-
-// ---- doctor ----
-
-const ok = (m: string) => console.log(`✓ ${m}`);
-const warn = (m: string) => console.log(`! ${m}`);
-const bad = (m: string) => console.log(`✗ ${m}`);
-
-async function cmdDoctor() {
-  const major = Number(process.versions.node.split('.')[0]);
-
-  if (major >= 20) {
-    ok(`node ${process.versions.node}`);
-  } else {
-    bad(`node ${process.versions.node}: YEA needs node ≥ 20`);
-  }
-
-  const a = await agentKey();
-
-  if (a) {
-    ok(`agent key ${a.public.slice(0, 24)}…`);
-  } else {
-    bad('no agent key: run yea install');
-  }
-
-  const p = await principalKey();
-
-  if (p) {
-    warn(
-      `principal key is readable here (${process.env.YEA_PRINCIPAL_HOME ?? home()}). Fine for trying things; for real use keep it away from agents (SECURITY.md)`,
-    );
-  } else {
-    ok('principal key is not on this machine (recommended)');
-  }
-
-  await reportGrants(a);
-  await checkServices();
-  checkRegistration();
-}
-
-/** The doctor's report on each saved grant. */
-async function reportGrants(a: KeyPair | null) {
-  const grants = loadGrants('grants');
-
-  if (!grants.length) {
-    bad(
-      'no grants: your agent can read but not act. yea grant … (or yea install)',
-    );
-  }
-
-  for (const g of grants) {
-    try {
-      reportGrant(await inspectGrant(g), a);
-    } catch {
-      bad('a saved grant is unreadable');
-    }
-  }
-}
-
-function reportGrant(info: GrantInfo, a: KeyPair | null) {
-  const now = unixNow();
-  const cav = info.blocks.flatMap((b) => b.caveats);
-  const exp = Math.min(
-    ...cav.flatMap((c) => ('exp' in c && c.exp ? [c.exp] : [])),
-    Infinity,
-  );
-  const scope =
-    cav
-      .find((c): c is { svc: string[] } => 'svc' in c && !!c.svc)
-      ?.svc.join(', ') ?? 'all services';
-  const holder = a && info.holder === a.public ? '' : ' (held by another key!)';
-
-  if (exp !== Infinity && exp <= now) {
-    bad(`grant ${info.id.slice(0, 10)} expired ${fmtTime(exp)}${holder}`);
-  } else {
-    ok(
-      `grant ${info.id.slice(0, 10)}: ${scope}; ${exp === Infinity ? 'no expiry' : `expires ${fmtTime(exp)}`}${holder}`,
-    );
-  }
-}
-
-async function checkServices() {
-  const services = listServices();
-
-  if (!services.length) {
-    warn('no services: yea add <url>');
-  }
-
-  for (const u of services) {
-    const t0 = Date.now();
-
-    try {
-      const c = await client(u);
-      const b = await c.hello(200);
-
-      c.close();
-
-      if (b.kind === 'BRIEF') {
-        ok(printable(`${u}: ${b.service.name} (${Date.now() - t0} ms)`));
-      } else {
-        bad(`${printable(u)}: ${untrustedLens(b)}`);
-      }
-    } catch (e) {
-      bad(printable(`${u}: ${(e as Error).message}`));
-    }
-  }
-}
-
-function checkRegistration() {
-  const scope = installScope();
-  const installed = Object.values(CLIENTS)
-    .filter((t) => {
-      try {
-        return t.installed(scope);
-      } catch {
-        return false;
-      }
-    })
-    .map((t) => t.name);
-
-  if (installed.length) {
-    ok(`registered with: ${installed.join(', ')}`);
-  } else {
-    warn('not registered with any AI tool: yea install');
-  }
-}
-
-// ---- talk to a service ----
-
-async function cmdHello(c: Client) {
-  show(await c.hello(budgetFlag()));
-}
-
-async function cmdAsk(c: Client, [capability, ...params]: string[]) {
-  show(await c.ask(capability, kv(params), { budget: budgetFlag() }));
-}
-
-async function cmdIntent(c: Client, [capability, ...params]: string[]) {
-  show(
-    await c.intent(capability, kv(params), {
-      goal: o.goal,
-      budget: budgetFlag(),
-    }),
-  );
-}
-
-async function cmdCommit(c: Client, [id, hash]: string[]) {
-  show(await c.commit({ id, hash }, { onEvent }));
-}
-
-async function cmdUndo(c: Client, [receipt]: string[]) {
-  show(await c.undo(receipt, { onEvent }));
-}
-
-async function cmdExpand(c: Client, [handle]: string[]) {
-  show(await c.expand(handle, { budget: budgetFlag() }));
-}
-
-/** `yea do`: intent → choose → commit, answering questions and consent prompts at the terminal. */
-async function interactive(
-  c: Client,
-  capability: string,
-  params: Record<string, unknown>,
-) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-  try {
-    for (;;) {
-      const r = await c.intent(capability, params, { goal: o.goal });
-
-      say(r);
-
-      if (r.kind === 'CLARIFY') {
-        const n = Number(await rl.question('\nchoose › ')) - 1;
-
-        Object.assign(params, r.options[n]?.params ?? die('no such option'));
-
-        continue;
-      }
-
-      if (r.kind !== 'PROPOSALS') {
-        return;
-      }
-
-      const chosen = await chooseProposal(rl, r.proposals);
-
-      if (!chosen) {
-        return;
-      }
-
-      let res = await c.commit(chosen, { onEvent: say });
-
-      if (res.kind === 'ERROR' && res.code === 'consent_required') {
-        say(res);
-        res =
-          (await consentAndRetry({ c, rl, chosen, consent: res.consent })) ??
-          res;
-      }
-
-      say(res);
-
-      return;
-    }
-  } finally {
-    rl.close();
-  }
-}
-
-/** Pick the proposal to commit: confirm a lone one, or choose by number. Null means stop. */
-async function chooseProposal(
-  rl: Interface,
-  proposals: Proposal[],
-): Promise<Proposal | null> {
-  const pick =
-    proposals.length === 1
-      ? proposals[0]
-      : (proposals.find((p) => p.id === '') ?? null);
-
-  if (pick) {
-    return /^y/i.test(await rl.question('\ncommit? [y/N] › ')) ? pick : null;
-  }
-
-  const ans = await rl.question(
-    `\ncommit which? [1-${proposals.length}, blank to stop] › `,
-  );
-
-  if (!ans.trim()) {
-    return null;
-  }
-
-  return proposals[Number(ans) - 1] ?? die('no such proposal');
-}
-
-/**
- * The service wants the principal's consent. If the principal key is here, show the proposal,
- * and on a yes sign a one-time consent and commit again. Returns the new reply, or null.
- */
-async function consentAndRetry({
-  c,
-  rl,
-  chosen,
-  consent: k,
-}: {
-  c: Client;
-  rl: Interface;
-  chosen: Proposal;
-  consent: ConsentRequest | undefined;
-}) {
-  if (!k) {
-    die("✗ the service's error has no consent request; not signing");
-  }
-
-  const view = await consentLines(k, chosen, await c.audience());
-
-  if ('why' in view) {
-    die(
-      `✗ the service's consent request doesn't match the proposal shown (${view.why}); not signing`,
-    );
-  }
-
-  const p = await principalKey();
-
-  if (!p || p.public !== k.principal) {
-    return null;
-  }
-
-  // SPEC.md §6.6: effects, uses, risk and undo, from the proposal whose hash was just checked.
-  console.log(['', ...view.lines.map((l) => `  ${l}`)].join('\n'));
-
-  if (
-    !/^y/i.test(
-      await rl.question('\n[principal] approve this exact proposal? [y/N] › '),
-    )
-  ) {
-    return null;
-  }
-
-  const a = (await agentKey()) ?? die('no agent key');
-  const token = await consentGrant({
-    principal: p,
-    agent: a.public,
-    consent: consentFrom(k, chosen),
-  });
-
-  return c.commit(chosen, {
-    grants: [token],
-    onEvent: say,
-  });
-}
-
-// An error can quote a service's reply (a JSON.parse SyntaxError does), escapes and all.
-main().catch((e) => die(`✗ ${printable((e as Error).message)}`));
