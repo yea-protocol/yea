@@ -756,3 +756,9 @@ def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
     with pytest.raises(TypeError, match="unprintable characters"):
         job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "approve\n", NOW)
     assert decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", NOW))["detail"]["phrase"] == "approve"
+
+
+def test_read_tightening_warns_on_an_out_of_band_that_isnt_a_risk_name():
+    """A list (unhashable) used to raise TypeError; it's a bad value, warned and ignored (#159)."""
+    t = read_tightening({"outOfBand": ["high"]})
+    assert t.out_of_band == "high" and any("outOfBand" in w for w in t.warnings)

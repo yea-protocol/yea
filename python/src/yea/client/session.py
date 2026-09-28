@@ -66,7 +66,9 @@ class Client:
         """The service's id (learned from HELLO), which proofs are bound to."""
         if self.service_id is None:
             await self.hello(200)
-        return self.service_id or ""
+        if self.service_id is None:  # never sign for another audience, such as "" (§6.5)
+            raise RuntimeError("the service did not identify itself (HELLO failed)")
+        return self.service_id
 
     async def _signed(self, verb: str, target: str, extra: Sequence[str | Grant] | None = None) -> dict:
         tokens = self.grants + [str(g) for g in extra or ()]

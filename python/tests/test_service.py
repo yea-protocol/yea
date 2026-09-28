@@ -814,3 +814,25 @@ def test_a_forbidden_with_nothing_to_drop_sends_no_need():
 
     assert Verification(False, "forbidden", "x").need is None
     assert Verification(False, "forbidden", "x", failed=[{"can": ["a"]}]).need == [{"can": ["a"]}]
+
+
+def test_undo_swaps_only_the_sides_an_update_had():
+    """§4.5: a side the original left out stays left out, never null; an explicit null still swaps (#159)."""
+    from yea.service.undo import _inverse
+
+    assert _inverse({"op": "update", "target": "t", "field": "f", "to": 2}) == {"op": "update", "target": "t", "field": "f", "from": 2}
+    assert _inverse({"op": "update", "target": "t", "from": None, "to": 1}) == {"op": "update", "target": "t", "from": 1, "to": None}
+    assert list(_inverse({"op": "update", "from": 1, "target": "t", "to": 2})) == ["op", "target", "from", "to"]  # as TS
+
+
+def test_a_client_that_didnt_learn_the_service_id_signs_nothing():
+    """§6.5: after a failed HELLO the client raises rather than sign for the audience "" (#159)."""
+    svc = Service("s", "S")
+    c = Client(local(svc), key=AGENT.seed, grants=[grant({"svc": ["s"]})])  # a grant, so it would sign
+
+    async def failing_hello(budget=None):
+        return None
+
+    c.hello = failing_hello
+    with pytest.raises(RuntimeError, match=r"did not identify itself \(HELLO failed\)"):
+        run(c.undo("r_12345678"))
