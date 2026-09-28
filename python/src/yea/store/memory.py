@@ -16,7 +16,7 @@ from .contract import (
     _reservation_id,
     is_receipt_id,
 )
-from .file_store import CLAIM_STALE
+from .lock import CLAIM_STALE
 
 PRUNE_AT = 1024  # MemoryStore drops expired consumed ids once it holds this many
 

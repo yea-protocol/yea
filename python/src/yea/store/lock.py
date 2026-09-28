@@ -13,6 +13,7 @@ from .files import _create_excl, _read
 
 LOCK_WAIT = 2.0  # seconds to wait for a ledger lock before failing closed
 LOCK_STALE = 30.0  # a lock file older than this was left by a crashed process
+CLAIM_STALE = 600  # an undo claim this old with no done marker was left by a crashed revert
 
 
 def _token() -> str:

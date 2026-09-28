@@ -21,9 +21,7 @@ from .contract import (
     is_receipt_id,
 )
 from .files import _create_excl, _read, _write_atomic, default_store_dir
-from .lock import _acquire, _break_if_stale, _release, _still_held, _token
-
-CLAIM_STALE = 600  # an undo claim this old with no done marker was left by a crashed revert
+from .lock import CLAIM_STALE, _acquire, _break_if_stale, _release, _still_held, _token
 
 
 class FileStore:

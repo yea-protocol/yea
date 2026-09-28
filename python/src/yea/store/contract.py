@@ -10,11 +10,7 @@ from typing import Any, NamedTuple, Protocol
 from .._json import b64url_encode
 
 RECEIPT_ID = re.compile(r"r_[A-Za-z0-9_-]{8,32}")
-
-
 _B64URL = re.compile(r"[A-Za-z0-9_-]{1,128}")
-
-
 _MEASURE = re.compile(r"[a-z][a-z0-9_.\-]{0,63}")
 
 
