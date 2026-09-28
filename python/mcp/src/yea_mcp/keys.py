@@ -171,12 +171,19 @@ class Rules:
     broken: str | None = None
 
 
+def _no_constants(name: str) -> Any:
+    """NaN and Infinity aren't JSON (TS's JSON.parse refuses them); Python's parser would accept them."""
+    raise ValueError(f"{name} is not JSON")
+
+
 def _parse_tightening(path: Path, text: str) -> Tightening | str:
     """The unsigned rules in a policy file, or why the file can't be used."""
     try:
-        doc = json.loads(text)
+        doc = json.loads(text, parse_constant=_no_constants)
     except ValueError:
         return f"{path} is not valid JSON"
+    if not isinstance(doc, dict):  # null too, as TS: an object is the only valid policy
+        return f"{path}: the policy file is not a JSON object; ignored"
     t = read_tightening(doc)
     # Unknown fields only warn; a file we can't read, or a bad deny or outOfBand, fails closed.
     bad = next((w for w in t.warnings if "not a JSON object" in w or "bad value" in w), None)

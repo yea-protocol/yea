@@ -249,29 +249,33 @@ async def test_a_failing_original_with_a_broken_store_is_still_its_own_error(wor
     assert isinstance(r, mt.CallToolResult)
 
 
-@pytest.mark.parametrize("content", ["{not json", '{"deny": "refund"}', '{"outOfBand": "never"}', "[1, 2]"])
-async def test_a_broken_policy_file_refuses_every_job(world, content):
-    import os
+def write_policy_file(world, content):
+    from pathlib import Path
 
+    home = Path(world.home)
+    home.mkdir(parents=True, exist_ok=True)
+    if content is None:
+        (home / "policy.json").mkdir()  # unreadable as a file
+    else:
+        (home / "policy.json").write_text(content)
+
+
+@pytest.mark.parametrize("content", ["{not json", '{"deny": "refund"}', '{"outOfBand": "never"}', "[1, 2]", "null",
+                                     '{"deny": ["a"], "x": NaN}', None])
+async def test_a_broken_policy_file_refuses_every_job(world, content):
     done = []
     jobs(world, done)
     world.grant({"can": ["*"]})
-    os.makedirs(world.home, exist_ok=True)
-    with open(os.path.join(world.home, "policy.json"), "w") as f:
-        f.write(content)
+    write_policy_file(world, content)
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("refund", {"amount": 5})
     assert r.is_error and "your unsigned policy can't be used" in text(r) and done == []
 
 
 async def test_unknown_policy_file_fields_only_warn(world):
-    import os
-
     done = []
     jobs(world, done)
-    os.makedirs(world.home, exist_ok=True)
-    with open(os.path.join(world.home, "policy.json"), "w") as f:
-        f.write('{"deny": ["refund"], "extra": 1}')
+    write_policy_file(world, '{"deny": ["refund"], "extra": 1}')
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("refund", {"amount": 5})
     assert r.is_error and "never allows refund" in text(r) and done == []
