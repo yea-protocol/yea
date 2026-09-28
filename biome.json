@@ -17,6 +17,9 @@
       "site/scripts/**",
       "site/.vitepress/*.ts",
       "site/.vitepress/theme/*.ts",
+      "site/.vitepress/theme/components/Playground.vue",
+      "site/.vitepress/theme/components/playground/*.ts",
+      "site/.vitepress/theme/components/playground/*.vue",
       "!**/*.json",
       "!**/*.jsonc",
       "!**/*.md"
@@ -68,6 +71,17 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["site/.vitepress/theme/**/*.vue"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "ts/test/**",

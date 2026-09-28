@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUncheckedSideEffectImports": false,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "paths": {
+      "@yea-protocol/sdk": ["../ts/src/index.ts"],
+      "@examples/*": ["../ts/src/examples/*"]
+    }
+  },
+  "include": [".vitepress/theme/**/*.ts", ".vitepress/theme/**/*.vue"]
+}
