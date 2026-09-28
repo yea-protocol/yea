@@ -65,6 +65,32 @@ const consentFields = (c: ReturnType<typeof useConsent>) => ({
   approveConsent: c.approve,
 });
 
+interface OpenDeps {
+  runtime: Runtime;
+  rebuild: () => Promise<void>;
+  send: () => Promise<void>;
+}
+
+/** On mount: start everything, sign the grant and open on a real exchange; `opened` then turns true. */
+function openOnMount({ runtime, rebuild, send }: OpenDeps) {
+  const failed = ref('');
+  const opened = ref(false);
+
+  onMounted(async () => {
+    try {
+      await start(runtime);
+      await rebuild();
+      await nextTick();
+      await send();
+      opened.value = true;
+    } catch (e) {
+      failed.value = errorText(e);
+    }
+  });
+
+  return { failed, opened };
+}
+
 export function usePlayground() {
   const runtime: Runtime = {
     core: shallowRef(null),
@@ -72,7 +98,6 @@ export function usePlayground() {
     services: shallowRef(null),
   };
   const { core, keys, services } = runtime;
-  const failed = ref('');
   const examples = makeExamples();
   const exchanges = useExchanges(services);
   const { current, seen, selected } = exchanges;
@@ -90,20 +115,16 @@ export function usePlayground() {
   const shortcuts = useShortcuts({ form, current, examples, send });
   const consent = useConsent({ core, keys, current, seen, act: shortcuts.act });
 
-  onMounted(async () => {
-    try {
-      await start(runtime);
-      await grants.rebuild();
-      await nextTick();
-      await send(); // open on a real exchange
-    } catch (e) {
-      failed.value = errorText(e);
-    }
+  const { failed, opened } = openOnMount({
+    runtime,
+    rebuild: grants.rebuild,
+    send,
   });
 
   return {
     core,
     failed,
+    opened,
     log: exchanges.log,
     selected,
     current,

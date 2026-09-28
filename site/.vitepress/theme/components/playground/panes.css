@@ -1,0 +1,9 @@
+/* The two-pane layout, shared by the playground and its loading state: the request pane
+   (400px) beside the reply, stacked in one column from 980px down (viewport.ts's ONE_COLUMN).
+   `.pane` is the card each one sits in. */
+.panes { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 20px; align-items: start; }
+.pane { background: var(--vp-c-bg-elv); border: 1px solid var(--vp-c-divider); border-radius: 14px; }
+
+@media (max-width: 980px) {
+  .panes { grid-template-columns: 1fr; }
+}

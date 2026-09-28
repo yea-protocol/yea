@@ -1,3 +1,7 @@
-/* Pill buttons: the preset scenarios and the quick actions on a reply. */
-.presets button, .quick button { font: inherit; font-size: 0.84rem; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--vp-c-border); background: var(--vp-c-bg); color: var(--vp-c-text-1); cursor: pointer; }
-.presets button:hover, .quick button:hover { border-color: var(--vp-c-brand-1); }
+/* The pill-button pattern: `.pill`, for the preset scenarios and the quick actions on a reply. */
+.pill { font: inherit; font-size: 0.84rem; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--vp-c-border); background: var(--vp-c-bg); color: var(--vp-c-text-1); cursor: pointer; }
+.pill:hover { border-color: var(--vp-c-brand-1); }
+
+@media (max-width: 640px), (pointer: coarse) {
+  .pill { min-height: 44px; }
+}

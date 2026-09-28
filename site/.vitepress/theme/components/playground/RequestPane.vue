@@ -5,9 +5,11 @@
  * The policy panel goes in the default slot, below the send button.
  */
 import type { CapabilityInfo } from '@yea-protocol/sdk';
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import { type RequestForm, SERVICE_KEYS, SERVICES, VERBS } from './model';
+import SegmentedRadio from './SegmentedRadio.vue';
 import type { Target } from './seen';
+import { isApple, sendHint, sendKeys } from './shortcut';
 
 const props = defineProps<{
   form: RequestForm;
@@ -21,6 +23,14 @@ const emit = defineEmits<{
   checkParams: [];
   send: [];
 }>();
+
+const SERVICE_OPTIONS = SERVICE_KEYS.map((s) => ({
+  value: s,
+  text: SERVICES[s],
+}));
+const VERB_OPTIONS = VERBS.map((v) => ({ value: v, text: v }));
+const headingId = useId();
+const apple = isApple();
 
 const capSummary = computed(
   () => props.caps.find((c) => c.name === props.form.capability)?.summary,
@@ -42,14 +52,10 @@ const noTargetHint = computed(() =>
 </script>
 
 <template>
-  <section class="pane agent" aria-label="Your request">
-    <div class="seg" role="tablist" aria-label="Service">
-      <button v-for="s in SERVICE_KEYS" :key="s" type="button" role="tab" :aria-selected="form.service === s" :class="{ on: form.service === s }" @click="form.service = s">{{ SERVICES[s] }}</button>
-    </div>
-
-    <div class="verbs" role="tablist" aria-label="Verb">
-      <button v-for="v in VERBS" :key="v" type="button" role="tab" :aria-selected="form.verb === v" :class="{ on: form.verb === v }" @click="form.verb = v">{{ v }}</button>
-    </div>
+  <section class="pane agent" :aria-labelledby="headingId">
+    <h2 :id="headingId" class="visually-hidden">Your request</h2>
+    <SegmentedRadio v-model="form.service" class="services" label="Service" :options="SERVICE_OPTIONS" />
+    <SegmentedRadio v-model="form.verb" class="verbs" label="Verb" :options="VERB_OPTIONS" mono />
 
     <template v-if="form.verb === 'ASK' || form.verb === 'INTENT'">
       <label class="field">
@@ -98,15 +104,14 @@ const noTargetHint = computed(() =>
       <output>{{ form.budget }}</output>
     </div>
 
-    <button class="send" type="button" :disabled="busy" @click="emit('send')">
-      Send {{ form.verb }}<kbd>⌘↵</kbd>
+    <button class="send" type="button" :disabled="busy" :aria-keyshortcuts="sendKeys(apple)" @click="emit('send')">
+      Send {{ form.verb }}<kbd aria-hidden="true">{{ sendHint(apple) }}</kbd>
     </button>
 
     <slot />
   </section>
 </template>
 
-<style scoped src="./segmented.css"></style>
 <style scoped src="./controls.css"></style>
 <style scoped>
 .agent { padding: 18px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: calc(var(--vp-nav-height) + 16px); max-height: calc(100vh - var(--vp-nav-height) - 32px); overflow: auto; }
@@ -120,5 +125,11 @@ const noTargetHint = computed(() =>
 
 @media (max-width: 980px) {
   .agent { position: static; max-height: none; }
+}
+@media (max-width: 640px) {
+  .verbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .budget input { min-height: 44px; }
 }
 </style>

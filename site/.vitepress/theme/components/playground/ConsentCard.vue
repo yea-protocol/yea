@@ -40,7 +40,12 @@ const emit = defineEmits<{ approve: [] }>();
 .consent p { margin: 6px 0; font-size: 0.9rem; color: var(--vp-c-text-2); }
 .consent .what { color: var(--vp-c-text-1); font-weight: 600; }
 .consent ul { margin: 8px 0; padding-left: 18px; font-size: 0.84rem; }
-.consent .meta, .consent .fine { font-size: 0.8rem; color: var(--vp-c-text-3); }
+/* text-2, not text-3: text-3 falls under 4.5:1 on the amber tint in the dark theme */
+.consent .meta, .consent .fine { font-size: 0.8rem; color: var(--vp-c-text-2); }
 .actions { margin-top: 12px; }
 .approve { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 8px; border: 0; background: var(--vp-button-brand-bg); color: var(--vp-button-brand-text); cursor: pointer; }
+
+@media (max-width: 640px), (pointer: coarse) {
+  .approve { min-height: 44px; }
+}
 </style>

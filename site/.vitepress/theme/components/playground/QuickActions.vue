@@ -31,13 +31,13 @@ const more = computed(() => moreOf(reply.value));
 <template>
   <div class="quick">
     <template v-if="reply.kind === 'PROPOSALS'">
-      <button v-for="p in proposals" :key="p.id" type="button" @click="emit('act', 'COMMIT', p.id)">Commit {{ p.id }}</button>
+      <button v-for="p in proposals" :key="p.id" type="button" class="pill" @click="emit('act', 'COMMIT', p.id)">Commit {{ p.id }}</button>
     </template>
     <template v-if="reply.kind === 'CLARIFY'">
-      <button v-for="o in options" :key="o.label" type="button" @click="emit('choose', o)">{{ o.label }}</button>
+      <button v-for="o in options" :key="o.label" type="button" class="pill" @click="emit('choose', o)">{{ o.label }}</button>
     </template>
-    <button v-if="undoable" type="button" @click="emit('act', 'UNDO', undoable)">Undo {{ undoable }}</button>
-    <button v-for="m in more" :key="m.handle" type="button" @click="emit('act', 'EXPAND', m.handle)">Expand {{ m.path }}</button>
+    <button v-if="undoable" type="button" class="pill" @click="emit('act', 'UNDO', undoable)">Undo {{ undoable }}</button>
+    <button v-for="m in more" :key="m.handle" type="button" class="pill" @click="emit('act', 'EXPAND', m.handle)">Expand {{ m.path }}</button>
   </div>
 </template>
 
