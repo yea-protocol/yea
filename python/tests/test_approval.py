@@ -144,12 +144,12 @@ def test_within_policy_runs():
 
 def test_deny_refuses_first():
     d = decide([hashed(risk="high")], policy({"can": ["*"]}, deny=["delete_branch"]), no_use)
-    assert d.kind == "denied"
+    assert d.kind == "denied" and d.why == "your policy never allows delete_branch"
 
 
 def test_irreversible_never_auto_runs():
     d = decide([hashed(undoable=False)], policy({"can": ["*"]}, {"risk": "high"}), no_use)
-    assert d.kind == "ask" and d.why == "`delete_branch` can't be undone"
+    assert d.kind == "ask" and d.why == "delete_branch can't be undone"
 
 
 def test_high_risk_goes_out_of_band_even_with_a_grant():
@@ -157,9 +157,14 @@ def test_high_risk_goes_out_of_band_even_with_a_grant():
     assert decide([hashed(risk="medium")], policy({"can": ["*"]}, oob="medium"), no_use).kind == "out-of-band"
 
 
-def test_reasons():
-    assert decide([hashed(risk="medium")], policy({"can": ["*"]}, {"risk": "low"}), no_use).why == "risk is medium, and your limit is low"
-    assert "doesn't let `delete_branch`" in decide([hashed()], policy({"can": ["reschedule"]}), no_use).why
+def test_reasons_in_the_pinned_order():
+    # Undoable comes before grant presence, and a failed grant check gives the core's reason.
+    none = load_policy(None, SERVER.public, PRINCIPAL.public, Tightening(), NOW)
+    assert decide([hashed(undoable=False)], none, no_use).why == "delete_branch can't be undone"
+    assert decide([hashed()], none, no_use).why == "no signed policy lets delete_branch run without asking"
+    risky = decide([hashed(risk="medium")], policy({"can": ["*"]}, {"risk": "low"}), no_use)
+    assert risky.kind == "ask" and '{"risk":"low"}' in risky.why
+    assert '{"can":["reschedule"]}' in decide([hashed()], policy({"can": ["reschedule"]}), no_use).why
     over = hashed(p=plan(uses={"spend": spend("25.01", "USD")}))
     d = decide([over], policy({"can": ["*"]}, {"each": {"of": "spend", "max": 2500, "scale": 2, "unit": "USD"}}), no_use)
     assert d.kind == "ask" and "spend over the per-commit limit of 25.00 USD" in d.why
@@ -189,23 +194,37 @@ def test_only_plans0_can_run():
 # ------------------------------------------------------------------ the form and the state
 
 
-def test_form_leaves_out_of_band_plans_out_of_the_choice():
+def test_form_leaves_out_of_band_and_denied_plans_out_of_the_choice():
     low, high = hashed(), hashed(p=plan("Force-delete old-nav"), risk="high")
-    form = build_form([low, high], "`delete_branch` can't be undone", {low.plan_hash: "old-nav", high.plan_hash: "old-nav"})
-    props = form["requestedSchema"]["properties"]
-    assert "plan" not in props  # only one plan can be chosen here
-    assert "old-nav" in props["confirm"]["description"]
-    assert "outside the chat" in form["message"]
-    two = [low, hashed(p=plan("Archive old-nav"))]
-    props = build_form(two, "why", {two[0].plan_hash: "a", two[1].plan_hash: "b"})["requestedSchema"]["properties"]
+    form = build_form([low, high], "delete_branch can't be undone", policy(), lambda p: "old-nav")
+    assert form["offered"] == [low.plan_hash]
+    assert form["requested_schema"] == {"type": "object", "properties": {"confirm": {
+        "type": "string", "title": "Confirm", "description": 'Type "old-nav" to approve.'}}, "required": ["confirm"]}
+    assert form["message"] == "\n".join([
+        "Approval needed: delete_branch can't be undone.",
+        "",
+        "[1] Delete old-nav",
+        "  + create branch/old-nav",
+        "  risk: low · undo: 1h",
+        "  to approve, type: old-nav",
+        "[2] Force-delete old-nav",
+        "  + create branch/old-nav",
+        "  risk: high · undo: 1h",
+        "Not offered here (approve outside the chat): [2]",
+    ])
+    two = [low, hashed(p=plan("Archive old-nav", uses={"emails": quantity(1)}))]
+    form = build_form(two, "why", policy(), lambda p: p.plan.summary)
+    props = form["requested_schema"]["properties"]
     assert [o["const"] for o in props["plan"]["oneOf"]] == [p.plan_hash for p in two]
-    assert set(form["requestedSchema"]["required"]) == set(form["requestedSchema"]["properties"])
+    assert form["requested_schema"]["required"] == ["plan", "confirm"]
+    assert "  uses: emails 1 · risk: low · undo: 1h" in form["message"]
+    assert build_form([low], "why", policy(deny=["delete_branch"]), lambda p: "x")["offered"] == []
 
 
 def test_state_holds_only_hashes_a_counter_and_a_nonce():
     s = new_state("delete_branch", input_hash({"b": "x"}), "", [hashed().plan_hash], 1, NOW)
     assert set(s) == {"v", "tool", "inputHash", "sub", "plans", "round", "nonce", "exp"}
-    assert check_state(s, "delete_branch", input_hash({"b": "x"}), "", NOW) is None
+    assert check_state(s, "delete_branch", input_hash({"b": "x"}), "", NOW) == s
     bad = [
         check_state(s, "other_tool", s["inputHash"], "", NOW),
         check_state(s, "delete_branch", input_hash({"b": "y"}), "", NOW),
@@ -214,7 +233,7 @@ def test_state_holds_only_hashes_a_counter_and_a_nonce():
         check_state({**s, "round": 4}, "delete_branch", s["inputHash"], "", NOW),
         check_state("garbage", "delete_branch", s["inputHash"], "", NOW),
     ]
-    assert len(set(bad)) == 1 and bad[0] is not None
+    assert bad == [None] * len(bad)
 
 
 # ------------------------------------------------------------------ judging answers
@@ -235,12 +254,15 @@ def test_bare_accept_never_counts():
     v = _judge({"action": "accept"})
     assert v.kind == "ask-again" and v.round == 2
     assert _judge({"action": "accept", "content": {}}).kind == "ask-again"
+    assert _judge({"action": "accept", "content": {"confirm": ""}}).kind == "ask-again"
 
 
 def test_right_phrase_runs_and_three_wrong_refuse():
     assert _judge({"action": "accept", "content": {"confirm": " OLD-NAV "}}).kind == "run"
-    assert _judge({"action": "accept", "content": {"confirm": "approve"}}, round=2).kind == "ask-again"
-    assert _judge({"action": "accept", "content": {"confirm": "approve"}}, round=3).kind == "refuse"
+    v = _judge({"action": "accept", "content": {"confirm": "approve"}}, round=2)
+    assert v.kind == "ask-again" and v.why == 'type "old-nav" exactly to approve' and v.round == 3
+    v = _judge({"action": "accept", "content": {"confirm": "approve"}}, round=3)
+    assert v.kind == "refuse" and v.why == "not approved after 3 tries"
 
 
 def test_changed_plans_ask_again():
@@ -253,11 +275,15 @@ def test_changed_plans_ask_again():
 def test_a_plan_not_offered_cant_be_chosen():
     a, b = hashed(), hashed(p=plan("Archive old-nav"))
     v = _judge({"action": "accept", "content": {"plan": b.plan_hash, "confirm": "old-nav"}}, plans=[a, b], state_plans=[a.plan_hash])
-    assert v.kind == "ask-again"
+    assert v.kind == "refuse" and v.why == "that plan was not offered"
+    # With several offered, a missing plan field is not a choice.
+    v = _judge({"action": "accept", "content": {"confirm": "old-nav"}}, plans=[a, b])
+    assert v.kind == "refuse"
 
 
 def test_high_plan_cant_be_approved_in_the_form_even_as_plans1():
     low, high = hashed(), hashed(p=plan("Force-delete"), risk="high")
+    # Even if a tampered form offered it, the judge sends it out of band.
     v = _judge({"action": "accept", "content": {"plan": high.plan_hash, "confirm": "old-nav"}}, plans=[low, high])
     assert v.kind == "out-of-band" and v.plan == high
 

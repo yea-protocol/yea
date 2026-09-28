@@ -17,9 +17,9 @@ from typing import Any
 
 from ._json import CanonicalError, b64url_encode, canonical, sha256_b64url
 from .grants import RISK_ORDER, Grant, GrantContext, block_id, consent_code, decode_grant, verify_grant
-from .lens import fmt_duration
+from .lens import effect_line, fmt_duration
 from .store import ApprovalStore, FileStore, LedgerKey, MemoryStore, Reservation, is_receipt_id
-from .uses import check_uses, fmt_quantity, limit_value, same_unit, value
+from .uses import check_uses, fmt_uses, limit_value, same_unit, value
 
 STATE_TTL = 600  # seconds; no later than the MCP SDK's own request-state lifetime
 CONSENT_TTL = 600
@@ -154,7 +154,7 @@ class Policy:
     deny: tuple[str, ...] = ()
     out_of_band: str = DEFAULT_OUT_OF_BAND
     totals: tuple[tuple[str, dict], ...] = field(default=())  # (block id, limit), one per block and measure
-    problem: str | None = None  # why there's no grant, for the reason text
+    problem: str | None = None  # why a grant that was given wasn't accepted (for logs)
     now: int = 0  # when the policy was loaded; grants are checked as of then
 
 
@@ -221,7 +221,7 @@ def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], 
         return Decision("nothing")
     first = plans[0]
     if first.tool in policy.deny:
-        return Decision("denied", f"`{first.tool}` is denied by your policy")
+        return Decision("denied", denied_reason(first.tool))
     if at_least(first.risk, policy.out_of_band):
         return Decision("out-of-band", f"risk is {first.risk}, which needs approval outside the chat")
     why = needs_approval(first, policy, used)
@@ -231,28 +231,21 @@ def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], 
 
 
 def needs_approval(p: HashedPlan, policy: Policy, used: Callable[[LedgerKey], int]) -> str | None:
-    """Why ``p`` can't run without asking, or None (§2's four conditions)."""
-    if policy.grant is None or policy.server_key is None or policy.principal is None:
-        return policy.problem or "there's no signed policy"
+    """Why ``p`` can't run without asking, or None (§2's conditions, in the pinned order)."""
     if not p.undoable:
-        return f"`{p.tool}` can't be undone"
+        return f"{p.tool} can't be undone"
+    if policy.grant is None or policy.server_key is None or policy.principal is None:
+        return f"no signed policy lets {p.tool} run without asking"
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": p.plan_hash, "risk": p.risk, **({"uses": uses} if uses is not None else {})}
     spent = {(bid, lim["of"]): used(LedgerKey(bid, lim["of"])) for bid, lim in policy.totals}
     ctx = GrantContext(policy.server_key, "COMMIT", p.tool, policy.now, proposal, spent)
     v = verify_grant(policy.grant, [policy.principal], policy.server_key, ctx)
-    if v.ok:
-        return None
-    return _grant_reason(v, p, policy)
+    return None if v.ok else v.message
 
 
-def _grant_reason(v: Any, p: HashedPlan, policy: Policy) -> str:
-    for c in v.failed:
-        if isinstance(c, dict) and "risk" in c:
-            return f"risk is {p.risk}, and your limit is {c['risk']}"
-        if isinstance(c, dict) and "can" in c:
-            return f"your policy doesn't let `{p.tool}` run without asking"
-    return v.message
+def denied_reason(tool: str) -> str:
+    return f"your policy never allows {tool}"
 
 
 def _reservations(p: HashedPlan, policy: Policy) -> tuple[tuple[LedgerKey, int, int], ...]:
@@ -268,38 +261,42 @@ def _reservations(p: HashedPlan, policy: Policy) -> tuple[tuple[LedgerKey, int, 
 # ------------------------------------------------------------------ §3 the form
 
 
-def plan_lens(p: HashedPlan) -> str:
-    """One plan as the person reads it: summary, effects, uses, risk and undo window."""
-    from .lens import effect_line
-    from .uses import fmt_uses
+def offered_plans(plans: list[HashedPlan], policy: Policy) -> list[HashedPlan]:
+    """The plans the form may offer: not denied, and below ``out_of_band``."""
+    return [p for p in plans if p.tool not in policy.deny and not at_least(p.risk, policy.out_of_band)]
 
-    lines = [p.plan.summary, *("  " + effect_line(e) for e in p.plan.effects)]
+
+def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Callable[[HashedPlan], str]) -> dict:
+    """``{message, requested_schema, offered}`` for a form-mode elicitation (§3). Plans that are
+    denied or at or above ``out_of_band`` are described but can't be chosen here."""
+    offered = offered_plans(plans, policy)
+    lines = [f"Approval needed: {why}.", ""]
+    for i, p in enumerate(plans, 1):
+        lines.extend(_plan_lines(i, p))
+        if p in offered:
+            lines.append(f"  to approve, type: {phrase_for(p)}")
+    held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered]
+    if held:
+        lines.append(f"Not offered here (approve outside the chat): {', '.join(held)}")
+    return {"message": "\n".join(lines), "requested_schema": _schema(offered, phrase_for), "offered": [p.plan_hash for p in offered]}
+
+
+def _plan_lines(n: int, p: HashedPlan) -> list[str]:
     attrs = []
     if (u := fmt_uses(check_uses(p.plan.uses) or {})) is not None:
         attrs.append(f"uses: {u}")
     attrs.append(f"risk: {p.risk}")
     attrs.append(f"undo: {fmt_duration(p.plan.undo_window)}" if p.undoable else "undo: never")
-    lines.append("  " + " · ".join(attrs))
-    return "\n".join(lines)
+    return [f"[{n}] {p.plan.summary}", *("  " + effect_line(e) for e in p.plan.effects), "  " + " · ".join(attrs)]
 
 
-def build_form(plans: list[HashedPlan], why: str, phrases: Mapping[str, str], out_of_band: str = DEFAULT_OUT_OF_BAND) -> dict:
-    """``{message, requestedSchema}`` for a form-mode elicitation. Plans at or above ``out_of_band``
-    are described but can't be chosen here."""
-    askable = [p for p in plans if not at_least(p.risk, out_of_band)]
-    parts = [f"Approval needed: {why}.", ""]
-    for i, p in enumerate(plans, 1):
-        parts.append(f"{i}. {plan_lens(p)}")
-        if at_least(p.risk, out_of_band):
-            parts.append("   (needs approval outside the chat)")
-        elif len(askable) > 1:
-            parts.append(f'   to approve, type: {phrases[p.plan_hash]}')
-    props: dict[str, Any] = {}
-    if len(askable) > 1:
-        props["plan"] = {"type": "string", "title": "Plan", "oneOf": [{"const": p.plan_hash, "title": p.plan.summary} for p in askable]}
-    confirm_desc = f"Type {phrases[askable[0].plan_hash]} to approve" if len(askable) == 1 else "Type the phrase shown for the plan you chose"
-    props["confirm"] = {"type": "string", "title": "Confirm", "description": confirm_desc}
-    return {"message": "\n".join(parts), "requestedSchema": {"type": "object", "properties": props, "required": list(props)}}
+def _schema(offered: list[HashedPlan], phrase_for: Callable[[HashedPlan], str]) -> dict:
+    if len(offered) == 1:
+        confirm = {"type": "string", "title": "Confirm", "description": f'Type "{phrase_for(offered[0])}" to approve.'}
+        return {"type": "object", "properties": {"confirm": confirm}, "required": ["confirm"]}
+    plan = {"type": "string", "title": "Plan", "oneOf": [{"const": p.plan_hash, "title": p.plan.summary} for p in offered]}
+    confirm = {"type": "string", "title": "Confirm", "description": "Type the phrase shown for the plan you chose."}
+    return {"type": "object", "properties": {"plan": plan, "confirm": confirm}, "required": ["plan", "confirm"]}
 
 
 # ------------------------------------------------------------------ §4 state
@@ -311,11 +308,12 @@ def new_state(tool: str, input_hash: str, sub: str, plans: list[str], round: int
             "round": round, "nonce": b64url_encode(secrets.token_bytes(16)), "exp": now + STATE_TTL}
 
 
-_BAD_STATE = "this approval is invalid or has expired; call the tool again"
+BAD_STATE = "this approval is invalid or has expired; call the tool again"
 
 
-def check_state(state: Any, tool: str, input_hash: str, sub: str, now: int) -> str | None:
-    """Why a returned state can't be used, or None. Every failure gives the same message."""
+def check_state(state: Any, tool: str, input_hash: str, sub: str, now: int) -> dict | None:
+    """The state if it can be used for this call, else None. Callers refuse every failure with
+    the same message (``BAD_STATE``)."""
     ok = (
         isinstance(state, dict) and state.get("v") == 1 and state.get("tool") == tool
         and state.get("inputHash") == input_hash and state.get("sub") == sub
@@ -323,7 +321,7 @@ def check_state(state: Any, tool: str, input_hash: str, sub: str, now: int) -> s
         and type(state.get("round")) is int and 1 <= state["round"] <= MAX_ROUNDS
         and isinstance(state.get("nonce"), str) and type(state.get("exp")) is int and now < state["exp"]
     )
-    return None if ok else _BAD_STATE
+    return state if ok else None
 
 
 # ------------------------------------------------------------------ §5 judging the answer
@@ -345,32 +343,33 @@ def judge_answer(state: dict, answer: Mapping[str, Any], recomputed: list[Hashed
     if answer.get("action") != "accept":
         return Verdict("not-approved", "not approved")
     content = answer.get("content") if isinstance(answer.get("content"), dict) else {}
-    chosen = _chosen(state, content, recomputed, policy)
+    pick = _picked(state, content)
+    if pick is None:
+        return Verdict("refuse", "that plan was not offered")
+    chosen = next((p for p in recomputed if p.plan_hash == pick), None)
     if chosen is None:
         return _again(state, "the plans changed; choose again")
     if chosen.tool in policy.deny:
-        return Verdict("denied", f"`{chosen.tool}` is denied by your policy")
+        return Verdict("denied", denied_reason(chosen.tool))
     if at_least(chosen.risk, policy.out_of_band):
         return Verdict("out-of-band", plan=chosen)
-    if not phrase_matches(content.get("confirm"), phrase_for(chosen)):
-        return _again(state, "the confirmation didn't match")
+    phrase = phrase_for(chosen)
+    if not phrase_matches(content.get("confirm"), phrase):
+        return _again(state, f'type "{phrase}" exactly to approve')
     return Verdict("run", plan=chosen)
 
 
-def _chosen(state: dict, content: Mapping[str, Any], recomputed: list[HashedPlan], policy: Policy) -> HashedPlan | None:
-    offered = [h for h in state["plans"]]
-    pick = content.get("plan")
-    if pick is None:
-        askable = [h for h in offered if any(p.plan_hash == h and not at_least(p.risk, policy.out_of_band) for p in recomputed)]
-        pick = askable[0] if len(askable) == 1 else None
-    if not isinstance(pick, str) or pick not in offered:
-        return None
-    return next((p for p in recomputed if p.plan_hash == pick), None)
+def _picked(state: dict, content: Mapping[str, Any]) -> str | None:
+    """The chosen plan hash, if it was one of the offered ones. With one offered plan the form
+    has no ``plan`` field, so that one is chosen."""
+    offered = state["plans"]
+    pick = content.get("plan", offered[0] if len(offered) == 1 else None)
+    return pick if isinstance(pick, str) and pick in offered else None
 
 
 def _again(state: dict, why: str) -> Verdict:
-    if state["round"] >= MAX_ROUNDS:
-        return Verdict("refuse", f"{why}, and this was the last try; call the tool again")
+    if state["round"] + 1 > MAX_ROUNDS:
+        return Verdict("refuse", f"not approved after {MAX_ROUNDS} tries")
     return Verdict("ask-again", why, state["round"] + 1)
 
 
