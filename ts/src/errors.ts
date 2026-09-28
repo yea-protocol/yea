@@ -1,3 +1,7 @@
+/**
+ * Teaching errors (SPEC §7): `YeaError`, and the `fix` and `fail` helpers
+ * handlers use to build them.
+ */
 import type { ConsentRequest, ErrorCode, Fix } from './types.js';
 
 /** Throw from a handler to send a teaching ERROR reply (SPEC §7). */

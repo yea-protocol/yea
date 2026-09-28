@@ -1,6 +1,8 @@
-// A calendar that speaks YEA. Agents say what they want ("move my 1:1 with Ana to
-// Thursday"); the calendar answers with proposals whose effects, risk and undo window
-// are explicit. Nothing changes until COMMIT, and every change can be undone for a day.
+/**
+ * A calendar that speaks YEA. Agents say what they want ("move my 1:1 with Ana to
+ * Thursday"); the calendar answers with proposals whose effects, risk and undo window
+ * are explicit. Nothing changes until COMMIT, and every change can be undone for a day.
+ */
 import {
   clarify,
   create,

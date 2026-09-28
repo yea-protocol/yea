@@ -1,5 +1,8 @@
-// Turns `FORCE_COLOR=1 node examples/demo.ts > demo.ansi` into an asciinema cast, then:
-//   node scripts/demo-cast.cjs demo.ansi demo.cast && npx svg-term-cli --in demo.cast --out docs/demo.svg --window --no-cursor --padding 18
+/**
+ * Turns `FORCE_COLOR=1 node examples/demo.ts > demo.ansi` into an asciinema cast, then:
+ *   node scripts/demo-cast.cjs demo.ansi demo.cast && npx svg-term-cli --in demo.cast --out docs/demo.svg --window --no-cursor --padding 18
+ */
+
 const fs = require('node:fs');
 const { stripVTControlCharacters } = require('node:util');
 const text = fs.readFileSync(process.argv[2], 'utf8');

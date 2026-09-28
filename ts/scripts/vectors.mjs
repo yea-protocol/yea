@@ -1,4 +1,4 @@
-// Generates ../conformance/*.json from the reference implementation. Deterministic.
+/** Generates ../conformance/*.json from the reference implementation. Deterministic. */
 import { writeFileSync } from 'node:fs';
 import * as P from '../dist/index.js';
 

@@ -1,3 +1,7 @@
+/**
+ * Ed25519 keys, signatures, hashes and random ids over WebCrypto: the
+ * primitives grants, proofs and consents are built from (SPEC §6).
+ */
 import { b64u, unb64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 

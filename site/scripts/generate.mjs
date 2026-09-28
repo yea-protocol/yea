@@ -1,6 +1,8 @@
-// Build-time files generated from the repo, so they never drift:
-//   .vitepress/generated/cli-help.txt   the CLI's own help text (ts/src/cli.ts help)
-//   public/llms.txt, public/llms-full.txt   for LLMs and agents (https://llmstxt.org)
+/**
+ * Build-time files generated from the repo, so they never drift:
+ *   .vitepress/generated/cli-help.txt   the CLI's own help text (ts/src/cli.ts help)
+ *   public/llms.txt, public/llms-full.txt   for LLMs and agents (https://llmstxt.org)
+ */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);

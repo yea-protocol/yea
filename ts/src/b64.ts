@@ -1,3 +1,8 @@
+/**
+ * Byte and text encodings: base64url without padding (RFC 4648 §5), and
+ * UTF-8 to and from bytes.
+ */
+
 /** base64url without padding (RFC 4648 §5). */
 export function b64u(bytes: Uint8Array): string {
   let bin = '';

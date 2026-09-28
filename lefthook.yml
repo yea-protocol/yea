@@ -16,3 +16,7 @@ pre-commit:
       glob: "*.{ts,mts,js,mjs,cjs}"
       run: npx biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+    # File headers, the 300-line limit and file names (CONTRIBUTING.md#code-organization).
+    - name: structure
+      glob: "*.{ts,mts,cts,js,mjs,cjs,vue,py}"
+      run: node scripts/check-structure.mjs

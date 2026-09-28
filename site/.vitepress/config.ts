@@ -1,3 +1,7 @@
+/**
+ * VitePress configuration for the docs site: head tags, navigation and
+ * sidebar, Markdown and Vite options.
+ */
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
 

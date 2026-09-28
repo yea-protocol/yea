@@ -1,7 +1,9 @@
-// Serve the example services.
-//   calendar → yea://127.0.0.1:7447   and  http://127.0.0.1:8447/yea
-//   shop     → yea://127.0.0.1:7449   and  http://127.0.0.1:8449/yea
-// Trusted principals come from YEA_TRUST (comma-separated "ed25519:…" keys).
+/**
+ * Serve the example services.
+ *   calendar → yea://127.0.0.1:7447   and  http://127.0.0.1:8447/yea
+ *   shop     → yea://127.0.0.1:7449   and  http://127.0.0.1:8449/yea
+ * Trusted principals come from YEA_TRUST (comma-separated "ed25519:…" keys).
+ */
 import { listen, serveHttp } from '@yea-protocol/sdk/node';
 import { calendar } from './calendar.ts';
 import { shop } from './shop.ts';

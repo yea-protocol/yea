@@ -1,3 +1,8 @@
+"""Teaching errors (SPEC §7): the error codes, ``YeaError`` and ``fix``.
+
+Mirrors ts/src/errors.ts.
+"""
+
 from __future__ import annotations
 
 from typing import Any

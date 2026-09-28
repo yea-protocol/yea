@@ -1,10 +1,12 @@
-// Live-agent evaluation: a real model (headless Claude Code) does the same tasks against the
-// same services through (a) a conventional REST-style MCP server and (b) the YEA MCP bridge.
-// Both arms get the SAME user rules in the prompt; only YEA also enforces them (signed grant).
-//
-//   node bench/agent-eval/run.ts [--runs 3] [--model sonnet]
-//
-// Costs real money (each run is one `claude -p` session). Writes bench/agent-eval/RESULTS.md.
+/**
+ * Live-agent evaluation: a real model (headless Claude Code) does the same tasks against the
+ * same services through (a) a conventional REST-style MCP server and (b) the YEA MCP bridge.
+ * Both arms get the SAME user rules in the prompt; only YEA also enforces them (signed grant).
+ *
+ *   node bench/agent-eval/run.ts [--runs 3] [--model sonnet]
+ *
+ * Costs real money (each run is one `claude -p` session). Writes bench/agent-eval/RESULTS.md.
+ */
 import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

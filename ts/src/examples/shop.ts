@@ -1,6 +1,8 @@
-// A meal-delivery shop that speaks YEA. Shows budgets (a big catalog, fitted to the
-// agent's token budget with EXPAND handles), money (what each order spends, and spend
-// limits in grants) and human consent for anything over the agent's limits.
+/**
+ * A meal-delivery shop that speaks YEA. Shows budgets (a big catalog, fitted to the
+ * agent's token budget with EXPAND handles), money (what each order spends, and spend
+ * limits in grants) and human consent for anything over the agent's limits.
+ */
 import {
   create,
   fix,
