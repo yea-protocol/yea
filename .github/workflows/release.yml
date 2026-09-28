@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
       - run: npm install -g npm@latest
       - run: npm ci && npm run build && npm test
@@ -28,7 +28,7 @@ jobs:
           npm publish npm-dist/yea-protocol-sdk-*.tgz --provenance --access public
           npm publish npm-dist/yea-protocol-cli-*.tgz --provenance --access public
         env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: npm, path: "npm-dist/*.tgz" }
   pypi:
     runs-on: ubuntu-latest
@@ -42,7 +42,7 @@ jobs:
         with: { subject-path: "python/dist/*" }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with: { packages-dir: python/dist }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: pypi, path: "python/dist/*" }
   github-release:
     needs: [npm, pypi]
