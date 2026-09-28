@@ -207,8 +207,9 @@ def test_a1_undo_ids_outside_the_generated_format_never_reach_the_store(tmp_path
     from yea.store import FileStore
 
     store = FileStore(tmp_path / "store")
-    # A receipt-shaped file where "../../x" would land (store/receipts/../../x.json), so a missing
-    # format check would find it rather than a missing file.
+    (tmp_path / "store" / "receipts").mkdir(parents=True)  # so store/receipts/../../x.json resolves
+    # A receipt-shaped file where "../../x" would land, so a missing format check would find it
+    # rather than a missing file.
     (tmp_path / "x.json").write_text('{"id": "r_AAAAAAAAAAAA", "service": "S", "sub": "", "tool": "t", '
                                      '"undo": {"until": 1900000000}, "summary": "planted", "effects": []}')
     reverted = []
@@ -221,7 +222,7 @@ def test_a1_undo_ids_outside_the_generated_format_never_reach_the_store(tmp_path
 
     run(go())
     assert reverted == []
-    assert not (tmp_path / "store").exists() or list((tmp_path / "store").rglob("*")) == []
+    assert [f for f in (tmp_path / "store").rglob("*") if f.is_file()] == []  # nothing written
 
 
 @pytest.mark.parametrize("bad", ["critical", "toString", "__proto__", "", 1, None])
