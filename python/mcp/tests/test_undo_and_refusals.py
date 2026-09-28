@@ -165,3 +165,19 @@ def test_a_memory_store_subclass_is_still_a_memory_store(tmp_path, monkeypatch):
         yea(name="s", transport="http", sub=lambda r: "me", store=CountingStore(), server_key=tmp_path / "k")
     with pytest.raises(ValueError, match="shared state_key"):
         yea(name="s", transport="stdio", store=CountingStore(), state_key=b"k" * 32, server_key=tmp_path / "k")
+
+
+async def test_a_revert_that_fails_part_way_says_so(world):
+    """As TS: never "nothing was undone" when the revert may have half-happened (#149)."""
+    def revert(r, ctx):
+        raise yea_mcp.PartialApplyError("no answer; check the dashboard")
+
+    @world.approvals.job(world.server, risk="low", revert=revert)
+    async def move(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create(f"event/{event}")], apply=lambda: {"moved": event}, undo_window=60)]
+
+    world.grant({"can": ["move"]})
+    async with world.client("auto", Person()) as c:
+        rid = (await c.call_tool("move", {"event": "e1"})).structured_content["receipt"]["id"]
+        r = await c.call_tool("undo", {"receipt": rid})
+    assert r.is_error and text(r) == "✗ undo failed part-way: no answer; check the dashboard"

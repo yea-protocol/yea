@@ -191,3 +191,71 @@ async def test_the_2025_in_call_ask_rejudges_against_fresh_plans(world):
         r = await c.call_tool("price", {"item": "pen"})
     assert not r.is_error and done == [12] and len(person.seen) == 2
     assert "the plans changed" in person.seen[1].message
+
+
+@pytest.mark.parametrize("mode", MODES)
+async def test_an_apply_that_fails_part_way_says_what_it_left_and_keeps_its_reservation(world, mode):
+    """As TS: a PartialApplyError is never "nothing changed", and what it used stays counted (#149)."""
+    from yea_mcp import PartialApplyError
+
+    def apply():
+        raise PartialApplyError("schedule sch_1 was left behind.")
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def schedule(event: str) -> list[Plan]:
+        return [Plan("Schedule", [], apply=apply, uses={"emails": quantity(1)}, undo_window=60)]
+
+    world.grant({"can": ["schedule"]}, {"risk": "low"}, {"total": {"of": "emails", "max": 5}})
+    async with world.client(mode, Person()) as c:
+        r = await c.call_tool("schedule", {"event": "e1"})
+    assert r.is_error and text(r) == "✗ Schedule failed part-way: schedule sch_1 was left behind."
+    block = decode_grant(os.environ["YEA_POLICY"]).id
+    assert await world.store.used(LedgerKey(block, "emails")) == 10**18  # held, not released
+
+
+async def test_a_release_that_fails_never_hides_why_the_plan_failed(world, monkeypatch):
+    """Each reservation is released on its own: a store error on one keeps the apply error and
+    still releases the next (#149)."""
+    def apply():
+        raise RuntimeError("the calendar is down")
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def schedule(event: str) -> list[Plan]:
+        return [Plan("Schedule", [], apply=apply, uses={"emails": quantity(1), "sms": quantity(1)}, undo_window=60)]
+
+    world.grant({"can": ["schedule"]}, {"risk": "low"}, {"total": {"of": "emails", "max": 5}},
+                {"total": {"of": "sms", "max": 5}})
+    release, failed = world.store.release, []
+
+    async def first_fails(r):
+        if not failed:
+            failed.append(r)
+            raise OSError("disk full")
+        await release(r)
+
+    monkeypatch.setattr(world.store, "release", first_fails)
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("schedule", {"event": "e1"})
+    assert r.is_error and text(r) == "✗ Schedule failed: the calendar is down; nothing changed."
+    block = decode_grant(os.environ["YEA_POLICY"]).id
+    used = [await world.store.used(LedgerKey(block, of)) for of in ("emails", "sms")]
+    assert failed and sorted(used) == [0, 10**18]  # the failed one stays held; the other is released
+
+
+async def test_an_approved_apply_that_fails_part_way_says_the_approval_is_used_up(world):
+    """The approved branch of the part-way text (#149)."""
+    from yea_mcp import PartialApplyError
+
+    def apply():
+        raise PartialApplyError("schedule sch_1 was left behind.")
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def schedule(event: str) -> list[Plan]:
+        return [Plan("Schedule", [], apply=apply, undo_window=60)]
+
+    person = Person()  # no policy: it asks, and the person approves
+    async with world.client("auto", person) as c:
+        r = await c.call_tool("schedule", {"event": "e1"})
+    assert len(person.seen) == 1
+    assert r.is_error and text(r) == ("✗ approved, but Schedule failed part-way: schedule sch_1 was left behind. "
+                                      "The approval is used up.")

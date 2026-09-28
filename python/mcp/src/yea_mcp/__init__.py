@@ -22,13 +22,13 @@ from yea.approval import STATE_TTL, HashedPlan, undo_receipt
 from yea.store import ApprovalStore, FileStore, MemoryStore, default_store_dir, is_receipt_id
 from yea.text import printable
 
-from .call import JobDef, Req, Yea, _maybe, caller_of, is_memory_store, run_job
+from .call import JobDef, PartialApplyError, Req, Yea, _maybe, caller_of, is_memory_store, is_partial, run_job
 from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
 from .keys import check_name, default_key_path, load_server_key, pinned_principal, warn_once
 from .render import error_result
 from .signature import job_wrapper
 
-__all__ = ["Approvals", "token_subject", "yea"]
+__all__ = ["Approvals", "PartialApplyError", "token_subject", "yea"]
 
 
 
@@ -215,4 +215,6 @@ async def undo_call(y: Yea, reverts: dict[str, Callable[..., Any]], id: str, ctx
                                     structured_content={"undone": out.receipt["id"]})
         return error_result([f"✗ {out.why}; nothing was undone"])
     except Exception as e:  # noqa: BLE001
+        if is_partial(e):  # a revert that may have half-happened says so, never "nothing was undone"
+            return error_result([f"✗ undo failed part-way: {printable(str(e))}"])
         return error_result([f"✗ undo failed: {printable(str(e))}; nothing was undone, and it can be tried again"])

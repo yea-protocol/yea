@@ -6,13 +6,13 @@ from typing import Any
 
 import mcp_types as t
 from pydantic_core import to_jsonable_python
-from yea.approval import HashedPlan, new_receipt_id, release_all, settle_all
+from yea.approval import HashedPlan, new_receipt_id, settle_all
 from yea.store import Reservation
 from yea.text import printable
 from yea.uses import check_uses
 
 from ..render import error_result, receipt_result
-from .model import Call, Result, _maybe
+from .model import Call, Result, _maybe, is_partial
 
 
 async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: str) -> Result:
@@ -21,21 +21,31 @@ async def _run_plan(call: Call, hp: HashedPlan, held: list[Reservation], how: st
     try:
         result = await _maybe(hp.plan.apply())
     except Exception as e:  # noqa: BLE001
-        await release_all(call.y.store, held)
         approved = how == "approved"
-        return error_result([f"✗ {'approved, but ' if approved else ''}{printable(hp.plan.summary)} failed: "
-                             f"{printable(str(e))}; nothing changed."
+        said = f"✗ {'approved, but ' if approved else ''}{printable(hp.plan.summary)} failed"
+        if is_partial(e):  # it changed something: the reservations stay held, which can only over-count
+            used_up = " The approval is used up." if approved else ""
+            return error_result([f"{said} part-way: {printable(str(e))}{used_up}"])
+        await _release_each(call, held)
+        return error_result([f"{said}: {printable(str(e))}; nothing changed."
                              f"{' The approval is used up: calling again asks again.' if approved else ''}"])
     if call.job.guarded and call.job.failed(result):  # a guarded tool's own error, or a request for input
-        try:
-            await release_all(call.y.store, held)
-        except Exception:  # noqa: BLE001 — a reservation that can't be released only over-counts
-            pass
+        await _release_each(call, held)
         return result
     try:
         return await _recorded(call, hp, held, result, how == "auto")
     except Exception as e:  # noqa: BLE001
         return _unrecorded(call, hp, result if call.job.guarded else None, str(e))
+
+
+async def _release_each(call: Call, held: list[Reservation]) -> None:
+    """Release each reservation on its own. One that can't be released stays held, which only
+    over-counts, and never hides why the plan failed."""
+    for r in held:
+        try:
+            await call.y.store.release(r)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _receipt_for(call: Call, hp: HashedPlan, result: Any) -> dict:
