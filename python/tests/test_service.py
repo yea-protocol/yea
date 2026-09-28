@@ -169,7 +169,7 @@ def test_forbidden_carries_need():
         c = Client(local(svc), key=AGENT, grants=[grant({"can": ["calendar.*"]})])
         p = (await c.intent("shop.order", {"sku": "a", "qty": 1})).proposals[0]
         r = await c.commit(p)
-        assert r.code == "forbidden" and r.need == [{"can": ["calendar.*"]}]
+        assert r.code == "forbidden" and r.need == [{"can": ["calendar.*"]}] and r.message == "does not cover shop.order"
         assert '  need: [{"can":["calendar.*"]}]' in r.lens
 
     run(go())
@@ -183,8 +183,7 @@ def test_consent_flow_and_spend_accounting():
         big = (await c.intent("shop.order", {"sku": "m002", "qty": 4})).proposals[0]  # 6000 > per 5000
         r = await c.commit(big)
         assert r.code == "consent_required"
-        assert r.message.endswith("; your principal must approve this exact proposal")
-        assert not r.message.startswith("the proposal exceeds")  # the TS core's reason, not Python's summary
+        assert r.message == "spend over the per-commit limit of 50.00 USD; your principal must approve this exact proposal"
         assert r.consent["hash"] == big["hash"] and r.consent["principal"] == PRINCIPAL.public
         assert f"  consent: principal must approve {big['hash']}" in r.lens
         ok = await c.commit(big, grants=[consent_grant(PRINCIPAL, AGENT.public, r.consent)])
@@ -651,11 +650,18 @@ def test_oversized_frames_and_inflight_cap_over_tcp():
                 try:
                     urllib.request.urlopen(req)
                 except urllib.error.HTTPError as e:
-                    return e.code
+                    return e.code, e.read()
 
             http = await serve_http(svc, "127.0.0.1", 0)
             hport = http.sockets[0].getsockname()[1]
-            assert await asyncio.to_thread(post_big) == 413
+            assert await asyncio.to_thread(post_big) == (413, b"frame exceeds 1 MiB")
+
+            def get_other():
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{hport}/nope")
+                except urllib.error.HTTPError as e:
+                    return e.code, e.read()
+            assert await asyncio.to_thread(get_other) == (404, b"not a yea endpoint")
             http.close()
         finally:
             srv.close()
@@ -781,6 +787,7 @@ def test_proof_failures_read_as_in_ts():
     assert verify_proof({**good, "ts": "1"}, "s", "ASK", "x", now) == "missing or malformed proof"
     assert verify_proof(good, "s", "ASK", "x", now + 301) == "proof timestamp is outside the 300s window"
     assert verify_proof(good, "s", "ASK", "y", now) == "proof signature is invalid"
+    assert verify_proof({**good, "ts": 2**53}, "s", "ASK", "x", now) == "missing or malformed proof"  # not a safe integer
 
 
 def test_an_in_flight_total_refusal_names_its_measure():
@@ -799,3 +806,11 @@ def test_an_in_flight_total_refusal_names_its_measure():
     assert held and over is None
     held, over = reserve(svc, proposal, auth)  # 0.60 + 0.60 > 1.00
     assert held is None and over == "spend"
+
+
+def test_a_forbidden_with_nothing_to_drop_sends_no_need():
+    """The different-principal refusal has no caveats to drop; TS leaves `need` out, not [] (#145)."""
+    from yea.grants import Verification
+
+    assert Verification(False, "forbidden", "x").need is None
+    assert Verification(False, "forbidden", "x", failed=[{"can": ["a"]}]).need == [{"can": ["a"]}]

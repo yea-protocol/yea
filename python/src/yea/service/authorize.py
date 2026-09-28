@@ -86,5 +86,5 @@ async def authorize(
 
 
 def _why(c: Verification) -> str:
-    """A failed check in the TS core's words (``reason``, pinned by the conformance vectors)."""
+    """A failed check in the TS core's words (``reason``)."""
     return c.reason or c.message

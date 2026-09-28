@@ -22,12 +22,12 @@ class Verification:
     message: str = ""
     grant: Grant | None = None
     failed: list[dict] = field(default_factory=list)  # caveats that were not satisfied
-    reason: str = ""  # the same words as the TypeScript core's check (pinned by conformance)
+    reason: str = ""  # the same words as the TypeScript core's check
 
     @property
     def need(self) -> list[dict] | None:
         """For ``forbidden``: the caveats a grant would need to drop (SPEC §7 ``need``)."""
-        return self.failed if self.code == "forbidden" else None
+        return (self.failed or None) if self.code == "forbidden" else None  # none to drop: no need, as TS
 
     @property
     def principal(self) -> str | None:
