@@ -1,153 +1,9 @@
-// The guide's full example against a fake of the Stripe endpoints it calls.
+// The guide's full example against a fake of the Stripe endpoints it calls, shared with the
+// @yea-protocol/stripe connector's tests.
 import { beforeAll, describe, expect, it } from 'vitest';
+import { fakeStripe } from '../../connectors/stripe/test/fake-stripe.ts';
 import { stripeBilling } from '../../examples/stripe-billing.ts';
 import * as P from '../src/index.js';
-
-const now = Math.floor(Date.now() / 1000),
-  D = 86400;
-
-function fakeStripe() {
-  const customers = [
-    { id: 'cus_ana1', name: 'Ana Ruiz', email: 'ana.ruiz@acme.co' },
-    { id: 'cus_ana2', name: 'Ana Li', email: 'ana@northwind.io' },
-    { id: 'cus_chen', name: 'Chen Wei', email: 'chen@wei.studio' },
-  ];
-  const charges = [
-    {
-      id: 'ch_2',
-      customer: 'cus_chen',
-      amount: 4900,
-      amount_refunded: 0,
-      currency: 'usd',
-      status: 'succeeded',
-      created: now - 16 * D,
-    },
-    {
-      id: 'ch_1',
-      customer: 'cus_chen',
-      amount: 4900,
-      amount_refunded: 0,
-      currency: 'usd',
-      status: 'succeeded',
-      created: now - 46 * D,
-    },
-  ];
-  const subs = [
-    {
-      id: 'sub_chen',
-      customer: 'cus_chen',
-      status: 'active',
-      cancel_at_period_end: false,
-      items: {
-        data: [
-          {
-            current_period_start: now - 16 * D,
-            current_period_end: now + 14 * D,
-            price: { id: 'price_pro', nickname: 'pro' },
-          },
-        ],
-      },
-    },
-  ];
-  const calls: {
-    method: string;
-    path: string;
-    body: string;
-    key: string | null;
-  }[] = [];
-
-  const fetch = async (url: string | URL | Request, init?: RequestInit) => {
-    const u = new URL(String(url)),
-      method = init?.method ?? 'GET',
-      body = String(init?.body ?? '');
-    const headers = new Headers(init?.headers);
-
-    calls.push({
-      method,
-      path: u.pathname + u.search,
-      body,
-      key: headers.get('idempotency-key'),
-    });
-
-    const ok = (x: unknown) => new Response(JSON.stringify(x), { status: 200 });
-    const p = u.pathname.replace('/v1', ''),
-      form = new URLSearchParams(body);
-
-    if (p === '/customers/search') {
-      // Enough of Stripe's query language for `name:"x" OR email:"x"`: every word must appear.
-      const words = JSON.parse(
-        u.searchParams.get('query')!.split(' OR ')[0].slice(5),
-      )
-        .toLowerCase()
-        .split(/\s+/);
-
-      return ok({
-        data: customers.filter((c) =>
-          words.every(
-            (w: string) =>
-              `${c.name} ${c.email}`
-                .toLowerCase()
-                .split(/[^a-z0-9]+/)
-                .includes(w) || c.email === w,
-          ),
-        ),
-      });
-    }
-
-    if (p.startsWith('/customers/')) {
-      const c = customers.find((x) => x.id === p.split('/')[2]);
-
-      return c
-        ? ok(c)
-        : new Response(
-            JSON.stringify({ error: { message: 'No such customer' } }),
-            { status: 404 },
-          );
-    }
-
-    if (p === '/charges') {
-      return ok({
-        data: charges.filter(
-          (c) => c.customer === u.searchParams.get('customer'),
-        ),
-      });
-    }
-
-    if (p === '/subscriptions') {
-      return ok({
-        data: subs.filter(
-          (s) =>
-            s.customer === u.searchParams.get('customer') &&
-            s.status === 'active',
-        ),
-      });
-    }
-
-    if (p === '/refunds') {
-      const ch = charges.find((c) => c.id === form.get('charge'))!;
-
-      ch.amount_refunded += Number(form.get('amount'));
-
-      return ok({ id: 're_1', status: 'succeeded' });
-    }
-
-    if (p.startsWith('/subscriptions/')) {
-      const s = subs.find((x) => x.id === p.split('/')[2])!;
-
-      if (method === 'DELETE') {
-        s.status = 'canceled';
-      } else {
-        s.cancel_at_period_end = form.get('cancel_at_period_end') === 'true';
-      }
-
-      return ok(s);
-    }
-
-    return new Response('{}', { status: 400 });
-  };
-
-  return { fetch: fetch as typeof globalThis.fetch, calls, charges, subs };
-}
 
 let principal: P.KeyPair, agent: P.KeyPair;
 
@@ -213,7 +69,9 @@ describe("Stripe-backed billing (the guide's full example)", () => {
     expect(call.body).toMatch(
       /^charge=ch_2&amount=\d+&reason=requested_by_customer$/,
     );
-    expect(call.key).toMatch(/^yea-refund-ch_2-0-\d+$/);
+    // A fresh random key per write, never one derived from the plan.
+    expect(call.key).toMatch(/^[0-9a-f-]{36}$/);
+    expect(call.version).toBe('2026-08-26.dahlia');
     expect(stripe.charges[0].amount_refunded).toBeGreaterThan(0);
   });
 
