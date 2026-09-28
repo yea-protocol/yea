@@ -222,7 +222,7 @@ The same happens on a server whose store is in memory (the default over HTTP), b
 
 ## FastMCP
 
-`yea-mcp` takes a FastMCP 4 server wherever it takes an `MCPServer`: `@approvals.job(mcp, ...)` and `approvals.guard(mcp, "tool_name", ...)` work the same, with `FastMCP("files", request_state_security=approvals.request_state_security())`. Install the extra: `yea-mcp[fastmcp]`. Guard a mounted server's tool on the server that defines it.
+`yea-mcp` takes a FastMCP 4 server wherever it takes an `MCPServer`: `@approvals.job(mcp, ...)` and `approvals.guard(mcp, "tool_name", ...)` work the same, with `FastMCP("files", request_state_security=approvals.request_state_security())`. Install the extra: `yea-mcp[fastmcp]` (until the release, `"yea-mcp[fastmcp] @ git+https://github.com/yea-protocol/yea#subdirectory=python/mcp"`). Guard a mounted server's tool on the server that defines it.
 
 ## Where to next
 

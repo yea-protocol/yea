@@ -47,11 +47,17 @@ async def test_step_2_the_guarded_tool_asks_and_runs_once_the_name_is_typed(file
     assert "to approve, type: report.pdf" in message
 
 
-async def test_step_2_a_path_outside_the_folder_is_refused_before_asking(files):
+async def test_step_2_a_path_outside_the_folder_or_a_symlink_is_refused_before_asking(files):
+    outside = files["root"].parent / "outside"
+    outside.write_text("keep")
+    (files["root"] / "link").symlink_to(files["report"])
     person = Person()
     async with Client(files["server"], mode="auto", elicitation_callback=person) as c:
-        r = await c.call_tool("delete_file", {"path": "../outside"})
-    assert r.is_error and person.seen == []
+        out = await c.call_tool("delete_file", {"path": "../outside"})
+        link = await c.call_tool("move_to_trash", {"path": "link"})
+    assert out.is_error and "is outside" in text(out) and outside.exists()
+    assert link.is_error and "is a symlink" in text(link) and files["report"].exists()
+    assert person.seen == []
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -88,7 +94,10 @@ async def test_step_6_a_client_that_cant_ask_gets_a_code_and_a_consent_runs_once
             {"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": ["delete_file"]}, {"only": code["planHash"]},
             {"exp": 2**31}]).encode())
         ok = await c.call_tool("delete_file", {"path": "docs/report.pdf"})
-    assert not ok.is_error and not files["report"].exists()
+        assert not ok.is_error and not files["report"].exists()
+        files["report"].write_text("q3 again")  # the same input again: the consent was used
+        again = await c.call_tool("delete_file", {"path": "docs/report.pdf"})
+    assert again.is_error and "yea approve" in text(again) and files["report"].exists()
 
 
 def test_the_start_up_lines(tmp_path, monkeypatch, capsys):

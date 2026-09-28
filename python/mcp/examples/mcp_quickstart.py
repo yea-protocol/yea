@@ -20,9 +20,12 @@ from yea_mcp import Approvals, yea
 
 # region root
 def inside(root: str, path: str) -> Path:
-    """``path`` inside ``root``, with symlinks resolved. Anything that leads outside is refused, so
-    the tools can't reach the server's own files (its key, its approval store) or yours."""
+    """``path`` inside ``root``. Anything that leads outside is refused, so the tools can't reach
+    the server's own files (its key, its approval store) or yours; so is a symlink as the file
+    itself, so the plan the person approves always names the file that changes."""
     base = Path(root).resolve(strict=True)
+    if (base / path).is_symlink():
+        raise ValueError(f"{path} is a symlink")
     full = (base / path).resolve(strict=True)
     if full == base or base not in full.parents:
         raise ValueError(f"{path} is outside {base}")
@@ -43,7 +46,8 @@ def add_delete_file(server: MCPServer, approvals: Approvals, root: str) -> None:
 
     def describe(args: dict) -> dict:
         path = str(args.get("path"))
-        inside(root, path)  # refuse before anyone is asked
+        if not inside(root, path).is_file():  # refuse before anyone is asked
+            raise ValueError(f"{path} is not a regular file")
         return {"summary": f"Delete {path}", "effects": [{"op": "delete", "target": f"file/{path}"}]}
 
     # One call: now it shows its plan and asks the person before it runs.
@@ -61,7 +65,9 @@ def add_move_to_trash(server: MCPServer, approvals: Approvals, root: str) -> Non
 
     def revert(receipt: dict, ctx) -> None:
         file, trashed = receipt["result"]["file"], receipt["result"]["trashedAs"]
-        os.link(trashed, file)  # fails, and changes nothing, if a new file took the old one's place
+        # Fails, and changes nothing, if a new file took the old one's place. It needs hard links,
+        # which some filesystems (exFAT, some network mounts) don't have: undo fails there.
+        os.link(trashed, file)
         os.unlink(trashed)
 
     # With revert and an undo window, the plan is undoable: YEA adds an `undo` tool.
