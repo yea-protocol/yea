@@ -21,6 +21,8 @@ from ._json import CanonicalError, b64url_encode, canonical, sha256_b64url
 from .grants import RISK_ORDER, Grant, GrantContext, block_id, consent_code, decode_grant, verify_grant
 from .keys import parse_public_key
 from .lens import fmt_duration, safe_effect_line
+from .risk import at_least as risk_at_least
+from .risk import known_risk
 from .text import printable
 from .store import ApprovalStore, FileStore, LedgerKey, MemoryStore, Reservation, is_receipt_id
 from .uses import check_uses, fmt_uses, is_limit, limit_value, same_unit, value
@@ -37,6 +39,7 @@ _STRIP = "\u0009\u000a\u000b\u000c\u000d  ﻿"
 
 def plan_preimage(tool: str, input: Any, plan: Any, risk: str) -> dict:
     """``{tool, input, summary, effects, uses, risk, undoWindow}``, absent optional fields left out."""
+    known_risk(risk)  # a plan with an unknown risk never gets a plan hash
     pre: dict[str, Any] = {"tool": tool, "input": input, "summary": plan.summary, "effects": plan.effects}
     uses = check_uses(plan.uses)
     if uses is not None:
@@ -277,7 +280,8 @@ class Decision:
 
 
 def at_least(risk: str, level: str) -> bool:
-    return RISK_ORDER.get(risk, RISK_ORDER["high"]) >= RISK_ORDER[level]
+    """Whether ``risk`` is ``level`` or riskier; an unknown risk (or level) fails closed."""
+    return risk_at_least(risk, level)
 
 
 def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], int], now: int) -> Decision:

@@ -295,3 +295,29 @@ async def test_a_plan_summary_cant_forge_lines_or_hide_characters(world):
         assert not any(line.startswith("+ create account/admin") for line in shown.split("\n"))
         assert "\u202e" not in shown and "\u200b" not in shown and "\u2028" not in shown
     assert done == [5]
+async def test_a_job_plan_with_an_unknown_risk_is_refused(world):
+    done = []
+
+    @world.approvals.job(world.server, risk="low")
+    async def weird(x: int) -> list[Plan]:
+        return [Plan("Weird", [create("w")], risk="critical", apply=lambda: done.append(x))]
+
+    world.grant({"can": ["*"]}, {"risk": "high"})
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("weird", {"x": 1})
+        pv = await c.call_tool("weird", {"x": 1, "preview": True})
+    assert r.is_error and "unknown risk" in text(r) and pv.is_error and done == []
+
+
+async def test_a_guard_describe_with_a_null_risk_is_refused(world):
+    calls = []
+
+    @world.server.tool()
+    async def zap(x: int) -> str:
+        calls.append(x)
+        return "zapped"
+
+    world.approvals.guard(world.server, "zap", describe=lambda a: {"summary": "Zap", "effects": [], "risk": None})
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("zap", {"x": 1})
+    assert r.is_error and "unknown risk" in text(r) and calls == []

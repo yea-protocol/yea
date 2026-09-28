@@ -17,6 +17,7 @@ from .grants import Grant, decode_grant
 from .keys import KeyPair, sign_proof
 from .lens import lens as render_lens
 from .transport import DEFAULT_PORT, MAX_FRAME, TLS_PORT
+from .risk import is_risk
 from .uses import is_uses
 OnEvent = Callable[["Reply"], Any]
 
@@ -67,12 +68,24 @@ def _checked_reply(r: Reply) -> Reply:
     f = r.frame
     items = f.get("proposals") if f.get("kind") == "PROPOSALS" else [f.get("receipt")] if f.get("kind") == "RECEIPT" else []
     for item in items if isinstance(items, list) else []:
-        if isinstance(item, dict) and "uses" in item and not is_uses(item["uses"]):
+        why = _malformed_part(item, f["kind"] == "PROPOSALS")
+        if why:
             what = "proposal" if f["kind"] == "PROPOSALS" else "receipt"
             err = {"yea": 1, "id": f.get("id", ""), "re": f.get("re", ""), "kind": "ERROR", "code": "bad_frame",
-                   "message": f"{what} {item.get('id', '?')} has a malformed uses"}
+                   "message": f"{what} {item.get('id', '?')} from the service has {why}, so it was ignored"}
             return Reply(err, r.events)
     return r
+
+
+def _malformed_part(item: Any, is_proposal: bool) -> str | None:
+    """What makes a proposal or receipt invalid (SPEC §5.1), or None."""
+    if not isinstance(item, dict):
+        return None
+    if "uses" in item and not is_uses(item["uses"]):
+        return "a malformed uses"
+    if is_proposal and not is_risk(item.get("risk")):  # only a proposal carries a risk
+        return "an unknown risk"
+    return None
 
 
 # ------------------------------------------------------------ transports

@@ -19,6 +19,7 @@ from .budget import HandleStore, MemoryHandleStore, fit
 from .errors import YeaError, fix
 from .grants import GrantContext, Trusted, Verification, verify_grant
 from .keys import verify_proof
+from .risk import resolve_risk
 from .uses import check_uses, limit_value, same_unit, value
 from .validate import closest, validate_params
 
@@ -434,7 +435,7 @@ class Service:
                     "capability": name,
                     "summary": plan.summary,
                     "effects": plan.effects,
-                    "risk": plan.risk or d.risk or "low",
+                    "risk": resolve_risk("low", plan.risk, d.risk),  # an unknown risk fails the INTENT
                     "undo": None if window is None else {"window": window},
                     "expires": -(-(now + (plan.expires_in or self.proposal_ttl)) // 60) * 60,  # whole minutes
                 }

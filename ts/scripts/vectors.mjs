@@ -482,6 +482,13 @@ const cases = [
     { ok: false, code: 'forbidden' },
   ],
   [
+    'an unknown risk on the proposal fails closed',
+    root,
+    agent.public,
+    c(commit(100, 'critical')),
+    { ok: false, code: 'forbidden' },
+  ],
+  [
     'malformed limit: an extra amount key',
     extraAmount,
     agent.public,

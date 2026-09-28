@@ -10,6 +10,7 @@ from typing import Any
 
 from ._json import CanonicalError, b64url_decode, b64url_encode, canonical_bytes, compact, loads, proposal_hash, sha256_b64url
 from .keys import KeyPair, parse_public_key, verify
+from .risk import exceeds, is_risk
 from .uses import fmt_quantity, is_limit, is_uses, limit_value, same_unit, value
 
 TOKEN_PREFIX = "pg1."
@@ -128,6 +129,8 @@ def check_consent(consent: Mapping[str, Any], proposal: Mapping[str, Any], servi
     for field_, want in (("proposal", proposal.get("id")), ("hash", proposal.get("hash")), ("capability", proposal.get("capability"))):
         if consent.get(field_) != want:
             raise ValueError(f"consent request {field_} does not match the proposal")
+    if not is_risk(proposal.get("risk")):
+        raise ValueError("the proposal has an unknown risk")  # SPEC §5.1: a client treats it as invalid
     if proposal_hash(proposal) != consent["hash"]:
         raise ValueError("the proposal's content does not hash to the approved hash")
 
@@ -309,6 +312,8 @@ def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> Denial | None:
     (name, arg), = caveat.items()
     if name in COMMIT_ONLY and ctx.verb != "COMMIT":
         return None  # known, and ignored outside COMMIT (§6.3)
+    if name == "risk" and not is_risk((ctx.proposal or {}).get("risk")):
+        return Denial("unknown risk on the proposal", hard=True)  # a ceiling can't judge it (§6.3)
     if name in LIMITS:
         return limit_denial(name, arg, ctx.proposal or {}, int(ctx.used.get((bid, arg["of"]), 0)))
     why = _denial(name, arg, ctx)
@@ -331,7 +336,7 @@ def _denial(name: str, arg: Any, ctx: GrantContext) -> str | None:
         return None if ctx.now >= arg else "grant is not valid yet"
     if name == "risk":
         risk = prop.get("risk")
-        return f"risk {risk} exceeds ceiling {arg}" if RISK_ORDER.get(risk, 3) > RISK_ORDER[arg] else None
+        return f"risk {risk} exceeds ceiling {arg}" if exceeds(risk, arg) else None
     if name == "only":
         return None if prop.get("hash") == arg else "grant is bound to a different proposal"
     return f"unknown caveat {compact({name: arg})}"

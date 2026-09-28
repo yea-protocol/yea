@@ -23,7 +23,7 @@ from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from pydantic_core import to_jsonable_python
 from yea import Plan
 
-from .call import JobDef, Req, Yea, run_job
+from .call import described_risk, JobDef, Req, Yea, run_job
 from .guard import Guarded, job_annotations, job_meta
 from .signature import job_wrapper
 
@@ -194,7 +194,7 @@ def _plan_fn(inner: Any, g: Guarded, injected: set[str]) -> Callable[..., Any]:
         d = g.describe(to_jsonable_python(args, by_alias=True))
         d = await d if inspect.isawaitable(d) else d
         return [Plan(d["summary"], d["effects"], apply=lambda: inner.run(args), uses=d.get("uses"),
-                     risk=d.get("risk"), undo_window=d.get("undo_window"))]
+                     risk=described_risk(d), undo_window=d.get("undo_window"))]
 
     plan.__signature__ = inspect.signature(fn)  # type: ignore[attr-defined]
     plan.__annotations__ = typing.get_type_hints(fn)

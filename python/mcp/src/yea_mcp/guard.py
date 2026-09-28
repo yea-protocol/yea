@@ -16,7 +16,7 @@ from typing import Any
 
 from yea import Plan
 
-from .call import JobDef, Req, Yea, run_job
+from .call import described_risk, JobDef, Req, Yea, run_job
 from .render import error_result
 
 
@@ -103,7 +103,7 @@ class GuardMiddleware:
             d = g.describe(dict(args))
             d = await d if inspect.isawaitable(d) else d
             return [Plan(d["summary"], d["effects"], apply=lambda: call_next(stripped), uses=d.get("uses"),
-                         risk=d.get("risk"), undo_window=d.get("undo_window"))]
+                         risk=described_risk(d), undo_window=d.get("undo_window"))]
 
         job = JobDef(name, None, g.revert, g.confirm_with, guarded=True, own_results_are_errors=lambda: info.has_output)
         req = Req(ctx, ctx.session, ctx.request_id, ctx.protocol_version, params.get("requestState"),

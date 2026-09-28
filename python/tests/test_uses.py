@@ -235,7 +235,7 @@ class _Canned:
 def test_client_rejects_malformed_uses(frame, what):
     async def go():
         r = await Client(_Canned({"yea": 1, "id": "s", **frame})).send({"verb": "INTENT"})
-        assert r.kind == "ERROR" and r.code == "bad_frame" and r.message == f"{what} has a malformed uses"
+        assert r.kind == "ERROR" and r.code == "bad_frame" and r.message == f"{what} from the service has a malformed uses, so it was ignored"
 
     asyncio.run(go())
 
