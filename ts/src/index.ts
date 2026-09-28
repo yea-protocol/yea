@@ -116,7 +116,7 @@ export {
   untrustedLens,
 } from './lens.js';
 
-export { atLeast, exceeds } from './risk.js';
+export { atLeast, exceeds, isRisk } from './risk.js';
 
 export {
   type Clarification,

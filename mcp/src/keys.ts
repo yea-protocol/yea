@@ -17,6 +17,7 @@ import {
   atLeast,
   b64u,
   isPublicKey,
+  isRisk,
   type Risk,
   readTightening,
   type Tightening,
@@ -184,7 +185,9 @@ function fileTightening(): { t: Tightening } | { broken: string } | null {
   return parseTightening(path, text);
 }
 
-const stricter = (a: Risk, b: Risk): Risk => (atLeast(a, b) ? b : a);
+/** The stricter floor; an unvalidated value that isn't a risk wins, so it can't loosen. */
+export const stricter = (a: Risk, b: Risk): Risk =>
+  !isRisk(a) ? a : !isRisk(b) ? b : atLeast(a, b) ? b : a;
 
 /** Unsigned tightening as a call applies it; `broken` says why job calls must refuse. */
 export interface Rules {

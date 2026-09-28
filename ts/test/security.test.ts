@@ -1,6 +1,6 @@
 // Regression tests for the security audit findings (see docs/design.md).
 
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -429,20 +429,23 @@ describe('security regressions', () => {
     );
   });
 
-  it('[U7] a plan with an unknown risk never becomes a proposal', async () => {
-    const svc = (plan?: string, def?: string) =>
+  it('[U10] a plan with an unknown risk never becomes a proposal', async () => {
+    const errors: unknown[] = [];
+    // `undefined` leaves the field out; anything else, `null` included, is set.
+    const svc = (plan: unknown, def: unknown) =>
       P.service({
         id: 'bad',
         name: 'Bad',
         summary: 'bad',
         trust: [principal.public],
+        onError: (e) => errors.push(e),
       }).intent('bad.do', {
         summary: 'do',
-        ...(def ? { risk: def as P.Risk } : {}),
+        ...(def !== undefined ? { risk: def as P.Risk } : {}),
         plan: () => ({
           summary: 'do it',
           effects: [],
-          ...(plan ? { risk: plan as P.Risk } : {}),
+          ...(plan !== undefined ? { risk: plan as P.Risk } : {}),
           apply: () => null,
         }),
       });
@@ -451,11 +454,35 @@ describe('security regressions', () => {
       ['critical', undefined],
       ['toString', undefined],
       [undefined, 'critical'],
+      // A null is refused, not defaulted past.
+      [null, undefined],
+      [undefined, null],
+      [null, 'low'],
     ]) {
+      errors.length = 0;
+
       const c = await client(svc(plan, def), agent, principal);
       const r = await c.intent('bad.do', {});
+      const label = `${plan} ${def}`;
 
-      expect(r.kind === 'ERROR' && r.code, `${plan} ${def}`).toBe('internal');
+      expect(r.kind === 'ERROR' && r.code, label).toBe('internal');
+      expect(String(errors[0]), label).toMatch(/unknown risk/);
+    }
+  });
+
+  it('[U11] yea grant refuses a --risk that is not a risk level, before reading any key', () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-risk-'));
+
+    for (const risk of ['critical', 'toString', '']) {
+      const r = spawnSync(
+        process.execPath,
+        [CLI, 'grant', '--to', agent.public, '--risk', risk],
+        { env: { ...process.env, YEA_HOME: home }, encoding: 'utf8' },
+      );
+
+      expect(r.status, risk).toBe(1);
+      expect(r.stderr, risk).toMatch(/bad risk .*\(low\|medium\|high\)/);
+      expect(r.stdout, risk).toBe('');
     }
   });
 
@@ -918,6 +945,12 @@ describe('approval security (SPEC-approval)', () => {
         { summary: 'x', effects: [], apply: () => null },
       ]),
     ).rejects.toThrow('unknown risk');
+    // A null plan risk is refused, not defaulted to the tool's.
+    await expect(
+      P.hashPlans({ name: 'refund', risk: 'low' }, {}, [
+        { summary: 'x', effects: [], risk: null as never, apply: () => null },
+      ]),
+    ).rejects.toThrow('unknown risk');
   });
 
   it('[A14] an unknown risk ranks above every known one, and an unknown floor or ceiling fails closed', () => {
@@ -926,6 +959,10 @@ describe('approval security (SPEC-approval)', () => {
     for (const bad of [
       'critical',
       'toString',
+      '__proto__',
+      '',
+      1,
+      null,
       undefined,
     ] as unknown as P.Risk[]) {
       for (const k of known) {
@@ -1014,7 +1051,7 @@ function yeaDo(args: string[], home: string) {
 }
 
 // `yea do` (cli.ts `consentAndRetry`), test-drive and `yea approve` all decide with
-// `consentLines`; [C5] also runs `yea do` itself against a lying service.
+// `consentLines`; [C6] also runs `yea do` itself against a lying service.
 describe('consent requests (SPEC.md §6.6)', () => {
   /** A real consent_required from the pay service, and the proposal it's for. */
   async function consentRequired() {
@@ -1085,7 +1122,7 @@ describe('consent requests (SPEC.md §6.6)', () => {
     );
   });
 
-  it('[C5] a proposal with an unknown risk is refused', async () => {
+  it('[C8] a proposal with an unknown risk is refused', async () => {
     const { p, k, service } = await consentRequired();
     const bad = { ...p, risk: 'critical' } as unknown as P.Proposal;
 

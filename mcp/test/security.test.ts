@@ -8,8 +8,9 @@ import {
   createRequestStateCodec,
   McpServer,
 } from '@modelcontextprotocol/server';
-import { MemoryStore, quantity } from '@yea-protocol/sdk';
+import { atLeast, MemoryStore, quantity, type Risk } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
+import { stricter } from '../src/keys.js';
 import {
   approve,
   connect,
@@ -361,8 +362,8 @@ describe('requestState that isn’t this call’s', () => {
   });
 });
 
-describe('a plan with an unknown risk', () => {
-  it('[M11] is refused before it gets a plan hash, and never runs', async () => {
+describe('unknown risks fail closed', () => {
+  it('[M11] a plan with an unknown risk is refused before it gets a plan hash, and never runs', async () => {
     const w = await world();
 
     await grantPolicy(w, [{ can: ['refund'] }, { risk: 'high' }]);
@@ -388,6 +389,18 @@ describe('a plan with an unknown risk', () => {
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(/unknown risk/);
     expect(w.applied).toEqual([]);
+  });
+
+  it('[M12] merging outOfBand floors never lets a value that is not a risk loosen them', () => {
+    for (const bad of ['critical', 'toString', null] as unknown as Risk[]) {
+      // An unknown floor wins, so everything goes out of band (atLeast is true for it).
+      expect(stricter('high', bad)).toBe(bad);
+      expect(stricter(bad, 'high')).toBe(bad);
+      expect(atLeast('low', stricter('high', bad))).toBe(true);
+    }
+
+    expect(stricter('high', 'medium')).toBe('medium');
+    expect(stricter('low', 'medium')).toBe('low');
   });
 });
 

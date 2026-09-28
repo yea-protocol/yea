@@ -25,6 +25,16 @@ export const atLeast = (r: Risk, floor: Risk) =>
 export const exceeds = (r: Risk, ceiling: Risk) =>
   !isRisk(ceiling) || rank(r) > rank(ceiling);
 
+/**
+ * The first of `risks` that is set, else `fallback`, and it must be a known risk. Only
+ * `undefined` falls through: a `null` is a value, so it is refused rather than defaulted.
+ */
+export function resolveRisk(fallback: Risk, ...risks: unknown[]): Risk {
+  const set = risks.find((r) => r !== undefined);
+
+  return set === undefined ? fallback : knownRisk(set);
+}
+
 /** `risk` if it is a known risk; throws otherwise, so a plan with one never goes further. */
 export function knownRisk(risk: unknown): Risk {
   if (!isRisk(risk)) {
