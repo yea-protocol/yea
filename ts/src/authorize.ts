@@ -2,19 +2,13 @@
  * Authorization for a YEA service (SPEC §6.4, §6.5): verify a request's proof, then find a
  * grant that allows it, or the error that says why none does. Service holds one Authorizer.
  */
+import { consentRequest } from './consent.js';
 import { fix, YeaError } from './errors.js';
 import { type CheckContext, checkGrant, type GrantCheck } from './grants.js';
 import type { ServiceOptions } from './plan.js';
-import { checkProof } from './proof.js';
+import { autoTarget, checkProof } from './proof.js';
 import { ledgerId } from './store.js';
-import type {
-  ConsentRequest,
-  Intent,
-  Proof,
-  Proposal,
-  Request,
-  Verb,
-} from './types.js';
+import type { Intent, Proof, Proposal, Request, Verb } from './types.js';
 
 export type Authorized = GrantCheck & { ok: true };
 
@@ -38,9 +32,9 @@ export class Authorizer {
   readonly id: string;
 
   constructor(
-    private opts: ServiceOptions,
-    private now: () => number,
-    private used: Map<string, bigint>,
+    private readonly opts: ServiceOptions,
+    private readonly now: () => number,
+    private readonly used: Map<string, bigint>,
   ) {
     this.id = opts.id;
   }
@@ -202,7 +196,7 @@ export class Authorizer {
       return null;
     }
 
-    const target = autoTarget(req);
+    const target = autoTarget(req.capability, req.id);
 
     if (
       await checkProof(
@@ -255,20 +249,3 @@ function grantFailure(
 
   return new YeaError('unauthorized', failed[0].reason);
 }
-
-export const consentRequest = (
-  proposal: Proposal,
-  service: string,
-  principal: string,
-): ConsentRequest => ({
-  proposal: proposal.id,
-  hash: proposal.hash,
-  service,
-  capability: proposal.capability,
-  principal,
-  summary: proposal.summary,
-  expires: proposal.expires,
-});
-
-/** The proof target of an auto INTENT (SPEC §4.3.1): `auto:{capability}:{frame id}`. */
-export const autoTarget = (req: Intent) => `auto:${req.capability}:${req.id}`;

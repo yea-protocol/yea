@@ -2,14 +2,9 @@
  * Build a YEA service. Transport-independent: `handle(frame)` turns a request frame
  * into its final reply (emitting EVENTs along the way). Transports live in node.ts / http.ts.
  */
-import {
-  type Authorized,
-  Authorizer,
-  type AuthScope,
-  autoTarget,
-  consentRequest,
-} from './authorize.js';
+import { type Authorized, Authorizer, type AuthScope } from './authorize.js';
 import { fit, type HandleStore, MemoryHandleStore } from './budget.js';
+import { consentRequest } from './consent.js';
 import { proposalHash, randomId } from './crypto.js';
 import { fix, YeaError } from './errors.js';
 import { frameId, replyFrame } from './frames.js';
@@ -21,7 +16,7 @@ import type {
   Plan,
   ServiceOptions,
 } from './plan.js';
-import { checkProof } from './proof.js';
+import { autoTarget, checkProof } from './proof.js';
 import { resolveRisk } from './risk.js';
 import { ledgerId } from './store.js';
 import type {
@@ -75,14 +70,14 @@ export class Service {
   private commits = new Map<string, Promise<ReceiptReply | ErrorReply>>();
   private receipts = new Map<string, StoredReceipt>();
   /** Exact amounts committed or reserved per `total` (block id and measure). */
-  private used = new Map<string, bigint>();
+  private readonly used = new Map<string, bigint>();
   private autoSeen = new Map<
     string,
     { reply: Promise<FinalReply>; exp: number }
   >();
 
   private handles: HandleStore;
-  private now: () => number;
+  private readonly now: () => number;
   private authorizer: Authorizer;
 
   constructor(private opts: ServiceOptions) {
@@ -273,7 +268,7 @@ export class Service {
     const auth = await this.authorizer.authorize(req, {
       verb: 'INTENT',
       capability: req.capability,
-      target: req.auto ? autoTarget(req) : req.capability,
+      target: req.auto ? autoTarget(req.capability, req.id) : req.capability,
     });
     const principal = auth?.iss ?? null;
     // A replayed auto INTENT (same holder key + request id) gets the original reply, never a second commit.

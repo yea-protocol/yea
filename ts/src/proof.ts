@@ -56,3 +56,7 @@ export async function checkProof(
 
   return ok ? null : 'proof signature is invalid';
 }
+
+/** The proof target of an auto INTENT (SPEC §4.3.1): `auto:{capability}:{frame id}`. */
+export const autoTarget = (capability: string, id: string) =>
+  `auto:${capability}:${id}`;

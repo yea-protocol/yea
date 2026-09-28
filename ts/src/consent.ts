@@ -8,6 +8,20 @@ import type { KeyPair } from './crypto.js';
 import { isPublicKey, issueGrant } from './grants.js';
 import type { ConsentRequest, Proposal } from './types.js';
 
+export const consentRequest = (
+  proposal: Proposal,
+  service: string,
+  principal: string,
+): ConsentRequest => ({
+  proposal: proposal.id,
+  hash: proposal.hash,
+  service,
+  capability: proposal.capability,
+  principal,
+  summary: proposal.summary,
+  expires: proposal.expires,
+});
+
 /**
  * Consent grant (SPEC §6.6): one-shot approval of one exact proposal. It is scoped to COMMIT
  * of that proposal's capability at that service, so it authorizes nothing else.
