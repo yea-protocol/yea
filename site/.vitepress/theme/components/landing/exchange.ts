@@ -7,6 +7,8 @@ import type { ReceiptView, SlipView, UndoneView } from './slip-view';
 
 export interface Recorded {
   params: { items: { sku: string; qty: number }[]; deliver: string };
+  /** What the proposal spends, in dollars. */
+  spend: number;
   policy: { sentence: string; caveats: string[]; grant: string };
   slip: SlipView;
   receipt: ReceiptView;
@@ -28,6 +30,7 @@ export const RECORDED: Recorded = {
     ],
     "deliver": "2026-09-29"
   },
+  "spend": 53.95,
   "policy": {
     "sentence": "For the next 8 hours, your agent may take low-risk actions at shop.example that spend up to $40 each and $100 in total.",
     "caveats": [
@@ -35,12 +38,12 @@ export const RECORDED: Recorded = {
       "{\"risk\":\"low\"}",
       "{\"each\":{\"of\":\"spend\",\"max\":4000,\"scale\":2,\"unit\":\"USD\"}}",
       "{\"total\":{\"of\":\"spend\",\"max\":10000,\"scale\":2,\"unit\":\"USD\"}}",
-      "{\"exp\":1790656417}"
+      "{\"exp\":1790658607}"
     ],
-    "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsicmlzayI6ImxvdyJ9LHsiZWFjaCI6eyJtYXgiOjQwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7InRvdGFsIjp7Im1heCI6MTAwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImV4cCI6MTc5MDY1NjQxN31dLCJpYXQiOjE3OTA2Mjc2MTcsImlzcyI6ImVkMjU1MTk6ckJOSmN0NmVIdi1MUlVtRTVWOU1iR2FqUTNmZHRZVGNrUi1pSlNnc3FibyIsIm5vbmNlIjoiXzM2UE1rZVM3cnhQdE50cyIsInN1YiI6ImVkMjU1MTk6TjIwZjR4QXBhdENCQWt2cVFaQTcxVG11UWxzUEhQTkpJcGlLVFpWa0xQcyJ9LCJzIjoiTGxOSGtsbDBoNThaY29JbDRpY1Z1SmM2MktYejVQeWxPZEZLeTVBUnhDSEo0eTNnWUMwTzdhSE9ReE8yRFVJb3hMMC0zU1VKbVIxZ2kydExCdm8wQ1EifV0"
+    "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsicmlzayI6ImxvdyJ9LHsiZWFjaCI6eyJtYXgiOjQwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7InRvdGFsIjp7Im1heCI6MTAwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImV4cCI6MTc5MDY1ODYwN31dLCJpYXQiOjE3OTA2Mjk4MDcsImlzcyI6ImVkMjU1MTk6aHRhTEloMUFRem9jenlLcjBDQXhoRWFobmsxTE9RbHpTdE1lWTUxSHRmRSIsIm5vbmNlIjoiUE5DeFRBd3IzWjZjSUx4YiIsInN1YiI6ImVkMjU1MTk6bUlVYVdpVFdPSXowN3VNZEdRWnhySTBFTmlUUF9TajI4LW5EQ0xqSFE2ZyJ9LCJzIjoiV3hxNWI1R3dtbExJYlkyY2NXOXFHeHEzU3BaOGMyeHgwbDBqdDdHUWpFQ2h5blhqV0s3cW9wbWJ4c2FQWTVEWnkzT1F0QU9fVXAwYXJyWVZWdF81Q0EifV0"
   },
   "slip": {
-    "id": "p_oVk1jeGo",
+    "id": "p_TyFVy7H7",
     "service": "shop.example",
     "summary": "4 meals for 2026-09-29 — 53.95 USD",
     "effects": [
@@ -50,25 +53,27 @@ export const RECORDED: Recorded = {
     "uses": "spend 53.95 USD",
     "risk": "low",
     "undo": "within 2h",
-    "hash": "92lQCj9OvSaMXcGQkmojFNVulfs9MhK2QFIhylWhqm8",
-    "reason": "spend over the per-commit limit of 40.00 USD; your principal must approve this exact proposal"
+    "hash": "ZKRgzHfbLZy-u8GPt7TbjxqxqjqHmPEiDzKkTMAGr9g",
+    "reason": "spend over the per-commit limit of 40.00 USD; your principal must approve this exact proposal",
+    "expires": 1790630460
   },
   "receipt": {
-    "id": "r_gkZrOVyT",
-    "undoUntil": "2026-09-28 22:33 UTC",
+    "id": "r_bdib9zts",
+    "until": 1790637007,
+    "undoUntil": "2026-09-28 23:10 UTC",
     "result": [
       "order: o1001",
       "status: placed"
     ]
   },
   "undone": {
-    "id": "r_bG4IIzbd",
-    "undoes": "r_gkZrOVyT"
+    "id": "r_5ekcGhra",
+    "undoes": "r_bdib9zts"
   },
   "lens": {
-    "proposals": "2 proposals — risk: low · undo: 2h · expires: 2026-09-28T20:44Z:\n[p_oVk1jeGo] 4 meals for 2026-09-29 — 53.95 USD\n  + create order/o1001 — 2× Tofu Pad Thai (light), 2× Chickpea Shawarma (light)\n  + create charge — 53.95 USD to card ••4242\n  uses: spend 53.95 USD\n  data:\n    subtotal: 47.96\n    delivery: 5.99\n[p_F2A_ZCBM] 4 meals for 2026-09-29 (express, by noon) — 62.94 USD\n  + create order/o1002 — 2× Tofu Pad Thai (light), 2× Chickpea Shawarma (light)\n  + create charge — 62.94 USD to card ••4242\n  uses: spend 62.94 USD\n  data:\n    subtotal: 47.96\n    delivery: 5.99\n    express: 8.99",
-    "consent": "✗ consent_required: spend over the per-commit limit of 40.00 USD; your principal must approve this exact proposal\n  consent: principal must approve 92lQCj9OvSaMXcGQkmojFNVulfs9MhK2QFIhylWhqm8 (4 meals for 2026-09-29 — 53.95 USD)",
-    "receipt": "✓ 4 meals for 2026-09-29 — 53.95 USD (receipt r_gkZrOVyT) · undo until 2026-09-28T22:33:37Z\n  result:\n    order: o1001\n    status: placed",
-    "undo": "↶ undid r_gkZrOVyT: 4 meals for 2026-09-29 — 53.95 USD (receipt r_bG4IIzbd)"
+    "proposals": "2 proposals — risk: low · undo: 2h · expires: 2026-09-28T21:21Z:\n[p_TyFVy7H7] 4 meals for 2026-09-29 — 53.95 USD\n  + create order/o1001 — 2× Tofu Pad Thai (light), 2× Chickpea Shawarma (light)\n  + create charge — 53.95 USD to card ••4242\n  uses: spend 53.95 USD\n  data:\n    subtotal: 47.96\n    delivery: 5.99\n[p_hd0curzD] 4 meals for 2026-09-29 (express, by noon) — 62.94 USD\n  + create order/o1002 — 2× Tofu Pad Thai (light), 2× Chickpea Shawarma (light)\n  + create charge — 62.94 USD to card ••4242\n  uses: spend 62.94 USD\n  data:\n    subtotal: 47.96\n    delivery: 5.99\n    express: 8.99",
+    "consent": "✗ consent_required: spend over the per-commit limit of 40.00 USD; your principal must approve this exact proposal\n  consent: principal must approve ZKRgzHfbLZy-u8GPt7TbjxqxqjqHmPEiDzKkTMAGr9g (4 meals for 2026-09-29 — 53.95 USD)",
+    "receipt": "✓ 4 meals for 2026-09-29 — 53.95 USD (receipt r_bdib9zts) · undo until 2026-09-28T23:10:07Z\n  result:\n    order: o1001\n    status: placed",
+    "undo": "↶ undid r_bdib9zts: 4 meals for 2026-09-29 — 53.95 USD (receipt r_5ekcGhra)"
   }
 };

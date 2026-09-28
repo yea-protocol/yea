@@ -6,23 +6,45 @@
  */
 import { computed, useId } from 'vue';
 import SlipStub from './SlipStub.vue';
-import { type Phase, useSlip } from './use-slip';
+import { keepDates } from './slip-view';
+import { useSlip } from './use-slip';
 
-const { phase, slip, receipt, undone, status, error, approve, undo, again } =
-  useSlip();
+const {
+  phase,
+  live,
+  slip,
+  receipt,
+  undone,
+  status,
+  error,
+  approve,
+  undo,
+  again,
+} = useSlip();
 const titleId = useId();
 
-const STATE: Record<Phase, { tone: string; text: string }> = {
-  loading: { tone: 'amber', text: 'Waiting on you' },
-  waiting: { tone: 'amber', text: 'Waiting on you' },
-  approving: { tone: 'amber', text: 'Waiting on you' },
-  committed: { tone: 'green', text: '✓ Committed' },
-  undoing: { tone: 'green', text: '✓ Committed' },
-  undone: { tone: 'plain', text: '↶ Undone' },
-  failed: { tone: 'red', text: '✗ Not running' },
-};
-
-const state = computed(() => STATE[phase.value]);
+/** The chip: the protocol state in a word, coloured by it; neutral until the core is live. */
+const state = computed(() => {
+  switch (phase.value) {
+    case 'waiting':
+    case 'approving':
+      return { tone: 'amber', text: 'Waiting on you' };
+    case 'committed':
+    case 'undoing':
+      return { tone: 'green', text: '✓ Committed' };
+    case 'undone':
+      return { tone: 'plain', text: '↶ Undone' };
+    case 'expired':
+      return { tone: 'plain', text: 'Expired' };
+    case 'error':
+      return { tone: 'red', text: "✗ Didn't go through" };
+    default:
+      return {
+        tone: 'plain',
+        text: live.value ? 'Starting again…' : 'Recorded',
+      };
+  }
+});
 </script>
 
 <template>
@@ -31,7 +53,7 @@ const state = computed(() => STATE[phase.value]);
       <p class="kind">Proposal <span class="mono">{{ slip.id }}</span> from {{ slip.service }}</p>
       <p class="chip">{{ state.text }}</p>
     </header>
-    <h2 :id="titleId" class="summary">{{ slip.summary }}</h2>
+    <h2 :id="titleId" class="summary"><template v-for="(part, i) in keepDates(slip.summary)" :key="i"><span v-if="part.date" class="nowrap">{{ part.text }}</span><template v-else>{{ part.text }}</template></template></h2>
     <ul class="effects" aria-label="What it changes">
       <li v-for="e in slip.effects" :key="e">{{ e }}</li>
     </ul>
@@ -43,6 +65,7 @@ const state = computed(() => STATE[phase.value]);
     <p class="reason"><span class="label">Why it's asking</span> <span class="mono">{{ slip.reason }}</span></p>
     <SlipStub
       :phase="phase"
+      :live="live"
       :slip="slip"
       :receipt="receipt"
       :undone="undone"
@@ -67,6 +90,7 @@ const state = computed(() => STATE[phase.value]);
 .mono { font-family: var(--l-mono); font-size: 0.92em; }
 .chip { font-size: 0.8125rem; font-weight: 650; color: var(--tone); border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
 
+.nowrap { white-space: nowrap; }
 .summary { font-size: clamp(1.3rem, 1.1rem + 0.8vw, 1.6rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.015em; }
 .effects { list-style: none; margin: 0; padding: 0; font-family: var(--l-mono); font-size: 0.8125rem; line-height: 1.7; color: var(--vp-c-text-2); }
 .effects li { padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }

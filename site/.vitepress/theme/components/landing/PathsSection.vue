@@ -26,6 +26,7 @@ import { withBase } from 'vitepress';
         YEA services through the bridge, an MCP server for Claude Code, Cursor and other clients; when a commit needs
         consent, the bridge never approves on the model's behalf.
       </p>
+      <p class="tag">Unreleased: the SDKs and the <code>yea</code> command aren't on npm or PyPI yet; the guides install from the repo.</p>
       <p class="tag warn">
         Keep the principal key where the agent can't reach it. An agent with shell access that can read it can sign its own
         consent. <a :href="withBase('/guide/security')">Security model</a>

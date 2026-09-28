@@ -1,8 +1,9 @@
 /**
- * Tests for the landing's pure logic: the policy sentence, the slip views, the evidence
- * chart's rows, and that the recorded exchange (landing/exchange.ts) still matches what the
- * core produces, apart from ids, hashes, keys and dates. They import TypeScript sources and
- * the built SDK, so they need Node's type stripping (22.18+) and `npm run build` first.
+ * Tests for the landing's logic: the policy sentence, the proposal facts and slip views, the
+ * evidence chart's rows, what happens when the proposal, the undo window or the policy runs
+ * out, and that the recorded exchange (landing/exchange.ts) still matches what the core
+ * produces, apart from ids, hashes, keys and times. They import TypeScript sources and the
+ * built SDK, so they need Node's type stripping (22.18+) and `npm run build` first.
  */
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -13,6 +14,8 @@ const built = existsSync(new URL('../../ts/dist/index.js', import.meta.url));
 const skip = process.features.typescript
   ? false
   : 'needs Node with type stripping (22.18+) to import .ts';
+const needsCore = skip || (!built && 'needs npm run build');
+const usd = (cents) => ({ of: 'spend', max: cents, scale: 2, unit: 'USD' });
 
 test('policySentence reads the example policy', { skip }, async () => {
   const { landingCaveats, policySentence } = await import(
@@ -26,7 +29,7 @@ test('policySentence reads the example policy', { skip }, async () => {
   );
 });
 
-test('policySentence covers partial and unknown caveats', {
+test('policySentence: partial, unknown and non-spend caveats', {
   skip,
 }, async () => {
   const { policySentence } = await import(`${LANDING}/policy.ts`);
@@ -36,14 +39,15 @@ test('policySentence covers partial and unknown caveats', {
     'Your agent may take actions at a.example.',
   );
   assert.equal(
+    policySentence([{ total: usd(1250) }, { can: ['x'] }], 0),
+    'Your agent may take actions that spend up to $12.50 in total.',
+  );
+  assert.equal(
     policySentence(
-      [
-        { total: { of: 'spend', max: 1250, scale: 2, unit: 'USD' } },
-        { can: ['x'] },
-      ],
+      [{ each: { of: 'emails', max: 3 } }, { total: usd(1000) }],
       0,
     ),
-    'Your agent may take actions that spend up to $12.50 in total.',
+    'Your agent may take actions that use up to 3 emails each and spend up to $10 in total.',
   );
   assert.equal(
     policySentence([{ exp: 900 }, { risk: 'medium' }], 0),
@@ -56,10 +60,7 @@ test('amount and span say limits and durations as a reader would', {
 }, async () => {
   const { amount, span } = await import(`${LANDING}/policy.ts`);
 
-  assert.equal(
-    amount({ of: 'spend', max: 4000, scale: 2, unit: 'USD' }),
-    '$40',
-  );
+  assert.equal(amount(usd(4000)), '$40');
   assert.equal(amount({ of: 'emails', max: 3 }), '3 emails');
   assert.equal(
     amount({ of: 'storage', max: 5, unit: 'GB' }),
@@ -93,65 +94,157 @@ test('costRows: deltas as published, bars on one zero-based scale', {
   );
 });
 
-test('slip views: undo windows, uses and results', {
-  skip: skip || (!built && 'needs npm run build'),
+test('proposal facts: one wording for the slip and the consent card', {
+  skip: needsCore,
 }, async () => {
   const sdk = await import('../../ts/dist/index.js');
-  const { receiptView, slipView, utcMinute } = await import(
+  const { factsLine, proposalFacts } = await import(
+    '../.vitepress/theme/components/proposal-facts.ts'
+  );
+  const f = proposalFacts(sdk, {
+    effects: [{ op: 'delete', target: 'file/a' }],
+    risk: 'low',
+    undo: { window: 7200 },
+    uses: { spend: { amount: 5395, scale: 2, unit: 'USD' } },
+  });
+
+  assert.deepEqual(f.effects, ['- delete file/a']);
+  assert.equal(factsLine(f), 'Uses spend 53.95 USD, risk low, undo within 2h');
+  assert.equal(
+    factsLine({
+      effects: [],
+      uses: null,
+      risk: 'high',
+      undo: "can't be undone",
+    }),
+    "Risk high, can't be undone",
+  );
+});
+
+test('slip views: undo windows, uses, results and whole dates', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { keepDates, receiptView, slipView, spendOf, utcClock } = await import(
     `${LANDING}/slip-view.ts`
   );
   const p = {
     id: 'p_1',
-    capability: 'x',
     summary: 'Do it',
     risk: 'low',
     undo: null,
-    expires: 0,
-    hash: 'h',
-    effects: [{ op: 'delete', target: 'file/a' }],
+    expires: 60,
+    effects: [],
   };
-  const consent = {
-    proposal: 'p_1',
-    hash: 'h',
-    service: 's.example',
-    capability: 'x',
-    principal: 'k',
-    summary: '',
-    expires: 0,
-  };
+  const consent = { hash: 'h', service: 's.example' };
   const v = slipView(sdk, p, consent, 'why');
 
-  assert.equal(v.undo, "can't be undone");
-  assert.equal(v.uses, 'nothing');
-  assert.deepEqual(v.effects, ['- delete file/a']);
-  assert.equal(utcMinute(0), '1970-01-01 00:00 UTC');
+  assert.deepEqual(
+    [v.undo, v.uses, v.expires],
+    ["can't be undone", 'nothing', 60],
+  );
+  assert.equal(utcClock(0), '00:00 UTC');
+  assert.equal(
+    spendOf({ uses: { spend: { amount: 5395, scale: 2, unit: 'USD' } } }),
+    53.95,
+  );
+  assert.equal(spendOf({}), null);
   assert.deepEqual(receiptView({ id: 'r', undo: null, result: { a: 1 } }), {
     id: 'r',
+    until: null,
     undoUntil: null,
     result: ['a: 1'],
   });
+  assert.deepEqual(keepDates('4 meals for 2026-09-29 — 53.95 USD'), [
+    { text: '4 meals for ', date: false },
+    { text: '2026-09-29', date: true },
+    { text: ' — 53.95 USD', date: false },
+  ]);
+});
+
+test('lapsed: the policy first, then the waiting proposal or the open undo window', {
+  skip,
+}, async () => {
+  const { lapsed, lapseText } = await import(`${LANDING}/expiry.ts`);
+
+  assert.equal(lapsed(100, { grant: 200, proposal: 150, undo: null }), null);
+  assert.equal(lapsed(150, { grant: 200, proposal: 150 }), 'proposal');
+  assert.equal(lapsed(160, { grant: 200, undo: 150 }), 'undo');
+  assert.equal(lapsed(250, { grant: 200, proposal: 150 }), 'policy');
+  assert.match(
+    lapseText('proposal', '20:44 UTC'),
+    /expired at 20:44 UTC.*Start again/,
+  );
+});
+
+/** Run `fn` with Date.now moved `seconds` ahead, as the core and the shop see it. */
+async function later(seconds, fn) {
+  const real = Date.now;
+
+  Date.now = () => real() + seconds * 1000;
+
+  try {
+    return await fn();
+  } finally {
+    Date.now = real;
+  }
+}
+
+test('the session says in words when a proposal, an undo window or the policy ran out', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { landingCaveats } = await import(`${LANDING}/policy.ts`);
+  const { Session, tomorrow } = await import(`${LANDING}/session.ts`);
+  const now = Math.floor(Date.now() / 1000);
+  const s = await Session.start(sdk, shop, landingCaveats(now));
+
+  assert.equal(s.grantExpires, now + 8 * 3600);
+
+  const w = await s.propose(tomorrow());
+
+  await assert.rejects(
+    later(w.proposal.expires - now + 1, () => s.approve(w)),
+    /^Error: The order didn't go through: .*expired/,
+  );
+
+  const done = await s.approve(await s.propose(tomorrow()));
+
+  await assert.rejects(
+    later(7201, () => s.undo(done.receipt.id)),
+    /^Error: The undo didn't go through: the undo window closed/,
+  );
+  await assert.rejects(
+    later(8 * 3600 + 1, () => s.propose(tomorrow())),
+    /^Error: The shop didn't ask for consent: grant has expired/,
+  );
 });
 
 /** The recorded exchange with everything that changes per run replaced by a placeholder. */
 const stable = (x) =>
   JSON.stringify(x)
-    .replace(/\b[pr]_[\w-]{8}\b/g, 'ID')
+    .replace(/(?<![\w-])[pr]_[\w-]{8}(?![\w-])/g, 'ID')
     .replace(/pg1\.[\w-]+/g, 'GRANT')
-    .replace(/\b[\w-]{43}\b/g, 'HASH')
+    .replace(/(?<![\w-])[\w-]{43}(?![\w-])/g, 'HASH')
     .replace(
       /\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?Z| \d{2}:\d{2} UTC)?/g,
       'DATE',
     )
-    .replace(/\\"exp\\":\d+/g, 'EXP');
+    .replace(/\\"exp\\":\d+/g, 'EXP')
+    .replace(/"(expires|until)":\d+/g, '"$1":TIME');
 
 test('the recorded exchange still matches the core', {
-  skip: skip || (!built && 'needs npm run build'),
+  skip: needsCore,
 }, async () => {
   const { record } = await import('../scripts/landing-exchange.mjs');
   const { RECORDED } = await import(`${LANDING}/exchange.ts`);
+  const fresh = await record();
 
+  assert.equal(fresh.spend, 53.95);
+  assert.equal(RECORDED.spend, fresh.spend);
   assert.equal(
-    stable(await record()),
+    stable(fresh),
     stable(RECORDED),
     'rerun: node site/scripts/landing-exchange.mjs',
   );

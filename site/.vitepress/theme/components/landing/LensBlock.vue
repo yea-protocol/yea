@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Real protocol output as a model reads it, one line per row, coloured by protocol state. */
 import { computed } from 'vue';
-import { lineClass } from '../playground/lens-lines';
+import { lineClass } from '../lens-lines';
 
 const props = defineProps<{
   /** Lens text; lines starting with → are what the agent sent. */

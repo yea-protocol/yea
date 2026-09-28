@@ -61,8 +61,8 @@ tbody th { text-align: left; font-weight: 500; padding-right: 24px; }
 .bar { display: block; height: 100%; border-radius: 0 4px 4px 0; }
 .bar.rest { background: var(--vp-c-text-3); }
 .bar.yea { background: var(--vp-c-text-1); }
-.val { font-family: var(--l-mono); font-size: 0.8125rem; text-align: right; font-variant-numeric: tabular-nums; }
-.delta { text-align: right; font-family: var(--l-mono); font-size: 0.875rem; font-weight: 600; padding-left: 16px; white-space: nowrap; }
+.val { font-size: 0.875rem; text-align: right; font-variant-numeric: tabular-nums; }
+.delta { text-align: right; font-size: 0.9375rem; font-weight: 650; font-variant-numeric: tabular-nums; padding-left: 16px; white-space: nowrap; }
 
 @media (max-width: 640px) {
   thead { display: none; }

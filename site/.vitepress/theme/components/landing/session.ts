@@ -52,10 +52,19 @@ export interface Done {
   lens: string;
 }
 
-/** What went wrong, when a reply isn't the one the example expects. */
-const unexpected = (step: string, r: { kind: string; lens: string }) =>
-  new Error(
-    `${step}: expected otherwise, got ${r.kind}: ${r.lens.split('\n')[0]}`,
+/** A reply that isn't the one the example expects, as a sentence a person can read. */
+function failure(what: string, r: { kind: string; message?: string }) {
+  const why =
+    r.kind === 'ERROR' && r.message ? r.message : `the shop replied ${r.kind}`;
+
+  return new Error(`${what}: ${why}.`);
+}
+
+/** When a grant's `exp` caveat says it expires, in unix seconds (Infinity if never). */
+const expiryOf = (caveats: Caveat[]) =>
+  caveats.reduce(
+    (t, c) => ('exp' in c ? Math.min(t, c.exp) : t),
+    Number.POSITIVE_INFINITY,
   );
 
 interface Parts {
@@ -63,20 +72,23 @@ interface Parts {
   keys: { principal: KeyPair; agent: KeyPair };
   client: Client;
   grant: string;
+  grantExpires: number;
 }
 
 export class Session {
   private readonly sdk: SessionSdk;
   private readonly keys: Parts['keys'];
   private readonly client: Client;
-  /** The policy grant the agent holds. */
+  /** The policy grant the agent holds, and when it expires (unix seconds). */
   readonly grant: string;
+  readonly grantExpires: number;
 
   private constructor(parts: Parts) {
     this.sdk = parts.sdk;
     this.keys = parts.keys;
     this.client = parts.client;
     this.grant = parts.grant;
+    this.grantExpires = parts.grantExpires;
   }
 
   /** Sign the policy and start the shop, with fresh keys. */
@@ -99,7 +111,13 @@ export class Session {
       },
     );
 
-    return new Session({ sdk, keys: { principal, agent }, client, grant });
+    return new Session({
+      sdk,
+      keys: { principal, agent },
+      client,
+      grant,
+      grantExpires: expiryOf(caveats),
+    });
   }
 
   /** The agent's INTENT and first COMMIT: a proposal over the policy, waiting on the person. */
@@ -108,14 +126,14 @@ export class Session {
     const r = await this.client.intent('shop.order', params);
 
     if (r.kind !== 'PROPOSALS') {
-      throw unexpected('INTENT', r);
+      throw failure("The shop didn't propose an order", r);
     }
 
     const proposal = r.proposals[0];
     const c = await this.client.commit(proposal);
 
     if (c.kind !== 'ERROR' || c.code !== 'consent_required' || !c.consent) {
-      throw unexpected('COMMIT', c);
+      throw failure("The shop didn't ask for consent", c);
     }
 
     // What the person signs must be the proposal the page shows.
@@ -135,6 +153,13 @@ export class Session {
 
   /** The person signs a one-time grant for this proposal's hash; the commit then goes through. */
   async approve(w: Waiting): Promise<Done & { consentGrant: string }> {
+    // A consent for an expired proposal can't be accepted; say so rather than ask again.
+    if (Date.now() / 1000 >= w.proposal.expires) {
+      throw new Error(
+        "The order didn't go through: the proposal expired before it was approved.",
+      );
+    }
+
     const consentGrant = await this.sdk.consentGrant({
       principal: this.keys.principal,
       agent: this.keys.agent.public,
@@ -143,7 +168,7 @@ export class Session {
     const r = await this.client.commit(w.proposal, { grants: [consentGrant] });
 
     if (r.kind !== 'RECEIPT') {
-      throw unexpected('COMMIT', r);
+      throw failure("The order didn't go through", r);
     }
 
     return { receipt: r.receipt, lens: r.lens, consentGrant };
@@ -153,7 +178,7 @@ export class Session {
     const r = await this.client.undo(receipt);
 
     if (r.kind !== 'RECEIPT') {
-      throw unexpected('UNDO', r);
+      throw failure("The undo didn't go through", r);
     }
 
     return { receipt: r.receipt, lens: r.lens };

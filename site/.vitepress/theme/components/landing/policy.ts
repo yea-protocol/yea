@@ -63,12 +63,20 @@ interface Parts {
   when?: string;
   what?: string;
   where?: string;
-  each?: string;
-  total?: string;
+  /** Per measure (`spend`, `emails`, …): its per-action and total limits, as said. */
+  limits: Map<string, { each?: string; total?: string }>;
+}
+
+/** Add a limit to its measure's entry. */
+function limit(p: Parts, l: Limit, kind: 'each' | 'total') {
+  const entry = p.limits.get(l.of) ?? {};
+
+  entry[kind] = kind === 'each' ? `${amount(l)} each` : `${amount(l)} in total`;
+  p.limits.set(l.of, entry);
 }
 
 function parts(caveats: Caveat[], issuedAt: number): Parts {
-  const out: Parts = {};
+  const out: Parts = { limits: new Map() };
 
   for (const c of caveats) {
     if ('exp' in c) {
@@ -78,27 +86,39 @@ function parts(caveats: Caveat[], issuedAt: number): Parts {
     } else if ('svc' in c) {
       out.where = `at ${c.svc.join(' or ')}`;
     } else if ('each' in c) {
-      out.each = `${amount(c.each)} each`;
+      limit(out, c.each, 'each');
     } else if ('total' in c) {
-      out.total = `${amount(c.total)} in total`;
+      limit(out, c.total, 'total');
     }
   }
 
   return out;
 }
 
+/** The limits as a clause: `spend up to $40 each and $100 in total`, `use up to 3 emails each`. */
+function limitsClause(limits: Parts['limits']): string {
+  return [...limits]
+    .map(([of, l]) => {
+      const verb = of === 'spend' ? 'spend' : 'use';
+
+      return `${verb} up to ${[l.each, l.total].filter(Boolean).join(' and ')}`;
+    })
+    .join(' and ');
+}
+
 /**
  * The grant as one sentence: "For the next 8 hours, your agent may take low-risk actions at
- * shop.example that spend up to $40 each and $100 in total." It covers expiry, risk,
- * services and spend limits; the page shows the signed caveats beside it for the rest.
+ * shop.example that spend up to $40 each and $100 in total." It says expiry, risk, services
+ * and each measure's limits (spend as spending, any other measure as using); the page shows
+ * the signed caveats beside it for everything else.
  */
 export function policySentence(caveats: Caveat[], issuedAt: number): string {
   const p = parts(caveats, issuedAt);
-  const limits = [p.each, p.total].filter(Boolean).join(' and ');
+  const limits = limitsClause(p.limits);
   const words = [
     `your agent may take ${p.what ?? 'actions'}`,
     p.where,
-    limits && `that spend up to ${limits}`,
+    limits && `that ${limits}`,
   ].filter(Boolean);
   const sentence = words.join(' ');
 

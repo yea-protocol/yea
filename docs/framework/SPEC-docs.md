@@ -126,11 +126,14 @@ The README keeps what works, and adds the framework path.
 
 ### 3. Landing page
 
-`site/.vitepress/theme/components/Landing.vue` gets a framework card next to the protocol
-content. The hero (the Lens exchange under the headline) stays unless James changes it. Its
-benchmark numbers are hand-typed constants. A check compares the payload figures with
-`bench/RESULTS.md`, and the live-agent figures with `bench/agent-eval/RESULTS*.md`, and
-fails on drift.
+The landing (`site/.vitepress/theme/components/Landing.vue`, a layout over `landing/`) offers
+the framework as the first of two paths after the hero: "I have an MCP server", marked
+unreleased (install from the repo), next to "I'm building an agent or service". The hero is a
+proposal slip the visitor approves, then undoes, on the real core, per James's decision of
+2026-09-28 (#117); its headline stays with James. The benchmark numbers are hand-typed
+constants in one module, `landing/numbers.ts`. A check compares the payload figures with
+`bench/RESULTS.md`, and the live-agent figures with `bench/agent-eval/RESULTS*.md`, and fails
+on drift.
 
 ### 4. "From REST to YEA" (updated)
 
@@ -179,7 +182,8 @@ with its worked example on the framework API:
     `<<< @/../python/mcp/examples/mcp_quickstart.py#name`.
 - **Drift checks** in CI:
   - the README snippet against the example's region;
-  - `Landing.vue`'s numbers against `bench/RESULTS.md` and `bench/agent-eval/RESULTS*.md`.
+  - the landing's numbers (`landing/numbers.ts`) against `bench/RESULTS.md` and
+    `bench/agent-eval/RESULTS*.md`.
 - **The site builds** (`npm run site`, already in CI). Relative links are ignored by the
   dead-link check today, so that check only covers site pages.
 - **Five minutes, measured honestly.**

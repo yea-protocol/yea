@@ -6,10 +6,7 @@ import { withBase } from 'vitepress';
 <template>
   <section class="band quote" aria-label="From a real session">
     <blockquote>
-      <p>
-        I didn't try to get around the limit. Splitting it into two orders would have dodged the check. Even the cheapest four
-        meals come to $53.95, so no single order fits under $40.
-      </p>
+      <p>I didn't try to get around the limit. Splitting it into two orders would have dodged the check. Even the cheapest four meals come to $53.95, so no single order fits under $40.</p>
     </blockquote>
     <p class="attrib">
       Claude Sonnet 5 in headless Claude Code, given the YEA MCP bridge and no YEA documentation, after its order hit

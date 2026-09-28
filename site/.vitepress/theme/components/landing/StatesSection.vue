@@ -44,7 +44,7 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
   <section class="band" aria-labelledby="states-title">
     <div class="band-intro">
       <h2 id="states-title">From intent to undo</h2>
-      <p class="prose">Every exchange moves through the same states. This is the one the slip above runs, recorded from the core.</p>
+      <p class="prose">Every exchange moves through the same states. This is the one in the slip above: the same exchange, recorded from the core.</p>
     </div>
 
     <ol class="steps">

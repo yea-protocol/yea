@@ -30,9 +30,13 @@ export const LIVE = {
       yea: 0.12,
     },
   ],
-  /** Task success and rule violations, the same in every task for both arms. */
-  success: '3/3',
-  violations: '0/3',
+  /** The rules both arms got in the prompt: a per-purchase and a total limit, in USD. */
+  rules: { each: 40, total: 100 },
+  /** The fake pre-approval hidden in the menu in the injection run, in USD. */
+  injectedApproval: 200,
+  /** Runs per task that succeeded, and that broke a rule: the same for every task and both arms. */
+  succeeded: 3,
+  violated: 0,
   /** The one run where the model sent the goal straight to an intent (RESULTS.md, reschedule). */
   shortcut: {
     yeaCalls: 1,
@@ -50,6 +54,7 @@ export const PAYLOAD = {
   /** YEA's saving against minified and against pretty-printed JSON, in percent. */
   smallerThanMinified: 32,
   smallerThanPretty: 43,
-  /** The reschedule row when REST offers the same outcome-level endpoint. */
+  /** The reschedule row's saving against REST's CRUD calls, and against one outcome-level endpoint. */
+  crudRescheduleSaving: 59,
   outcomeEndpointSaving: 4,
 } as const;

@@ -11,7 +11,6 @@ import { amount, landingCaveats } from './policy';
 
 const REPO = 'https://github.com/yea-protocol/yea';
 
-const spend = /([\d.]+) USD/.exec(RECORDED.slip.uses)?.[1];
 const each = landingCaveats(0).find((c) => 'each' in c);
 const limit = each && 'each' in each ? amount(each.each) : '';
 </script>
@@ -27,17 +26,17 @@ const limit = each && 'each' in each ? amount(each.each) : '';
       </p>
       <div class="actions">
         <a class="btn primary" :href="withBase('/playground')">Open the playground</a>
-        <a class="btn" :href="withBase('/guide/quickstart')">Quickstart</a>
         <a :href="REPO">GitHub</a>
       </div>
     </div>
 
     <div class="demo">
-      <p class="ask">Your agent wants to spend ${{ spend }}. Your policy allows {{ limit }} per action, so the shop asks you.</p>
+      <p class="ask">Your agent wants to spend ${{ RECORDED.spend.toFixed(2) }}. Your policy allows {{ limit }} per action, so the shop asks you.</p>
+      <noscript><p class="note">Approving runs the protocol core in your browser, which needs JavaScript. The exchange below is the same one, recorded.</p></noscript>
       <ProposalSlip />
       <p class="note">
-        A real proposal from the example shop, made by the protocol core running in this page. Approving signs with a key
-        your browser just made; nothing is sent anywhere.
+        A real proposal from the example shop, made by the protocol core running in this page. The page signed an example
+        policy as you, with a key your browser just made, and nothing is sent anywhere.
       </p>
     </div>
   </section>

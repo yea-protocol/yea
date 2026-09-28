@@ -19,7 +19,7 @@ export async function record(now = Date.now()) {
     `${LANDING}/policy.ts`
   );
   const { Session, tomorrow } = await import(`${LANDING}/session.ts`);
-  const { receiptView, slipView, undoneView } = await import(
+  const { receiptView, slipView, spendOf, undoneView } = await import(
     `${LANDING}/slip-view.ts`
   );
   const issuedAt = Math.floor(now / 1000);
@@ -31,6 +31,7 @@ export async function record(now = Date.now()) {
 
   return {
     params: waiting.params,
+    spend: spendOf(waiting.proposal),
     policy: {
       sentence: policySentence(caveats, issuedAt),
       caveats: caveats.map((c) => JSON.stringify(c)),
@@ -57,6 +58,8 @@ import type { ReceiptView, SlipView, UndoneView } from './slip-view';
 
 export interface Recorded {
   params: { items: { sku: string; qty: number }[]; deliver: string };
+  /** What the proposal spends, in dollars. */
+  spend: number;
   policy: { sentence: string; caveats: string[]; grant: string };
   slip: SlipView;
   receipt: ReceiptView;
