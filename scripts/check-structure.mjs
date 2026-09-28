@@ -52,15 +52,10 @@ export const RATCHET = {
   'ts/src/examples/billing.ts': ['length'], // #108: split
   'ts/src/examples/calendar.ts': ['length'], // #108: split
   'ts/src/examples/demo.ts': ['length'], // #108: split
-  'ts/src/filestore.ts': ['length', 'name'], // #108: file-store/ split
   'ts/src/keyfile.ts': ['name'], // #108: rename to key-file.ts
   'ts/src/lens.ts': ['length'], // #108: split
-  'ts/src/openapi.ts': ['length'], // #108: split
-  'ts/src/servefetch.ts': ['length', 'name'], // #108: serve-fetch/ split
-  'ts/src/setup.ts': ['length'], // #108: split
   'ts/src/testdrive.ts': ['name'], // #108: rename to test-drive.ts
   'ts/src/tooldefs.ts': ['name'], // #108: rename to tool-defs.ts
-  'ts/src/tools.ts': ['length'], // #108: split
 };
 
 /** Names whose words run together (see the ratchet for the names they get). */

@@ -1,26 +1,20 @@
 /**
  * The approval store on disk (docs/framework/SPEC-approval.md §8), shared by TypeScript and
  * Python servers and the `yea` command, and the check on the pinned principal key (§2).
- * Node only; exported from `@yea-protocol/sdk/node`.
+ * Node only; exported from `@yea-protocol/sdk/node`. The file operations, the lock and the key
+ * check live in file-store/; this file holds the store.
  */
-import {
-  accessSync,
-  constants,
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomId, sha256 } from './crypto.js';
-import { isPublicKey } from './grants.js';
+import {
+  breakIfStale,
+  createOnce,
+  readOrNull,
+  writeAtomic,
+} from './file-store/files.js';
+import { acquire } from './file-store/lock.js';
 import { home } from './home.js';
-import { canCheckOwners, uid } from './keyfile.js';
 import type {
   ApprovalStore,
   JobReceipt,
@@ -28,98 +22,10 @@ import type {
   Reservation,
 } from './store.js';
 
-const LOCK_WAIT_MS = 2000;
-const LOCK_RETRY_MS = 10;
-const STALE_LOCK_MS = 30_000;
+export { checkKeyFile, readPinnedKey } from './file-store/pinned-key.js';
+
 /** An undo claimed but never finished (the process died) can be claimed again after this. */
 const STALE_CLAIM_MS = 600_000;
-const PRIVATE = 0o700;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-const mkdirFor = (path: string) =>
-  mkdirSync(dirname(path), { recursive: true, mode: PRIVATE });
-
-/** Create `path` only if it doesn't exist (O_EXCL); false if it did. */
-function createOnce(path: string, text = ''): boolean {
-  mkdirFor(path);
-
-  try {
-    writeFileSync(path, text, { flag: 'wx' });
-
-    return true;
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
-      return false;
-    }
-
-    throw e;
-  }
-}
-
-/** Write via a uniquely named temp file and rename, so a reader never sees half a file. */
-function writeAtomic(path: string, text: string) {
-  mkdirFor(path);
-
-  const tmp = `${path}.${randomId('t')}.tmp`;
-
-  writeFileSync(tmp, text);
-  renameSync(tmp, path);
-}
-
-function readOrNull(path: string): string | null {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-
-    throw e;
-  }
-}
-
-/**
- * Remove `path` if it's older than `ageMs`, without ever removing a fresh one someone else just
- * created: read its contents (a random token) first, move it aside, and delete it only if the
- * moved file still holds that token. Otherwise put it back and leave it.
- */
-function breakIfStale(path: string, ageMs: number) {
-  let seen: string | null;
-
-  try {
-    if (Date.now() - statSync(path).mtimeMs <= ageMs) {
-      return;
-    }
-
-    seen = readOrNull(path);
-  } catch {
-    return; // already gone
-  }
-
-  const aside = `${path}.${randomId('s')}.stale`;
-
-  try {
-    renameSync(path, aside);
-  } catch {
-    return; // someone else moved it first
-  }
-
-  if (seen !== null && readOrNull(aside) === seen) {
-    rmSync(aside, { force: true });
-
-    return;
-  }
-
-  // We moved a fresh file: put it back unless another has taken its place.
-  try {
-    linkSync(aside, path);
-  } catch {
-    // a newer one exists; the moved file's owner sees its token gone and fails closed
-  }
-
-  rmSync(aside, { force: true });
-}
 
 interface LedgerFile {
   settled: string;
@@ -303,108 +209,4 @@ function safeName(s: string): string {
   }
 
   return s;
-}
-
-/** Take a lock file (O_EXCL) holding a fresh token, retrying for up to 2 s; returns the token. */
-async function acquire(lock: string): Promise<string> {
-  const token = randomId('k');
-  const until = Date.now() + LOCK_WAIT_MS;
-
-  while (!createOnce(lock, token)) {
-    breakIfStale(lock, STALE_LOCK_MS);
-
-    if (Date.now() > until) {
-      throw new Error(`the approval store is busy (${lock})`);
-    }
-
-    await sleep(LOCK_RETRY_MS);
-  }
-
-  return token;
-}
-
-// ---- the pinned principal key (§2) ----
-
-/** Whether this OS user could change `path`: owns it, or can write it. */
-function changeable(path: string): boolean {
-  if (statSync(path).uid === uid() || lstatSync(path).uid === uid()) {
-    return true;
-  }
-
-  try {
-    accessSync(path, constants.W_OK);
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Why the principal key file can't be trusted, or null. Neither the file nor any directory
- * above it may be owned or writable by the server's OS user, or the agent could swap the key.
- */
-export function checkKeyFile(path: string): string | null {
-  if (!canCheckOwners()) {
-    return "can't check who owns the principal key file on this platform";
-  }
-
-  if (uid() === 0) {
-    return 'refusing to trust a principal key file while running as root: run the server as its own user';
-  }
-
-  let real: string;
-
-  try {
-    real = realpathSync(path);
-  } catch {
-    return `${path} can't be read`;
-  }
-
-  // Both the path as given (a symlink's own directory) and where it really leads.
-  return unchangeableChain(resolve(path)) ?? unchangeableChain(real);
-}
-
-/** Why `path` or a directory above it could be changed by this user, or null. */
-function unchangeableChain(path: string): string | null {
-  let p = path;
-
-  for (;;) {
-    try {
-      if (changeable(p)) {
-        return `${p} can be changed by this user, so the agent could replace the principal key`;
-      }
-    } catch {
-      return `${p} can't be read`;
-    }
-
-    const up = dirname(p);
-
-    if (up === p) {
-      return null;
-    }
-
-    p = up;
-  }
-}
-
-/** The pinned principal public key from `YEA_PRINCIPAL_PUB`, or why there isn't a usable one. */
-export function readPinnedKey(
-  path = process.env.YEA_PRINCIPAL_PUB,
-): { key: string } | { why: string } {
-  if (!path) {
-    return { why: 'YEA_PRINCIPAL_PUB is not set' };
-  }
-
-  const why = checkKeyFile(path);
-
-  if (why) {
-    return { why };
-  }
-
-  const key = readFileSync(path, 'utf8').trim();
-
-  return isPublicKey(key)
-    ? { key }
-    : { why: `${path} does not hold an ed25519 public key` };
 }

@@ -274,7 +274,7 @@ one exact proposal at one service, and still needs the agent key's proof.
   change. The tool names do, so these are updated:
   - `plugins/yea/skills/yea/SKILL.md`;
   - the server instructions;
-  - `AGENT_BLOCK` in `ts/src/setup.ts` (written into CLAUDE.md and AGENTS.md);
+  - `AGENT_BLOCK` in `ts/src/setup/instructions.ts` (written into CLAUDE.md and AGENTS.md);
   - site/guide/integrations.md: "don't auto-approve `yea_commit`" becomes "don't
     auto-approve tools marked `destructiveHint`".
 

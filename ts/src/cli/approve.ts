@@ -9,7 +9,7 @@ import {
 } from '../ask.js';
 import { decodeConsentCode } from '../consent.js';
 import type { KeyPair } from '../crypto.js';
-import { defaultFileStore } from '../filestore.js';
+import { defaultFileStore } from '../file-store.js';
 import { agentKey, principalKey, saveGrant } from '../home.js';
 import { effectLine, fmtDuration, fmtTime } from '../lens.js';
 import { printable } from '../text.js';
