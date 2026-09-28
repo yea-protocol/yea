@@ -232,8 +232,8 @@ The `input_required` result carries a `requestState`. Its plaintext is:
   - The TypeScript v2 legacy shim re-runs the handler for 2025-era clients.
   - Python doesn't shim a raw `InputRequiredResult`, and its `Resolve`/`Elicit` helpers own
     `requestState`, so they can't carry our nonce. `mcp-py` returns a raw
-    `InputRequiredResult` on 2026-07-28 and falls back to an in-call `ctx.elicit` on 2025-era
-    clients.
+    `InputRequiredResult` on 2026-07-28 and falls back to an in-call `session.elicit_form` on
+    2025-era clients, which takes the form's raw schema (see SPEC-mcp-py).
 
 ### 5. Checking the answer
 
@@ -497,7 +497,8 @@ export function decide(
   - a partly failed reservation releases the reservations already made;
   - an HTTP server with a `total` limit on the memory store refuses to start.
 - **End-to-end tests** live in `mcp-ts` and `mcp-py`, with in-memory MCP clients: 2026-era,
-  2025-era (TypeScript through the SDK's legacy shim, Python through an in-call `ctx.elicit`),
+  2025-era (TypeScript through the SDK's legacy shim, Python through an in-call
+  `session.elicit_form`),
   and no elicitation.
 
 ## Boundaries
