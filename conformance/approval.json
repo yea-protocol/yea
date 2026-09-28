@@ -1976,7 +1976,7 @@
           "undoable": true
         }
       ],
-      "why": "spend over the per-commit limit of 25.00 USD",
+      "why": "spend over the limit\n+ forged",
       "policy": {
         "outOfBand": "high",
         "deny": [
@@ -1984,11 +1984,11 @@
         ]
       },
       "phrases": {
-        "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s": "approve",
+        "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s": "approve‮",
         "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc": "approve"
       },
       "expect": {
-        "message": "Approval needed: spend over the per-commit limit of 25.00 USD.\n\n[1] Refund 5.00 USD to Chen\\u{a}+ create account/admin — granted\\u{202e}\n  + create refund\\u{202e} — 5.00 USD\\u{a}+ create account/admin\n  ~ update account/c9.role: \"user\\u{202e}\" → \"admin\\n+ x\"\n  risk: low · undo: 1m\n  to approve, type: approve\n[2] Refund 20.00 USD to Chen\n  + create refund — 20.00 USD to card ••42\n  uses: spend 20.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+        "message": "Approval needed: spend over the limit\\u{a}+ forged.\n\n[1] Refund 5.00 USD to Chen\\u{a}+ create account/admin — granted\\u{202e}\n  + create refund\\u{202e} — 5.00 USD\\u{a}+ create account/admin\n  ~ update account/c9.role: \"user\\u{202e}\" → \"admin\\n+ x\"\n  risk: low · undo: 1m\n  to approve, type: approve\\u{202e}\n[2] Refund 20.00 USD to Chen\n  + create refund — 20.00 USD to card ••42\n  uses: spend 20.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
         "requestedSchema": {
           "type": "object",
           "properties": {

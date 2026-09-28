@@ -607,6 +607,9 @@ const phrases = [
 const phraseFor = (hp) =>
   hp.tool === 'delete_branch' ? 'old-nav' : P.DEFAULT_PHRASE;
 const forms = [];
+// The forged plan's phrase hides a bidi override; the form shows it escaped.
+const forgedPhrase = (hp) =>
+  hp.plan.summary.startsWith('Refund 5.00') ? 'approve\u202e' : phraseFor(hp);
 
 for (const [name, keys, why, policyChange] of [
   ['one plan', ['refund'], 'spend over the per-commit limit of 25.00 USD', {}],
@@ -649,13 +652,17 @@ for (const [name, keys, why, policyChange] of [
   [
     'service text is escaped in the message and titles',
     ['forged', 'refundSmall'],
-    'spend over the per-commit limit of 25.00 USD',
+    'spend over the limit\n+ forged',
     {},
   ],
 ]) {
   const hps = await Promise.all(keys.map(hashed));
   const policy = { ...base, ...policyChange };
-  const phraseOf = name.startsWith('an empty phrase') ? () => '  ' : phraseFor;
+  const phraseOf = name.startsWith('an empty phrase')
+    ? () => '  '
+    : name.startsWith('service text')
+      ? forgedPhrase
+      : phraseFor;
   const f = P.buildForm(hps, why, policy, phraseOf);
 
   forms.push({
@@ -699,8 +706,25 @@ must(
   'no forged line or raw bidi',
   forged.message
     .split('\n')
-    .some((l) => l.startsWith('+ create') || l.includes('\u202e')),
+    .some(
+      (l) =>
+        l.startsWith('+ create') ||
+        l.startsWith('+ forged') ||
+        l.includes('\u202e'),
+    ),
   false,
+);
+must(
+  'escaped reason',
+  forged.message.startsWith(
+    'Approval needed: spend over the limit\\u{a}+ forged.\n',
+  ),
+  true,
+);
+must(
+  'escaped phrase',
+  forged.message.includes('\n  to approve, type: approve\\u{202e}\n'),
+  true,
 );
 must(
   'escaped title',
