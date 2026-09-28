@@ -42,7 +42,7 @@ async with await connect("yea://127.0.0.1:7447", key=agent, grants=[g]) as c:
     props = await c.intent("calendar.move", {"event": "e2", "to": "2026-09-24T15:00:00Z"})
     print(props.lens)                          # what the model reads
     r = await c.commit(props.proposals[0])     # signs the proof automatically
-    if r.code == "consent_required":           # ask the human (consent_code(r.consent) for out-of-band), then:
+    if r.code == "consent_required":           # ask the human (consent_code(r.consent, props.proposals[0]) for out-of-band), then:
         r = await c.commit(props.proposals[0], grants=[consent_grant(principal, agent.public, r.consent)])
     await c.undo(r.receipt["id"])
     # auto=True: commit in one round trip when the grant already allows it and it's undoable

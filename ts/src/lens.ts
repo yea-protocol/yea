@@ -507,17 +507,18 @@ function quotedBack(r: Reply, safe: unknown): unknown {
   }
 }
 
-/** Lens renders line separators inside quoted values literally; nothing but `\n` breaks a line. */
-const noSeparators = (s: string) =>
-  s.replace(/[\u2028\u2029]/g, (c) => printable(c));
-
 /**
  * A service's reply as Lens, for a model or a person: re-rendered from its fields after
  * `oneLine`, never the service's own `lens`, so every line break is ours. Quoted values escape
- * only C0, so a terminal still wants `printable` on each line.
+ * only C0, so each line then goes through `printable`, for the C1, bidi, line-separator and
+ * invisible characters left inside quotes. `printable` leaves backslashes alone, so text
+ * already escaped isn't escaped again.
  */
 export function untrustedLens(reply: Reply): string {
   const { lens: _ignored, ...rest } = reply;
 
-  return noSeparators(lens(quotedBack(reply, oneLine(rest)) as Reply));
+  return lens(quotedBack(reply, oneLine(rest)) as Reply)
+    .split('\n')
+    .map(printable)
+    .join('\n');
 }

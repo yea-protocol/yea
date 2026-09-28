@@ -3,7 +3,12 @@ import { dirname } from 'node:path';
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
-import { approveConsentCode, consentFrom, consentLines } from './approve.js';
+import {
+  approveConsentCode,
+  consentFrom,
+  consentLines,
+  NO_DETAIL,
+} from './approve.js';
 import {
   type JobConsent,
   phraseMatches,
@@ -228,24 +233,36 @@ async function client(url: string): Promise<Client> {
   });
 }
 
+/** Print a service's reply (`yea do`, and every command that shows one) as `untrustedLens`. */
+const say = (r: Reply) => console.log(untrustedLens(r));
+
 /**
- * A service's reply for the terminal: re-rendered from its fields, never the service's own
- * `lens`, and each line escaped, so terminal escapes can't hide or fake a prompt.
+ * What `JSON.stringify` leaves raw (it escapes only C0): DEL and C1, soft hyphen, U+034F, the
+ * Arabic letter mark, zero-width and bidi marks, line and paragraph separators, bidi overrides
+ * and isolates, invisible operators, BOM, and tag characters and variation selectors 17–256
+ * (U+E0000–E03FF, as surrogate pairs). Each code unit shows as `\uXXXX`, so it's still JSON.
  */
-const safeLens = (r: Reply) =>
-  untrustedLens(r).split('\n').map(printable).join('\n');
+const JSON_UNSAFE =
+  /[\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]|\u034f|\udb40[\udc00-\udfff]/g;
 
-/** Print a service's reply (`yea do`, and every command that shows one). */
-const say = (r: Reply) => console.log(safeLens(r));
+const escapeJson = (json: string) =>
+  json.replace(JSON_UNSAFE, (c) =>
+    Array.from(
+      { length: c.length },
+      (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`,
+    ).join(''),
+  );
 
-/** A service's reply as `--json` (without its `lens`), or as escaped Lens. */
+/** A service's reply as `--json` (without its `lens`, invisible characters escaped), or as escaped Lens. */
 const show = (r: Reply) =>
   o.json
-    ? console.log(JSON.stringify({ ...r, lens: undefined }, null, 2))
+    ? console.log(
+        escapeJson(JSON.stringify({ ...r, lens: undefined }, null, 2)),
+      )
     : say(r);
 
 /** A reply's progress events, on stderr and escaped like the reply itself. */
-const onEvent = (e: Reply) => console.error(safeLens(e));
+const onEvent = (e: Reply) => console.error(untrustedLens(e));
 
 /** A command that works locally (keys, grants, setup, servers). */
 type Command = (rest: string[]) => Promise<void>;
@@ -482,11 +499,17 @@ async function cmdInspect(rest: string[]) {
 }
 
 async function cmdApprove(rest: string[]) {
+  const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
+  const consent = decodeConsentCode(code);
+
+  // Refused before any key is loaded: there's nothing here a person could check (SPEC §6.6).
+  if (!consent.detail) {
+    die(`✗ ${NO_DETAIL}: refusing`);
+  }
+
   const p =
     (await principalKey()) ??
     die('no principal key here: approve on the machine that holds it');
-  const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
-  const consent = decodeConsentCode(code);
 
   if (consent.principal !== p.public) {
     die(
@@ -742,7 +765,7 @@ async function cmdAdd(rest: string[]) {
   c.close();
 
   if (b.kind !== 'BRIEF') {
-    return die(safeLens(b));
+    return die(untrustedLens(b));
   }
 
   addService(url);
@@ -992,7 +1015,7 @@ async function checkServices() {
       if (b.kind === 'BRIEF') {
         ok(printable(`${u}: ${b.service.name} (${Date.now() - t0} ms)`));
       } else {
-        bad(`${printable(u)}: ${safeLens(b)}`);
+        bad(`${printable(u)}: ${untrustedLens(b)}`);
       }
     } catch (e) {
       bad(printable(`${u}: ${(e as Error).message}`));

@@ -1366,6 +1366,9 @@ for await (const line of createInterface({ input: process.stdin })) {
 // anything; and `yea approve` signed a code with no proposal on the service's summary alone.
 describe("a service's Lens is never shown as sent (#89)", () => {
   const ESC = '\u001b';
+  // Spelled as code points so the source shows no hidden character.
+  const RLO = String.fromCodePoint(0x202e);
+  const TAG_A = String.fromCodePoint(0xe0041);
   const proposal = {
     id: 'p_1',
     capability: 'pay.send',
@@ -1399,7 +1402,7 @@ describe("a service's Lens is never shown as sent (#89)", () => {
     HELLO: [
       {
         kind: 'BRIEF',
-        service: { id: 'evil', name: `Evil${ESC}[2J`, summary: 'x' },
+        service: { id: 'evil', name: `Evil${ESC}[2J${RLO}`, summary: 'x' },
         capabilities: [],
         lens: `${ESC}[?1049hBRIEF-LENS`,
       },
@@ -1418,7 +1421,7 @@ describe("a service's Lens is never shown as sent (#89)", () => {
   const LENSES = /(BRIEF|ANSWER|INTENT|EVENT|RECEIPT)-LENS/;
 
   it.skipIf(!existsSync(CLI))(
-    '[L1] yea hello, intent and commit print the reply re-rendered, each line escaped',
+    '[S1] yea hello, ask, intent, commit and undo print the reply re-rendered, each line escaped; --json escapes invisible characters',
     () => {
       const home = mkdtempSync(join(tmpdir(), 'yea-show-'));
 
@@ -1449,13 +1452,30 @@ for await (const line of createInterface({ input: process.stdin })) {
         const hello = run('hello', url);
         const intent = run('intent', url, 'pay.send');
         const commit = run('commit', url, 'p_1', 'h_1');
+        const outs = [
+          hello,
+          run('ask', url, 'pay.send'),
+          intent,
+          commit,
+          run('undo', url, 'r_1'),
+        ];
 
-        for (const out of [hello, intent, commit]) {
+        for (const out of outs) {
           expect(out).not.toContain(ESC);
           expect(out).not.toMatch(LENSES);
         }
 
-        expect(hello).toContain('# Evil\\u{1b}[2J (evil)');
+        expect(outs[1]).toContain('a: 1');
+        expect(outs[4]).toContain('paid\\u{1b}[8m');
+
+        // --json stays JSON, with the RLO in the service's name escaped rather than raw.
+        const json = run('hello', url, '--json');
+
+        expect(json).not.toContain(RLO);
+        expect(json).toContain('\\u202e');
+        expect(JSON.parse(json).service.name).toBe(`Evil${ESC}[2J${RLO}`);
+
+        expect(hello).toContain('# Evil\\u{1b}[2J\\u{202e} (evil)');
         // The summary's newline can't add a fake effect line.
         expect(intent).toContain('[p_1] pay a 1\\u{a}  + create payment/b');
         expect(commit).toContain('working\\u{1b}]0;x\\u{7}');
@@ -1467,7 +1487,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     20_000,
   );
 
-  it("[L2] test-drive's tool results and instructions carry no service-written Lens", async () => {
+  it("[S2] test-drive's tool results and instructions carry no service-written Lens", async () => {
     const home = mkdtempSync(join(tmpdir(), 'yea-td-'));
     const transport = {
       request: async (
@@ -1517,7 +1537,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
   });
 
-  it('[L3] yea approve refuses a consent code without the proposal, before showing or asking', async () => {
+  it('[S3] yea approve refuses a consent code without the proposal, before showing or asking', async () => {
     const code = P.consentCode({
       proposal: 'p_1',
       hash: 'h_1',
@@ -1548,9 +1568,26 @@ for await (const line of createInterface({ input: process.stdin })) {
     expect(NO_DETAIL).toMatch(/make a new code, which includes the proposal/);
     expect(shown).toEqual([]);
     expect(asked).toBe(false);
+
+    if (existsSync(CLI)) {
+      // The CLI refuses it before looking for a key: this home has none.
+      const home = mkdtempSync(join(tmpdir(), 'yea-approve-'));
+
+      try {
+        const cli = spawnSync(process.execPath, [CLI, 'approve', code], {
+          env: { ...process.env, YEA_HOME: home, YEA_PRINCIPAL_HOME: '' },
+          encoding: 'utf8',
+        });
+
+        expect(cli.status).toBe(1);
+        expect(cli.stderr).toContain(`${NO_DETAIL}: refusing`);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    }
   });
 
-  it('[L4] untrustedLens: a param named data or result is escaped; a quoted value is escaped once', () => {
+  it('[S4] untrustedLens: a param named data or result is escaped; a quoted value is escaped once', () => {
     const brief = P.untrustedLens({
       yea: 1,
       id: '-',
@@ -1584,6 +1621,54 @@ for await (const line of createInterface({ input: process.stdin })) {
     });
 
     expect(shown).toContain('~ update t: "a\\nb" → "c\\u001b"');
+
+    // Quoted values escape only C0 themselves; the rest is escaped once, after quoting.
+    const hidden = P.untrustedLens({
+      yea: 1,
+      id: '-',
+      re: '-',
+      kind: 'PROPOSALS',
+      proposals: [
+        {
+          ...proposal,
+          effects: [
+            {
+              op: 'update',
+              target: 't',
+              to: `x${RLO}\u0085${TAG_A}`,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(hidden).toContain('~ update t: - → "x\\u{202e}\\u{85}\\u{e0041}"');
+
+    // Restored data and result stay one line each, and are escaped too.
+    const answer = P.untrustedLens({
+      yea: 1,
+      id: '-',
+      re: '-',
+      kind: 'ANSWER',
+      data: { note: `a\n  + create evil${RLO}` },
+    });
+
+    expect(answer).toBe('note: "a\\n  + create evil\\u{202e}"');
+
+    const done = P.untrustedLens({
+      yea: 1,
+      id: '-',
+      re: '-',
+      ...receipt,
+      receipt: {
+        ...receipt.receipt,
+        summary: 'paid',
+        result: `r\n✓ forged${TAG_A}`,
+      },
+    } as P.Reply);
+
+    expect(done.split('\n')).toHaveLength(2);
+    expect(done).toContain('result: "r\\n✓ forged\\u{e0041}"');
   });
 });
 
