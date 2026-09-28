@@ -34,6 +34,7 @@ import {
   readPinnedKey,
   readPrivateFile,
   readServerSeed,
+  serveFetch,
   serveHttp,
 } from '../src/node.js';
 import { printable } from '../src/text.js';
@@ -163,6 +164,75 @@ describe('security regressions', () => {
     });
 
     expect(big.status).toBe(413);
+  });
+
+  it('[H3] serveFetch caps request bodies: 413, the app never runs, and a flood is cut off', async () => {
+    let calls = 0;
+    const server = await serveFetch(
+      () => {
+        calls++;
+
+        return new Response('ok');
+      },
+      { port: 0, maxBody: 1000, headers: true },
+    );
+
+    closers.push(() => server.close());
+
+    const port = (server.address() as AddressInfo).port;
+    const url = `http://127.0.0.1:${port}/`;
+    const declared = await fetch(url, {
+      method: 'POST',
+      body: 'x'.repeat(1001),
+    });
+    const streamed = await fetch(url, {
+      method: 'POST',
+      duplex: 'half',
+      body: new ReadableStream({
+        start(c) {
+          c.enqueue(new Uint8Array(600));
+          c.enqueue(new Uint8Array(600));
+          c.close();
+        },
+      }),
+    } as RequestInit);
+
+    expect(declared.status).toBe(413);
+    expect(streamed.status).toBe(413);
+    expect(calls).toBe(0);
+
+    // A client that never stops sending is hung up on, not read forever.
+    const flood = await new Promise<number>((resolve) => {
+      const s = net.connect(port, '127.0.0.1');
+      const chunk = Buffer.alloc(1 << 16).fill('x');
+      let written = 0;
+      const pump = () => {
+        while (!s.destroyed && written < 256 << 20) {
+          written += chunk.length;
+
+          if (!s.write(`${chunk.length.toString(16)}\r\n${chunk}\r\n`)) {
+            s.once('drain', pump);
+
+            return;
+          }
+        }
+      };
+
+      s.on('error', () => {});
+      s.on('close', () => resolve(written));
+      s.write(
+        'POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n',
+      );
+      pump();
+    });
+
+    expect(flood).toBeLessThan(64 << 20);
+    expect(calls).toBe(0);
+
+    const ok = await fetch(url, { method: 'POST', body: 'x'.repeat(1000) });
+
+    expect(ok.status).toBe(200);
+    expect(calls).toBe(1);
   });
 
   it("[H2] concurrent commits can't overshoot a spend cap", async () => {

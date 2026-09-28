@@ -204,6 +204,39 @@ job's `revert`:
   message, never as "nothing was undone".
 - Its annotations say `destructiveHint: true, idempotentHint: true`.
 
+### `@yea-protocol/mcp/http`: the Streamable HTTP front end
+
+For a server that serves one person over HTTP (above), the package exports the front end the
+Stripe connector's `--http` runs on:
+
+- `httpApp(factory, { token, sub, loopback, clientId?, maxBody? })`: a fetch handler. On
+  loopback it checks the `Host` header first (DNS rebinding: 403). Then every request must carry
+  `Authorization: Bearer <token>`, compared in constant time; anything else gets 401 before the
+  MCP handler sees it. A request that has the token reaches `createMcpHandler` with `authInfo`
+  `{ clientId (default 'yea-http'), extra: { sub } }`. The MCP handler reads at most `maxBody`
+  (its `maxRequestBodySize`), so the cap holds on Workers, Bun and Deno too.
+- `subOf(ctx)`: the `sub` for `yea({ sub })`: the verified request's, else `''`, which refuses the
+  call.
+- `httpAuthFrom(env)`: `{ token, sub }` from `YEA_HTTP_TOKEN` (32 characters or more) and
+  `YEA_SUB`; throws, naming what's missing.
+- `serveHttp(app, { port, host, maxBody? })`: the app on Node, through the SDK's `serveFetch`
+  (`@yea-protocol/sdk/node`). Request headers reach the app, because Streamable HTTP needs them
+  (Authorization, Accept, Content-Type, `MCP-Protocol-Version`, `Mcp-Session-Id`, `Mcp-Method`,
+  `Mcp-Name`, `Mcp-Param-*`, `Last-Event-ID`; the `Host` check reads Host). The URL is parsed
+  against `http://localhost`, never the Host header.
+- `MAX_BODY`: the default cap, 1 MiB, the same as a YEA frame.
+
+**The body cap.** `serveFetch` reads a request's body before the app runs, keeping at most
+`maxBody` bytes. A body declared over it (Content-Length) or streamed past it is answered 413,
+and the app never runs; the server then reads and discards up to 1 MiB more, so a client that's
+nearly done sending reads the 413 rather than a reset, and hangs up after that. So a request
+costs at most `maxBody` of memory, token or not. The token is checked after the body is read:
+without it, a client can make the server read up to `maxBody` plus 1 MiB, and no more.
+`createMcpHandler` has a cap of its own (`maxRequestBodySize`, 4 MiB by default; it refuses a
+declared Content-Length over it and stops reading once past it), which `httpApp` sets to
+`maxBody`. Before this front end, the connector streamed the body into the MCP handler with no
+cap of its own, relying on that 4 MiB default.
+
 ## How a call runs
 
 The guarded callback does, in order (SPEC-approval §5 and §6):
@@ -353,6 +386,8 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
   (where `~/.yea` is, honouring `YEA_HOME`), and `isMemoryStore` with `MemoryStore`'s brand.
 - Node ≥ 20 (the SDK's floor), ESM only.
 - `yea mcp` (the 2025-era bridge) moves onto this package in `bridge` (#40), not here.
+- Three entry points: `.` (the job tools), `./bridge` (`yea mcp`) and `./http` (the Streamable
+  HTTP front end, on the SDK's `serveFetch`).
 
 ## Code layout
 
@@ -370,6 +405,7 @@ mcp/src/serverkey.ts       the server's name and key
 mcp/src/policy.ts          pinned principal, policy and tightening loading
 mcp/src/render.ts          Lens text and structuredContent for plans, receipts and codes
 mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk metadata
+mcp/src/http.ts            the Streamable HTTP front end: token, Host check, body cap (`./http`)
 mcp/src/util.ts            small internal helpers (isObject, errorMessage, warnOnce, errno, registryOf)
 mcp/test/*.test.ts         in-memory client tests; security cases in mcp/test/security.test.ts
 ```
@@ -399,6 +435,10 @@ can't elicit. For each:
 - a legacy stateless HTTP request takes the consent-code path;
 - the objective's shape: `serveStdio` (over an in-memory transport) with one `yea()` context,
   on both eras.
+- the HTTP front end (`mcp/test/http.test.ts`): no token, a wrong one or another scheme gets
+  401 and a foreign Host on loopback 403, before MCP; a call with the token runs as `sub`; a body
+  over the cap, declared or streamed, gets 413 and the app never runs. The core's cap has its
+  regression test in `ts/test/security.test.ts` (H3).
 
 Security cases in `mcp/test/security.test.ts`, the approval core's list from the MCP side.
 Any fix that lands in the SDK core also gets its regression test in `ts/test/security.test.ts`

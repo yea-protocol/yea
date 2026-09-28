@@ -1,17 +1,12 @@
 /**
- * `--http <port>`: Streamable HTTP for one person (SPEC-mcp-ts: HTTP serves one person in v0).
- * `sub` must come from the transport's authentication, so every request carries a bearer token
- * (`YEA_HTTP_TOKEN`), and a request that has it is that person (`YEA_SUB`). Anything else gets
- * 401 before the MCP handler sees it.
+ * `@yea-protocol/mcp/http`: a Streamable HTTP front end for an MCP server that serves one person
+ * (SPEC-mcp-ts: HTTP serves one person in v0). `sub` must come from the transport's
+ * authentication, so every request carries a bearer token (`YEA_HTTP_TOKEN`), and a request that
+ * has it is that person (`YEA_SUB`). Anything else gets 401 before the MCP handler sees it, and a
+ * request body over `maxBody` gets 413.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from 'node:http';
-import { Readable } from 'node:stream';
+import type { Server } from 'node:http';
 import {
   type AuthInfo,
   createMcpHandler,
@@ -20,12 +15,25 @@ import {
   type McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
+import { serveFetch } from '@yea-protocol/sdk/node';
+
+/** The largest request body served by default: 1 MiB, the same cap as a YEA frame. */
+export const MAX_BODY = 1 << 20;
 
 export interface HttpAuth {
   /** The bearer token every request must carry: at least 32 characters. */
   token: string;
   /** Who a request with that token is. */
   sub: string;
+}
+
+export interface HttpAppOptions extends HttpAuth {
+  /** Listening on loopback only: check the `Host` header, against DNS rebinding. */
+  loopback: boolean;
+  /** The `clientId` in the `authInfo` the MCP handler gets. Default `yea-http`. */
+  clientId?: string;
+  /** The largest request body the MCP handler reads (default MAX_BODY); over it, 413. */
+  maxBody?: number;
 }
 
 /** The HTTP settings from the environment; throws, saying what's missing. */
@@ -72,16 +80,19 @@ const unauthorized = () =>
 
 /**
  * A fetch handler: the Host check (on loopback, against DNS rebinding), the bearer token, then
- * the MCP handler with the person's `sub`.
+ * the MCP handler with the person's `sub`. The MCP handler caps the body it reads at `maxBody`
+ * too, so the cap holds on runtimes other than `serveHttp`.
  */
 export function httpApp(
   factory: () => McpServer,
-  o: HttpAuth & { loopback: boolean },
+  o: HttpAppOptions,
 ): (req: Request) => Promise<Response> {
-  const handler = createMcpHandler(factory);
+  const handler = createMcpHandler(factory, {
+    maxRequestBodySize: o.maxBody ?? MAX_BODY,
+  });
   const authInfo: AuthInfo = {
     token: 'verified',
-    clientId: 'yea-stripe-http',
+    clientId: o.clientId ?? 'yea-http',
     scopes: [],
     extra: { sub: o.sub },
   };
@@ -106,59 +117,19 @@ export function httpApp(
   };
 }
 
-/** A Node request as a web Request. */
-function toRequest(req: IncomingMessage): Request {
-  const headers = new Headers();
-
-  for (const [k, v] of Object.entries(req.headers)) {
-    for (const value of Array.isArray(v) ? v : v === undefined ? [] : [v]) {
-      headers.append(k, value);
-    }
-  }
-
-  const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
-
-  return new Request(new URL(req.url ?? '/', 'http://localhost'), {
-    method: req.method ?? 'GET',
-    headers,
-    ...(hasBody
-      ? { body: Readable.toWeb(req) as ReadableStream, duplex: 'half' }
-      : {}),
-  } as RequestInit);
-}
-
-/** Write a web Response to a Node response, streaming its body. */
-function send(res: ServerResponse, r: Response) {
-  res.writeHead(r.status, Object.fromEntries(r.headers));
-
-  if (!r.body) {
-    res.end();
-
-    return;
-  }
-
-  Readable.fromWeb(r.body as never).pipe(res);
-}
-
-/** Serve on `host:port` until the process ends. Resolves with the server once it's listening. */
+/**
+ * Serve `app` on `host:port` until the process ends; resolves with the server once it's
+ * listening. Request headers reach the app (Streamable HTTP needs them); a body over `maxBody`
+ * (default MAX_BODY) is answered 413 before the app runs, and never kept in full.
+ */
 export function serveHttp(
   app: (req: Request) => Promise<Response>,
-  o: { port: number; host: string },
+  o: { port: number; host: string; maxBody?: number },
 ): Promise<Server> {
-  const server = createServer((req, res) => {
-    app(toRequest(req)).then(
-      (r) => {
-        send(res, r);
-      },
-      () => {
-        res.writeHead(500).end();
-      },
-    );
-  });
-
-  return new Promise((resolve) => {
-    server.listen(o.port, o.host, () => {
-      resolve(server);
-    });
+  return serveFetch(app, {
+    port: o.port,
+    host: o.host,
+    maxBody: o.maxBody ?? MAX_BODY,
+    headers: true,
   });
 }

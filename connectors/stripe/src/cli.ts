@@ -5,9 +5,14 @@
  */
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { yea } from '@yea-protocol/mcp';
+import {
+  httpApp,
+  httpAuthFrom,
+  serveHttp,
+  subOf,
+} from '@yea-protocol/mcp/http';
 import { errorMessage, isLiveKey } from './api.js';
 import { parseArgs, USAGE } from './args.js';
-import { httpApp, httpAuthFrom, serveHttp, subOf } from './http.js';
 import { readSecretKey } from './key.js';
 import { NAME, stripeServer } from './server.js';
 
@@ -55,6 +60,7 @@ async function main(argv: string[]) {
   const app = httpApp(stripeServer({ key, approvals }), {
     ...auth,
     loopback: LOOPBACK.has(args.host),
+    clientId: 'yea-stripe-http',
   });
 
   await serveHttp(app, { port: args.http, host: args.host });
