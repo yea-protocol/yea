@@ -28,6 +28,8 @@ def checked_phrase(phrase: str, whose: str = "the approval phrase") -> str:
     """A tool's phrase, checked before anyone is asked (§3): it must be printable text, since the
     person is shown it escaped and could never type the raw characters, so anything else is a
     developer error. ``whose`` names the phrase in the error. Then the ``approve`` fallback applies."""
+    if not isinstance(phrase, str):
+        raise TypeError(f"{whose} must be a string")
     if printable(phrase) != phrase:
         raise TypeError(f'{whose} has unprintable characters, so no one could type it: "{printable(phrase)}"')
     return phrase if normalize_phrase(phrase) else "approve"

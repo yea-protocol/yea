@@ -741,6 +741,10 @@ def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
         checked_phrase("﻿")
     assert checked_phrase("old\tnav") == "old\tnav"
     assert checked_phrase(" ") == "approve"
+    with pytest.raises(TypeError):  # a format character newer than Python 3.10's Unicode, refused everywhere
+        checked_phrase("go\U00013439")
+    with pytest.raises(TypeError, match="must be a string"):
+        checked_phrase(None)
     with pytest.raises(TypeError, match="unprintable characters"):
         job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "approve\n", NOW)
     assert decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", NOW))["detail"]["phrase"] == "approve"
