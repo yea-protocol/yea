@@ -59,12 +59,12 @@ assume it.
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
 | `store` | `FileStore()` for stdio (under `YEA_STORE` when set), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
-| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run with `O_EXCL`, mode `0600`, in a `0700` directory; the same file format as `mcp-ts`. A key file that is a symlink, or readable by others, is refused. Its public key is the service id, and the holder of policy and consent grants. |
+| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and writable by no one else (it's created `0700`), and that directory's parent this user's or root's and not writable by others unless sticky; without POSIX owners (Windows), as in `mcp-ts`, only the file checks apply. It's read with `O_NOFOLLOW` and checked on the open file (a regular file, this user's, readable by no one else). Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
 | `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
-| `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. It always gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly). Used for the state binding and for undo. |
+| `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. On `MCPServer` it gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly); on FastMCP, FastMCP's request context. Used for the state binding and for undo. |
 
 `approvals.service_id()` returns the server key's public key, the value to pass to
 `yea grant --to` when issuing the policy.
@@ -113,7 +113,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 |---|---|
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
-| `revert` | Optional `revert(receipt, ctx) -> Any` (sync or async). With it, plans that set `undo_window` are undoable. It gets the stored job receipt (`input`, `planHash`, `result`, …). |
+| `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,
@@ -144,7 +144,8 @@ Turns a tool that's already registered into a job without rewriting it. `config`
 `describe(input)`, which returns `{summary, effects, uses?, risk?, undo_window?}`, plus the
 optional `revert` and `confirm_with`.
 
-`guard()` installs the plugin's middleware on **that** server, once (`server.middleware` is a
+`guard()` refuses a tool that's already guarded on that server. It installs the plugin's
+middleware on **that** server, once (`server.middleware` is a
 public list the SDK lets you extend after construction). So a guard can't be forgotten or
 attached to the wrong server: the middleware only acts on `server`, and only for tools guarded
 on it.
@@ -226,7 +227,8 @@ and §6, and the same order as `mcp-ts`):
 9. **Fail closed.** Return `is_error: true` with the plans in Lens, a `job_consent_code` for
    each plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their
    terminal, then call again.* `structured_content` carries `{"plans", "codes"}`. With no
-   pinned principal there can be no valid consent, so the result has no codes and says why.
+   pinned principal there can be no valid consent, and on a `MemoryStore` `yea approve` can't
+   reach the store, so in both cases the result has no codes and says why.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then
     `consume_once(nonce, exp)`; any failure refuses with one message. The answer is the `yea`
     entry of the input responses (`ctx.input_responses` in a job, `params["inputResponses"]`
@@ -237,7 +239,8 @@ and §6, and the same order as `mcp-ts`):
     - `ask-again`: step 8 with the verdict's round;
     - `out-of-band`: step 9 for that plan;
     - `denied`, `refuse`, `not-approved`: an `is_error` result saying so.
-11. **Run.** Call `apply()`.
+11. **Run.** Call `apply()`. From the moment it returns, no result may say "nothing was run", or
+    the client would retry and run it again.
     - If it raises (for `guard`: or returns a mapping with `isError: true` or an input-required
       result): `release_all` and say the approval was used and nothing changed.
     - If it succeeds: `settle_all`, then `put_receipt` a job receipt with `id =
@@ -246,8 +249,9 @@ and §6, and the same order as `mcp-ts`):
       `None`), `tool`, `input`, `planHash`, `sub` and `result`. Return the receipt as Lens
       text with `structured_content: {"receipt", "result"}`, or for `guard`, a copy of the
       original result mapping with the receipt in `_meta`.
-    - If `settle_all` or `put_receipt` fails after `apply()` succeeded: say the action happened
-      and that undo isn't available.
+    - If anything fails after `apply()` succeeded (the result can't be turned into JSON, a
+      circular object for example, or `settle_all` or `put_receipt` fails): say the action
+      happened and that undo isn't available.
 
 ### Asking, per era
 
@@ -264,9 +268,11 @@ own `request_state` (they can't carry our nonce). So the plugin asks in one of t
   `await session.elicit_form(message=…, requested_schema=…, related_request_id=…)`, which
   takes the core's form schema as is. The state still goes through `new_state`, `check_state`
   and `consume_once` in-process, so rounds, the three-try cap and one-time use are the same;
-  ask-again loops inside the same call. Nothing is sealed, because nothing leaves the process.
-  If the connection can't send requests to the client (`NoBackChannelError`, for example on
-  some 2025 HTTP set-ups), the routine takes step 9.
+  ask-again loops inside the same call. After each answer the routine refreshes the clock and
+  re-plans, as a 2026 retry (or `mcp-ts`'s re-run) would, so a changed plan asks again and the
+  state can expire. Nothing is sealed, because nothing leaves the process. If the client can't
+  be asked from here (`NoBackChannelError` on some 2025 HTTP set-ups, or a client that claimed
+  elicitation and fails it), the routine takes step 9.
 
 The core's `build_form` output is passed as is in both eras: `message`, and
 `requested_schema` with `oneOf` const/title for the plan and a `confirm` string. `elicit_form`
@@ -284,11 +290,26 @@ per request from the reserved `_meta` on 2026). `elicitation.form`, or a bare
 `yea_mcp.fastmcp` adapts the same routine to FastMCP 4, whose own middleware is the supported
 seam:
 
-- `approvals.fastmcp_middleware()` is a `fastmcp.server.middleware.Middleware`, added with
-  `FastMCP(middleware=[...])` or `mcp.add_middleware(...)`. Its `on_call_tool` runs the routine
-  for guarded tools, and takes `preview` off with `context.copy(message=…)` before `call_next`,
-  which matters because FastMCP tool schemas set `additionalProperties: false`. Its
-  `on_list_tools` adds `preview` to guarded tools' listed schemas.
+- `job()` and `guard()` take a FastMCP server as they take an `MCPServer`, and detect it.
+- **`guard()` wraps the tool in place, as `mcp-ts` replaces its handler.** FastMCP can publish
+  one tool under many names (a `Namespace` copies it with a new name, a transform wraps it, an app
+  tool also answers to a hashed name, search proxies calls), so deciding by name in middleware
+  can't be made complete. Instead the plugin's middleware, installed first on that server, turns
+  each guarded tool in the server's own provider (every version) into an approval wrapper **in
+  place**: the same `Tool` object keeps its name, version, auth, timeout and the rest, but its
+  function becomes the wrapper, whose only way to act is a private copy of the original. So every
+  route that runs the tool runs the wrapper, including a transform that captured the object
+  before the first request. It's checked on every message, so a tool registered, or
+  re-registered, after `guard()` is wrapped before anything can call it. Parameters FastMCP fills
+  in itself (`Context`, `Depends`) are passed through but aren't part of the input.
+- **Guard a tool where it's defined.** A mounted server's tool is guarded on that server (the
+  parent's calls go through the child's own middleware); an app's tool isn't supported in v0. A
+  guard that can't be kept (the tool isn't the server's own, isn't a function tool, has its own
+  `preview`, or runs as a background task), a transform built from a copy of a guarded tool
+  taken before it was wrapped, a provider-level rule (`enable`/`disable`) that hands out copies so
+  the wrap can't reach the stored tool, or the same function registered under another name,
+  refuses **every** tool call on that server with the reason, since the unguarded tool might be
+  reachable. Each wrap is verified on a fresh listing.
 - `@approvals.job(mcp, ...)` registers the wrapper with `Tool.from_function`, which honours the
   same `__signature__`/`__annotations__` construction.
 - On 2026 it returns `InputRequiredToolResult(InputRequiredResult(...))`, the documented way for
@@ -297,13 +318,8 @@ seam:
 - `FastMCP(request_state_security=approvals.request_state_security())` seals the state.
 - Capabilities come from `session.client_capabilities`, as above (not `client_params`, which is
   `None` on 2026 when a client omits `clientInfo`).
-- **Transforms and tasks.** A transformed tool calls its parent's `run` directly and skips
-  middleware, and a transform (added later, or by a parent server that mounts this one) can
-  rename a tool. So `on_call_tool` resolves the called tool and refuses it when it is a
-  `TransformedTool` whose `parent_tool` chain reaches a guarded tool. `job()` needs no such
-  check: its routine is inside the tool function, which `parent_tool.run` still calls. A tool
-  with background tasks enabled (`task_config`, readable at registration) is refused by `job()`
-  and `guard()` until that path is checked.
+- **Tasks.** Running task tools needs FastMCP's tasks extension, whose dispatch path hasn't been
+  checked, so a guarded task-enabled tool is refused (as above) in v0.
 
 ## Results and annotations
 

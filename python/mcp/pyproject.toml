@@ -1,0 +1,50 @@
+[project]
+name = "yea-mcp"
+version = "0.1.0"
+description = "YEA for MCP servers: previews, typed approval, a signed policy, consent codes and undo for job tools (official mcp SDK, FastMCP adapter)"
+license = "Apache-2.0"
+keywords = ["ai", "agents", "mcp", "approval", "consent", "policy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+readme = "README.md"
+authors = [
+    { name = "James Solomon", email = "solomonjames@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "yea-sdk",
+    "mcp>=2.2,<3",
+]
+
+[project.optional-dependencies]
+fastmcp = ["fastmcp>=4.0.10,<5"]
+
+[project.urls]
+Homepage = "https://yea-protocol.github.io/yea/"
+Repository = "https://github.com/yea-protocol/yea"
+Specification = "https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-mcp-py.md"
+
+[tool.uv.sources]
+yea-sdk = { path = "..", editable = true }
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "yea_mcp"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "fastmcp>=4.0.10,<5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
