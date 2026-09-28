@@ -6,6 +6,8 @@
       "ts/test/**",
       "ts/scripts/**",
       "ts/*.ts",
+      "mcp/src/**",
+      "mcp/test/**",
       "examples/**",
       "bench/**",
       "deploy/demo/src/**",
@@ -65,7 +67,7 @@
   },
   "overrides": [
     {
-      "includes": ["ts/test/**", "bench/**"],
+      "includes": ["ts/test/**", "mcp/test/**", "bench/**"],
       "linter": {
         "rules": {
           "complexity": {
