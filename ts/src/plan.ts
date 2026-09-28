@@ -19,7 +19,7 @@ export interface ServiceOptions {
   proposalTtl?: number;
   handles?: HandleStore;
   now?: () => number;
-  /** Called for unexpected handler exceptions. */
+  /** Called for unexpected handler exceptions, and for EVENTs a transport could not send (they are dropped). */
   onError?: (err: unknown) => void;
 }
 

@@ -102,7 +102,10 @@ export class Service {
     return fit(r, budget, this.state.handles);
   }
 
-  /** Handle one request frame. EVENTs go to `emit`; the final reply is returned. */
+  /**
+   * Handle one request frame. EVENTs go to `emit`; the final reply is returned. An `emit` that
+   * throws (an EVENT a transport can't serialize) never fails the request: see `neverThrows`.
+   */
   async handle(
     frame: unknown,
     emit: (e: Event) => void = () => {
@@ -110,6 +113,7 @@ export class Service {
     },
   ): Promise<FinalReply> {
     const re = frameId(frame);
+    const send = neverThrows(emit, this.state.opts.onError);
 
     try {
       if (!isRequestFrame(frame)) {
@@ -129,11 +133,11 @@ export class Service {
         case 'ASK':
           return await onAsk(this.state, req, budget);
         case 'INTENT':
-          return await this.intentHandler.onIntent(req, budget, emit);
+          return await this.intentHandler.onIntent(req, budget, send);
         case 'COMMIT':
-          return await this.commitHandler.onCommit(req, budget, emit);
+          return await this.commitHandler.onCommit(req, budget, send);
         case 'UNDO':
-          return await this.undoHandler.onUndo(req, budget, emit);
+          return await this.undoHandler.onUndo(req, budget, send);
         case 'EXPAND':
           return await onExpand(this.state, req, budget);
         default:
@@ -146,6 +150,31 @@ export class Service {
 }
 
 export const service = (opts: ServiceOptions) => new Service(opts);
+
+/**
+ * `emit`, but an EVENT it throws on is dropped and reported to `onError`. A throw would otherwise
+ * fail a commit mid-`apply`, release it, and let a retry run `apply` a second time.
+ */
+function neverThrows(
+  emit: (e: Event) => void,
+  onError: ServiceOptions['onError'],
+): (e: Event) => void {
+  return (e) => {
+    try {
+      emit(e);
+    } catch (err) {
+      try {
+        onError?.(
+          new Error(`dropped an EVENT that could not be sent (re ${e.re})`, {
+            cause: err,
+          }),
+        );
+      } catch {
+        // a failing onError must not fail the request either
+      }
+    }
+  };
+}
 
 /** The envelope every request needs; verb-specific fields are checked where they are used. */
 function isRequestFrame(frame: unknown): frame is Request {
