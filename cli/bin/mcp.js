@@ -3,6 +3,7 @@
 import { parseArgs } from 'node:util';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { bridge } from '@yea-protocol/mcp/bridge';
+import { die } from '@yea-protocol/sdk/cli';
 import {
   agentKey,
   connect,
@@ -14,12 +15,6 @@ const USAGE =
   'usage: yea mcp [<url> …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]';
 
 const MODES = ['generic', 'per-capability'];
-
-/** Print `msg` on stderr and exit with status 1. @param {string} msg what went wrong */
-function die(msg) {
-  console.error(msg);
-  process.exit(1);
-}
 
 /**
  * The command's options and URLs, checked; exits on a bad one.

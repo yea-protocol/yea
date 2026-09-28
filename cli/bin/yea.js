@@ -6,5 +6,7 @@ if (process.argv[2] === 'mcp') {
 
   await runMcp(process.argv.slice(3));
 } else {
-  await import('@yea-protocol/sdk/cli');
+  const { run } = await import('@yea-protocol/sdk/cli');
+
+  await run(process.argv.slice(2));
 }

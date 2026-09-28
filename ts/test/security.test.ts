@@ -1106,7 +1106,7 @@ function yeaDo(args: string[], home: string) {
   );
 }
 
-// `yea do` (cli.ts `consentAndRetry`), test-drive and `yea approve` all decide with
+// `yea do` (cli/talk.ts `consentAndRetry`), test-drive and `yea approve` all decide with
 // `consentLines`; [C6] also runs `yea do` itself against a lying service.
 describe('consent requests (SPEC.md §6.6)', () => {
   /** A real consent_required from the pay service, and the proposal it's for. */

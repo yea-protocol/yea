@@ -1,5 +1,5 @@
 // Build-time files generated from the repo, so they never drift:
-//   .vitepress/generated/cli-help.txt   the CLI's own help text (ts/src/cli.ts HELP)
+//   .vitepress/generated/cli-help.txt   the CLI's own help text (ts/src/cli.ts help)
 //   public/llms.txt, public/llms-full.txt   for LLMs and agents (https://llmstxt.org)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -14,10 +14,11 @@ const out = (p, s) => {
 const SITE = 'https://yea-protocol.github.io/yea';
 
 const cli = read('ts/src/cli.ts');
+const HELP_START = 'const help = () => `';
 const help = cli
   .slice(
-    cli.indexOf('const HELP = `') + 14,
-    cli.indexOf('`;', cli.indexOf('const HELP = `')),
+    cli.indexOf(HELP_START) + HELP_START.length,
+    cli.indexOf('`;', cli.indexOf(HELP_START)),
   )
   .replace(/\$\{home\(\)\}/g, '~/.yea');
 

@@ -430,7 +430,7 @@ The wire protocol doesn't change. SPEC.md gets an "MCP binding" section after v0
 ```
 ts/src/approval.ts        plan hash, policy decision, form builder, state payload, answer check
 ts/src/store.ts           ApprovalStore, MemoryStore, FileStore
-ts/src/cli.ts             yea approve for job consent codes
+ts/src/cli/approve.ts     yea approve for job consent codes
 ts/test/approval.test.ts  unit tests + the shared conformance cases
 python/src/yea/approval.py, store.py, python/tests/test_approval.py   the same, for Python
 conformance/approval.json shared cases, generated from the TS reference (like the other vectors)
