@@ -23,11 +23,11 @@ async def execute(svc: Service, pid: str, auth: Verification, re: str, emit: Emi
     Spend is re-checked and reserved before anything can yield, and released on failure."""
     stored = svc._proposals[pid]
     proposal, plan = stored.proposal, stored.plan
-    held = reserve(svc, proposal, auth)
+    held, over = reserve(svc, proposal, auth)
     if held is None:
         return error_reply(re, YeaError(
             "consent_required",
-            "would pass a total limit (other commits are in flight); your principal must approve this exact proposal",
+            f"{over} would pass a total limit (other commits are in flight); your principal must approve this exact proposal",
             consent=consent_request(svc, proposal, auth.principal),
         ))
 
@@ -65,9 +65,10 @@ async def execute(svc: Service, pid: str, auth: Verification, re: str, emit: Emi
     return await asyncio.shield(task)
 
 
-def reserve(svc: Service, proposal: dict, auth: Verification) -> list[tuple[tuple[str, str], int]] | None:
+def reserve(svc: Service, proposal: dict, auth: Verification) -> tuple[list[tuple[tuple[str, str], int]] | None, str | None]:
     """Reserve the proposal's quantities against every ``total`` limit of the authorizing grant
-    (§6.3), before anything can yield. None, reserving nothing, if one would pass its limit."""
+    (§6.3), before anything can yield: what was reserved, or None (reserving nothing) and the
+    measure that would pass its limit."""
     uses = proposal.get("uses") or {}
     held: dict[tuple[str, str], int] = {}
     for bid, limit in auth.total_limits():
@@ -77,7 +78,7 @@ def reserve(svc: Service, proposal: dict, auth: Verification) -> list[tuple[tupl
         key = (bid, limit["of"])
         held[key] = value(q)  # one reservation per (block, measure), however many limits name it
         if svc._spent.get(key, 0) + held[key] > limit_value(limit):
-            return None
+            return None, limit["of"]
     for key, v in held.items():
         svc._spent[key] = svc._spent.get(key, 0) + v
-    return list(held.items())
+    return list(held.items()), None

@@ -28,8 +28,9 @@ def _parse(line: bytes) -> Any:
         return None
 
 
-def _error(re: str, code: str, message: str) -> dict:
-    return {"yea": 1, "id": "s_" + code, "re": re, "kind": "ERROR", "code": code, "message": message}
+def _error(id: str, re: str, code: str, message: str, **extra: Any) -> dict:
+    """An ERROR frame the transport sends itself, with TS's ids (``s_err``, ``s_busy``)."""
+    return {"yea": 1, "id": id, "re": re, "kind": "ERROR", "code": code, "message": message, **extra}
 
 
 def _event_line(event: dict) -> str | None:
@@ -61,7 +62,7 @@ def _final_line(reply: dict, frame: Any) -> str:
     try:
         return dumps(reply) + "\n"
     except Exception:  # noqa: BLE001 — whatever it is, the request still gets its final reply
-        return dumps({**_error(_frame_id(frame), "internal", "reply could not be serialized"), "id": "s_err"}) + "\n"
+        return dumps(_error("s_err", _frame_id(frame), "internal", "reply could not be serialized")) + "\n"
 
 
 async def _lines(reader: asyncio.StreamReader):
@@ -109,13 +110,14 @@ async def serve_stream(service: Service, reader: asyncio.StreamReader, writer: A
     try:
         async for line in _lines(reader):
             if line is None:
-                send(_error("?", "bad_frame", "frame exceeds 1 MiB"))
+                send(_error("s_err", "?", "bad_frame", "frame exceeds 1 MiB"))
                 continue
             if not line.strip():
                 continue
             frame = _parse(line)
             if len(tasks) >= MAX_INFLIGHT:
-                send(_error(_frame_id(frame), "limit", f"too many requests in flight on this connection (max {MAX_INFLIGHT})"))
+                send(_error("s_busy", _frame_id(frame), "limit",
+                            f"more than {MAX_INFLIGHT} requests in flight on this connection", retry=1))
                 continue
             t = asyncio.create_task(run(frame))
             tasks.add(t)
@@ -181,7 +183,7 @@ async def _http_conn(service: Service, path: str, reader: asyncio.StreamReader, 
         elif method == "POST" and target == path:
             length = int(headers.get("content-length", "0") or 0)
             if length > MAX_FRAME:
-                await respond(413, "text/plain", b"frames must not exceed 1 MiB\n")
+                await respond(413, "text/plain", b"frame exceeds 1 MiB")
                 # Read and drop (never buffer) what the client is still sending, so it sees the
                 # 413 instead of a reset. Give up past a bound.
                 left = min(length, 8 * MAX_FRAME)
@@ -208,7 +210,7 @@ async def _http_conn(service: Service, path: str, reader: asyncio.StreamReader, 
             writer.write(b"0\r\n\r\n")
             await writer.drain()
         else:
-            await respond(404, "text/plain", b"not a yea endpoint\n")
+            await respond(404, "text/plain", b"not a yea endpoint")
     except (ConnectionError, asyncio.IncompleteReadError, ValueError):
         pass
     finally:

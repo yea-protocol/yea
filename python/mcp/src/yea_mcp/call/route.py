@@ -63,6 +63,10 @@ async def run_job(y: Yea, job: JobDef, input: dict, preview: bool, req: Req,
         return error_result([f"✗ {printable(str(e))}; {NOTHING_RAN}"])
 
 
+MEMORY_NO_CONSENT = ("this server keeps approvals in memory, where `yea approve` can't reach them; use a client "
+                     "that can show approval forms, or run the server with a FileStore")
+
+
 async def _route(call: Call) -> Result:
     """Step 5: a first call, or a retry carrying our state. Anything else is refused."""
     kind, value = parse_state(call.req.state)
@@ -123,8 +127,7 @@ async def _fail_closed(call: Call, why: str, plans: list[HashedPlan]) -> t.CallT
     if call.y.principal.key is None:
         return consent_result(why, plans, [], call.y.principal.why)
     if is_memory_store(call.y.store):
-        return consent_result(why, plans, [], "this server keeps approvals in memory, where `yea approve` can't "
-                                              "reach them")
+        return consent_result(why, plans, [], MEMORY_NO_CONSENT)
     phrase = _phrase_for(call)
     codes = [{"planHash": hp.plan_hash,
               "code": job_consent_code(call.y.service_id, call.y.principal.key, call.input, hp, phrase(hp), call.now)}
