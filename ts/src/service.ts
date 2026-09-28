@@ -786,7 +786,7 @@ export class Service {
     };
     const existing = this.commits.get(proposal.id);
 
-    if (existing) {
+    if (existing !== undefined) {
       // Idempotent replay (SPEC §4.4): same principal and requester only; limits already spent don't block it.
       const auth = await this.authorizeRequired(req, {
         ...scope,
@@ -984,7 +984,7 @@ export class Service {
       );
     }
 
-    if (stored.undone) {
+    if (stored.undone !== undefined) {
       return replayOf(await stored.undone, req.id);
     }
 
