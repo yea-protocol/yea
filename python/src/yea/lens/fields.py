@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .lean import scalar
+from .notation import scalar
 
 _EFFECT_SYM = {"create": "+", "update": "~", "delete": "-", "send": ">", "other": "*"}
 _DURATION_UNITS = ((86400, "d"), (3600, "h"), (60, "m"))

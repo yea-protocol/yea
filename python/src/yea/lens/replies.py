@@ -7,7 +7,7 @@ import math
 from .._json import compact
 from ..uses import fmt_uses
 from .fields import effect_line, fmt_duration, fmt_time, more_line, param_list
-from .lean import _entry_lines, lean
+from .notation import _entry_lines, lean
 
 
 def _brief(r: dict) -> list[str]:
