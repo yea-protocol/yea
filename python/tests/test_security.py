@@ -56,7 +56,7 @@ def test_h1_malformed_or_aborted_http_requests_dont_crash_the_bridge():
         port = http.sockets[0].getsockname()[1]
         try:
             def raw(data):
-                with socket.create_connection(("127.0.0.1", port)) as s:
+                with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
                     s.sendall(data)
                     time.sleep(0.15)  # then hang up mid-request
 
@@ -68,7 +68,7 @@ def test_h1_malformed_or_aborted_http_requests_dont_crash_the_bridge():
                 req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data,
                                              method="POST" if data else "GET")
                 try:
-                    with urllib.request.urlopen(req) as r:
+                    with urllib.request.urlopen(req, timeout=5) as r:
                         return r.status, r.read()
                 except urllib.error.HTTPError as e:
                     return e.code, e.read()
@@ -78,16 +78,27 @@ def test_h1_malformed_or_aborted_http_requests_dont_crash_the_bridge():
             assert (await asyncio.to_thread(get, "/yea", b"x" * ((1 << 20) + 10)))[0] == 413
         finally:
             http.close()
+            await http.wait_closed()
 
     run(go())
 
 
 def test_m7_a_huge_unknown_name_doesnt_burn_cpu_on_suggestions():
-    """[M7] A 300k-character unknown capability answers fast (no edit-distance search over it)."""
+    """[M7] A 300k-character unknown capability answers fast: no edit-distance search over it."""
+    from yea.validate import closest
+
+    assert closest("a" * 300_000, ["pay.send"]) is None  # the guard itself, deterministically
     svc = pay_service()
-    t = time.perf_counter()
-    r = run(svc.handle({"yea": 1, "id": "x", "verb": "ASK", "capability": "a" * 300_000}))
-    assert r["kind"] == "ERROR" and time.perf_counter() - t < 0.1
+    for i in range(20):  # more names to compare against, so a missing guard costs seconds
+        svc.ask(f"pay.look{i}")(lambda ctx: None)
+
+    async def go():
+        t = time.perf_counter()
+        r = await svc.handle({"yea": 1, "id": "x", "verb": "ASK", "capability": "a" * 300_000})
+        return r, time.perf_counter() - t
+
+    r, took = run(go())
+    assert r["kind"] == "ERROR" and took < 0.5
 
 
 def test_u4_a_block_that_repeats_a_total_counts_each_commit_once():
@@ -168,13 +179,14 @@ def test_u8_a_risk_caveat_fails_closed_hard_on_an_unknown_proposal_risk(risk):
 @pytest.mark.parametrize("plan_risk,default", [
     ("critical", None), ("toString", None), (None, "critical"), ("critical", "low"),
 ])
-def test_u10_a_plan_with_an_unknown_risk_never_becomes_a_proposal(plan_risk, default):
+def test_u10_a_plan_with_an_unknown_risk_never_becomes_a_proposal(plan_risk, default, caplog):
     """[U10] An unknown risk on the plan or as the intent's default refuses the INTENT. (TS's null
     cases don't apply: in Python None means absent, so the default or "low" is used.)"""
     svc = Service("bad", "Bad", "bad", trust=[PRINCIPAL.public])
     svc.intent("bad.do", "do", risk=default)(lambda ctx: Plan("do it", [], apply=lambda c: None, risk=plan_risk))
     r = run(client(svc).intent("bad.do", {}))
-    assert r.kind == "ERROR" and "proposals" not in r.frame
+    assert r.kind == "ERROR" and r.code == "internal" and "proposals" not in r.frame
+    assert "unknown risk" in caplog.text  # the service's log says why (TS: onError)
 
 
 @pytest.mark.parametrize("cav", [{"risk": "toString"}, None, {"risk": "constructor"}])
@@ -195,14 +207,20 @@ def test_a1_undo_ids_outside_the_generated_format_never_reach_the_store(tmp_path
     from yea.store import FileStore
 
     store = FileStore(tmp_path / "store")
+    # A receipt-shaped file where "../../x" would land (store/receipts/../../x.json), so a missing
+    # format check would find it rather than a missing file.
+    (tmp_path / "x.json").write_text('{"id": "r_AAAAAAAAAAAA", "service": "S", "sub": "", "tool": "t", '
+                                     '"undo": {"until": 1900000000}, "summary": "planted", "effects": []}')
+    reverted = []
 
     async def go():
         for rid in ("../../x", "r_../../../etc", "r_short", "x_AAAAAAAAAAAA", 42, None):
-            out = await undo_receipt(store, rid, "S", "", 1_790_000_000, lambda r: None)
+            out = await undo_receipt(store, rid, "S", "", 1_790_000_000, reverted.append)
             assert (out.kind, out.why) == ("refused", "no such receipt"), rid
-        assert await store.get_receipt("../x") is None  # refused before any path is built
+        assert await store.get_receipt("../../x") is None  # refused before any path is built
 
     run(go())
+    assert reverted == []
     assert not (tmp_path / "store").exists() or list((tmp_path / "store").rglob("*")) == []
 
 
