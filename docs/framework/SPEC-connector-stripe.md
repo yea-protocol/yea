@@ -216,8 +216,9 @@ What that means in practice:
 
 Customer names, emails and descriptions are set by customers, so they're untrusted. In
 summaries and effects they're quoted, capped at 80 characters, and passed through the same
-escaping `yea approve` uses (`printable`): control, line-separator and bidi characters become
-visible escapes. That way a name can't forge a line or a fake `[test]`.
+escaping `yea approve` uses (`printable`): control, format, line/paragraph-separator and
+invisible filler characters are shown as `\u{…}` escapes. That way a name can't forge a line
+or a fake `[test]`.
 
 ### Ambiguity
 
