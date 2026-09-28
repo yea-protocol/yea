@@ -3,7 +3,7 @@
  * guide (site/guide/mcp-typescript.md). The guide shows its regions in order (the README copies
  * `guard`), and mcp/test/quickstart.test.ts drives them with in-memory clients.
  *
- *   FILES_ROOT=~/scratch npx tsx examples/mcp-quickstart.ts     # or, on Node 22.18+: node …
+ *   FILES_ROOT=~/yea-scratch npx tsx examples/mcp-quickstart.ts     # or, on Node 22.18+: node …
  */
 // #region imports
 import { randomUUID } from 'node:crypto';
@@ -25,6 +25,7 @@ import {
   resolve,
   sep,
 } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { type Approvals, yea } from '@yea-protocol/mcp';
@@ -53,6 +54,37 @@ async function inside(root: string, path: string): Promise<string> {
   }
 
   return full;
+}
+
+/**
+ * The folder the tools may change: FILES_ROOT, which must exist and must not hold this server's
+ * own files, or `delete_file` could remove them.
+ */
+export async function filesRoot(
+  env: NodeJS.ProcessEnv = process.env,
+  self = fileURLToPath(import.meta.url),
+): Promise<string> {
+  const hint =
+    'set FILES_ROOT to a folder of files the tools may change, such as "$HOME/yea-scratch"';
+
+  if (!env.FILES_ROOT) {
+    throw new Error(`FILES_ROOT is not set: ${hint}`);
+  }
+
+  const root = await realpath(env.FILES_ROOT).catch(() => {
+    throw new Error(
+      `FILES_ROOT ${env.FILES_ROOT} doesn't exist: create it first`,
+    );
+  });
+  const rel = relative(root, await realpath(self));
+
+  if (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) {
+    throw new Error(
+      `FILES_ROOT ${root} holds this server's own files: ${hint}`,
+    );
+  }
+
+  return root;
 }
 // #endregion root
 
@@ -138,7 +170,7 @@ function addMoveToTrash(server: McpServer, approvals: Approvals, root: string) {
 /** A fresh server each time: the SDK may call the factory more than once. */
 export function createServer(
   approvals: Approvals,
-  root = process.env.FILES_ROOT ?? process.cwd(), // the only folder the tools touch
+  root: string, // the only folder the tools touch
 ): McpServer {
   const server = new McpServer(
     { name: 'files', version: '1.0.0' },
@@ -154,8 +186,12 @@ export function createServer(
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // #region start
+  const root = await filesRoot().catch((e: Error) => {
+    console.error(`files: ${e.message}`); // refuse to start
+    process.exit(1);
+  });
   const approvals = yea({ name: 'files', transport: 'stdio' }); // once per process
 
-  serveStdio(() => createServer(approvals));
+  serveStdio(() => createServer(approvals, root));
   // #endregion start
 }

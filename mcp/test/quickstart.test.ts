@@ -3,10 +3,17 @@
  * guide says, step by step: the guarded tool asks, the job undoes, a policy lets only the
  * undoable job run on its own, and a client that can't ask gets consent codes.
  */
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createServer } from '../../examples/mcp-quickstart.js';
+import { createServer, filesRoot } from '../../examples/mcp-quickstart.js';
 import {
   approve,
   connect,
@@ -236,3 +243,43 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
     });
   },
 );
+
+describe('start: FILES_ROOT', () => {
+  it('is required, so the tools never default to the folder the server starts in', async () => {
+    await expect(filesRoot({})).rejects.toThrow(/FILES_ROOT is not set/);
+  });
+
+  it('must exist', async () => {
+    await expect(
+      filesRoot({ FILES_ROOT: join(tmp(), 'missing') }),
+    ).rejects.toThrow(/doesn't exist/);
+  });
+
+  it("can't hold the server's own files", async () => {
+    const project = tmp();
+    const self = join(project, 'server.ts');
+
+    writeFileSync(self, '');
+    await expect(filesRoot({ FILES_ROOT: project }, self)).rejects.toThrow(
+      /holds this server's own files/,
+    );
+    // nor any folder above them
+    await expect(
+      filesRoot({ FILES_ROOT: join(project, '..') }, self),
+    ).rejects.toThrow(/holds this server's own files/);
+    // the example itself, run from the repo
+    await expect(
+      filesRoot({
+        FILES_ROOT: fileURLToPath(new URL('../..', import.meta.url)),
+      }),
+    ).rejects.toThrow(/holds this server's own files/);
+  });
+
+  it('is the resolved folder when it is somewhere else', async () => {
+    const scratch = tmp();
+
+    expect(await filesRoot({ FILES_ROOT: scratch })).toBe(
+      realpathSync(scratch),
+    );
+  });
+});
