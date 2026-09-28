@@ -34,10 +34,12 @@ def _check(sig: inspect.Signature, name: str) -> None:
             raise TypeError(f"job {name!r}: the plan function has its own preview parameter, which job() adds")
 
 
-def job_wrapper(plan_fn: Callable[..., Any], name: str, context_type: type, run: Runner) -> Callable[..., Any]:
+def job_wrapper(plan_fn: Callable[..., Any], name: str, context_type: type, run: Runner,
+                injected: frozenset[str] = frozenset()) -> Callable[..., Any]:
     """A tool function with the plan function's parameters plus ``preview: bool = False`` and a
     context parameter (the plan function's own, if it declares one). Calling it builds the JSON
-    input and hands the routine a way to call the plan function."""
+    input and hands the routine a way to call the plan function. ``injected`` names parameters
+    the SDK fills in itself (FastMCP ``Depends``): passed through, but not part of the input."""
     sig = inspect.signature(plan_fn)
     _check(sig, name)
     hints = typing.get_type_hints(plan_fn)
@@ -49,12 +51,13 @@ def job_wrapper(plan_fn: Callable[..., Any], name: str, context_type: type, run:
     params = [*own, _P("preview", _P.KEYWORD_ONLY, default=False, annotation=StrictBool)]
     if own_ctx is None:
         params.append(_P(ctx_name, _P.KEYWORD_ONLY, annotation=context_type))
-    adapters = {p.name: TypeAdapter(hints.get(p.name, Any)) for p in sig.parameters.values() if p.name != own_ctx}
+    skip = {own_ctx, *injected}
+    adapters = {p.name: TypeAdapter(hints.get(p.name, Any)) for p in sig.parameters.values() if p.name not in skip}
 
     async def tool(**kw: Any) -> Any:
         ctx = kw[ctx_name] if own_ctx else kw.pop(ctx_name)
         preview = kw.pop("preview", False)
-        input = {k: adapters[k].dump_python(v, mode="json", by_alias=True) for k, v in kw.items() if k != own_ctx}
+        input = {k: adapters[k].dump_python(v, mode="json", by_alias=True) for k, v in kw.items() if k not in skip}
 
         async def plan() -> Any:
             out = plan_fn(**kw)

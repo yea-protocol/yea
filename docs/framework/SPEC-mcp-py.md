@@ -291,19 +291,23 @@ per request from the reserved `_meta` on 2026). `elicitation.form`, or a bare
 seam:
 
 - `job()` and `guard()` take a FastMCP server as they take an `MCPServer`, and detect it.
-- **`guard()` replaces the tool, as `mcp-ts` does.** FastMCP can publish one tool under many
-  names (a `Namespace` copies it with a new name, a transform wraps it, an app tool also answers
-  to a hashed name, search proxies calls), so deciding by name in middleware can't be made
-  complete. Instead the plugin's middleware, installed first on that server, keeps each guarded
-  tool in the server's own provider replaced by an approval wrapper: the original's signature
-  plus `preview`, whose only way to act is the original's `run`. Every route that runs the tool
-  runs the wrapper. The replacement is checked on every message, so a tool registered, or
-  re-registered, after `guard()` is wrapped before anything can call it.
+- **`guard()` wraps the tool in place, as `mcp-ts` replaces its handler.** FastMCP can publish
+  one tool under many names (a `Namespace` copies it with a new name, a transform wraps it, an app
+  tool also answers to a hashed name, search proxies calls), so deciding by name in middleware
+  can't be made complete. Instead the plugin's middleware, installed first on that server, turns
+  each guarded tool in the server's own provider (every version) into an approval wrapper **in
+  place**: the same `Tool` object keeps its name, version, auth, timeout and the rest, but its
+  function becomes the wrapper, whose only way to act is a private copy of the original. So every
+  route that runs the tool runs the wrapper, including a transform that captured the object
+  before the first request. It's checked on every message, so a tool registered, or
+  re-registered, after `guard()` is wrapped before anything can call it. Parameters FastMCP fills
+  in itself (`Context`, `Depends`) are passed through but aren't part of the input.
 - **Guard a tool where it's defined.** A mounted server's tool is guarded on that server (the
   parent's calls go through the child's own middleware); an app's tool isn't supported in v0. A
   guard that can't be kept (the tool isn't the server's own, isn't a function tool, has its own
-  `preview`, or runs as a background task) refuses **every** tool call on that server with the
-  reason, since the unguarded tool might be reachable by another name.
+  `preview`, or runs as a background task), or a transform built from a copy of a guarded tool
+  taken before it was wrapped, refuses **every** tool call on that server with the reason, since
+  the unguarded tool might be reachable by another name.
 - `@approvals.job(mcp, ...)` registers the wrapper with `Tool.from_function`, which honours the
   same `__signature__`/`__annotations__` construction.
 - On 2026 it returns `InputRequiredToolResult(InputRequiredResult(...))`, the documented way for

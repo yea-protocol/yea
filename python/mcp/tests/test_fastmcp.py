@@ -110,7 +110,8 @@ async def test_a_task_enabled_tool_cant_be_wrapped(world, fm):
 
     guard = FastMCPGuard(world.approvals._y, fm)
     with pytest.raises(ValueError, match="background task"):
-        guard._wrap(Tool.from_function(slow, task=True), Guarded(lambda a: {"summary": "S", "effects": []}, None, None))
+        guard._wrap_in_place(Tool.from_function(slow, task=True),
+                             Guarded(lambda a: {"summary": "S", "effects": []}, None, None))
 
 
 def sender(world, fm, done):
@@ -261,3 +262,77 @@ async def test_a_tool_registered_or_re_registered_later_is_wrapped(world, fm):
     async with Client(fm) as c:
         r = await c.call_tool("x_wipe", {"target": "db"}, raise_on_error=False)
     assert r.is_error and "yea approve" in text(r) and calls == []
+
+
+@pytest.mark.parametrize("before_guard", [True, False])
+async def test_a_transform_built_before_the_first_message_still_needs_approval(world, fm, before_guard):
+    """The wrap keeps the same Tool object, so a transform that captured it early runs the wrapper."""
+    calls = []
+
+    @fm.tool
+    def wipe(target: str) -> str:
+        calls.append(target)
+        return "wiped"
+
+    def guard():
+        world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "Wipe", "effects": [], "risk": "low"})
+
+    if not before_guard:
+        guard()
+    original = await fm.get_tool("wipe")  # no message has been handled yet
+    fm.add_tool(TransformedTool.from_tool(original, name="wipe2", transform_args={"target": ArgTransform(name="t")}))
+    if before_guard:
+        guard()
+    async with Client(fm) as c:
+        r = await c.call_tool("wipe2", {"t": "db"}, raise_on_error=False)
+    assert r.is_error and "yea approve" in text(r) and calls == []
+
+
+async def test_guard_keeps_the_tools_auth_and_versions(world, fm):
+    calls = []
+
+    def deny_all(ctx):
+        return False
+
+    @fm.tool(auth=deny_all)
+    def secret(x: int) -> str:
+        calls.append(("secret", x))
+        return "s"
+
+    @fm.tool(version="1")
+    def wipe(target: str) -> str:
+        calls.append(("v1", target))
+        return "w1"
+
+    @fm.tool(name="wipe", version="2")
+    def wipe2(target: str) -> str:
+        calls.append(("v2", target))
+        return "w2"
+
+    world.approvals.guard(fm, "secret", describe=lambda a: {"summary": "S", "effects": [], "risk": "low"})
+    world.approvals.guard(fm, "wipe", describe=lambda a: {"summary": "W", "effects": [], "risk": "low"})
+    async with Client(fm, elicitation_handler=person([])) as c:
+        listed = [tl.name for tl in await c.list_tools()]
+        hidden = await c.call_tool("secret", {"x": 1}, raise_on_error=False)
+        pinned = await c.call_tool("wipe", {"target": "db"}, version="1")
+    assert "secret" not in listed and hidden.is_error and ("secret", 1) not in calls  # auth still applies
+    assert calls == [("v1", "db")] and text(pinned) == "w1"  # the pinned version ran, after approval
+
+
+async def test_a_tool_with_injected_dependencies_can_be_guarded(world, fm):
+    from fastmcp.dependencies import Depends
+
+    calls = []
+
+    def db() -> dict:
+        return {"conn": object()}
+
+    @fm.tool
+    def drop(table: str, conn: dict = Depends(db)) -> str:
+        calls.append((table, "conn" in conn))
+        return "dropped"
+
+    world.approvals.guard(fm, "drop", describe=lambda a: {"summary": f"Drop {a['table']}", "effects": [], "risk": "low"})
+    async with Client(fm, elicitation_handler=person([])) as c:
+        r = await c.call_tool("drop", {"table": "users"})
+    assert calls == [("users", True)] and r.meta["dev.yea/receipt"]["input"] == {"table": "users"}

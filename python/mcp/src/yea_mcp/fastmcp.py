@@ -70,18 +70,19 @@ def _with_note(r: ToolResult, note: str) -> ToolResult:
 
 
 class FastMCPGuard(Middleware):
-    """One per FastMCP server, installed first by ``guard()``. It keeps each guarded tool in the
-    server's own provider replaced by an approval wrapper: the wrapper has the original's
-    signature plus ``preview``, and its only way to act is the original's ``run``. Every route that
-    runs the tool (a ``Namespace`` copy, a transform, a hashed name, search) runs the wrapper, so
-    nothing depends on which name a call used. The replacement is checked on every message, so a
-    tool registered or re-registered later is wrapped before anything can call it."""
+    """One per FastMCP server, installed first by ``guard()``. It turns each guarded tool in the
+    server's own provider (every version) into an approval wrapper **in place**: the same ``Tool``
+    object keeps its name, version, auth, timeout and everything else, but its function becomes
+    the wrapper, whose only way to act is a private copy of the original. So every route that runs
+    the tool, including a transform that captured the object earlier, runs the wrapper. It's
+    checked on every message, so tools registered or re-registered later are wrapped before
+    anything can call them."""
 
     def __init__(self, y: Yea, server: FastMCP):
         self.y = y
         self.server = server
         self.tools: dict[str, Guarded] = {}
-        self._wrappers: dict[str, Tool] = {}
+        self._originals: set[int] = set()  # id() of original functions, to spot copies taken before wrapping
         self._problem: str | None = None  # a guard that can't be kept: every tool call is refused
 
     def add(self, name: str, g: Guarded) -> None:
@@ -106,58 +107,82 @@ class FastMCPGuard(Middleware):
         return await call_next(context)
 
     async def _ensure_wrapped(self) -> None:
-        provider = self.server.local_provider
-        for name, g in self.tools.items():
-            current = await provider.get_tool(name)
-            if current is not None and current is self._wrappers.get(name):
-                continue
-            if current is None:
+        tools = list(await self.server.local_provider.list_tools())  # every version, the stored objects
+        present = {tool.name for tool in tools}
+        for name in self.tools:
+            if name not in present:
                 raise ValueError(f"guard(): {name} isn't one of this server's own tools; guard a mounted server's or "
                                  "an app's tool on the server or app that defines it")
-            wrapper = self._wrap(current, g)
-            provider.remove_tool(name)
-            provider.add_tool(wrapper)
-            self._wrappers[name] = await provider.get_tool(name) or wrapper
+        for tool in tools:
+            if tool.name in self.tools and not _wrapped(tool):
+                self._wrap_in_place(tool, self.tools[tool.name])  # no await: nothing runs mid-swap
+        for tool in tools:
+            self._check_parents(tool)
 
-    def _wrap(self, original: Tool, g: Guarded) -> Tool:
-        fn = getattr(original, "fn", None)
+    def _check_parents(self, tool: Any) -> None:
+        """A transform built from a copy of a guarded tool taken before it was wrapped would run
+        the original: refuse until it's rebuilt."""
+        parent = getattr(tool, "parent_tool", None)
+        while parent is not None:
+            fn = getattr(parent, "fn", None)
+            if (parent.name in self.tools or id(fn) in self._originals) and not _wrapped(parent):
+                raise ValueError(f"{tool.name} was built from {parent.name} before the guard wrapped it; build it "
+                                 "after the first request, or from the tool the server returns now")
+            parent = getattr(parent, "parent_tool", None)
+
+    def _wrap_in_place(self, tool: Any, g: Guarded) -> None:
+        fn = getattr(tool, "fn", None)
         if fn is None:
-            raise ValueError(f"guard(): {original.name} isn't a function tool, so it can't be wrapped")
-        if getattr(original, "task_config", None) is not None and original.task_config.supports_tasks():
-            raise ValueError(f"guard(): {original.name} runs as a background task, which a guard doesn't support yet")
-        if "preview" in ((original.parameters or {}).get("properties") or {}):
-            raise ValueError(f"guard(): {original.name} has its own preview argument, which the guard would shadow")
-        has_output = original.output_schema is not None
-        job = JobDef(original.name, None, g.revert, g.confirm_with, guarded=True,
+            raise ValueError(f"guard(): {tool.name} isn't a function tool, so it can't be wrapped")
+        if getattr(tool, "task_config", None) is not None and tool.task_config.supports_tasks():
+            raise ValueError(f"guard(): {tool.name} runs as a background task, which a guard doesn't support yet")
+        if "preview" in ((tool.parameters or {}).get("properties") or {}):
+            raise ValueError(f"guard(): {tool.name} has its own preview argument, which the guard would shadow")
+        inner = tool.model_copy()  # the original behaviour, reachable only through apply
+        injected = _injected(fn)
+        has_output = tool.output_schema is not None
+        job = JobDef(tool.name, None, g.revert, g.confirm_with, guarded=True,
                      own_results_are_errors=lambda: has_output, failed=_failed, with_receipt=_with_receipt,
                      with_note=_with_note)
 
         async def run(input: dict, plan: Any, preview: bool, ctx: FastContext) -> Any:
             return await run_job(self.y, job, input, preview, _req(ctx), plan)
 
-        wrapper_fn = job_wrapper(_plan_fn(original, g), original.name, FastContext, run)
-        given = original.annotations.model_dump(by_alias=True, exclude_none=True) if original.annotations else {}
-        return Tool.from_function(
-            wrapper_fn, name=original.name, title=original.title, description=original.description,
-            tags=set(original.tags or ()), annotations=t.ToolAnnotations(**job_annotations(given)),
-            output_schema=original.output_schema,
-            meta={**(original.meta or {}), **job_meta(None, g.revert is not None)})
+        wrapper_fn = job_wrapper(_plan_fn(inner, g, injected), tool.name, FastContext, run, frozenset(injected))
+        wrapper_fn.__yea_guard__ = True  # type: ignore[attr-defined]
+        shape = Tool.from_function(wrapper_fn, name=tool.name)  # how FastMCP derives the listed parameters
+        given = tool.annotations.model_dump(by_alias=True, exclude_none=True) if tool.annotations else {}
+        self._originals.add(id(fn))
+        tool.fn = wrapper_fn
+        tool.parameters = shape.parameters
+        tool.annotations = t.ToolAnnotations(**job_annotations(given))
+        tool.meta = {**(tool.meta or {}), **job_meta(None, g.revert is not None)}
 
 
-def _plan_fn(original: Tool, g: Guarded) -> Callable[..., Any]:
+def _wrapped(tool: Any) -> bool:
+    return getattr(getattr(tool, "fn", None), "__yea_guard__", False) is True
+
+
+def _injected(fn: Callable[..., Any]) -> set[str]:
+    """Parameters FastMCP fills in itself (``Context``, ``Depends(...)``): not part of the input."""
+    from fastmcp.server.dependencies import without_injected_parameters
+
+    kept = set(inspect.signature(without_injected_parameters(fn)).parameters)
+    return set(inspect.signature(fn).parameters) - kept
+
+
+def _plan_fn(inner: Any, g: Guarded, injected: set[str]) -> Callable[..., Any]:
     """A plan function with the original's signature: it asks ``describe`` for the plan, whose
-    ``apply`` is the original's own ``run`` with the same arguments."""
-    fn = original.fn  # type: ignore[attr-defined]
-    hints = typing.get_type_hints(fn)
-    context_params = {n for n, a in hints.items() if inspect.isclass(a) and issubclass(a, FastContext)}
+    ``apply`` is the private copy of the original, run with the same arguments."""
+    fn = inner.fn
 
     async def plan(**kw: Any) -> list[Plan]:
-        args = {k: v for k, v in kw.items() if k not in context_params}
+        args = {k: v for k, v in kw.items() if k not in injected}
         d = g.describe(to_jsonable_python(args, by_alias=True))
         d = await d if inspect.isawaitable(d) else d
-        return [Plan(d["summary"], d["effects"], apply=lambda: original.run(args), uses=d.get("uses"),
+        return [Plan(d["summary"], d["effects"], apply=lambda: inner.run(args), uses=d.get("uses"),
                      risk=d.get("risk"), undo_window=d.get("undo_window"))]
 
     plan.__signature__ = inspect.signature(fn)  # type: ignore[attr-defined]
-    plan.__annotations__ = hints
+    plan.__annotations__ = typing.get_type_hints(fn)
     return plan
