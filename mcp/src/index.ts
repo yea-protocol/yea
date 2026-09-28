@@ -53,7 +53,7 @@ export interface YeaOptions {
   /** The server's name, `[a-z0-9._-]{1,64}`: names its key file and appears in consent codes. */
   name: string;
   transport: 'stdio' | 'http';
-  /** Default: a FileStore (`YEA_STORE`, else `~/.yea/store`) for stdio, a MemoryStore for HTTP. */
+  /** Default: a FileStore (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`) for stdio, a MemoryStore for HTTP. */
   store?: ApprovalStore;
   /** HTTP only: a promise that one process serves every request. HTTP on a MemoryStore must set it. */
   singleProcess?: boolean;

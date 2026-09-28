@@ -194,7 +194,7 @@ export class FileStore implements ApprovalStore {
 
 /**
  * The store the MCP servers and the `yea` command share: `YEA_STORE` if set, else
- * `~/.yea/store`. An empty `YEA_STORE` counts as unset.
+ * `$YEA_HOME/store`, else `~/.yea/store`. An empty `YEA_STORE` counts as unset.
  */
 export const defaultFileStore = () =>
   new FileStore(process.env.YEA_STORE || undefined);

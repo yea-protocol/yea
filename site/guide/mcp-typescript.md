@@ -233,7 +233,7 @@ Ask the user to run `yea approve <code>` in their terminal, then call again.
   code for [1]: pc1.eyJjYXBhYmlsaXR5Ijoi…
 ```
 
-`yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
+`yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
 
 So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account, and that's the case our tests cover. With the key on another OS user, that user would run it on the server's machine with `YEA_STORE` set to the server's store; we haven't yet tested a store written by two OS users. A key on another device can't answer a consent code yet.
 

@@ -738,3 +738,28 @@ def test_a_whole_number_float_budget_counts_like_the_integer():
             assert est(lens(r)) > 300, ignored
 
     run(go())
+
+
+def test_the_http_budget_query_reads_like_a_frame_budget():
+    """?budget= follows the frame rule: 800.0 counts; -5, 0x10 and a non-ASCII digit get the
+    default instead of a crash or a surprise (#148)."""
+    from yea.transport import _query_budget
+
+    assert [_query_budget(t) for t in ("800", "800.0", "1e3")] == [800, 800, 1000]
+    assert [_query_budget(t) for t in ("", "-5", "0.5", "inf", "nan", "0x10", "٣", "²")] == [None] * 8
+
+    async def go():
+        http = await serve_http(shop(), "127.0.0.1", 0)
+        port = http.sockets[0].getsockname()[1]
+        try:
+            def brief(q):
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/yea{q}") as r:
+                    b = {k: v for k, v in json.loads(r.read()).items() if k != "id"}  # ids and handles are random
+                    return {**b, "more": [{k: v for k, v in m.items() if k != "handle"} for m in b.get("more", [])]}
+            small, same, default = await asyncio.gather(*(asyncio.to_thread(brief, q) for q in (
+                "?budget=40", "?budget=40.0", "?budget=%C2%B2")))
+            assert small == same and small != default  # ² used to close the connection with no response
+        finally:
+            http.close()
+
+    run(go())

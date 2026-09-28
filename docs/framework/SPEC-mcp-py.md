@@ -57,7 +57,7 @@ assume it.
 |---|---|---|
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file, and is the request-state audience. |
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
-| `store` | `FileStore()` for stdio (under `YEA_STORE` when set), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
+| `store` | `FileStore()` for stdio (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
 | `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and writable by no one else (it's created `0700`), and that directory's parent this user's or root's and not writable by others unless sticky; without POSIX owners (Windows), as in `mcp-ts`, only the file checks apply. It's read with `O_NOFOLLOW` and checked on the open file (a regular file, this user's, readable by no one else). Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
