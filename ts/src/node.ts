@@ -340,3 +340,5 @@ export async function connect(
 ): Promise<Client> {
   return new Client(await transport(url, { tls: opts.tls }), opts);
 }
+
+export { checkKeyFile, FileStore, readPinnedKey } from './filestore.js';

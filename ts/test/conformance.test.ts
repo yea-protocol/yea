@@ -84,6 +84,113 @@ describe('conformance vectors', () => {
       expect(P.isUses(w.uses), w.name).toBe(w.valid);
     }
   });
+  it('approval', async () => {
+    const v = load('approval');
+
+    type HP = P.HashedPlan;
+
+    const asHashed = (x: HP): HP => ({
+      ...x,
+      plan: { ...x.plan, apply: () => null },
+    });
+
+    for (const h of v.hash) {
+      if (h.error) {
+        expect(
+          () => P.planPreimage(h.tool.name, h.input, h.plan, 'low'),
+          h.name,
+        ).toThrow();
+
+        continue;
+      }
+
+      const [hp] = await P.hashPlans(h.tool, h.input, [
+        { ...h.plan, apply: () => null },
+      ]);
+
+      expect([hp.planHash, hp.risk, hp.undoable], h.name).toEqual([
+        h.planHash,
+        h.risk,
+        h.undoable,
+      ]);
+    }
+
+    for (const c of v.decide) {
+      const used = (k: P.LedgerKey) =>
+        k.block === v.policyBlockId && c.used[k.of]
+          ? P.exact(c.used[k.of])
+          : 0n;
+      const d = await P.decide(c.plans.map(asHashed), c.policy, used, c.now);
+      const got = {
+        kind: d.kind,
+        ...('why' in d ? { why: d.why } : {}),
+        ...(d.kind === 'run'
+          ? {
+              planHash: d.plan.planHash,
+              reserve: d.reserve.map((r) => ({
+                key: r.key,
+                amount: String(r.amount),
+                max: String(r.max),
+              })),
+            }
+          : {}),
+      };
+
+      expect(got, c.name).toEqual(c.expect);
+    }
+
+    for (const c of v.phrases) {
+      expect(P.phraseMatches(c.typed, c.phrase), JSON.stringify(c.typed)).toBe(
+        c.match,
+      );
+    }
+
+    for (const c of v.forms) {
+      const f = P.buildForm(
+        c.plans.map(asHashed),
+        c.why,
+        c.policy,
+        (hp) => c.phrases[hp.planHash],
+      );
+
+      expect(f, c.name).toEqual(c.expect);
+    }
+
+    for (const c of v.states) {
+      expect(P.checkState(c.state, c.expect) !== null, c.name).toBe(c.valid);
+    }
+
+    for (const c of v.judge) {
+      const verdict = P.judgeAnswer(c.state, c.answer, {
+        recomputed: c.recomputed.map(asHashed),
+        policy: c.policy,
+        phraseFor: (hp) => c.phrases[hp.planHash],
+      });
+      const got =
+        'plan' in verdict
+          ? { ...verdict, plan: verdict.plan.planHash }
+          : verdict;
+
+      expect(got, c.name).toEqual(c.expect);
+    }
+
+    for (const c of v.tightening) {
+      expect(P.readTightening(c.file), c.name).toEqual(c.expect);
+    }
+
+    const cc = v.consentCode;
+
+    expect(
+      P.jobConsentCode({
+        server: cc.server,
+        principal: cc.principal,
+        input: cc.input,
+        hp: asHashed(cc.plan),
+        phrase: cc.phrase,
+        now: cc.now,
+      }),
+    ).toBe(cc.code);
+  });
   it('estimate', () => {
     for (const c of load('estimate')) {
       expect(P.est(c.text)).toBe(c.est);

@@ -2,9 +2,12 @@
 import { createInterface, type Interface } from 'node:readline/promises';
 /** yea — command line for the YEA protocol. */
 import { parseArgs } from 'node:util';
+import { planHashOf } from './approval.js';
+import { phraseMatches } from './ask.js';
 import type { Client } from './client.js';
 import type { KeyPair } from './crypto.js';
 import { proposalHash } from './crypto.js';
+import { FileStore } from './filestore.js';
 import {
   type Caveat,
   consentGrant,
@@ -15,7 +18,7 @@ import {
   issueGrant,
 } from './grants.js';
 import { agentKey, home, loadGrants, principalKey, saveGrant } from './home.js';
-import { effectLine, fmtTime, lean, lens } from './lens.js';
+import { effectLine, fmtDuration, fmtTime, lean, lens } from './lens.js';
 import { runMcpBridge } from './mcp.js';
 import { connect } from './node.js';
 import {
@@ -25,8 +28,8 @@ import {
   listServices,
   removeService,
 } from './setup.js';
-import type { ConsentRequest, Proposal, Risk, Verb } from './types.js';
-import { isLimit, isUses, type Limit } from './uses.js';
+import type { ConsentRequest, Effect, Proposal, Risk, Verb } from './types.js';
+import { fmtUses, isLimit, isUses, type Limit } from './uses.js';
 
 const HELP = `yea — the protocol agents speak
 
@@ -406,6 +409,10 @@ async function cmdApprove(rest: string[]) {
     die(`this consent is for principal ${consent.principal}, not ${p.public}`);
   }
 
+  if (isJobDetail(consent.detail)) {
+    return approveJob(p, consent, consent.detail);
+  }
+
   const agent = o.to ?? (await agentKey())?.public ?? die('no agent key');
 
   await showConsent(consent);
@@ -427,6 +434,85 @@ async function cmdApprove(rest: string[]) {
   console.log(
     '✓ approved: a one-time consent for this proposal only. The agent can commit now.',
   );
+}
+
+/** A job tool's consent code carries the whole plan and the phrase to type (SPEC-approval §6). */
+interface JobDetail {
+  job: Record<string, unknown> & { summary: string; effects: Effect[] };
+  phrase: string;
+}
+
+function isJobDetail(d: unknown): d is JobDetail {
+  const j = (d as Partial<JobDetail> | null)?.job;
+
+  return (
+    !!j &&
+    typeof j === 'object' &&
+    typeof j.summary === 'string' &&
+    Array.isArray(j.effects) &&
+    typeof (d as JobDetail).phrase === 'string'
+  );
+}
+
+/**
+ * Approve one job plan for an MCP server (SPEC-approval §6): re-check the plan hash, show the
+ * plan, have the person type its phrase, and store a consent signed to the server's key.
+ */
+async function approveJob(p: KeyPair, consent: ConsentRequest, d: JobDetail) {
+  const hash = await planHashOf(d.job);
+
+  if (
+    hash !== consent.hash ||
+    hash !== consent.proposal ||
+    (d.job.uses !== undefined && !isUses(d.job.uses))
+  ) {
+    die("✗ this consent code's plan doesn't match its hash: refusing");
+  }
+
+  console.log(`at server ${consent.service}, tool ${consent.capability}:`);
+  console.log(jobLines(d.job).join('\n'));
+  console.log(`  approval expires: ${fmtTime(consent.expires)}`);
+
+  if (!process.stdin.isTTY) {
+    die('✗ approval needs an interactive terminal: a human has to confirm');
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const typed = await rl.question(`\nto approve, type: ${d.phrase}\n› `);
+
+  rl.close();
+
+  if (!phraseMatches(typed, d.phrase)) {
+    die('not approved');
+  }
+
+  const grant = await consentGrant({
+    principal: p,
+    agent: consent.service,
+    consent,
+  });
+
+  await new FileStore().putConsent(hash, grant);
+  console.log(
+    '✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.',
+  );
+}
+
+/** The plan as the person reads it: summary, effects, then what it uses, risk and undo. */
+function jobLines(job: JobDetail['job']): string[] {
+  const uses =
+    isUses(job.uses) && Object.keys(job.uses).length
+      ? `uses: ${fmtUses(job.uses)} · `
+      : '';
+  const undo =
+    typeof job.undoWindow === 'number' ? fmtDuration(job.undoWindow) : 'never';
+
+  return [
+    job.summary,
+    ...job.effects.map((e) => `  ${effectLine(e)}`),
+    `  ${uses}risk: ${String(job.risk)} · undo: ${undo}`,
+    `  input: ${JSON.stringify(job.input)}`,
+  ];
 }
 
 /** Print what a consent code asks for, refusing if its proposal details don't match its hash. */

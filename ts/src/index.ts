@@ -1,3 +1,44 @@
+export {
+  atLeast,
+  type Decision,
+  decide,
+  type HashedPlan,
+  hashPlans,
+  isReceiptId,
+  type JobPlan,
+  newReceiptId,
+  type Policy,
+  planHashOf,
+  planPreimage,
+  type ReserveFor,
+  readTightening,
+  reserveAll,
+  type Tightening,
+  type UndoOutcome,
+  undoJob,
+} from './approval.js';
+
+export {
+  type ApprovalAnswer,
+  type ApprovalForm,
+  type ApprovalState,
+  buildForm,
+  CONSENT_TTL,
+  checkState,
+  DEFAULT_PHRASE,
+  inputHashOf,
+  type JudgeContext,
+  jobConsentCode,
+  judgeAnswer,
+  MAX_ROUNDS,
+  newState,
+  normalizePhrase,
+  type PhraseFor,
+  phraseMatches,
+  STATE_TTL,
+  type Verdict,
+} from './ask.js';
+
 export { b64u, unb64u } from './b64.js';
 
 export {
@@ -77,6 +118,15 @@ export {
   service,
   update,
 } from './service.js';
+
+export {
+  type ApprovalStore,
+  type JobReceipt,
+  type LedgerKey,
+  ledgerId,
+  MemoryStore,
+  type Reservation,
+} from './store.js';
 
 export * from './types.js';
 

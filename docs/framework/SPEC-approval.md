@@ -355,14 +355,17 @@ cases so the TypeScript and Python servers and the `yea` command share one store
 
 ```
 consumed/<b64url(sha256(id))>        empty marker, created with O_EXCL; holds exp as text
-undo/<receipt id>.claim, .done       markers, created with O_EXCL
-receipts/<receipt id>.json           the JobReceipt, canonical JSON
+undo/<receipt id>.claim, .done       empty markers, created with O_EXCL; the claim stays after done
+receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
 ```
 
-Ledger files are updated under an exclusive lock file (`<of>.lock`, `O_EXCL`, retried), and
-bigints are written as decimal strings. Expired markers may be removed after `exp`.
+Ledger files are `{"settled": "<decimal>", "reserved": {"<v_ id>": "<decimal>"}}`, updated under
+an exclusive lock file (`<of>.lock` beside them, `O_EXCL`, retried every 10 ms for up to 2 s,
+then a store error; a lock older than 30 s is stale). Every file is written as `<name>.tmp`
+and renamed. Receipt ids are `r_` and 12 b64url characters, reservation ids `v_` and 12.
+Expired markers may be removed after `exp`.
 
 ## 9. Security
 
