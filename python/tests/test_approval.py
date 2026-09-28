@@ -33,7 +33,7 @@ def hashed(tool="delete_branch", input=None, p=None, risk="low", undoable=True):
 
 def policy(*caveats, deny=(), oob="high", principal=PRINCIPAL, issued_to=SERVER):
     g = issue_grant(principal, issued_to.public, list(caveats) or [{"can": ["*"]}], iat=NOW)
-    return load_policy(g, SERVER.public, PRINCIPAL.public, Tightening(tuple(deny), oob), NOW)
+    return load_policy(g, SERVER.public, PRINCIPAL.public, Tightening(tuple(deny), oob))
 
 
 def no_use(k):
@@ -104,7 +104,7 @@ def test_read_tightening_ignores_unknown_and_loosening():
 def test_deleting_the_policy_file_returns_to_the_defaults():
     t = read_tightening(None)
     assert t.deny == () and t.out_of_band == "high"
-    p = load_policy(None, SERVER.public, PRINCIPAL.public, t, NOW)
+    p = load_policy(None, SERVER.public, PRINCIPAL.public, t)
     assert decide([hashed()], p, no_use, NOW).kind == "ask"
     assert decide([hashed(risk="high")], p, no_use, NOW).kind == "out-of-band"
 
@@ -130,7 +130,7 @@ def test_unsigned_or_foreign_policy_never_auto_runs():
     assert decide([hashed()], policy({"can": ["*"]}, issued_to=OTHER), no_use, NOW).kind == "ask"  # issued to another server
     assert decide([hashed()], policy({"can": ["*"]}, {"svc": ["elsewhere"]}), no_use, NOW).kind == "ask"
     assert decide([hashed()], policy({"can": ["*"]}, {"exp": NOW}), no_use, NOW).kind == "ask"
-    p = load_policy("pg1.not-a-grant", SERVER.public, PRINCIPAL.public, Tightening(), NOW)
+    p = load_policy("pg1.not-a-grant", SERVER.public, PRINCIPAL.public, Tightening())
     d = decide([hashed()], p, no_use, NOW)
     assert d.kind == "ask" and d.why.startswith("malformed grant")
 
@@ -160,7 +160,7 @@ def test_high_risk_goes_out_of_band_even_with_a_grant():
 
 def test_reasons_in_the_pinned_order():
     # Undoable comes before grant presence, and a failed grant check gives the core's reason.
-    none = load_policy(None, SERVER.public, PRINCIPAL.public, Tightening(), NOW)
+    none = load_policy(None, SERVER.public, PRINCIPAL.public, Tightening())
     assert decide([hashed(undoable=False)], none, no_use, NOW).why == "delete_branch can't be undone"
     assert decide([hashed()], none, no_use, NOW).why == "no signed policy lets delete_branch run without asking"
     risky = decide([hashed(risk="medium")], policy({"can": ["*"]}, {"risk": "low"}), no_use, NOW)
@@ -487,15 +487,17 @@ def test_undo_once_within_the_window_for_the_same_principal(store):
         rid = new_receipt_id()
         assert is_receipt_id(rid) and len(rid) == 14
         await store.put_receipt(_receipt(rid, NOW + 60))
-        assert (await undo_receipt(store, rid, "someone-else", NOW, calls.append)).kind == "not-found"
+        assert (await undo_receipt(store, rid, "someone-else", NOW, calls.append)).why == "no such receipt"
         assert (await undo_receipt(store, rid, "", NOW + 61, calls.append)).why == "the undo window has closed"
         assert (await undo_receipt(store, rid, "", NOW, calls.append)).kind == "undone"
-        assert calls == [{"input": {"b": "x"}, "planHash": "h", "result": {"sha": "abc"}}]
-        assert (await undo_receipt(store, rid, "", NOW, calls.append)).kind == "refused" and len(calls) == 1
-        assert (await undo_receipt(store, "../x", "", NOW, calls.append)).kind == "not-found"
+        assert [(c["input"], c["planHash"], c["result"]) for c in calls] == [({"b": "x"}, "h", {"sha": "abc"})]
+        again = await undo_receipt(store, rid, "", NOW, calls.append)
+        assert again.why == "this job was already undone" and len(calls) == 1
+        bad = await undo_receipt(store, "../x", "", NOW, calls.append)
+        assert bad.kind == "refused" and bad.why == "no such receipt"  # the raw id isn't echoed
         never = new_receipt_id()
         await store.put_receipt(_receipt(never, None))
-        assert "never" in (await undo_receipt(store, never, "", NOW, calls.append)).why
+        assert (await undo_receipt(store, never, "", NOW, calls.append)).why == "this job can never be undone"
 
     run(go())
 
@@ -684,5 +686,24 @@ def test_memory_store_prunes_expired_consumed_ids():
             await s.consume_once(f"old-{i}", NOW - 1)
         await s.consume_once("fresh", NOW + 600)
         assert len(s._consumed) <= 2 and not await s.consume_once("fresh", NOW + 600)
+
+    run(go())
+
+
+def test_a_non_string_plan_field_falls_back_to_the_single_offered_plan():
+    assert _judge({"action": "accept", "content": {"plan": None, "confirm": "old-nav"}}).kind == "run"
+
+
+def test_spent_reads_ahead_the_policy_totals():
+    from yea.approval import spent
+
+    async def go():
+        s = MemoryStore()
+        p = policy({"can": ["*"]}, {"total": {"of": "emails", "max": 3}})
+        (bid, _), = p.totals
+        await s.reserve(LedgerKey(bid, "emails"), 2 * 10**18, 3 * 10**18)
+        amounts = await spent(s, p)
+        h = hashed(p=plan(uses={"emails": quantity(2)}))
+        assert decide([h], p, lambda k: amounts.get(k, 0), NOW).kind == "ask"
 
     run(go())

@@ -1,8 +1,10 @@
 """Approval for job tools (docs/framework/SPEC-approval.md): the plan hash, the policy decision,
 the approval form, the state that goes round the client, and how an answer is judged.
 
-Everything here is synchronous and pure except ``check_key_file``, which reads the file system.
-The MCP side (``mcp-py``) drives it; ``store.py`` holds what must persist."""
+The decisions (plan hash, decide, the form, the state, judging) are synchronous and pure. The
+store helpers (reservations, undo, consents, ``spent``) are async, and the key-file checks and
+``choose_store`` touch the file system. The MCP side (``mcp-py``) drives it all; ``store.py``
+holds what must persist."""
 
 from __future__ import annotations
 
@@ -129,15 +131,17 @@ def load_principal_key(path: str | os.PathLike[str]) -> str:
     fd = os.open(real, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     with os.fdopen(fd, encoding="utf-8") as f:
         st = os.fstat(f.fileno())
-        if st.st_uid == os.geteuid() or st.st_mode & (stat.S_IWOTH | stat.S_IWGRP) and _in_group(st.st_gid, st.st_mode):
+        if st.st_uid == os.geteuid() or _writable_by_us(st.st_gid, st.st_mode):
             raise ValueError(f"{real} changed while it was being read")
         key = f.read().strip()
     parse_public_key(key)
     return key
 
 
-def _in_group(gid: int, mode: int) -> bool:
-    return bool(mode & stat.S_IWOTH) or gid == os.getegid() or gid in os.getgroups()
+def _writable_by_us(gid: int, mode: int) -> bool:
+    """World-writable, or group-writable by a group this process is in."""
+    in_group = gid == os.getegid() or gid in os.getgroups()
+    return bool(mode & stat.S_IWOTH) or (bool(mode & stat.S_IWGRP) and in_group)
 
 
 def _resolve_links(p: Path, hops: int = 0) -> tuple[list[Path], Path]:
@@ -226,11 +230,10 @@ class Policy:
     totals: tuple[tuple[str, dict], ...] = field(default=())  # (block id, limit), one per block and measure
 
 
-def load_policy(grant: str | Grant | None, server_key: str, principal_key: str | None, tightening: Tightening,
-                now: int = 0) -> Policy:
+def load_policy(grant: str | Grant | None, server_key: str, principal_key: str | None, tightening: Tightening) -> Policy:
     """The policy for this server: the signed grant as given (it is verified on every decision,
     as a COMMIT of the tool at service id = the server key, issued to the server key by the
-    pinned principal) plus the unsigned tightenings. ``now`` is unused; kept for symmetry."""
+    pinned principal) plus the unsigned tightenings."""
     base = {"deny": tightening.deny, "out_of_band": tightening.out_of_band, "server_key": server_key,
             "principal": principal_key}
     if grant is None:
@@ -439,7 +442,9 @@ def _picked(state: dict, content: Mapping[str, Any]) -> str | None:
     """The chosen plan hash, if it was one of the offered ones. With one offered plan the form
     has no ``plan`` field, so that one is chosen."""
     offered = state["plans"]
-    pick = content.get("plan", offered[0] if len(offered) == 1 else None)
+    pick = content.get("plan")
+    if not isinstance(pick, str) and len(offered) == 1:
+        pick = offered[0]
     return pick if isinstance(pick, str) and pick in offered else None
 
 
@@ -481,6 +486,12 @@ async def reserve_all(store: ApprovalStore, wanted: tuple[tuple[LedgerKey, int, 
     return held
 
 
+async def spent(store: ApprovalStore, policy: Policy) -> dict[LedgerKey, int]:
+    """Read ahead what ``decide`` needs from the store: the used amount for each policy total.
+    Pass ``lambda k: amounts.get(k, 0)`` as its ``used``."""
+    return {LedgerKey(bid, lim["of"]): await store.used(LedgerKey(bid, lim["of"])) for bid, lim in policy.totals}
+
+
 async def settle_all(store: ApprovalStore, held: list[Reservation]) -> None:
     for r in held:
         await store.settle(r)
@@ -493,7 +504,7 @@ async def release_all(store: ApprovalStore, held: list[Reservation]) -> None:
 
 @dataclass(frozen=True)
 class UndoResult:
-    """``undone`` | ``not-found`` | ``refused`` (with why)."""
+    """``undone`` | ``refused`` (with why)."""
 
     kind: str
     why: str | None = None
@@ -502,23 +513,17 @@ class UndoResult:
 
 async def undo_receipt(store: ApprovalStore, receipt_id: Any, sub: str, now: int,
                        revert: Callable[[dict], Any]) -> UndoResult:
-    """§7: check the id's format, then the window and principal, then claim, revert, and mark
-    done (or release the claim if revert fails, so it can be tried again). ``revert`` gets
-    ``{input, planHash, result}`` and may be async."""
-    if not is_receipt_id(receipt_id):
-        return UndoResult("not-found", f"no receipt {receipt_id!r}")
-    r = await store.get_receipt(receipt_id)
-    if r is None or r.get("sub") != sub:
-        return UndoResult("not-found", f"no receipt {receipt_id!r}")
-    undo = r.get("undo")
-    if not isinstance(undo, dict) or not isinstance(undo.get("until"), int):
-        return UndoResult("refused", "undo: never; this action can't be undone")
-    if now > undo["until"]:
-        return UndoResult("refused", "the undo window has closed")
+    """§7: check the id's format, then the principal, reversibility and window, then claim,
+    revert, and mark done (or release the claim if revert fails, so it can be tried again).
+    ``revert`` gets the stored job receipt (``input``, ``planHash``, ``result``, …) and may be async."""
+    r = await store.get_receipt(receipt_id) if is_receipt_id(receipt_id) else None
+    why = _undo_refusal(r, sub, now)
+    if why or r is None:
+        return UndoResult("refused", why or "no such receipt")
     if not await store.claim_undo(receipt_id):
-        return UndoResult("refused", "this action was already undone")
+        return UndoResult("refused", "this job was already undone")
     try:
-        out = revert({"input": r.get("input"), "planHash": r.get("planHash"), "result": r.get("result")})
+        out = revert(r)
         if hasattr(out, "__await__"):
             await out
     except BaseException:
@@ -526,6 +531,15 @@ async def undo_receipt(store: ApprovalStore, receipt_id: Any, sub: str, now: int
         raise
     await store.mark_undone(receipt_id)
     return UndoResult("undone", receipt=r)
+
+
+def _undo_refusal(r: dict | None, sub: str, now: int) -> str | None:
+    if r is None or r.get("sub") != sub:
+        return "no such receipt"
+    undo = r.get("undo")
+    if not isinstance(undo, dict) or type(undo.get("until")) is not int:
+        return "this job can never be undone"
+    return "the undo window has closed" if now > undo["until"] else None
 
 
 def choose_store(http: bool, store: ApprovalStore | None, policy: Policy, single_process: bool = False) -> ApprovalStore:
@@ -578,7 +592,7 @@ def check_job_consent(token: Any, p: HashedPlan, policy: Policy, now: int) -> Co
     this server's key, and valid as a COMMIT of the tool here now. A copied policy grant has no
     ``only`` and never counts."""
     try:
-        g = decode_grant(token.strip()) if isinstance(token, str) else None
+        g = decode_grant(token) if isinstance(token, str) else None
     except ValueError:
         g = None
     if g is None:
