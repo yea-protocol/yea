@@ -14,6 +14,18 @@ import type { ConsentRequest, Effect } from '../types.js';
 import { isUses } from '../uses.js';
 import { effectivePhrase } from './phrase.js';
 
+/** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */
+export interface JobConsent {
+  consent: ConsentRequest;
+  job: Record<string, unknown> & {
+    tool: string;
+    summary: string;
+    effects: Effect[];
+  };
+  phrase: string;
+  planHash: string;
+}
+
 export const CONSENT_TTL = 600;
 
 /** A job's consent code: the unsigned pc1. consent request, carrying the whole plan to re-check. */
@@ -41,18 +53,6 @@ export function jobConsentCode(o: {
   };
 
   return encodeConsentCode({ ...consent, detail });
-}
-
-/** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */
-export interface JobConsent {
-  consent: ConsentRequest;
-  job: Record<string, unknown> & {
-    tool: string;
-    summary: string;
-    effects: Effect[];
-  };
-  phrase: string;
-  planHash: string;
 }
 
 function isJob(j: unknown): j is JobConsent['job'] {

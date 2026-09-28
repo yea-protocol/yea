@@ -5,15 +5,15 @@
  * re-exports them.
  */
 
-export { type ApprovalForm, buildForm } from './ask/form.js';
-
 export {
   CONSENT_TTL,
   type JobConsent,
   jobConsentCode,
   readJobConsent,
   signJobConsent,
-} from './ask/job-consent.js';
+} from './ask/consent-code.js';
+
+export { type ApprovalForm, buildForm } from './ask/form.js';
 
 export {
   type ApprovalAnswer,

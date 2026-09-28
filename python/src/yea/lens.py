@@ -300,7 +300,7 @@ def lens(reply: dict) -> str:
 
 
 
-# ---------------------------------------------------------------- untrusted text (mirrors ts/src/lens.ts)
+# ---------------------------------------------------------------- untrusted text (mirrors ts/src/lens/untrusted.ts)
 
 
 def safe_effect_line(e: dict) -> str:

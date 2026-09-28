@@ -4,8 +4,13 @@
  */
 import type { HashedPlan } from '../approval.js';
 
+/** The phrase a person types to approve this plan: the tool's, or `approve`. */
+export type PhraseFor = (hp: HashedPlan) => string;
+
 /** Exactly these are stripped from both ends; not trim()/strip(), which disagree. */
 const EDGE = /^[\t\n\v\f\r \u00a0\ufeff]+|[\t\n\v\f\r \u00a0\ufeff]+$/g;
+
+export const DEFAULT_PHRASE = 'approve';
 
 const normalizePhrase = (s: string) =>
   s.normalize('NFC').replace(EDGE, '').toLowerCase();
@@ -15,11 +20,6 @@ export const phraseMatches = (typed: unknown, phrase: string) =>
   typeof typed === 'string' &&
   normalizePhrase(phrase) !== '' &&
   normalizePhrase(typed) === normalizePhrase(phrase);
-
-/** The phrase a person types to approve this plan: the tool's, or `approve`. */
-export type PhraseFor = (hp: HashedPlan) => string;
-
-export const DEFAULT_PHRASE = 'approve';
 
 /** A phrase that is empty once normalized falls back to `approve`. */
 export const effectivePhrase = (phrase: string) =>
