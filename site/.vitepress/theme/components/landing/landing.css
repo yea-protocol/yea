@@ -48,6 +48,8 @@
 .landing .band { max-width: var(--l-wide); margin: 0 auto; padding: clamp(64px, 8vw, 112px) 0; border-top: 1px solid var(--vp-c-divider); }
 .landing .band-intro { max-width: var(--l-measure); display: grid; gap: 16px; margin-bottom: clamp(32px, 4vw, 48px); }
 .landing .prose { color: var(--vp-c-text-2); max-width: var(--l-measure); }
+/* A band that runs edge to edge, past the landing's side gutter, keeping the gutter inside. */
+.landing .l-bleed { margin-inline: calc(-1 * var(--l-gutter)); padding-inline: var(--l-gutter); }
 
 /* Links in running text are underlined; colour alone never marks a link. */
 .landing a:not(.btn) { color: var(--vp-c-text-1); text-decoration: underline; text-decoration-color: var(--vp-c-text-3); text-underline-offset: 0.2em; text-decoration-thickness: 1px; }

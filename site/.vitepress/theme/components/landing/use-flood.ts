@@ -1,8 +1,8 @@
 /**
  * The hero band's change of colour. When the tone changes, the new colour spreads as a
- * circle from the control the visitor pressed (or the band's centre, when nothing was
- * pressed) until it covers the band, then becomes the band's own colour. Under reduced
- * motion the spread takes no time, so the band just changes.
+ * circle from the button the visitor just pressed (or the band's centre, for a change nobody
+ * pressed for, such as an expiry) until it covers the band, then becomes the band's own
+ * colour. Under reduced motion the spread takes no time, so the band just changes.
  */
 import { type Ref, ref, watch } from 'vue';
 import type { Tone } from './tone';
@@ -10,68 +10,101 @@ import type { Tone } from './tone';
 /** A spread in progress: where it starts, relative to the band, and how far it must reach. */
 export interface Flood {
   key: number;
+  /** The tone it spreads, which the band settles on. */
+  to: Tone;
   x: number;
   y: number;
   r: number;
 }
 
-interface Point {
+/** A press, relative to the band, and when it happened. */
+interface Press {
   x: number;
   y: number;
+  at: number;
 }
 
-const centre = (b: DOMRect): Point => ({
-  x: b.left + b.width / 2,
-  y: b.top + b.height / 2,
-});
+/** A press older than this didn't cause the change; the spread starts from the centre. */
+const PRESS_MS = 2000;
 
-/** The distance from a point in the band to its farthest corner. */
-const reach = (b: DOMRect, p: Point) =>
-  Math.hypot(
-    Math.max(p.x - b.left, b.right - p.x),
-    Math.max(p.y - b.top, b.bottom - p.y),
-  );
+/** The distance from a point in a box to the box's farthest corner. */
+const reach = (w: number, h: number, x: number, y: number) =>
+  Math.hypot(Math.max(x, w - x), Math.max(y, h - y));
 
 export function useFlood(tone: Ref<Tone>, band: Ref<HTMLElement | null>) {
   /** The band's settled colour; `tone` is where it's heading. */
   const base = ref<Tone>(tone.value);
   const flood = ref<Flood | null>(null);
-  let pressed: Point | null = null;
+  let pressed: Press | null = null;
   let key = 0;
 
-  /** Remember the control the visitor used, so the next change spreads from it. */
+  /** Remember the button the visitor pressed, so a change it causes spreads from it. */
   function press(e: Event) {
-    const control =
-      e.target instanceof Element ? e.target.closest('button, a') : null;
-
-    pressed = control ? centre(control.getBoundingClientRect()) : null;
-  }
-
-  function settle() {
-    base.value = tone.value;
-    flood.value = null;
-  }
-
-  watch(tone, () => {
+    const button =
+      e.target instanceof Element ? e.target.closest('button') : null;
     const box = band.value?.getBoundingClientRect();
-    const from = pressed ?? (box ? centre(box) : null);
 
-    pressed = null;
-
-    if (!box || !from) {
-      settle();
-
+    if (!button || !box) {
       return;
     }
 
-    key += 1;
-    flood.value = {
-      key,
-      x: from.x - box.left,
-      y: from.y - box.top,
-      r: reach(box, from),
-    };
-  });
+    const b = button.getBoundingClientRect();
 
-  return { base, flood, press, settle };
+    pressed = {
+      x: b.left + b.width / 2 - box.left,
+      y: b.top + b.height / 2 - box.top,
+      at: Date.now(),
+    };
+  }
+
+  /** The spread `k` has ended; a stale event from one it replaced changes nothing. */
+  function settle(k: number) {
+    if (flood.value?.key === k) {
+      base.value = flood.value.to;
+      flood.value = null;
+    }
+  }
+
+  /**
+   * A spread's element finished or was cancelled. Its key is read from the element, not the
+   * current state: a replaced element reports its cancellation after the next spread began.
+   */
+  function ended(e: Event) {
+    if (e.currentTarget instanceof HTMLElement) {
+      settle(Number(e.currentTarget.dataset.key));
+    }
+  }
+
+  // After the DOM updates, so the band is measured at the size the new state gives it.
+  watch(
+    tone,
+    (to) => {
+      const box = band.value?.getBoundingClientRect();
+      const from =
+        pressed && Date.now() - pressed.at < PRESS_MS ? pressed : null;
+
+      pressed = null;
+
+      if (!box) {
+        base.value = to;
+        flood.value = null;
+
+        return;
+      }
+
+      // A spread cut short has covered most of the band: the next one spreads over it.
+      if (flood.value) {
+        base.value = flood.value.to;
+      }
+
+      const x = from ? from.x : box.width / 2;
+      const y = from ? from.y : box.height / 2;
+
+      key += 1;
+      flood.value = { key, to, x, y, r: reach(box.width, box.height, x, y) };
+    },
+    { flush: 'post' },
+  );
+
+  return { base, flood, press, settle, ended };
 }

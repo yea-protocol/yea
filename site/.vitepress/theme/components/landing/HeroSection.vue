@@ -24,22 +24,23 @@ const limit = each && 'each' in each ? amount(each.each) : '';
 
 const phase = ref<Phase>('loading');
 const tone = computed(() => phaseTone(phase.value));
-const { base, flood, press, settle } = useFlood(
+const { base, flood, press, ended } = useFlood(
   tone,
   useTemplateRef<HTMLElement>('band'),
 );
 </script>
 
 <template>
-  <section ref="band" class="hero-band" :data-tone="tone" :data-base="base" aria-labelledby="hero-title" @click.capture="press">
+  <section ref="band" class="hero-band l-bleed" :data-tone="tone" :data-base="base" aria-labelledby="hero-title" @click.capture="press">
     <span
       v-if="flood"
       :key="flood.key"
+      :data-key="flood.key"
       class="flood"
       :style="{ '--x': `${flood.x}px`, '--y': `${flood.y}px`, '--r': `${flood.r}px` }"
       aria-hidden="true"
-      @animationend="settle"
-      @animationcancel="settle"
+      @animationend="ended"
+      @animationcancel="ended"
     />
     <div class="hero">
       <div class="copy on-band">
@@ -76,21 +77,22 @@ const { base, flood, press, settle } = useFlood(
 <style scoped>
 /* The band runs edge to edge; its colour is the settled tone (data-base), and a new tone
    (data-tone) spreads over it from the pressed button, then settles. */
-.hero-band { --base: var(--vp-c-bg); --next: var(--vp-c-bg); --notch: var(--next); position: relative; isolation: isolate; overflow: hidden; margin-inline: calc(-1 * var(--l-gutter)); padding-inline: var(--l-gutter); background: var(--base); }
-.hero-band[data-base="amber"] { --base: var(--amber); }
-.hero-band[data-base="green"] { --base: var(--green); }
-.hero-band[data-base="red"] { --base: var(--red); }
-.hero-band[data-tone="amber"] { --next: var(--amber); }
-.hero-band[data-tone="green"] { --next: var(--green); }
-.hero-band[data-tone="red"] { --next: var(--red); }
-.flood { position: absolute; inset: 0; z-index: -1; background: var(--next); clip-path: circle(0 at var(--x) var(--y)); animation: flood 900ms var(--l-ease-out) forwards; }
+.hero-band { --l-base: var(--vp-c-bg); --l-next: var(--vp-c-bg); --l-notch: var(--l-next); position: relative; isolation: isolate; overflow: hidden; background: var(--l-base); }
+.hero-band[data-base="amber"] { --l-base: var(--amber); }
+.hero-band[data-base="green"] { --l-base: var(--green); }
+.hero-band[data-base="red"] { --l-base: var(--red); }
+.hero-band[data-tone="amber"] { --l-next: var(--amber); }
+.hero-band[data-tone="green"] { --l-next: var(--green); }
+.hero-band[data-tone="red"] { --l-next: var(--red); }
+.flood { position: absolute; inset: 0; z-index: -1; background: var(--l-next); clip-path: circle(0 at var(--x) var(--y)); animation: flood 900ms var(--l-ease-out) forwards; }
 @keyframes flood { to { clip-path: circle(var(--r) at var(--x) var(--y)); } }
 
 /* Text on a coloured band is ink in both themes (6.9:1 or more for secondary text on amber
-   and green, 4.8:1 on red); the slip keeps the theme's own colours. */
-.hero-band:not([data-tone="plain"]) .on-band { --vp-c-text-1: var(--ink); --vp-c-text-2: rgb(11 13 18 / 0.78); --vp-c-text-3: rgb(11 13 18 / 0.55); --vp-c-border: rgb(11 13 18 / 0.4); --vp-c-bg: var(--next); --vp-c-brand-1: var(--ink); }
+   and green, 4.8:1 on red; button borders 3.3:1 or more); the slip keeps the theme's own
+   colours. The text changes a beat after the spread starts, once the circle is reaching it. */
+.hero-band:not([data-tone="plain"]) .on-band { --vp-c-text-1: var(--ink); --vp-c-text-2: rgb(11 13 18 / 0.78); --vp-c-text-3: rgb(11 13 18 / 0.55); --vp-c-border: rgb(11 13 18 / 0.6); --vp-c-bg: var(--l-next); --vp-c-brand-1: var(--ink); }
 .on-band { color: var(--vp-c-text-1); }
-.on-band, .on-band :where(h1, p, a, .btn) { transition: color 600ms var(--l-ease-out), background-color 600ms var(--l-ease-out), border-color 600ms var(--l-ease-out); }
+.on-band, .on-band :where(h1, p, a, .btn) { transition: color 480ms var(--l-ease-out) 120ms, background-color 480ms var(--l-ease-out) 120ms, border-color 480ms var(--l-ease-out) 120ms; }
 
 .hero { max-width: var(--l-wide); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 12fr); gap: clamp(40px, 6vw, 88px); align-items: center; padding: clamp(48px, 7vw, 104px) 0 clamp(64px, 8vw, 112px); }
 .copy { display: grid; gap: 28px; align-content: center; }

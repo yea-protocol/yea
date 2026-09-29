@@ -304,7 +304,7 @@ interaction colour.
 **The State Drench Rule.** On the landing a state's colour may fill a whole surface, but only
 where that surface is in that state: the hero band is amber while its proposal waits on the
 visitor, green once they approve, red if a step fails, and the page's own colour once undone or
-expired (`landing/tone.ts`). The protocol steps fill their number with their state's colour and
+expired, or when the core can't start (`landing/tone.ts`). The protocol steps fill their number with their state's colour and
 tint their row with it (28% over paper, 14% over ink). Text on a full-strength band is ink in both
 themes (secondary text is ink at 78%, 6.9:1 on amber and green and 4.8:1 on red); text on a tint
 keeps the theme's colours. A band with no state never takes a state colour: the closing band

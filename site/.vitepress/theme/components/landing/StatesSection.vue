@@ -78,18 +78,18 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
 <style scoped>
 .steps { list-style: none; margin: 0; padding: 0; display: grid; }
 /* A row runs edge to edge through its tint (the border-image's outset), without widening the page. */
-.step { --tint: transparent; --row: var(--tint); display: grid; grid-template-columns: 2.5rem minmax(0, 5fr) minmax(0, 7fr); gap: 16px clamp(20px, 3vw, 40px); align-items: start; padding-block: clamp(24px, 3vw, 36px); border-image: conic-gradient(var(--row) 0 0) fill 0 / / 0 100vmax; }
-.step[data-tone="amber"] { --tint: var(--l-tint-amber); }
-.step[data-tone="green"] { --tint: var(--l-tint-green); }
+.step { --l-tint: transparent; --l-row: var(--l-tint); display: grid; grid-template-columns: 2.5rem minmax(0, 5fr) minmax(0, 7fr); gap: 16px clamp(20px, 3vw, 40px); align-items: start; padding-block: clamp(24px, 3vw, 36px); border-image: conic-gradient(var(--l-row) 0 0) fill 0 / / 0 100vmax; }
+.step[data-tone="amber"] { --l-tint: var(--l-tint-amber); }
+.step[data-tone="green"] { --l-tint: var(--l-tint-green); }
 .n { font-size: 1rem; font-weight: 700; line-height: 1.9; font-variant-numeric: tabular-nums; width: 2rem; height: 2rem; display: grid; place-items: center; border: 1px solid var(--vp-c-border); border-radius: 50%; }
 /* The number carries the state at full strength, with ink on it in both themes. */
 .step[data-tone="amber"] .n { background: var(--amber); border-color: var(--amber); color: var(--ink); }
 .step[data-tone="green"] .n { background: var(--green); border-color: var(--green); color: var(--ink); }
 
-@property --row { syntax: "<color>"; inherits: false; initial-value: transparent; }
+@property --l-row { syntax: "<color>"; inherits: false; initial-value: transparent; }
 @keyframes row-tint {
-  from, to { --row: transparent; }
-  35%, 65% { --row: var(--tint); }
+  from, to { --l-row: transparent; }
+  35%, 65% { --l-row: var(--l-tint); }
 }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {

@@ -62,18 +62,56 @@ test('phaseTone: the hero band waits in amber, commits in green, and goes plain 
   const tones = (phases) => phases.map(phaseTone);
 
   // The page first paints the recorded proposal, which is waiting on the person.
-  assert.deepEqual(tones(['loading', 'unavailable', 'waiting', 'approving']), [
-    'amber',
+  assert.deepEqual(tones(['loading', 'waiting', 'approving']), [
     'amber',
     'amber',
     'amber',
   ]);
   assert.deepEqual(tones(['committed', 'undoing']), ['green', 'green']);
-  assert.deepEqual(tones(['undone', 'expired', 'error']), [
+  // If the core can't start, nothing waits on anyone.
+  assert.deepEqual(tones(['unavailable', 'undone', 'expired', 'error']), [
+    'plain',
     'plain',
     'plain',
     'red',
   ]);
+});
+
+test('useFlood: a spread cut short by the next one never settles it early', {
+  skip,
+}, async () => {
+  const { nextTick, ref } = await import('vue');
+  const { useFlood } = await import(`${LANDING}/use-flood.ts`);
+  const box = { left: 0, top: 0, width: 400, height: 300 };
+  const band = ref({ getBoundingClientRect: () => box });
+  const tone = ref('amber');
+  const { base, flood, settle } = useFlood(tone, band);
+
+  tone.value = 'green';
+  await nextTick();
+
+  const first = flood.value.key;
+
+  // With nothing pressed, it spreads from the centre to the farthest corner.
+  assert.deepEqual(
+    { x: flood.value.x, y: flood.value.y, r: flood.value.r },
+    { x: 200, y: 150, r: 250 },
+  );
+
+  tone.value = 'plain';
+  await nextTick();
+
+  // The new spread goes over the colour the cut-short one had nearly covered.
+  assert.equal(base.value, 'green');
+
+  // The replaced spread's element reports its cancellation; the new spread carries on.
+  settle(first);
+  assert.equal(flood.value?.to, 'plain');
+  assert.equal(base.value, 'green');
+
+  settle(flood.value.key);
+  assert.equal(flood.value, null);
+  assert.equal(base.value, 'plain');
 });
 
 test('each protocol state step takes the tone of the state it shows', {

@@ -118,9 +118,9 @@ watch(
 
 <style scoped>
 /* The perforation: a dashed rule with a notch cut into each edge of the slip. The notch is
-   painted in the colour behind the slip (--notch, set by the hero band), and follows it. */
+   painted in the colour behind the slip (--l-notch, set by the hero band), and follows it. */
 .stub { position: relative; display: grid; gap: 12px; margin: 4px calc(-1 * clamp(20px, 3vw, 28px)) 0; padding: 20px clamp(20px, 3vw, 28px) 0; border-top: 1px dashed var(--edge); }
-.stub::before, .stub::after { content: ""; position: absolute; top: -10px; width: 18px; height: 18px; border-radius: 50%; background: var(--notch, var(--vp-c-bg)); border: 1px solid var(--edge); transition: background-color 900ms var(--l-ease-out); }
+.stub::before, .stub::after { content: ""; position: absolute; top: -10px; width: 18px; height: 18px; border-radius: 50%; background: var(--l-notch, var(--vp-c-bg)); border: 1px solid var(--edge); transition: background-color 900ms var(--l-ease-out); }
 .stub::before { left: -10px; clip-path: inset(0 0 0 50%); }
 .stub::after { right: -10px; clip-path: inset(0 50% 0 0); }
 
