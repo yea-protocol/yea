@@ -84,19 +84,19 @@ its own: without a subject it returns `'["<client>",null,null]'`, a non-empty st
 an app, not a person. `yea_mcp.token_subject(ctx)` returns the verified token's `subject`, or
 `""` when there is none, and is the recommended `sub`.
 
-**No HTTP front end in `yea-mcp` (v0).** `mcp-ts` ships one (`@yea-protocol/mcp/http`: `httpGate`,
-`httpApp`, `subOf`, `httpAuthFrom`; `serveHttp` from `/http/node`), with a bearer token compared in
-constant time, a `Host` check on loopback against DNS rebinding (421), and a 1 MiB body cap. `yea-mcp`
-has no counterpart; serve HTTP with the MCP SDK's own Streamable HTTP app (`streamable_http_app` or
-`run_streamable_http_async`) and put `token_subject` in `sub`:
-- On a loopback `host` the SDK checks `Host` and `Origin` itself (421 and 403). Off loopback, pass
-  `transport_security=TransportSecuritySettings(allowed_hosts=[...])`, or put the server behind a
-  proxy that checks `Host`.
-- Pass `max_request_body_size=1 << 20` to match `mcp-ts`'s cap; the SDK's default is 4 MiB.
-- Authenticate with the SDK's `TokenVerifier` or OAuth; a verifier for one static token compares it
-  with `hmac.compare_digest`.
-
-Porting the front end is tracked in [#176](https://github.com/yea-protocol/yea/issues/176).
+**`yea_mcp.http`: the HTTP front end**, as `mcp-ts`'s `@yea-protocol/mcp/http`, for a server
+that serves one person:
+- `http_auth_from(env)` reads `YEA_HTTP_TOKEN` (a bearer token of 32 characters or more) and
+  `YEA_SUB` (who that person is), and raises saying what's missing.
+- `http_gate(token, loopback=...)`: on loopback, the `Host` header must be `localhost`,
+  `127.0.0.1` or `[::1]`, against DNS rebinding (421 Misdirected Request, with the TypeScript
+  SDK's JSON-RPC error body); then `Authorization: Bearer <token>`, compared in constant time
+  (401 with `WWW-Authenticate: Bearer`). The Host is checked first, as in `mcp-ts`.
+- `http_app(server, auth, loopback=True, client_id="yea-http", max_body=MAX_BODY)`: an ASGI app
+  that runs the gate, then the SDK's `streamable_http_app` (which caps the body at `max_body`,
+  1 MiB by default: 413), with each request authenticated as `auth.sub`. So
+  `yea(transport="http", sub=token_subject)` sees that person.
+- `serve_http(app, host=..., port=...)` serves it with uvicorn, an MCP SDK dependency.
 
 ### Request state: the SDK seals it
 
@@ -411,6 +411,7 @@ Each gets its own test and a note in the code:
 python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), PartialApplyError, the undo tool
 python/mcp/src/yea_mcp/call/          the shared routine: steps 1–11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
+python/mcp/src/yea_mcp/http.py        the HTTP front end: the Host and bearer gate, http_app, serve_http
 python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input
 python/mcp/src/yea_mcp/guard.py       the server middleware for guarded tools
 python/mcp/src/yea_mcp/keys.py        server key, pinned principal, policy and tightening loading
