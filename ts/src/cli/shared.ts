@@ -1,4 +1,7 @@
-/** What every `yea` command group uses: the flags, `die`, a client and a terminal prompt. */
+/**
+ * What every `yea` command group uses: the flags, `die`, a client, a terminal prompt and the
+ * install scope.
+ */
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import type { Client } from '../client.js';
@@ -90,3 +93,9 @@ export async function confirm(question: string): Promise<boolean> {
 
   return yes;
 }
+
+/** Where to install for AI tools: this project (--local) or the user's home. */
+export const installScope = (o: Options) => ({
+  local: !!o.local,
+  cwd: process.cwd(),
+});

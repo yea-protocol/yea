@@ -137,7 +137,9 @@ index.
 - a bridge tool module: the spec, then the handler.
 
 **Tests** are named after the module they cover (`test/refund.test.ts` for
-`src/jobs/refund.ts`). Security regressions stay in `security.test.ts`.
+`src/jobs/refund.ts`), with the folder prefixed when two modules share a name
+(`cli-test-drive.test.ts` for `src/cli/test-drive.ts`). Security regressions stay in
+`security.test.ts`.
 
 **Exempt.** Tests, benchmarks (`bench/`) and the conformance vector generators
 (`ts/scripts/vectors.mjs`, `ts/scripts/approval-vectors.mjs`, which are mostly data) are exempt
