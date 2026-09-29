@@ -102,7 +102,8 @@ that serves one person:
   Only `lifespan` passes through ungated: a websocket is closed (1008) and any other scope
   dropped, so no route (the SDK's or one a server adds) is reachable without the token. The
   SDK's own Host and Origin checks, behind the gate, are on with `loopback=True` and off with
-  `loopback=False`; they are stricter (they also want a port, and `http` for an Origin). A server that brings its own auth doesn't use `http_app`.
+  `loopback=False`; they are stricter (they also want a port, and `http` for an Origin). A
+  server that brings its own auth doesn't use `http_app`.
 - `serve_http(app, host=..., port=..., max_connections=None)` serves it with uvicorn, an MCP SDK
   dependency, with a 30-second keep-alive and `max_connections` as uvicorn's concurrency limit
   (503 past it). uvicorn has no request-read timeout, unlike `mcp-ts`'s `requestTimeout`, so off

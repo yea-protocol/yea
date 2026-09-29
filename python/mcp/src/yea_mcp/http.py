@@ -2,7 +2,8 @@
 (SPEC-mcp-py, "HTTP serves one person in v0"), as mcp-ts's ``@yea-protocol/mcp/http``. Every
 request carries a bearer token (``YEA_HTTP_TOKEN``), and a request that has it is that person
 (``YEA_SUB``): ``token_subject`` returns their ``sub``. Anything else is refused before the MCP
-handler sees it, and on loopback so is a foreign Host (421) or Origin (403). It wraps the SDK's own Streamable HTTP app, which caps the request body (413)."""
+handler sees it, and on loopback so is a foreign Host (421) or Origin (403). It wraps the SDK's
+own Streamable HTTP app, which caps the request body (413)."""
 
 from __future__ import annotations
 
