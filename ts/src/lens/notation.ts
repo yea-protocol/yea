@@ -29,6 +29,10 @@ export function scalar(v: unknown): string {
     return Number.isFinite(v) ? String(v) : '-';
   }
 
+  if (typeof v === 'object') {
+    return JSON.stringify(v); // not a scalar (a malformed time, say): its compact JSON
+  }
+
   const s = String(v);
 
   if (

@@ -4,14 +4,12 @@ params and verified key."""
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..errors import YeaError, fix
 from ..validate import closest
+from .state import ServiceState
 from .util import _json_str, random_id
-
-if TYPE_CHECKING:
-    from . import Service
 
 log = logging.getLogger("yea")
 
@@ -27,14 +25,14 @@ def error_reply(re: str, e: BaseException) -> dict:
     return reply_frame(re, "ERROR", {"code": "internal", "message": "the service failed unexpectedly", "retry": 5})
 
 
-def unknown_capability(svc: Service, name: Any, kind: str) -> YeaError:
-    other = svc._intents if kind == "ask" else svc._asks
+def unknown_capability(state: ServiceState, name: Any, kind: str) -> YeaError:
+    other = state.intents if kind == "ask" else state.asks
     if isinstance(name, str) and name in other:
         verb = "INTENT" if kind == "ask" else "ASK"
         return YeaError(
             "unknown_capability", f"{name} is {'an intent' if kind == 'ask' else 'an ask'} capability", fix=[fix(f"send it with {verb}")]
         )
-    everything = [*svc._asks, *svc._intents]
+    everything = [*state.asks, *state.intents]
     near = closest(str(name), everything)
     return YeaError(
         "unknown_capability",

@@ -7,7 +7,6 @@ frames; each verb's handler lives in its own module."""
 
 from __future__ import annotations
 
-import asyncio
 import time
 from collections.abc import Callable
 from typing import Any
@@ -32,7 +31,7 @@ from .plan import (
     update,
 )
 from .replies import error_reply, reply_frame
-from .state import _AskDef, _IntentDef, _StoredProposal, _StoredReceipt
+from .state import ServiceState, _AskDef, _IntentDef
 from .undo import on_undo
 from .util import Emit, _json_str, random_id
 
@@ -55,30 +54,49 @@ class Service:
         handles: HandleStore | None = None,
         now: Callable[[], float] | None = None,
     ):
-        self.id, self.name, self.summary = id, name, summary
-        self.trust = trust if callable(trust) else list(trust)
-        self.require_grants = require_grants
+        self.name, self.summary = name, summary
         self.default_budget = default_budget
-        self.proposal_ttl = proposal_ttl
-        self.handles = handles or MemoryHandleStore()
-        self._now = now or time.time
-        self._asks: dict[str, _AskDef] = {}
-        self._intents: dict[str, _IntentDef] = {}
-        self._proposals: dict[str, _StoredProposal] = {}
-        self._commits: dict[str, asyncio.Task] = {}
-        self._receipts: dict[str, _StoredReceipt] = {}
-        self._spent: dict[tuple[str, str], int] = {}  # (block id, measure) -> exact value at scale 18
-        self._auto_seen: dict[str, tuple[asyncio.Task, int]] = {}
-        self._sweeps = 0  # INTENTs since start, for the periodic sweep (service/sweep.py)
+        # What every verb's handler reads and changes (state.py); the properties below read it.
+        self.state = ServiceState(
+            id, trust if callable(trust) else list(trust), require_grants, proposal_ttl,
+            handles or MemoryHandleStore(), now or time.time,
+        )
+
+    @property
+    def id(self) -> str:
+        return self.state.id
+
+    @property
+    def trust(self) -> Trusted:
+        return self.state.trust
+
+    @property
+    def require_grants(self) -> bool:
+        return self.state.require_grants
+
+    @property
+    def proposal_ttl(self) -> int:
+        return self.state.proposal_ttl
+
+    @property
+    def handles(self) -> HandleStore:
+        return self.state.handles
+
+    # The state's tables, as the tests read them.
+    _proposals = property(lambda self: self.state.proposals)
+    _receipts = property(lambda self: self.state.receipts)
+    _commits = property(lambda self: self.state.commits)
+    _spent = property(lambda self: self.state.spent)
+    _auto_seen = property(lambda self: self.state.auto_seen)
 
     def now(self) -> int:
-        return int(self._now())
+        return self.state.now()
 
     def ask(self, name: str, summary: str = "", params: dict | None = None) -> Callable:
         """Register a read-only capability: ``@svc.ask(name, summary, params)`` on ``run(ctx) -> data``."""
 
         def deco(run: Callable) -> Callable:
-            self._asks[name] = _AskDef(summary, params, run)
+            self.state.asks[name] = _AskDef(summary, params, run)
             return run
 
         return deco
@@ -87,7 +105,7 @@ class Service:
         """Register an intent: ``plan(ctx)`` returns a Plan, a list of Plans, or ``clarify(...)``."""
 
         def deco(plan: Callable) -> Callable:
-            self._intents[name] = _IntentDef(summary, params, risk, plan)
+            self.state.intents[name] = _IntentDef(summary, params, risk, plan)
             return plan
 
         return deco
@@ -95,9 +113,9 @@ class Service:
     @property
     def capabilities(self) -> list[dict]:
         out: list[dict] = []
-        for name, a in self._asks.items():
+        for name, a in self.state.asks.items():
             out.append({"name": name, "kind": "ask", "summary": a.summary, **({"params": a.params} if a.params else {})})
-        for name, i in self._intents.items():
+        for name, i in self.state.intents.items():
             c: dict[str, Any] = {"name": name, "kind": "intent", "summary": i.summary}
             if i.params:
                 c["params"] = i.params
@@ -126,15 +144,15 @@ class Service:
             if verb == "HELLO":
                 return self.brief(budget, re)
             if verb == "ASK":
-                return await on_ask(self, frame, budget)
+                return await on_ask(self.state, frame, budget)
             if verb == "INTENT":
-                return await on_intent(self, frame, budget, emit)
+                return await on_intent(self.state, frame, budget, emit)
             if verb == "COMMIT":
-                return await on_commit(self, frame, budget, emit)
+                return await on_commit(self.state, frame, budget, emit)
             if verb == "UNDO":
-                return await on_undo(self, frame, budget, emit)
+                return await on_undo(self.state, frame, budget, emit)
             if verb == "EXPAND":
-                return on_expand(self, frame, budget)
+                return on_expand(self.state, frame, budget)
             raise YeaError("bad_frame", f"unknown verb {_json_str(verb)}", fix=[fix("use one of " + ", ".join(VERBS))])
         except Exception as e:  # noqa: BLE001 — every failure becomes an ERROR reply
             return error_reply(re, e)

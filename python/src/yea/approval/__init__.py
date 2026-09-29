@@ -21,13 +21,13 @@ from .consent import (
 from .decision import Decision, at_least, decide, denied_reason, needs_approval
 from .form import build_form, offered_plans
 from .judge import Verdict, judge_answer
-from .key_file import (
+from .ledger import release_all, reserve_all, settle_all, spent
+from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of
+from .pinned_key import (
     _resolve_links,  # noqa: F401 — the key-file tests use it
     check_key_file,
     load_principal_key,
 )
-from .ledger import release_all, reserve_all, settle_all, spent
-from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of
 from .plan import HashedPlan, input_hash, plan_hash, plan_preimage
 from .policy import (
     DEFAULT_OUT_OF_BAND,

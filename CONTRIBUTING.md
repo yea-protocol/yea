@@ -128,16 +128,18 @@ index.
 
 **Repeatable shapes.** Files of the same kind look the same:
 
-- a Stripe job module (`jobs/<job>.ts`): its input schema; its plan builders, each `X` paired
-  with an `applyX`; `plan()`; `revert()`; then the `xJob` factory. Its helpers live in
-  `jobs/<job>/`;
+- a Stripe job module (`jobs/<job>.ts`): its input schema; its types and text helpers, then its
+  plan builders (each `X` paired with an `applyX`); `plan()`; the `applyX` functions; `revert()`
+  (a note, where the job has none); then the `xJob` factory. Its helpers live in `jobs/<job>/`;
 - a service verb: one that needs collaborators or private helpers is a `<Verb>Handler` class
   holding a `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`;
 - a CLI command module: one exported `cmdX` per command, sharing `cli/shared.ts`;
 - a bridge tool module: the spec, then the handler.
 
 **Tests** are named after the module they cover (`test/refund.test.ts` for
-`src/jobs/refund.ts`). Security regressions stay in `security.test.ts`.
+`src/jobs/refund.ts`), with the folder prefixed when two modules share a name
+(`cli-test-drive.test.ts` for `src/cli/test-drive.ts`). Security regressions stay in
+`security.test.ts`.
 
 **Exempt.** Tests, benchmarks (`bench/`) and the conformance vector generators
 (`ts/scripts/vectors.mjs`, `ts/scripts/approval-vectors.mjs`, which are mostly data) are exempt

@@ -67,7 +67,7 @@ export function receiptLines(r: ReceiptReply): string[] {
 
   // The model already saw the effects in the proposal, unless the service auto-committed.
   if (r.auto) {
-    out.push(...rc.effects.map((e) => `  ${effectLine(e)}`));
+    out.push(...(rc.effects ?? []).map((e) => `  ${effectLine(e)}`));
   }
 
   if (rc.result !== undefined) {

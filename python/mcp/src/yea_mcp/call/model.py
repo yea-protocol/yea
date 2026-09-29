@@ -11,7 +11,7 @@ from mcp_types.methods import is_input_required
 from yea.approval import HashedPlan, Policy
 from yea.store import ApprovalStore
 
-from ..keys import Pinned
+from ..policy import Pinned
 
 Result = Any  # a CallToolResult, an InputRequiredResult, or (guard) the original's wire mapping
 NOTHING_RAN = "nothing was run"
