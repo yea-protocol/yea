@@ -1,0 +1,64 @@
+/* The landing's shared patterns, all under `.landing`: the type scale (one family for people,
+   mono for machines), section rhythm, buttons, links, and the block that shows real Lens.
+   Colour is protocol state: amber waits on a person, green is committed, red is refused;
+   everything else is ink and paper from the theme's tokens. */
+.landing {
+  --l-text: var(--vp-font-family-base);
+  --l-mono: var(--vp-font-family-mono);
+  --l-wide: 1180px;
+  --l-measure: 62ch;
+  --l-ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --l-gap: clamp(20px, 3vw, 40px);
+  font-family: var(--l-text);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--vp-c-text-1);
+  padding: 0 24px;
+}
+.landing :where(h1, h2, h3) {
+  font-family: var(--l-text);
+  color: var(--vp-c-text-1);
+  text-wrap: balance;
+  margin: 0;
+}
+.landing h2 {
+  font-size: clamp(1.75rem, 1.3rem + 1.6vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+}
+.landing h3 {
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.012em;
+}
+.landing p { margin: 0; text-wrap: pretty; }
+.landing .band { max-width: var(--l-wide); margin: 0 auto; padding: clamp(64px, 8vw, 112px) 0; border-top: 1px solid var(--vp-c-divider); }
+.landing .band-intro { max-width: var(--l-measure); display: grid; gap: 16px; margin-bottom: clamp(32px, 4vw, 48px); }
+.landing .prose { color: var(--vp-c-text-2); max-width: var(--l-measure); }
+
+/* Links in running text are underlined; colour alone never marks a link. */
+.landing a:not(.btn) { color: var(--vp-c-text-1); text-decoration: underline; text-decoration-color: var(--vp-c-text-3); text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+.landing a:not(.btn):hover { text-decoration-color: currentColor; text-decoration-thickness: 2px; }
+
+.landing .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: 8px; font: inherit; font-size: 0.975rem; font-weight: 650; text-decoration: none; border: 1px solid var(--vp-c-border); background: transparent; color: var(--vp-c-text-1); cursor: pointer; transition: background-color 150ms var(--l-ease), border-color 150ms var(--l-ease), color 150ms var(--l-ease); }
+.landing .btn:hover { border-color: var(--vp-c-text-2); }
+.landing .btn.primary { background: var(--vp-c-text-1); color: var(--vp-c-bg); border-color: var(--vp-c-text-1); }
+.landing .btn.primary:hover { background: var(--vp-c-text-2); border-color: var(--vp-c-text-2); }
+.landing .btn:disabled { cursor: progress; opacity: 0.55; }
+.landing .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+
+/* Real protocol output, as a model reads it. */
+.landing .lens { margin: 0; padding: 18px 20px; background: var(--vp-code-block-bg); border: 1px solid var(--vp-c-divider); border-radius: 12px; font-family: var(--l-mono); font-size: 0.8125rem; line-height: 1.7; color: var(--vp-c-text-1); overflow-x: auto; }
+.landing .lens .ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.landing .lens .wire, .landing .lens .effect { color: var(--vp-c-text-2); }
+.landing .lens .more { color: var(--vp-c-text-2); }
+.landing .lens .amber { color: var(--state-amber); }
+.landing .lens .green { color: var(--state-green); }
+.landing .lens .red { color: var(--state-red); }
+
+@media (max-width: 640px) {
+  .landing { padding: 0 16px; font-size: 1rem; }
+  .landing .lens { padding: 14px 14px; font-size: 0.75rem; }
+}

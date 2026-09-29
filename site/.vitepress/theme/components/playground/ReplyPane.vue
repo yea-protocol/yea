@@ -7,7 +7,7 @@
 import { computed, ref, useId, useTemplateRef } from 'vue';
 import { type CopyResult, copyOrSelect } from './clipboard';
 import { replySummary, requestSummary, toneOf } from './labels';
-import type { LensView } from './lens-lines';
+import type { LensView } from './lens-view';
 import type { Exchange } from './model';
 import { focusSibling, moveIndex } from './roving';
 import { copyKeys, isApple } from './shortcut';

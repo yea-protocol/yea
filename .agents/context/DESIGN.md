@@ -164,20 +164,19 @@ point and one action continues.
 
 Everything else is stock VitePress: the top nav, sidebar, local search, outline, prev/next
 footer, custom containers and Shiki code blocks (`github-light` / `github-dark-dimmed`). Brand
-presence comes from the palette, Space Grotesk headings, and the mono Lens exchange that anchors
-the landing hero and the playground's output pane. Density is moderate on docs pages (VitePress
-defaults) and high on the landing, which stacks seven full-width bands, three of them tables.
+presence comes from the palette, the landing's proposal slip, and the mono Lens that fills the
+landing's protocol states and the playground's output pane. Density is moderate on docs pages
+(VitePress defaults) and on the landing, which runs hero, two paths, five protocol states, one
+evidence chart, a quote, the comparison table and a closing band.
 
-Layout is a centred column: 1152px on the landing, 1360px on the playground, VitePress's doc
-width (688px content) on guide pages. Sections are separated by 1px hairline rules and a uniform
-72px band padding.
+Layout is a centred column: 1180px on the landing, 1360px on the playground, VitePress's doc
+width (688px content) on guide pages. Landing bands are separated by 1px hairline rules, with
+fluid padding (`clamp(64px, 8vw, 112px)`) that varies by section.
 
-Motion today: the hero exchange reveals its four steps at 400ms and then every 1.5s, each step
-fading in over 450ms with a 4px rise (`ease-out`), and the undone commit greys out over 400ms. The
-stepper's colour changes over 300ms, landing buttons over 150ms, and VitePress's own chrome over
-250ms. With JavaScript on, the page renders the finished exchange, then blanks and replays it.
-`prefers-reduced-motion` skips the replay in JavaScript and cuts every CSS animation and
-transition to 0.01ms in `style.css`.
+Motion: only state changes move. On the landing, the slip's border changes colour over 300ms and
+buttons change over 150ms, both `cubic-bezier(0.25, 1, 0.5, 1)`; there is no entrance
+choreography and no replay. VitePress's own chrome changes over 250ms.
+`prefers-reduced-motion` cuts every CSS animation and transition to 0.01ms in `style.css`.
 
 **Decided direction (James, 2026-09-28; not built yet).** These replace the current values as the
 theme and landing PRs in #117 land; update this file with each one.
@@ -188,10 +187,10 @@ theme and landing PRs in #117 land; update this file with each one.
   meet WCAG AA.
 - **Colour:** a separate link/brand token, so amber means only proposed and waiting on consent;
   inline code turns neutral.
-- **Landing:** a proposal-slip hero in which the visitor approves a real proposal, sees the
-  receipt and undoes it, running the real core; sections ordered by protocol state; one
-  evidence chart with its caveats beside it; two paths, "I have an MCP server" (with the
-  framework card from #75) and "I'm building an agent or service".
+- **Landing (built, #117):** a proposal-slip hero in which the visitor approves a real
+  proposal, sees the receipt and undoes it, running the real core; sections ordered by
+  protocol state; one evidence chart with its caveats beside it; two paths, "I have an MCP
+  server" and "I'm building an agent or service". See the Proposal Slip component.
 
 This system rejects, per PRODUCT.md: generic AI-agent startup marketing, crypto and web3
 aesthetics, security fear-marketing, SaaS landing templates, decorative terminal costume, and
@@ -259,7 +258,19 @@ darkened in light mode for the same reason.
 **Character:** A quirky geometric grotesk for headings over a neutral workhorse sans, with a
 coding mono for everything the protocol emits. All three are self-hosted through `@fontsource`.
 Decided replacement: Public Sans for all human-facing text and JetBrains Mono for machine output
-(see Overview).
+(see Overview). The landing already works this way: every human-facing element there uses
+`--vp-font-family-base` (the slot Public Sans fills) and hierarchy comes from weight and scale.
+
+### Landing hierarchy (one family)
+- **Display** (650, clamp 2.25–3.125rem, 1.06, -0.026em, one sentence per line): the landing headline only, a step below the slip so it doesn't compete with it.
+- **Headline** (700, clamp 1.75–2.5rem, 1.1, -0.022em): section headings; the paths use
+  clamp 1.5–1.9rem, and the pull quote 600 at clamp 1.5–2.25rem.
+- **Title** (650, 1.375rem, 1.25): the protocol-state step titles; the slip's summary is 700 at
+  clamp 1.3–1.6rem.
+- **Body** (400, 1.0625rem, 1.65; 1rem under 640px), capped at 62ch. The lede is 1.1875rem.
+- **Label** (600, 0.8125–0.875rem): the slip's facts, chart headers, table headers.
+- **Lens** (400, 0.8125rem, 1.7; 0.75rem under 640px): recorded exchange output, effects, the
+  hash. Chart values stay in the body font with tabular numbers.
 
 ### Hierarchy
 - **Display** (600, clamp 2.3–3.6rem, 1.02): the landing headline only.
@@ -326,12 +337,28 @@ and a shadow on the same surface.
   Sidebar groups: Start, Concepts, Build, Reference. Mobile collapses to a hamburger and a
   "Menu / On this page" bar.
 
-### Hero Exchange (signature component)
-The landing's right column: a four-step stepper (Intent, Proposal, Commit, Undo) over a mono
-screen that reveals one real Lens exchange step by step (400ms, then every 1.5s), with a legend
-(proposed, committed) and a Replay button. After undo, the commit lines are struck through and
-greyed. The server-rendered page and reduced motion show the finished exchange; otherwise it
-blanks and replays on load. To be replaced by the proposal-slip hero (see Overview).
+### Proposal Slip (signature component)
+The landing hero's right column (`landing/ProposalSlip.vue`, `SlipStub.vue`, `use-slip.ts`): a
+real proposal from the example shop, over the example policy's $40 limit, as a permission slip.
+- **Top half:** what the service proposes. The proposal id and service, a state chip, the
+  summary, the effects in mono, three facts (uses, risk, undo window) and the service's reason
+  for asking.
+- **Tear-off stub:** below a dashed perforation with a notch cut into each edge. It holds what the
+  person signs: the proposal's hash, one Approve button and a line saying exactly what is signed.
+- **States.** The border and chip follow protocol state:
+  - neutral "Recorded" until the core is live;
+  - amber "Waiting on you";
+  - green "✓ Committed", where the stub shows the receipt, its undo window and Undo;
+  - neutral "↶ Undone";
+  - neutral "Expired" when the proposal, undo window or example policy runs out;
+  - red for a failed step.
+
+  Once live, Start again is always offered.
+- **Recording and live core.** The page paints from a recording of the same exchange
+  (`landing/exchange.ts`, generated from the core), so it needs no JavaScript to render; a
+  `<noscript>` line says approving needs it. The core loads when the browser is idle.
+- **Keyboard.** Focus moves to the next button after each step, and one live line announces
+  what happened.
 
 ### Playground (signature component)
 A two-pane tool: the agent's request on the left (service and verb segmented controls, capability

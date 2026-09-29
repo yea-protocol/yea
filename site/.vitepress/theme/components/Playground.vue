@@ -9,7 +9,7 @@ import ConsentCard from './playground/ConsentCard.vue';
 import HistoryList from './playground/HistoryList.vue';
 import LoadingPanes from './playground/LoadingPanes.vue';
 import { replySummary, requestSummary } from './playground/labels';
-import { lensView } from './playground/lens-lines';
+import { lensView } from './playground/lens-view';
 import PolicyPanel from './playground/PolicyPanel.vue';
 import PresetBar from './playground/PresetBar.vue';
 import QuickActions from './playground/QuickActions.vue';

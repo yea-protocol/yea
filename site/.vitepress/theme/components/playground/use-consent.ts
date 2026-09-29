@@ -5,6 +5,7 @@
  */
 import type { ConsentRequest } from '@yea-protocol/sdk';
 import { type ComputedRef, computed, ref, type ShallowRef, watch } from 'vue';
+import { factsLine, proposalFacts } from '../proposal-facts';
 import {
   type Core,
   type Exchange,
@@ -32,24 +33,6 @@ interface ConsentDeps {
   current: ComputedRef<Exchange | null>;
   seen: Seen;
   act: Act;
-}
-
-type Fmt = Pick<Core, 'fmtQuantity' | 'fmtDuration'>;
-
-/** The card's facts line: what the proposal uses (if anything), its risk and its undo window. */
-function consentMeta(fmt: Fmt, p: ReceivedProposal): string {
-  const uses = p.uses ?? {};
-  const used = Object.keys(uses)
-    .sort()
-    .map((n) => `${n} ${fmt.fmtQuantity(uses[n])}`);
-  const parts = [
-    ...(used.length ? [`uses ${used.join(', ')}`] : []),
-    `risk ${p.risk}`,
-    p.undo ? `undo for ${fmt.fmtDuration(p.undo.window)}` : 'irreversible',
-  ];
-  const text = parts.join(', ');
-
-  return text[0].toUpperCase() + text.slice(1);
 }
 
 /** Whether the consent request names exactly this proposal, at the service that sent it. */
@@ -96,11 +79,9 @@ export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {
       return null;
     }
 
-    return {
-      summary: p.summary,
-      effects: p.effects.map((e) => sdk.effectLine(e)),
-      meta: consentMeta(sdk, p),
-    };
+    const f = proposalFacts(sdk, p);
+
+    return { summary: p.summary, effects: f.effects, meta: factsLine(f) };
   });
 
   watch(request, async (c, _old, onCleanup) => {
