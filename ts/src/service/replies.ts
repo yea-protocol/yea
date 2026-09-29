@@ -1,6 +1,6 @@
 /**
  * Reading requests and building the reply frames the verb handlers share: a request's params,
- * ERROR from a thrown error, replays, EVENTs, and the holder key a reply is fitted for.
+ * ERROR from a thrown error, replays and EVENTs.
  */
 import { randomId } from '../crypto.js';
 import { YeaError } from '../errors.js';
