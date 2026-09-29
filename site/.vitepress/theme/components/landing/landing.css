@@ -1,19 +1,30 @@
 /* The landing's shared patterns, all under `.landing`: the type scale (one family for people,
    mono for machines), section rhythm, buttons, links, and the block that shows real Lens.
    Colour is protocol state: amber waits on a person, green is committed, red is refused;
-   everything else is ink and paper from the theme's tokens. */
+   everything else is ink and paper from the theme's tokens. Surfaces take a state's colour
+   at full strength (the hero band) or as a tint (the steps' rows), never a colour of their own. */
 .landing {
   --l-text: var(--vp-font-family-base);
   --l-mono: var(--vp-font-family-mono);
   --l-wide: 1180px;
   --l-measure: 62ch;
   --l-ease: cubic-bezier(0.25, 1, 0.5, 1);
+  /* Ease-out expo, for a colour spreading across a band. */
+  --l-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --l-gutter: 24px;
+  /* A state's colour as a row tint, for text that stays in the theme's colours. */
+  --l-tint-amber: color-mix(in srgb, var(--amber) 28%, var(--vp-c-bg));
+  --l-tint-green: color-mix(in srgb, var(--green) 28%, var(--vp-c-bg));
   --l-gap: clamp(20px, 3vw, 40px);
   font-family: var(--l-text);
   font-size: 1.0625rem;
   line-height: 1.65;
   color: var(--vp-c-text-1);
-  padding: 0 24px;
+  padding: 0 var(--l-gutter);
+}
+.dark .landing {
+  --l-tint-amber: color-mix(in srgb, var(--amber) 14%, var(--vp-c-bg));
+  --l-tint-green: color-mix(in srgb, var(--green) 14%, var(--vp-c-bg));
 }
 .landing :where(h1, h2, h3) {
   font-family: var(--l-text);
@@ -62,6 +73,6 @@
 .landing .lens .red { color: var(--state-red); }
 
 @media (max-width: 640px) {
-  .landing { padding: 0 16px; font-size: 1rem; }
+  .landing { --l-gutter: 16px; font-size: 1rem; }
   .landing .lens { padding: 14px 14px; font-size: 0.75rem; }
 }

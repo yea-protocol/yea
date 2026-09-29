@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * The protocol, state by state: intent, proposal, policy, consent, receipt and undo, each
- * beside the real output of the exchange the hero runs, recorded from the core.
+ * beside the real output of the exchange the hero runs, recorded from the core. Each step's
+ * number takes its state's colour, and its row tints with it as it crosses the middle of the
+ * screen, where the browser has scroll-driven animations; elsewhere the tint stays put.
  */
 import { RECORDED } from './exchange';
 import LensBlock from './LensBlock.vue';
@@ -48,7 +50,7 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
     </div>
 
     <ol class="steps">
-      <li v-for="(s, i) in STATES" :key="s.key" class="step">
+      <li v-for="(s, i) in STATES" :key="s.key" class="step" :data-tone="s.tone">
         <span class="n" aria-hidden="true">{{ i + 1 }}</span>
         <div class="text">
           <h3>{{ s.title }}</h3>
@@ -74,9 +76,26 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
 </template>
 
 <style scoped>
-.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(40px, 5vw, 64px); }
-.step { display: grid; grid-template-columns: 2.5rem minmax(0, 5fr) minmax(0, 7fr); gap: 16px clamp(20px, 3vw, 40px); align-items: start; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; }
+/* A row runs edge to edge through its tint (the border-image's outset), without widening the page. */
+.step { --tint: transparent; --row: var(--tint); display: grid; grid-template-columns: 2.5rem minmax(0, 5fr) minmax(0, 7fr); gap: 16px clamp(20px, 3vw, 40px); align-items: start; padding-block: clamp(24px, 3vw, 36px); border-image: conic-gradient(var(--row) 0 0) fill 0 / / 0 100vmax; }
+.step[data-tone="amber"] { --tint: var(--l-tint-amber); }
+.step[data-tone="green"] { --tint: var(--l-tint-green); }
 .n { font-size: 1rem; font-weight: 700; line-height: 1.9; font-variant-numeric: tabular-nums; width: 2rem; height: 2rem; display: grid; place-items: center; border: 1px solid var(--vp-c-border); border-radius: 50%; }
+/* The number carries the state at full strength, with ink on it in both themes. */
+.step[data-tone="amber"] .n { background: var(--amber); border-color: var(--amber); color: var(--ink); }
+.step[data-tone="green"] .n { background: var(--green); border-color: var(--green); color: var(--ink); }
+
+@property --row { syntax: "<color>"; inherits: false; initial-value: transparent; }
+@keyframes row-tint {
+  from, to { --row: transparent; }
+  35%, 65% { --row: var(--tint); }
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .step { animation: row-tint linear both; animation-timeline: view(); animation-range: cover 10% cover 90%; }
+  }
+}
 .text { display: grid; gap: 10px; }
 .out { display: grid; gap: 14px; min-width: 0; }
 .sentence { font-size: clamp(1.2rem, 1rem + 0.7vw, 1.45rem); font-weight: 650; line-height: 1.35; letter-spacing: -0.01em; }

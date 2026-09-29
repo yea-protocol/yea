@@ -1,7 +1,7 @@
 /**
  * Tests for the landing's logic: the policy sentence, the proposal facts and slip views, the
- * evidence chart's rows, what happens when the proposal, the undo window or the policy runs
- * out, and that the recorded exchange (landing/exchange.ts) still matches what the core
+ * evidence chart's rows, the tones the hero band and the steps take, what happens when the
+ * proposal, the undo window or the policy runs out, and that the recorded exchange (landing/exchange.ts) still matches what the core
  * produces, apart from ids, hashes, keys and times. They import TypeScript sources and the
  * built SDK, so they need Node's type stripping (22.18+) and `npm run build` first.
  */
@@ -53,6 +53,41 @@ test('policySentence: partial, unknown and non-spend caveats', {
     policySentence([{ exp: 900 }, { risk: 'medium' }], 0),
     'For the next 15 minutes, your agent may take actions up to medium risk.',
   );
+});
+
+test('phaseTone: the hero band waits in amber, commits in green, and goes plain after', {
+  skip,
+}, async () => {
+  const { phaseTone } = await import(`${LANDING}/tone.ts`);
+  const tones = (phases) => phases.map(phaseTone);
+
+  // The page first paints the recorded proposal, which is waiting on the person.
+  assert.deepEqual(tones(['loading', 'unavailable', 'waiting', 'approving']), [
+    'amber',
+    'amber',
+    'amber',
+    'amber',
+  ]);
+  assert.deepEqual(tones(['committed', 'undoing']), ['green', 'green']);
+  assert.deepEqual(tones(['undone', 'expired', 'error']), [
+    'plain',
+    'plain',
+    'red',
+  ]);
+});
+
+test('each protocol state step takes the tone of the state it shows', {
+  skip,
+}, async () => {
+  const { STATES } = await import(`${LANDING}/states.ts`);
+
+  assert.deepEqual(Object.fromEntries(STATES.map((s) => [s.key, s.tone])), {
+    intent: 'plain',
+    proposal: 'amber',
+    policy: 'plain',
+    consent: 'amber',
+    receipt: 'green',
+  });
 });
 
 test('amount and span say limits and durations as a reader would', {

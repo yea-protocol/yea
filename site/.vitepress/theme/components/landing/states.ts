@@ -1,12 +1,15 @@
 /**
  * The protocol states the landing walks through, in order, with the copy for each. The
- * artifact each one shows comes from the recorded exchange (exchange.ts).
+ * artifact each one shows comes from the recorded exchange (exchange.ts), and its tone is
+ * the protocol state it shows (tone.ts).
  */
+import type { Tone } from './tone';
 
 export type StateKey = 'intent' | 'proposal' | 'policy' | 'consent' | 'receipt';
 
 export interface StateStep {
   key: StateKey;
+  tone: Tone;
   title: string;
   body: string;
 }
@@ -14,26 +17,31 @@ export interface StateStep {
 export const STATES: readonly StateStep[] = [
   {
     key: 'intent',
+    tone: 'plain',
     title: 'The agent says what it wants',
     body: 'It sends an intent: the outcome, not the endpoints to reach it. The service answers with proposals, and nothing has happened yet.',
   },
   {
     key: 'proposal',
+    tone: 'amber',
     title: 'The service proposes',
     body: 'Each proposal lists its effects up front: what changes, what it uses, its risk and its undo window. Its hash binds any commit to exactly what was shown.',
   },
   {
     key: 'policy',
+    tone: 'plain',
     title: "The person's policy decides",
     body: 'The person signs it once, as a grant the agent presents with each request. Inside it, a commit goes through in one round trip. Grants are Ed25519 capability chains with limits, expiry, scopes and risk ceilings, verified offline and narrowed for sub-agents.',
   },
   {
     key: 'consent',
+    tone: 'amber',
     title: 'Past the policy, the person says yes',
     body: "Anything over a limit or irreversible stops, and the service asks. The person approves that exact proposal by signing its hash, as the slip above does. The agent can't sign it for them.",
   },
   {
     key: 'receipt',
+    tone: 'green',
     title: 'A receipt, and a way back',
     body: 'A commit returns a receipt with its undo window. UNDO is a verb, so going back is part of the protocol, not an afterthought.',
   },
