@@ -4,6 +4,7 @@ import pytest
 from conftest import CONFORMANCE, load_vectors
 
 from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
+from yea.keys import verify_proof
 from yea.uses import is_uses
 
 
@@ -48,6 +49,9 @@ def test_proof(case):
     if "key" in case:
         assert k.public == case["key"]
     assert sign_proof(k, case["aud"], case["verb"], case["target"], case["ts"])["sig"] == case["sig"]
+    proof = {"key": k.public, "ts": case["ts"], "sig": case["sig"]}
+    assert verify_proof(proof, case["aud"], case["verb"], case["target"], case["ts"]) is None
+    assert verify_proof(proof, case["aud"], case["verb"], "other", case["ts"]) is not None  # a wrong target fails
 
 
 @pytest.mark.parametrize("case", cases("grants"))
