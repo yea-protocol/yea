@@ -1,6 +1,7 @@
 /**
  * A job call after approval (SPEC-mcp-ts, "How a call runs", step 11): apply once, then settle
- * the reservations and record the receipt; and what to say when something fails after `apply()`.
+ * the reservations and record the receipt; and what to say when something fails after `apply()`,
+ * including the `PartialApplyError` an `apply()` throws when it fails part-way.
  */
 import {
   type CallToolResult,
@@ -36,6 +37,14 @@ const failedResult = (job: JobDef, result: unknown) =>
   (!isObject(result) ||
     result.isError === true ||
     isInputRequiredResult(result));
+
+/**
+ * Thrown by an `apply()` that failed after changing something, so the result doesn't say
+ * "nothing changed". Its message says what was left behind, and how to fix it.
+ */
+export class PartialApplyError extends Error {
+  readonly partial = true;
+}
 
 /**
  * An `apply()` that failed after changing something throws an error with `partial: true`

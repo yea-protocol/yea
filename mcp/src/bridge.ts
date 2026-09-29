@@ -19,9 +19,8 @@ import { passThrough } from './bridge/params.js';
 import { PendingProposals } from './bridge/pending.js';
 import type { Bridge } from './bridge/state.js';
 import type { ToolMode } from './bridge/tools/generic.js';
-import { buildTools, errorOf } from './bridge/tools.js';
+import { buildTools, errorOf, utilityTools } from './bridge/tools.js';
 import type { ToolSpec } from './bridge/types.js';
-import { utilityTools } from './bridge/utility-tools.js';
 import type { Obj } from './util.js';
 
 export type { ConsentStore } from './bridge/consent.js';
