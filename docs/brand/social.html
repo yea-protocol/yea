@@ -1,30 +1,51 @@
-<html><head>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500&display=block" rel="stylesheet">
+<!doctype html>
+<!--
+  The social preview card (social.png, 1280×640), in the site's type and palette: Public Sans for
+  people, JetBrains Mono for machine output, ink on paper, amber only for the proposal waiting on
+  consent. Render it at 1280×640, device scale 1, once the fonts have loaded, and save the
+  screenshot over social.png. It isn't copied into the site (site/scripts/brand.mjs skips it).
+-->
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>YEA social card</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700;750&family=JetBrains+Mono:wght@400;500&display=block" rel="stylesheet">
 <style>
-body{margin:0;width:1280px;height:640px;background:#0B0D12;color:#F7F5F0;font-family:Inter;overflow:hidden;position:relative}
-.grid{position:absolute;inset:0;background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:40px 40px;mask-image:radial-gradient(ellipse at 30% 40%,#000 30%,transparent 75%)}
-.glow{position:absolute;width:700px;height:700px;left:-200px;top:-260px;background:radial-gradient(circle,#FFB22422,transparent 60%)}
-.l{position:absolute;left:80px;top:88px;width:520px}
-h1{font-family:'Space Grotesk';font-weight:700;font-size:50px;line-height:1.06;letter-spacing:-1.5px;margin:40px 0 22px}
-h1 em{font-style:normal;color:#FFB224}
-p{font-size:23px;line-height:1.45;color:#B9BDC6;margin:0}
-.card{position:absolute;right:70px;top:128px;width:510px;background:#12151C;border:1px solid #262A33;border-radius:16px;padding:22px 26px;font-family:'JetBrains Mono';font-size:16.5px;line-height:1.65;box-shadow:0 30px 80px #0008}
-.dots{display:flex;gap:7px;margin-bottom:14px}.dots i{width:11px;height:11px;border-radius:50%;background:#2a2e38;display:block}
-.m{color:#8A8F98}.a{color:#FFB224}.g{color:#2BD9A5}.r{color:#FF5C5C}.w{color:#F7F5F0}
-.foot{position:absolute;left:80px;bottom:56px;font-family:'JetBrains Mono';font-size:18px;color:#8A8F98}
-</style></head><body><div class="grid"></div><div class="glow"></div>
-<div class="l"><img src="logo-dark.svg" height="58">
-<h1>HTTP was built for browsers.<br><em>YEA</em> is built for agents.</h1>
-<p>Your Explicit Approval: the open protocol for AI agents acting on behalf of people.</p></div>
-<div class="card"><div class="dots"><i></i><i></i><i></i></div>
-<div class="m">→ INTENT shop.order auto</div>
-<div class="w">1 proposal — undo: 2h</div>
-<div class="w">[p_GCFpf4dl] 4 meals — <span class="a">71.36 USD</span></div>
-<div class="w">&nbsp;&nbsp;<span class="g">+</span> create order/o1001</div>
-<div class="w">&nbsp;&nbsp;<span class="a">$</span> charge card ••4242</div>
-<div class="m">→ COMMIT p_GCFpf4dl</div>
-<div class="r">✗ consent_required: over 40.00 USD</div>
-<div class="m">👤 human approves this exact hash</div>
-<div class="g">✓ placed (receipt r_SnSl2Gc2) · undo 2h</div></div>
-<div class="foot">github.com/yea-protocol/yea</div>
+:root { --ink: #0B0D12; --paper: #F7F5F0; --raised: #FCFBF8; --text-2: #3C414B; --divider: #DAD5C9; --amber: #FFB224; --amber-ink: #8E5400; }
+* { box-sizing: border-box; }
+body { margin: 0; width: 1280px; height: 640px; overflow: hidden; background: var(--paper); color: var(--ink); font-family: 'Public Sans', system-ui, sans-serif; display: grid; grid-template-columns: 1fr 480px; gap: 56px; padding: 68px 72px 60px; }
+.words { display: flex; flex-direction: column; align-items: flex-start; }
+h1 { font-size: 54px; line-height: 1.05; font-weight: 750; letter-spacing: -0.028em; margin: 40px 0 22px; }
+h1 span { display: block; }
+p { font-size: 22px; line-height: 1.45; color: var(--text-2); margin: 0; max-width: 34ch; }
+.foot { margin-top: auto; font-size: 20px; color: var(--text-2); }
+.slip { align-self: center; justify-self: end; width: 480px; background: var(--raised); border: 1.5px solid var(--amber-ink); border-radius: 16px; padding: 26px 30px 28px; }
+.top { display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--text-2); }
+.chip { font-size: 16px; font-weight: 600; color: var(--amber-ink); border: 1px solid currentColor; border-radius: 999px; padding: 3px 12px; }
+.summary { font-size: 30px; font-weight: 700; letter-spacing: -0.015em; margin: 14px 0 10px; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.effects { font-size: 17px; line-height: 1.6; color: var(--text-2); }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 18px 0 20px; padding: 14px 0; border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider); }
+.facts dt { font-size: 15px; color: var(--text-2); }
+.facts dd { margin: 2px 0 0; font-size: 20px; font-weight: 600; }
+.approve { display: flex; align-items: center; gap: 18px; }
+.btn { background: var(--amber); color: var(--ink); font-weight: 700; font-size: 20px; border-radius: 10px; padding: 12px 30px; }
+.hash { font-size: 16px; color: var(--text-2); white-space: nowrap; }
+</style></head><body>
+<div class="words">
+  <img src="logo-light.svg" height="52" alt="YEA">
+  <h1><span>Your agent proposes.</span> <span>You decide what goes ahead.</span></h1>
+  <p>YEA (Your Explicit Approval): the open protocol for AI agents acting on behalf of people.</p>
+  <div class="foot">github.com/yea-protocol/yea</div>
+</div>
+<div class="slip">
+  <div class="top"><span>Proposal from shop.example</span><span class="chip">Waiting on you</span></div>
+  <div class="summary">4 meals, 53.95 USD</div>
+  <div class="effects mono">+ create order/o1001<br>+ create charge: 53.95 USD</div>
+  <dl class="facts">
+    <div><dt>Uses</dt><dd>spend 53.95</dd></div>
+    <div><dt>Risk</dt><dd>low</dd></div>
+    <div><dt>Undo</dt><dd>within 2h</dd></div>
+  </dl>
+  <div class="approve"><span class="btn">Approve</span><span class="hash">Signs this proposal, nothing else</span></div>
+</div>
 </body></html>
