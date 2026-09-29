@@ -36,7 +36,7 @@ def _plan_lines(n: int, hp: HashedPlan) -> list[str]:
             "  " + " · ".join(attrs)]
 
 
-def planstext_content(plans: list[HashedPlan]) -> list[str]:
+def plans_text(plans: list[HashedPlan]) -> list[str]:
     head = f"{len(plans)} plan{'' if len(plans) == 1 else 's'}:"
     return [head, *(line for i, hp in enumerate(plans, 1) for line in _plan_lines(i, hp))]
 
@@ -45,8 +45,8 @@ def preview_result(plans: list[HashedPlan], as_error: bool) -> t.CallToolResult:
     """``preview: true``: the plans, and nothing run or stored. ``as_error`` is for a guarded tool
     with an output schema, which only describes its real results (decision 6)."""
     return t.CallToolResult(
-        content=text_content(["preview: nothing was run", *planstext_content(plans),
-                       "Call again without preview to run the first plan, or to ask the user."]),
+        content=text_content(["preview: nothing was run", *plans_text(plans),
+                              "Call again without preview to run the first plan, or to ask the user."]),
         structured_content={"plans": [plan_view(hp) for hp in plans]},
         is_error=as_error,
     )
@@ -59,7 +59,7 @@ def consent_result(why: str, plans: list[HashedPlan], codes: list[dict], unavail
     else:
         tail = ["Ask the user to run `yea approve <code>` in their terminal, then call again.",
                 *(f"  code for [{_number(plans, c)}]: {c['code']}" for c in codes)]
-    return error_result([f"✗ approval needed: {printable(why)}; nothing was run", *planstext_content(plans), *tail],
+    return error_result([f"✗ approval needed: {printable(why)}; nothing was run", *plans_text(plans), *tail],
                         {"plans": [plan_view(hp) for hp in plans], "codes": codes})
 
 
