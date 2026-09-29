@@ -332,16 +332,31 @@ Read the [full specification](SPEC.md). It's short on purpose.
 
 
 <!-- #region quickstart -->
-**Try it in 10 seconds** (no clone): `npx @yea-protocol/cli demo` runs a narrated session
-with two services, a human's policy, consent and undo, over real sockets.
-[Or try it in your browser →](https://yea-protocol.github.io/yea/playground)
+**Try it in your browser:** the [playground](https://yea-protocol.github.io/yea/playground) runs
+the real core, with nothing to install. **Or in your terminal:** `npx @yea-protocol/cli demo` runs a
+narrated session with two services, a human's policy, consent and undo, over real sockets.
+
+> **Unreleased:** the SDKs and the `yea` command aren't on npm or PyPI yet, so `npx` and the
+> installs below fail for now. Until they're published, run the demo from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js demo
+> ```
+>
+> In your own project, install the TypeScript SDK as a packed file, as the
+> [MCP guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows, and the Python SDK
+> from the repo:
+>
+> ```sh
+> uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"
+> ```
 
 ```sh
 npm install @yea-protocol/sdk        # TypeScript/JavaScript: Node ≥ 20, Bun, Deno (web-standard APIs only)
 uv add yea-sdk             # Python ≥ 3.10 (or: pip install yea-sdk)
 ```
-
-> The Python package isn't on PyPI yet. Until it is: `uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"`.
 
 ### Build a service
 
@@ -413,6 +428,15 @@ yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana   # interactive: inten
 
 
 <!-- #region openapi -->
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so the `npx` commands below fail for
+> now. Until it's published, run the CLI from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js openapi --preset github
+> ```
+
 You don't have to wait for services to adopt YEA.
 
 ```sh
@@ -468,6 +492,21 @@ claude mcp add my-api -- npx @yea-protocol/cli mcp yea://127.0.0.1:7447
 
 
 <!-- #region claude-code -->
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet. The plugin below and `yea install` both
+> start the bridge with `npx -y @yea-protocol/cli mcp`, which fails until it's published. Until
+> then, run `install` from a clone, and point each tool's `yea` MCP server at the clone instead
+> (command `node`, args `/absolute/path/to/yea/cli/bin/yea.js mcp`). For Claude Code:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js install          # an agent key, the bridge and agent instructions
+> claude mcp remove -s user yea        # then point Claude Code's "yea" entry at the clone
+> claude mcp add -s user yea -- node "$PWD/cli/bin/yea.js" mcp
+> ```
+>
+> Add services with `node cli/bin/yea.js add <url>`.
+
 The bridge exposes YEA services as an MCP server, so every MCP client can use them now.
 Each capability is its own tool (`calendar_reschedule`, `shop_order`, …), plus `yea_consent`,
 `yea_undo` and `yea_expand`. Tool results are Lens.

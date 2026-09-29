@@ -132,6 +132,11 @@ npx @yea-protocol/cli demo                        # the whole story in 30 second
 npx @yea-protocol/cli openapi <your-openapi.json> # any REST API, as a YEA service
 ```
 
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so these fail for now. Until it's
+> published, run them from a clone, with `node cli/bin/yea.js` in place of `npx @yea-protocol/cli`,
+> after `git clone https://github.com/yea-protocol/yea && cd yea && npm ci && npm run build`.
+> The [playground](https://yea-protocol.github.io/yea/playground) needs nothing installed.
+
 Read the [spec](../SPEC.md). It's short on purpose. If you build a service or an
 implementation, or find a hole, [open an issue](https://github.com/yea-protocol/yea/issues).
 Feedback on the spec is the most valuable contribution right now.

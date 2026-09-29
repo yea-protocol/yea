@@ -4,7 +4,19 @@ editLink: false
 
 # CLI reference
 
-The `yea` command ships as `@yea-protocol/cli`: `npx @yea-protocol/cli <command>`, or `yea <command>` once it's installed globally (`npm i -g @yea-protocol/cli`). This is its own help text, generated from the source at build time:
+The `yea` command ships as `@yea-protocol/cli`: `npx @yea-protocol/cli <command>`, or `yea <command>` once it's installed globally (`npm i -g @yea-protocol/cli`).
+
+::: warning Unreleased: run it from the repo
+`@yea-protocol/cli` isn't on npm yet, so `npx @yea-protocol/cli` fails for now. Until it is, run it from a clone:
+
+```sh
+git clone https://github.com/yea-protocol/yea && cd yea
+npm ci && npm run build
+node cli/bin/yea.js <command>
+```
+:::
+
+This is its own help text, generated from the source at build time:
 
 <<< @/.vitepress/generated/cli-help.txt{text}
 
