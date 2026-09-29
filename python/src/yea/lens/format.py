@@ -59,8 +59,9 @@ def effect_line(e: dict) -> str:
     return line
 
 
-def param_list(params: Any) -> str:
-    """``(name: type, …)``; nested schemas render as ``{k: t}``, arrays of them as ``[{…}]``."""
+def _param_list(params: Any) -> str:
+    """``(name: type, …)``; nested schemas render as ``{k: t}``, arrays of them as ``[{…}]``. Private,
+    as TS keeps ``paramList``: ``lens()`` checks a schema's depth (shape.py) before it gets here."""
     if not params:
         return "()"
 
@@ -69,7 +70,7 @@ def param_list(params: Any) -> str:
             return t
         if isinstance(t, list):
             return f"[{ty(t[0])}]"
-        return "{" + param_list(t)[1:-1] + "}"
+        return "{" + _param_list(t)[1:-1] + "}"
 
     return "(" + ", ".join(f"{k}: {ty(params[k])}" for k in js_keys(params)) + ")"
 

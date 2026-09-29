@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 
 from .._json import compact
-from .format import effect_line, fmt_duration, fmt_time, param_list
+from .format import _param_list, effect_line, fmt_duration, fmt_time
 from .notation import _entry_lines
 
 
@@ -16,7 +16,7 @@ def _brief(r: dict) -> list[str]:
     if svc.get("summary"):
         lines.append(svc["summary"])
     for c in r.get("capabilities") or []:
-        line = f"{c.get('kind', '')} {c.get('name', '')}{param_list(c.get('params'))}"
+        line = f"{c.get('kind', '')} {c.get('name', '')}{_param_list(c.get('params'))}"
         if c.get("summary"):
             line += f" — {c['summary']}"
         if c.get("risk"):
