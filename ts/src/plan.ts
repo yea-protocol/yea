@@ -30,7 +30,6 @@ export interface Ctx {
   goal?: string;
   /** The principal (public key) on whose behalf the agent acts, if it presented a valid grant. */
   principal: string | null;
-  agent?: { name?: string; key?: string };
 }
 
 export interface CommitCtx {
