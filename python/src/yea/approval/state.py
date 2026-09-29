@@ -9,7 +9,6 @@ from .._json import b64url_encode
 
 STATE_TTL = 600  # seconds; no later than the MCP SDK's own request-state lifetime
 MAX_ROUNDS = 3
-BAD_STATE = "this approval is invalid or has expired; call the tool again"
 
 
 def new_state(tool: str, input_hash: str, sub: str, plans: list[str], round: int, now: int) -> dict:
@@ -20,7 +19,7 @@ def new_state(tool: str, input_hash: str, sub: str, plans: list[str], round: int
 
 def check_state(state: Any, tool: str, input_hash: str, sub: str, now: int) -> dict | None:
     """The state if it can be used for this call, else None. Callers refuse every failure with
-    the same message (``BAD_STATE``)."""
+    the same message, so it doesn't say which check failed."""
     ok = (
         isinstance(state, dict) and state.get("v") == 1 and state.get("tool") == tool
         and state.get("inputHash") == input_hash and state.get("sub") == sub
