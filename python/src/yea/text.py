@@ -76,13 +76,19 @@ def clip(s: str, max_len: int) -> str:
     return s[: max_len - 1] + "…" if len(s) > max_len else s
 
 
-def one_line(v: Any) -> Any:
-    """``v`` with every string (and key) made one line by ``printable``, for showing a service's
-    fields without letting a summary forge a line."""
+def _line_safe(v: Any) -> Any:
     if isinstance(v, str):
         return printable(v)
     if isinstance(v, list):
-        return [one_line(x) for x in v]
+        return [_line_safe(x) for x in v]
     if isinstance(v, dict):
-        return {printable(k) if isinstance(k, str) else k: one_line(x) for k, x in v.items()}
+        return {printable(k) if isinstance(k, str) else k: _line_safe(x) for k, x in v.items()}
     return v
+
+
+def one_line(v: Any) -> Any:
+    """``v`` with every string (and key) made one line by ``printable``, and clipped to Lens's
+    ``MAX_DEPTH``, for showing a service's fields without letting a summary forge a line."""
+    from .lens.depth import clip_depth
+
+    return _line_safe(clip_depth(v))

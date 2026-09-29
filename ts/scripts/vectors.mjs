@@ -1718,6 +1718,57 @@ for (const [type, name, json] of keyOrder) {
   });
 }
 
+// Depth (§9.1): objects and arrays nested 64 levels below the value (or frame) render as `…`.
+const nest = (levels, leaf, wrap = (v) => ({ a: v })) =>
+  Array.from({ length: levels }).reduce((v) => wrap(v), leaf);
+const nestArr = (levels, leaf) => nest(levels, leaf, (v) => [v]);
+const deepValues = [
+  ['depth: 64 levels of objects render', nest(64, 1)],
+  ['depth: the 65th level of objects is cut', nest(65, 1)],
+  ['depth: arrays cut inside compact JSON', { x: [nestArr(66, 1)] }],
+  ['depth: a cut table row', { rows: [nest(70, 'z'), nest(70, 'z')] }],
+];
+
+for (const [name, input] of deepValues) {
+  lensCases.push({ name, type: 'value', input, lens: P.lean(input) });
+}
+
+const deepReplies = [
+  [
+    'depth: answer data, counted from the frame',
+    r({ kind: 'ANSWER', data: nest(64, 1) }),
+  ],
+  [
+    'depth: proposal data',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [{ id: 'p1', summary: 'Go', effects: [], data: nest(70, 1) }],
+    }),
+  ],
+  [
+    'depth: receipt result',
+    r({
+      kind: 'RECEIPT',
+      receipt: { id: 'r1', summary: 'Done', result: nest(70, 1) },
+    }),
+  ],
+  [
+    'depth: error fix params and need in compact JSON',
+    r({
+      kind: 'ERROR',
+      code: 'bad_params',
+      message: 'm',
+      fix: [{ say: 'try', params: nest(70, 1) }],
+      need: [nestArr(70, 1)],
+    }),
+  ],
+  ['depth: an unknown kind', r({ kind: 'NEW', deep: nest(70, 1) })],
+];
+
+for (const [name, input] of deepReplies) {
+  lensCases.push({ name, type: 'reply', input, lens: P.lens(input) });
+}
+
 out('lens', lensCases);
 
 // uses: quantity rendering and which values are well-formed

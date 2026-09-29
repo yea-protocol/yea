@@ -3405,3 +3405,56 @@ describe('Lens never throws on a malformed frame (#188)', () => {
     expect(P.lens(deep as P.Reply)).toMatch(/^kind: BRIEF/);
   });
 });
+
+describe('Lens never overflows the stack on a deeply nested value (#213)', () => {
+  const DEEP = 200_000;
+  const nest = (wrap: (v: unknown) => unknown) => {
+    let v: unknown = 1;
+
+    for (let i = 0; i < DEEP; i++) {
+      v = wrap(v);
+    }
+
+    return v;
+  };
+  const deepObject = nest((v) => ({ a: v }));
+  const deepArray = nest((v) => [v]);
+  const frame = (kind: string, members: object) =>
+    ({ yea: 1, id: 's1', re: 'c1', kind, ...members }) as unknown as P.Reply;
+
+  it('renders every place a value can be deep, cut to "…"', () => {
+    for (const deep of [deepObject, deepArray]) {
+      const frames = [
+        frame('ANSWER', { data: deep }),
+        frame('PROPOSALS', {
+          proposals: [{ id: 'p', summary: 's', effects: [], data: deep }],
+        }),
+        frame('RECEIPT', { receipt: { id: 'r', summary: 's', result: deep } }),
+        frame('ERROR', {
+          code: 'c',
+          message: 'm',
+          fix: [{ say: 'try', params: { x: deep } }],
+          need: [deep],
+        }),
+        frame('NEW', { deep }),
+      ];
+
+      for (const f of frames) {
+        expect(P.lens(f)).toContain('"…"');
+        expect(P.untrustedLens(f)).toContain('"…"');
+      }
+
+      expect(P.lean(deep)).toContain('"…"');
+      expect(P.lean({ items: [deep] })).toContain('"…"');
+      expect(P.scalar(deep)).toContain('"…"');
+      expect(JSON.stringify(P.oneLine(deep))).toContain('"…"');
+      expect(
+        P.safeEffectLine({
+          op: 'update',
+          target: 't',
+          from: deep,
+        } as unknown as P.Effect),
+      ).toContain('"…"');
+    }
+  });
+});

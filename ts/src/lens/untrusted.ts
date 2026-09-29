@@ -5,20 +5,17 @@
 import { printable } from '../text.js';
 import type { Effect, Reply } from '../types.js';
 import { isObject } from '../util.js';
+import { clipDepth } from './depth.js';
 import { effectLine } from './format.js';
 import { lens } from './render.js';
 
-/**
- * `v` with every string (and key) made one line by `printable`. For showing a service's fields
- * without letting a summary forge a line.
- */
-export function oneLine(v: unknown): unknown {
+function lineSafe(v: unknown): unknown {
   if (typeof v === 'string') {
     return printable(v);
   }
 
   if (Array.isArray(v)) {
-    return v.map(oneLine);
+    return v.map(lineSafe);
   }
 
   if (typeof v !== 'object' || v === null) {
@@ -26,9 +23,15 @@ export function oneLine(v: unknown): unknown {
   }
 
   return Object.fromEntries(
-    Object.entries(v).map(([k, x]) => [printable(k), oneLine(x)]),
+    Object.entries(v).map(([k, x]) => [printable(k), lineSafe(x)]),
   );
 }
+
+/**
+ * `v` with every string (and key) made one line by `printable`, and clipped to MAX_DEPTH. For
+ * showing a service's fields without letting a summary forge a line.
+ */
+export const oneLine = (v: unknown): unknown => lineSafe(clipDepth(v));
 
 /**
  * `safe` (`orig` after `oneLine`) with `keys` put back from `orig`, and each of its `effects`'

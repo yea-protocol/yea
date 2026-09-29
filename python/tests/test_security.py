@@ -494,3 +494,36 @@ def test_lens_never_raises_on_a_malformed_nested_member_or_a_deep_param_schema()
         params = {"a": params}
     deep = frame("BRIEF", service={"id": "s", "name": "S"}, capabilities=[{"kind": "ask", "name": "s.q", "params": params}])
     assert lens(deep).startswith("kind: BRIEF")
+
+
+def test_lens_never_overflows_the_stack_on_a_deeply_nested_value():
+    """#213: a value nested far past the recursion limit renders, cut to "…" 64 levels down, in every
+    place Lens renders a value."""
+    from yea.lens import lean, lens, safe_effect_line, scalar, untrusted_lens
+    from yea.text import one_line
+
+    def nest(wrap):
+        v = 1
+        for _ in range(20_000):
+            v = wrap(v)
+        return v
+
+    def frame(kind, **members):
+        return {"yea": 1, "id": "s1", "re": "c1", "kind": kind, **members}
+
+    for deep in (nest(lambda v: {"a": v}), nest(lambda v: [v])):
+        frames = (
+            frame("ANSWER", data=deep),
+            frame("PROPOSALS", proposals=[{"id": "p", "summary": "s", "effects": [], "data": deep}]),
+            frame("RECEIPT", receipt={"id": "r", "summary": "s", "result": deep}),
+            frame("ERROR", code="c", message="m", fix=[{"say": "try", "params": {"x": deep}}], need=[deep]),
+            frame("NEW", deep=deep),
+        )
+        for f in frames:
+            assert '"…"' in lens(f)
+            assert '"…"' in untrusted_lens(f)
+        assert '"…"' in lean(deep)
+        assert '"…"' in lean({"items": [deep]})
+        assert '"…"' in scalar(deep)
+        assert "…" in repr(one_line(deep))
+        assert '"…"' in safe_effect_line({"op": "update", "target": "t", "from": deep})
