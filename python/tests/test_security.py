@@ -494,3 +494,89 @@ def test_lens_never_raises_on_a_malformed_nested_member_or_a_deep_param_schema()
         params = {"a": params}
     deep = frame("BRIEF", service={"id": "s", "name": "S"}, capabilities=[{"kind": "ask", "name": "s.q", "params": params}])
     assert lens(deep).startswith("kind: BRIEF")
+
+
+def test_lens_never_overflows_the_stack_on_a_deeply_nested_value():
+    """#213: a value nested far past the recursion limit renders, cut to "…" 64 levels down, in every
+    place Lens renders a value."""
+    from yea.lens import lean, lens, safe_effect_line, scalar, untrusted_lens
+    from yea.text import one_line
+
+    def nest(wrap):
+        v = 1
+        for _ in range(20_000):
+            v = wrap(v)
+        return v
+
+    def frame(kind, **members):
+        return {"yea": 1, "id": "s1", "re": "c1", "kind": kind, **members}
+
+    for deep in (nest(lambda v: {"a": v}), nest(lambda v: [v])):
+        frames = (
+            frame("ANSWER", data=deep),
+            frame("PROPOSALS", proposals=[{"id": "p", "summary": "s", "effects": [], "data": deep}]),
+            frame("RECEIPT", receipt={"id": "r", "summary": "s", "result": deep}),
+            frame("ERROR", code="c", message="m", fix=[{"say": "try", "params": {"x": deep}}], need=[deep]),
+            frame("NEW", deep=deep),
+        )
+        for f in frames:
+            assert '"…"' in lens(f)
+            assert '"…"' in untrusted_lens(f)
+        assert '"…"' in lean(deep)
+        assert '"…"' in lean({"items": [deep]})
+        assert '"…"' in scalar(deep)
+        assert "…" in repr(one_line(deep))
+        assert '"…"' in safe_effect_line({"op": "update", "target": "t", "from": deep})
+
+
+def test_approval_never_covers_content_lens_cuts():
+    """#213: a proposal (without data) or a plan's summary, effects and uses nested past 32 levels,
+    itself being the first, is never shown for approval: Lens would cut part of what the person signs.
+    The proposal or plan is level 0, an effect 2 and its ``to`` 3, so ``buried(n)`` puts the innermost
+    object at n + 3: 28 is the deepest a person can approve."""
+    import pytest
+
+    from yea import proposal_hash
+    from yea.approval.plan import plan_preimage
+    from yea.approve import check_proposal
+    from yea.lens import safe_effect_line
+    from yea.service.plan import Plan
+
+    def buried(levels):
+        v = {"forward_to": "attacker@evil.test"}
+        for _ in range(levels):
+            v = {"settings": v}
+        return v
+
+    def effect(levels):
+        return {"op": "update", "target": "settings", "to": buried(levels)}
+
+    def hashed(p):
+        return {**p, "hash": proposal_hash(p)}
+
+    base = {"id": "p1", "capability": "s.set", "risk": "low"}
+
+    def proposal(levels):
+        return hashed({**base, "summary": "Update settings", "effects": [effect(levels)]})
+
+    too_deep = "the proposal is nested too deep to show in full"
+    assert check_proposal(proposal(28)) is None
+    assert check_proposal(proposal(29)) == too_deep
+    assert check_proposal(proposal(300)) == too_deep
+    for p in (
+        {**base, "summary": buried(40), "effects": []},
+        {**base, "summary": "s", "effects": {"a": buried(40)}},
+        {**base, "summary": "s", "effects": [], "undo": {"window": 60, "x": buried(40)}},
+    ):
+        assert check_proposal(hashed(p)) == too_deep
+
+    def plan(levels, wrap=list):
+        return Plan("Update settings", wrap([effect(levels)]), apply=lambda: None)
+
+    assert plan_preimage("t", {}, plan(28), "low")["tool"] == "t"
+    for p in (plan(29), plan(29, tuple)):
+        with pytest.raises(ValueError, match="nested past 32 levels"):
+            plan_preimage("t", {}, p, "low")
+
+    shown = safe_effect_line(proposal(28)["effects"][0])
+    assert "attacker@evil.test" in shown and "…" not in shown

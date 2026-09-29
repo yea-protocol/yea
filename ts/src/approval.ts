@@ -14,6 +14,7 @@ export {
   type JobPlan,
   planHashOf,
   planPreimage,
+  planTooDeep,
 } from './approval/plans.js';
 
 export { type Decision, decide, type Policy } from './approval/policy.js';

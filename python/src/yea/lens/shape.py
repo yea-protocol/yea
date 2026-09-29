@@ -36,7 +36,9 @@ _KINDS: dict[str, Any] = {
 _MORE = [{"remaining": "integer", "path": "string", "handle": "string", "est": "integer"}]
 
 _MAX_SAFE = 2**53 - 1
-_MAX_PARAM_DEPTH = 32  # so checking and rendering a param schema can't overflow the stack
+# So checking and rendering a param schema can't overflow the stack. Keep it well under depth.py's
+# MAX_DEPTH, which a schema must never reach.
+_MAX_PARAM_DEPTH = 32
 _ABSENT = object()
 
 

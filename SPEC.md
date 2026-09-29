@@ -466,7 +466,9 @@ notification or a page. The consent request comes from the service, so the agent
 tooling MUST check that its `proposal`, `hash`, `service` and `capability` match the
 proposal the agent actually received from that service. It MUST show the human that
 proposal's effects, uses, risk and undo, not the service-written summary alone. A
-mismatched consent request is never shown for signing. If the principal approves, they sign a **consent grant**:
+mismatched consent request is never shown for signing, and neither is a proposal that,
+without its `data`, nests objects and arrays more than 32 levels deep, the proposal itself
+being the first: Lens would cut part of what the principal signs (§9.1). If the principal approves, they sign a **consent grant**:
 a root grant with `iss` = principal, `sub` = agent key and exactly these caveats:
 
 ```json
@@ -589,6 +591,15 @@ renders `2`, `10`, `b`. Canonical JSON (§10) sorts differently; it isn't used h
 - otherwise → `k[N]:` followed by each element at indent n+1 as `- ` plus the element: scalars inline; empty objects as `{}`; non-empty objects with their first entry on the dash line and later entries aligned under it (indent n+2); arrays as `[a, b]` in scalar-list form if all scalars, else compact JSON (no whitespace, keys in the order above).
 
 A top-level object renders its entries at indent 0. A top-level array renders as if under the key `items`. A top-level scalar renders as a scalar.
+
+**Depth.** Lens renders at most 64 levels of objects and arrays. Before rendering, every object or
+array nested 64 levels below the value given (for a reply, below the frame: its members are level
+1) is replaced by the string `…` (U+2026), which then renders as any string does (`"…"`), so a cut
+looks the same as a service's own `"…"`. An empty object or array at level 64 is cut too. The cut
+comes first, so the §9.2 well-formed checks and the table form (above) see the cut value. Lean of
+64 nested objects renders all 64; with 65, the innermost renders as `"…"`. This applies everywhere
+Lens renders a value, compact JSON included, so a deeply nested value can't overflow the stack,
+and conforming implementations still agree byte for byte.
 
 ### 9.2 Reply renderings
 

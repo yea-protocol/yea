@@ -3405,3 +3405,164 @@ describe('Lens never throws on a malformed frame (#188)', () => {
     expect(P.lens(deep as P.Reply)).toMatch(/^kind: BRIEF/);
   });
 });
+
+describe('Lens never overflows the stack on a deeply nested value (#213)', () => {
+  const DEEP = 200_000;
+  const nest = (wrap: (v: unknown) => unknown) => {
+    let v: unknown = 1;
+
+    for (let i = 0; i < DEEP; i++) {
+      v = wrap(v);
+    }
+
+    return v;
+  };
+  const deepObject = nest((v) => ({ a: v }));
+  const deepArray = nest((v) => [v]);
+  const frame = (kind: string, members: object) =>
+    ({ yea: 1, id: 's1', re: 'c1', kind, ...members }) as unknown as P.Reply;
+
+  it('renders every place a value can be deep, cut to "…"', () => {
+    for (const deep of [deepObject, deepArray]) {
+      const frames = [
+        frame('ANSWER', { data: deep }),
+        frame('PROPOSALS', {
+          proposals: [{ id: 'p', summary: 's', effects: [], data: deep }],
+        }),
+        frame('RECEIPT', { receipt: { id: 'r', summary: 's', result: deep } }),
+        frame('ERROR', {
+          code: 'c',
+          message: 'm',
+          fix: [{ say: 'try', params: { x: deep } }],
+          need: [deep],
+        }),
+        frame('NEW', { deep }),
+      ];
+
+      for (const f of frames) {
+        expect(P.lens(f)).toContain('"…"');
+        expect(P.untrustedLens(f)).toContain('"…"');
+      }
+
+      expect(P.lean(deep)).toContain('"…"');
+      expect(P.lean({ items: [deep] })).toContain('"…"');
+      expect(P.scalar(deep)).toContain('"…"');
+      expect(JSON.stringify(P.oneLine(deep))).toContain('"…"');
+      expect(
+        P.safeEffectLine({
+          op: 'update',
+          target: 't',
+          from: deep,
+        } as unknown as P.Effect),
+      ).toContain('"…"');
+    }
+  });
+});
+
+describe('Approval never covers content Lens cuts (#213)', () => {
+  const buried = (levels: number) => {
+    let v: unknown = { forward_to: 'attacker@evil.test' };
+
+    for (let i = 0; i < levels; i++) {
+      v = { settings: v };
+    }
+
+    return v;
+  };
+  // The proposal or plan is level 0, its effects 1, an effect 2 and its `to` 3, so `buried(n)`
+  // puts the innermost object at level n + 3: 28 is the deepest a person can approve.
+  const effect = (levels: number) => ({
+    op: 'update',
+    target: 'settings',
+    to: buried(levels),
+  });
+  const hashed = async (p: Record<string, unknown>) =>
+    ({ ...p, hash: await P.proposalHash(p) }) as unknown as P.Proposal;
+  const proposal = (levels: number) =>
+    hashed({
+      id: 'p1',
+      capability: 's.set',
+      summary: 'Update settings',
+      effects: [effect(levels)],
+      risk: 'low',
+    });
+  const tooDeep = 'the proposal is nested too deep to show in full';
+
+  it('a proposal nested past 32 levels is never shown for consent', async () => {
+    expect(await P.checkProposal(await proposal(28))).toBeNull();
+    expect(await P.checkProposal(await proposal(29))).toBe(tooDeep);
+    expect(await P.checkProposal(await proposal(70))).toBe(tooDeep);
+  });
+
+  it('whatever member is deep: a malformed summary or effects too', async () => {
+    const base = { id: 'p1', capability: 's.set', risk: 'low' };
+
+    for (const p of [
+      { ...base, summary: buried(40), effects: [] },
+      { ...base, summary: 's', effects: { a: buried(40) } },
+      {
+        ...base,
+        summary: 's',
+        effects: [],
+        undo: { window: 60, x: buried(40) },
+      },
+    ]) {
+      expect(await P.checkProposal(await hashed(p))).toBe(tooDeep);
+    }
+  });
+
+  it('a plan nested past 32 levels gets no plan hash', async () => {
+    const plan = (levels: number) => ({
+      summary: 'Update settings',
+      effects: [effect(levels)],
+      apply: () => null,
+    });
+
+    await expect(
+      P.hashPlans({ name: 't' }, {}, [plan(28)]),
+    ).resolves.toHaveLength(1);
+    await expect(P.hashPlans({ name: 't' }, {}, [plan(29)])).rejects.toThrow(
+      /nested past 32 levels/,
+    );
+  });
+
+  it('yea approve refuses a job consent code whose plan is nested past 32 levels', async () => {
+    const [hp] = await P.hashPlans({ name: 't' }, {}, [
+      { summary: 'Update settings', effects: [], apply: () => null },
+    ]);
+    const good = P.decodeConsentCode(
+      P.jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: 'approve',
+        now,
+      }),
+    ) as unknown as Record<string, unknown> & {
+      detail: { job: Record<string, unknown>; phrase: string };
+    };
+    const job = { ...good.detail.job, effects: [effect(29)] };
+    const hash = await P.planHashOf(job);
+    const c = {
+      ...good,
+      hash,
+      proposal: hash,
+      detail: { ...good.detail, job },
+    };
+
+    await expect(
+      P.readJobConsent(
+        `pc1.${P.b64u(new TextEncoder().encode(P.canonical(c)))}`,
+        now,
+      ),
+    ).rejects.toThrow('nested too deep to show in full');
+  });
+
+  it('what is just within the limit shows in full', async () => {
+    const shown = P.safeEffectLine((await proposal(28)).effects[0]);
+
+    expect(shown).toContain('attacker@evil.test');
+    expect(shown).not.toContain('…');
+  });
+});

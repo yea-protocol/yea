@@ -4,6 +4,7 @@
  */
 import type { More, Reply } from '../types.js';
 import { isObject } from '../util.js';
+import { clipDepth } from './depth.js';
 import { lean } from './notation.js';
 import { proposalsLines } from './proposals.js';
 import {
@@ -61,12 +62,18 @@ function unknownLines(frame: object, moreOk: boolean): string[] {
   return [lean(Object.fromEntries(shown))];
 }
 
-/** Render a reply frame as Lens (SPEC §9.2). A missing or wrong-typed member can't make it throw. */
+/**
+ * Render a reply frame as Lens (SPEC §9.2), clipped to MAX_DEPTH. A missing, wrong-typed or
+ * deeply nested member can't make it throw.
+ */
 export function lens(r: Reply): string {
-  const frame = isObject(r) ? r : {};
+  const clipped = clipDepth(r);
+  const frame = isObject(clipped) ? clipped : {};
   const more = moreOf(frame);
   const out =
-    more && kindFits(frame) ? bodyLines(r) : unknownLines(frame, more !== null);
+    more && kindFits(frame)
+      ? bodyLines(frame as unknown as Reply) // well-formed for its kind, per kindFits
+      : unknownLines(frame, more !== null);
 
   if (more) {
     out.push(...moreLines(more));

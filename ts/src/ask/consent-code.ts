@@ -2,7 +2,12 @@
  * Consent codes for `yea approve` (docs/framework/SPEC-approval.md §6): a job's
  * code when the client can't ask, and reading and signing one.
  */
-import { type HashedPlan, planHashOf, planPreimage } from '../approval.js';
+import {
+  type HashedPlan,
+  planHashOf,
+  planPreimage,
+  planTooDeep,
+} from '../approval.js';
 import {
   consentGrant,
   decodeConsentCode,
@@ -85,6 +90,12 @@ export async function readJobConsent(
 
   if (!isJob(job) || typeof d?.phrase !== 'string') {
     throw new Error('not a job consent code');
+  }
+
+  if (planTooDeep(job)) {
+    throw new Error(
+      "this consent code's plan is nested too deep to show in full",
+    );
   }
 
   const planHash = await planHashOf(job);

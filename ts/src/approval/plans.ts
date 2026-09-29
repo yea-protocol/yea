@@ -1,6 +1,7 @@
 /** Job plans and their hashes (SPEC-approval §1): the preimage, its integer check, and each plan's risk. */
 import { canonical } from '../canonical.js';
 import { sha256 } from '../crypto.js';
+import { MAX_APPROVAL_DEPTH, tooDeepToApprove } from '../lens.js';
 import { knownRisk, resolveRisk } from '../risk.js';
 import type { Effect, Risk } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
@@ -45,6 +46,17 @@ export function assertIntegers(v: unknown, path = 'input'): void {
   }
 }
 
+/**
+ * True when the part of a plan a person reads (summary, effects, uses) nests too deep to show in
+ * full, so it can't be approved (SPEC.md §6.6): nothing approved may be cut from view.
+ */
+export const planTooDeep = ({
+  summary,
+  effects,
+  uses,
+}: Pick<JobPlan, 'summary' | 'effects' | 'uses'>) =>
+  tooDeepToApprove({ summary, effects, uses });
+
 /** The fields a plan hash covers, in the form `yea approve` recomputes it from. */
 export function planPreimage(
   tool: string,
@@ -61,6 +73,12 @@ export function planPreimage(
   }
 
   knownRisk(risk);
+
+  if (planTooDeep(plan)) {
+    throw new TypeError(
+      `plan is nested past ${MAX_APPROVAL_DEPTH} levels, too deep to show in full`,
+    );
+  }
 
   return {
     tool,

@@ -4,6 +4,7 @@
  */
 import { quote } from '../canonical.js';
 import { isObject } from '../util.js';
+import { clipDepth } from './depth.js';
 
 const BARE = /^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$/;
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/;
@@ -30,7 +31,7 @@ export function scalar(v: unknown): string {
   }
 
   if (typeof v === 'object') {
-    return JSON.stringify(v); // not a scalar (a malformed time, say): its compact JSON
+    return JSON.stringify(clipDepth(v)); // not a scalar (a malformed time, say): its compact JSON
   }
 
   const s = String(v);
@@ -153,8 +154,10 @@ function listItem(item: unknown, n: number): string[] {
   return [`${dash}-`];
 }
 
-/** Render any JSON value in lean notation (SPEC §9.1). */
-export function lean(v: unknown): string {
+/** Render any JSON value in lean notation (SPEC §9.1), clipped to MAX_DEPTH. */
+export function lean(value: unknown): string {
+  const v = clipDepth(value);
+
   if (isScalar(v)) {
     return scalar(v);
   }
