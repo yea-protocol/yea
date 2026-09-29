@@ -22,7 +22,7 @@ export function errorReply(
   try {
     opts.onError?.(e);
   } catch {
-    // a failing onError must not fail the request, nor leave a commit half-released
+    // a failing onError must not fail the request (as in neverThrows)
   }
 
   return replyFrame(re, 'ERROR', {

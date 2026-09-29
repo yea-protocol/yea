@@ -737,10 +737,62 @@ describe('security regressions', () => {
 
     expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
     expect(runs).toBe(2);
-    // The failed attempt released its spend: only 60 of the 100 is used.
+
+    // The failed attempt released its spend exactly once: 60 of the 100 is used, so 41 is over
+    // and 40 fits.
+    const over = await c.commit(await intent(c, { to: 'b', amt: 41 }));
+
+    expect(over.kind === 'ERROR' && over.code).toBe('consent_required');
     expect((await c.commit(await intent(c, { to: 'b', amt: 40 }))).kind).toBe(
       'RECEIPT',
     );
+  });
+
+  // #187: the same shape in UNDO: a synchronous throw from revert() cached the ERROR.
+  it('[U5c] a sync revert that throws once is retried, and a success still runs once', async () => {
+    let reverts = 0;
+    const svc = P.service({
+      id: 'pay',
+      name: 'Pay',
+      summary: 'pay',
+      trust: [principal.public],
+    }).intent('pay.send', {
+      summary: 'send money',
+      params: { to: 'string', amt: 'int' },
+      plan: ({ params }) => ({
+        summary: `pay ${params.to}`,
+        effects: [P.create(`payment/${params.to}`)],
+        apply: () => null,
+        undoWindow: 60,
+        revert: () => {
+          reverts++;
+
+          if (reverts === 1) {
+            throw new P.YeaError('unavailable', 'bank down');
+          }
+        },
+      }),
+    });
+    const c = await client(svc, agent, principal);
+    const r = await c.commit(await intent(c, { to: 'a', amt: 1 }));
+
+    if (r.kind !== 'RECEIPT') {
+      throw new Error(r.lens);
+    }
+
+    const failed = await c.undo(r.receipt.id);
+
+    expect(failed.kind === 'ERROR' && failed.code).toBe('unavailable');
+
+    const retried = await c.undo(r.receipt.id);
+
+    expect(retried.kind === 'RECEIPT' && !retried.replay).toBe(true);
+    expect(reverts).toBe(2);
+
+    const again = await c.undo(r.receipt.id);
+
+    expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
+    expect(reverts).toBe(2);
   });
 
   it('[U10] a plan with an unknown risk never becomes a proposal', async () => {
