@@ -33,8 +33,9 @@ from ..ask import (
     is_modern,
     parse_state,
 )
-from ..render import clarify_result, consent_result, error_result, preview_result
-from .model import BAD_STATE, NOTHING_RAN, Call, JobDef, Req, Result, Yea
+from ..render import clarify_result, consent_result, preview_result
+from ..result import NOTHING_RAN, error_result
+from .model import BAD_STATE, Call, JobDef, Req, Result, Yea
 from .prepare import caller_of, hash_plans, is_memory_store, policy_for
 from .run import _run_plan
 

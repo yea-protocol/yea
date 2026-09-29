@@ -15,6 +15,8 @@ from typing import Any
 import mcp_types as t
 from pydantic import StrictBool, TypeAdapter
 
+from .call import _maybe
+
 Runner = Callable[[dict, Callable[[], Awaitable[Any]], bool, Any], Awaitable[Any]]
 _P = inspect.Parameter
 
@@ -60,8 +62,7 @@ def job_wrapper(plan_fn: Callable[..., Any], name: str, context_type: type, run:
         input = {k: adapters[k].dump_python(v, mode="json", by_alias=True) for k, v in kw.items() if k not in skip}
 
         async def plan() -> Any:
-            out = plan_fn(**kw)
-            return await out if inspect.isawaitable(out) else out
+            return await _maybe(plan_fn(**kw))
 
         return await run(input, plan, preview, ctx)
 

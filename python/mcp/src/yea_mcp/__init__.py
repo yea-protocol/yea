@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import secrets
 import sys
-import time
 import weakref
 from collections.abc import Callable
 from typing import Any
@@ -18,34 +17,29 @@ import mcp_types as t
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.mcpserver import Context
 from mcp.server.request_state import RequestStateSecurity
-
-from yea.approval import STATE_TTL, HashedPlan, undo_receipt
+from yea.approval import STATE_TTL, HashedPlan
 from yea.store import (
     ApprovalStore,
     FileStore,
     MemoryStore,
     default_store_dir,
-    is_receipt_id,
 )
-from yea.text import printable
 
 from .call import (
     JobDef,
     PartialApplyError,
     Req,
     Yea,
-    _maybe,
-    caller_of,
     is_memory_store,
-    is_partial,
     run_job,
 )
-from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
+from .guard import Guarded, GuardMiddleware
 from .policy import pinned_principal
-from .render import error_result
+from .result import job_annotations, job_meta
 from .server_key import check_name, default_key_path, load_server_key
 from .signature import job_wrapper
-from .util import warn_once
+from .undo import add_undo_tool, has_tool
+from .util import fastmcp_of, warn_once
 
 __all__ = ["Approvals", "PartialApplyError", "token_subject", "yea"]
 
@@ -152,7 +146,7 @@ class Approvals:
 
             given = job_annotations(_as_dict(annotations))
             meta = job_meta(risk, revert is not None)
-            if (fm := _fastmcp(server)) is not None:
+            if (fm := fastmcp_of(server)) is not None:
                 fm.add_job(self._y, server, plan_fn, job, title, description or plan_fn.__doc__, given, meta)
             else:
                 fn = job_wrapper(plan_fn, tool_name, Context, run)
@@ -175,7 +169,7 @@ class Approvals:
             self._undo_free(server)
         mw = self._guards.get(server)
         if mw is None:
-            fm = _fastmcp(server)
+            fm = fastmcp_of(server)
             mw = fm.FastMCPGuard(self._y, server) if fm is not None else GuardMiddleware(self._y, server)
             self._guards[server] = mw
             if fm is not None:
@@ -188,47 +182,16 @@ class Approvals:
 
     def _undo_free(self, server: Any) -> None:
         """Refuse, before registering anything, a server whose ``undo`` tool isn't ours (as mcp-ts)."""
-        if server not in self._reverts and _has_tool(server, "undo"):
+        if server not in self._reverts and has_tool(server, "undo"):
             raise ValueError("this server already has a tool named undo (its own, or another yea() instance's); a job "
                              "with revert needs YEA's undo tool")
 
     def _undo_for(self, server: Any) -> dict[str, Callable[..., Any]]:
-        """The ``undo`` tool, registered once per server, the first time a job with ``revert`` is added."""
+        """The ``undo`` tool's revert map for ``server``, registering the tool the first time."""
         reverts = self._reverts.get(server)
-        if reverts is not None:
-            return reverts
-        reverts = {}
-        self._reverts[server] = reverts
-        y = self._y
-
-        async def undo(receipt: str, ctx: Context) -> t.CallToolResult:
-            """Undo a job by its receipt id, within its undo window."""
-            return await undo_call(y, reverts, receipt, ctx)
-
-        if (fm := _fastmcp(server)) is not None:
-            fm.add_undo(server, lambda receipt, ctx: undo_call(y, reverts, receipt, ctx))
-        else:
-            server.add_tool(undo, name="undo", description="Undo a job by its receipt id, within its undo window.",
-                            annotations=t.ToolAnnotations(read_only_hint=False, destructive_hint=True,
-                                                          idempotent_hint=True))
+        if reverts is None:
+            reverts = self._reverts[server] = add_undo_tool(self._y, server)
         return reverts
-
-
-def _fastmcp(server: Any) -> Any:
-    """The FastMCP adapter module when ``server`` is a FastMCP server (the optional extra), else None."""
-    if type(server).__module__.split(".")[0] != "fastmcp":
-        return None
-    from . import fastmcp
-
-    return fastmcp
-
-
-def _has_tool(server: Any, name: str) -> bool:
-    """Whether ``server`` already has a tool ``name``. The SDKs' lookups are async and job()/guard()
-    aren't, so this reads each SDK's registry (a provisional seam, like ``server.middleware``)."""
-    if (fm := _fastmcp(server)) is not None:
-        return fm.has_tool(server, name)
-    return server._tool_manager.get_tool(name) is not None  # a rename in the SDK raises here, never passes
 
 
 def _as_dict(a: t.ToolAnnotations | dict | None) -> dict:
@@ -237,27 +200,3 @@ def _as_dict(a: t.ToolAnnotations | dict | None) -> dict:
     if isinstance(a, dict):
         return a
     return a.model_dump(by_alias=True, exclude_none=True)
-
-
-async def undo_call(y: Yea, reverts: dict[str, Callable[..., Any]], id: str, ctx: Any) -> t.CallToolResult:
-    """``undo(receipt)``: the core's ``undo_receipt``, for this server's receipts and tools only."""
-    try:
-        rctx = getattr(ctx, "request_context", ctx)
-        sub = caller_of(y, rctx)
-        found = await y.store.get_receipt(id) if is_receipt_id(id) else None
-        revert = reverts.get(found["tool"]) if found else None  # no revert here: unknown, like another server's
-
-        async def call_revert(r: dict) -> Any:
-            return await _maybe(revert({"input": r.get("input"), "planHash": r.get("planHash"),
-                                        "result": r.get("result")}, ctx))
-
-        out = await undo_receipt(y.store, id if revert else None, y.service_id, sub, int(time.time()), call_revert)
-        if out.kind == "undone" and out.receipt is not None:
-            return t.CallToolResult(content=[t.TextContent(type="text", text=f"↶ undid {out.receipt['id']}: "
-                                                                               f"{printable(out.receipt['summary'])}")],
-                                    structured_content={"undone": out.receipt["id"]})
-        return error_result([f"✗ {out.why}; nothing was undone"])
-    except Exception as e:  # noqa: BLE001
-        if is_partial(e):  # a revert that may have half-happened says so, never "nothing was undone"
-            return error_result([f"✗ undo failed part-way: {printable(str(e))}"])
-        return error_result([f"✗ undo failed: {printable(str(e))}; nothing was undone, and it can be tried again"])

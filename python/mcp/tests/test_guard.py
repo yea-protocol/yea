@@ -230,3 +230,14 @@ async def test_a_guarded_tool_keeps_its_result_when_its_receipt_cant_be_saved(wo
         r = await c.call_tool("zap", {"target": "x"})
     assert not r.is_error and text(r).startswith("zapped")
     assert "✓ Zap happened, but then disk full; its receipt wasn't saved, so it can't be undone." in text(r)
+
+
+def test_a_guarded_job_without_its_sdks_result_adapters_fails_closed():
+    """The adapters live with each SDK's guard (guard.py, fastmcp.py); JobDef's defaults refuse,
+    so a guarded job built without them can't misread its original's result."""
+    from yea_mcp.call import JobDef
+
+    job = JobDef("t", None, None, None, guarded=True)
+    for read in (lambda: job.failed({}), lambda: job.with_receipt({}, {}), lambda: job.with_note({}, "n")):
+        with pytest.raises(TypeError, match="result adapters"):
+            read()

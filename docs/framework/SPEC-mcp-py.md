@@ -425,10 +425,12 @@ python/mcp/src/yea_mcp/call/          the shared routine: steps 1–11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
 python/mcp/src/yea_mcp/http.py        the HTTP front end: the Host, Origin and bearer gate, http_app, serve_http
 python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input
-python/mcp/src/yea_mcp/guard.py       the server middleware for guarded tools
+python/mcp/src/yea_mcp/guard.py       the server middleware for guarded tools, and its wire-result adapters
+python/mcp/src/yea_mcp/undo.py        the undo tool: registered once per server, this server's receipts only
+python/mcp/src/yea_mcp/result.py      error results, NOTHING_RAN, and a job's annotations and meta
 python/mcp/src/yea_mcp/server_key.py  the server's own key: named, created on first run, read when private
 python/mcp/src/yea_mcp/policy.py      pinned principal, policy grant and tightening loading
-python/mcp/src/yea_mcp/util.py        warn_once
+python/mcp/src/yea_mcp/util.py        warn_once, and the FastMCP adapter when a server is FastMCP
 python/mcp/src/yea_mcp/render.py      Lens text and structured_content for plans, receipts and codes
 python/mcp/src/yea_mcp/fastmcp.py     the FastMCP 4 middleware and job registration
 python/mcp/tests/                     in-memory client tests; security cases in test_security.py

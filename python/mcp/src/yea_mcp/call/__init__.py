@@ -8,20 +8,23 @@ from __future__ import annotations
 
 from .model import (
     BAD_STATE,
-    NOTHING_RAN,
     Call,
     JobDef,
     PartialApplyError,
     Req,
     Result,
     Yea,
-    _maybe,  # noqa: F401 — yea_mcp uses it for the undo tool
+    _maybe,  # noqa: F401 — yea_mcp uses it for the undo tool and the job wrapper
     is_partial,
-    wire_failed,
-    wire_with_note,
-    wire_with_receipt,
 )
-from .prepare import caller_of, described_risk, hash_plans, is_memory_store, policy_for
+from .prepare import (
+    caller_of,
+    described_plans,
+    described_risk,
+    hash_plans,
+    is_memory_store,
+    policy_for,
+)
 from .route import run_job
 from .run import json_safe
 
@@ -29,12 +32,8 @@ __all__ = [
     "PartialApplyError",
     "is_partial",
     "Result",
-    "NOTHING_RAN",
     "BAD_STATE",
     "Yea",
-    "wire_failed",
-    "wire_with_receipt",
-    "wire_with_note",
     "JobDef",
     "Req",
     "Call",
@@ -43,6 +42,7 @@ __all__ = [
     "policy_for",
     "hash_plans",
     "described_risk",
+    "described_plans",
     "run_job",
     "json_safe",
 ]
