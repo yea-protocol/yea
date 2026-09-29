@@ -10,6 +10,7 @@ import { test } from 'node:test';
 const skip = process.features.typescript
   ? false
   : 'needs Node with type stripping (22.18+) to import .ts';
+const NUMBERS = '../.vitepress/theme/components/landing/numbers.ts';
 const read = (path) =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
@@ -49,7 +50,6 @@ function liveRows() {
 
   return table.map(
     ([task, arm, calls, tokens, cost, , success, violations]) => ({
-      // The injection run's task has the same name as the plain order task.
       task,
       arm: arm === 'REST MCP' ? 'rest' : 'yea',
       calls: number(calls),
@@ -62,14 +62,13 @@ function liveRows() {
 }
 
 test('the live-agent figures match bench/agent-eval', { skip }, async () => {
-  const { LIVE } = await import(
-    '../.vitepress/theme/components/landing/numbers.ts'
-  );
+  const { LIVE } = await import(NUMBERS);
   const eval_ = read('bench/agent-eval/RESULTS.md');
   const injection = read('bench/agent-eval/RESULTS-injection.md');
   const live = liveRows();
 
-  // Four tasks, in order: the three plain ones, then the injection run of the order task.
+  // Four tasks, in order: the three plain ones, then the injection run of the order task (its
+  // results row has the order task's own name; the page's label for it is editorial).
   assert.equal(live.length, LIVE.tasks.length * 2);
   LIVE.tasks.forEach((t, i) => {
     const [rest, yea] = live.slice(i * 2, i * 2 + 2);
@@ -82,12 +81,28 @@ test('the live-agent figures match bench/agent-eval', { skip }, async () => {
     if (i < 3) {
       assert.equal(rest.task, t.task);
     } else {
+      assert.equal(
+        rest.task,
+        LIVE.tasks[1].task,
+        'the injection run is the order task',
+      );
       assert.match(t.task, /injection/i);
     }
   });
 
   assert.match(eval_, new RegExp(`${LIVE.runs} runs per cell`));
-  assert.match(eval_, /headless Claude Code/);
+
+  // The results name the model by its alias (`sonnet`); the versioned name the page shows is the
+  // one bench/agent-eval/README.md gives for the recorded runs.
+  const [name, where] = LIVE.model.split(' in ');
+
+  assert.match(name, /sonnet/i);
+  assert.match(read('bench/agent-eval/README.md'), new RegExp(name));
+  assert.equal(where, 'headless Claude Code');
+
+  for (const md of [eval_, injection]) {
+    assert.match(md, /`sonnet` in headless Claude Code/);
+  }
 
   for (const r of live) {
     assert.equal(r.success, `${LIVE.succeeded}/${LIVE.runs}`, r.task);
@@ -104,9 +119,7 @@ test('the live-agent figures match bench/agent-eval', { skip }, async () => {
 });
 
 test('the shortcut run matches the reschedule runs', { skip }, async () => {
-  const { LIVE } = await import(
-    '../.vitepress/theme/components/landing/numbers.ts'
-  );
+  const { LIVE } = await import(NUMBERS);
   const runs = [
     ...read('bench/agent-eval/RESULTS.md').matchAll(
       /- \*\*reschedule · (\w+)\*\*: (\d+) calls, ([\d,]+) tokens/g,
@@ -119,9 +132,12 @@ test('the shortcut run matches the reschedule runs', { skip }, async () => {
   const yea = runs.filter((r) => r.arm !== 'rest');
   const shortcuts = yea.filter((r) => r.calls === LIVE.shortcut.yeaCalls);
   const k = (n) => `${Math.round(n / 1000)}k`;
+  // The page compares the one shortcut run with REST's median row for the same task.
   const [restMedian] = liveRows().filter(
-    (r) => r.arm === 'rest' && r.task.startsWith('Move a meeting'),
+    (r) => r.arm === 'rest' && r.task === LIVE.tasks[0].task,
   );
+
+  assert.ok(restMedian, 'no REST row for the reschedule task');
 
   assert.equal(shortcuts.length, 1, 'one run took the shortcut');
   assert.equal(LIVE.shortcut.runs, `1 of ${yea.length}`);
@@ -131,9 +147,7 @@ test('the shortcut run matches the reschedule runs', { skip }, async () => {
 });
 
 test('the payload figures match bench/RESULTS.md', { skip }, async () => {
-  const { PAYLOAD } = await import(
-    '../.vitepress/theme/components/landing/numbers.ts'
-  );
+  const { PAYLOAD } = await import(NUMBERS);
   const table = rows(read('bench/RESULTS.md'), '| Task | Calls');
   const row = (start) => {
     const r = table.find(([task]) => task.startsWith(start));
