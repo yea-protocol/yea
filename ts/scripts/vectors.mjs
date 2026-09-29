@@ -303,6 +303,96 @@ const nonCanonicalIss = await rootAs(
   agent.public,
   'n18',
 );
+// Malformed blocks (SPEC §6.2). Each is signed over its canonical form when it has one, so
+// only the field it gets wrong refuses it; the token is its JSON, which (unlike
+// encodeGrant) can carry content that has no canonical form.
+const rawToken = (blocks) =>
+  `pg1.${P.b64u(new TextEncoder().encode(JSON.stringify(blocks)))}`;
+const signedBlock = async (key, p) => {
+  const { canonical = JSON.stringify(p) } = canonicalOrError(p);
+
+  return { p, s: await P.sign(key.seed, canonical) };
+};
+/** A root grant from the principal to the agent, with `fields` changed (undefined drops one). */
+const rootWith = async (fields) =>
+  rawToken([
+    await signedBlock(principal, {
+      iss: principal.public,
+      sub: agent.public,
+      caveats: [],
+      iat: now,
+      nonce: 'n20',
+      ...fields,
+    }),
+  ]);
+/** The root grant delegated by the agent to the sub-agent, with `fields` changed. */
+const delegationWith = async (fields) =>
+  rawToken([
+    rootBlocks[0],
+    await signedBlock(agent, {
+      prev: await P.sha256(rootBlocks[0].s),
+      sub: sub.public,
+      caveats: [],
+      iat: now,
+      ...fields,
+    }),
+  ]);
+const ask = {
+  service: 'shop.example',
+  verb: 'ASK',
+  capability: 'shop.search',
+  now,
+};
+const malformed = async (name, token, proofKey = agent.public) => [
+  name,
+  await token,
+  proofKey,
+  ask,
+  { ok: false, code: 'unauthorized' },
+];
+const malformedCases = await Promise.all([
+  malformed('malformed root: no nonce', rootWith({ nonce: undefined })),
+  malformed('malformed root: nonce not a string', rootWith({ nonce: 20 })),
+  malformed('malformed root: iss not a string', rootWith({ iss: 1 })),
+  malformed('malformed root: no iat', rootWith({ iat: undefined })),
+  malformed('malformed root: iat a string', rootWith({ iat: String(now) })),
+  malformed('malformed root: iat not an integer', rootWith({ iat: now + 0.5 })),
+  malformed('malformed root: iat a boolean', rootWith({ iat: true })),
+  malformed(
+    'malformed root: caveats not a list',
+    rootWith({ caveats: { svc: ['shop.example'] } }),
+  ),
+  malformed(
+    'malformed root: sub not a key, though it is the proof key',
+    rootWith({ sub: 'agent' }),
+    'agent',
+  ),
+  malformed(
+    'malformed delegation: no iat',
+    delegationWith({ iat: undefined }),
+    sub.public,
+  ),
+  malformed(
+    'malformed delegation: prev not a string',
+    delegationWith({ prev: 0 }),
+    sub.public,
+  ),
+  malformed(
+    'malformed delegation: sub not a key, though it is the proof key',
+    delegationWith({ sub: 'sub' }),
+    'sub',
+  ),
+  // Content with no canonical form can't have its signature checked, so it is unauthorized,
+  // even inside a caveat (not forbidden, as a malformed caveat value is).
+  malformed(
+    'no canonical form: a non-integer in a caveat',
+    rootWith({ caveats: [{ exp: now + 0.5 }] }),
+  ),
+  malformed(
+    'no canonical form: a lone surrogate in a caveat',
+    rootWith({ caveats: [{ only: '\ud800' }] }),
+  ),
+]);
 const T = [principal.public];
 const commit = (cents, risk = 'low', hash = 'HASH_X') => ({
   hash,
@@ -869,6 +959,7 @@ const cases = [
     },
     { ok: false, code: 'unauthorized' },
   ],
+  ...malformedCases,
 ];
 const gcases = [];
 

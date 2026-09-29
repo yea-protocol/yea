@@ -349,6 +349,14 @@ where `s` signs `utf8(canonical(p))`.
 - **Root block** payload: `{"iss": principalKey, "sub": holderKey, "caveats": Caveat[], "iat": int, "nonce": string}`, signed by `iss`.
 - **Delegation block** *i* > 0 payload: `{"prev": b64url(sha256(utf8(block[i-1].s))), "sub": holderKey, "caveats": Caveat[], "iat": int}`, signed by the private key of `block[i-1].p.sub`.
 
+A block is **malformed** unless it is an object whose `s` is a 64-byte signature and whose
+`p` is an object with every field above for its position, of the type shown: `iss`, `sub`,
+`nonce` and `prev` strings, `caveats` a list and `iat` an integer. A block is also malformed
+if its `sub` isn't a public key (§6.1), or if its payload has no canonical form (§10), such
+as one holding a non-integer number or a lone surrogate anywhere, caveats included. A grant
+with a malformed block is invalid: it fails verification as `unauthorized` (§7), not
+`forbidden`, because its signatures can't be checked.
+
 The **holder** of the grant is the `sub` of its last block. Anyone who holds a grant can
 append a block to delegate a *narrower* grant to another key (a sub-agent). Caveats
 accumulate, so a delegation can only restrict.
@@ -366,7 +374,8 @@ malformed, MUST fail closed** as a hard (`forbidden`) failure. Well-formed value
 `each` and `total` take a **limit** `{"of": name, "max": int, "scale"?: int, "unit"?: string}`,
 where `of` is a measure name and `max`, `scale` and `unit` follow the quantity rules of
 §5.1; `risk` takes one of `low`, `medium` or `high`; `only` takes a string. For example, `{"svc": "a.example"}` (a string,
-not a list) and `{"risk": "extreme"}` both fail.
+not a list) and `{"risk": "extreme"}` both fail. A caveat with no canonical form, such as
+`{"exp": 1.5}`, is different: it makes its block malformed (§6.2), so the grant is `unauthorized`.
 
 | Caveat | Satisfied when |
 |---|---|

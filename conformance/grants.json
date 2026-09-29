@@ -1623,6 +1623,258 @@
         "ok": false,
         "code": "unauthorized"
       }
+    },
+    {
+      "name": "malformed root: no nonce",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwfSwicyI6IjJMU3FvRFZzUjN6Z0ctMmtldGFOUFJLVk9tQ3RmaFVDSU4td0h3SEpUd2VRV2UzY2plMGdKcWFVRXA5YkVWdlZPNmZNckV0R1JqTlNvdWVEUTdmcEFnIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: nonce not a string",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLCJub25jZSI6MjB9LCJzIjoiZ2N6dnk1T1plUnVTekRtVVNJY0JhWGNjWmJLUGQxRWd5eEJzTTJNUzNzdFdRSE80ZWZmZ3F2d2hJcDMtZnk4WVR6Nl92UW5oR0dHa2w1Z2huZVBvQXcifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: iss not a string",
+      "token": "pg1.W3sicCI6eyJpc3MiOjEsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USIsImNhdmVhdHMiOltdLCJpYXQiOjE3OTAwMDAwMDAsIm5vbmNlIjoibjIwIn0sInMiOiJMVHZ3SWJMY0hZUnc1R3BkSlZLRTlaMm00XzFpVU5iMEZRSDBkMUtpUUdHdmE1TVYwQUI2WDktU1pHU2JxQUdFYmF6LTlWZlo5WmZqSjNpUUpfN0FDQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: no iat",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwibm9uY2UiOiJuMjAifSwicyI6IkFKNE9xT1lFWTBVaXpaTlpkR0lfTld2QU1FMDU3V3c2YldvSXY0d2FQTFBpblItV25CWjRWX1VTaW5GU1NwOGJMcHdhNjRxUmRoSjhLbEx5MXlPckNBIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: iat a string",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoiMTc5MDAwMDAwMCIsIm5vbmNlIjoibjIwIn0sInMiOiJQMkhoakZTWml5c2lSUnZEdENFejlSdzNYMXJNTmFUZHp1dE9ocWpwT3o2X1dmUzJYcnJsYlVGcFVNcWJOdDdJM2pTa0wydHR3NldiQ3FJZWJDSVNCUSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: iat not an integer",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLjUsIm5vbmNlIjoibjIwIn0sInMiOiJfRUthbV9oWkMzdTUwSXFRd2ppX3B2dnJPNW91VXVDankwZV81UG9NamY5WFZKWVljR0VXTDBvQUxoeDEwUmRfTzFDOUVFVkRtNGRwbXNfUTJENmtEUSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: iat a boolean",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0Ijp0cnVlLCJub25jZSI6Im4yMCJ9LCJzIjoiWm9YbTFMUEdOTkMxdC1EODY4aWNBSkN5WEJRblhYNXh2X0VjaWlQZ3lSUjhmOTFJSXVaMU1TQW54bThrSDQ2Mk1xSkdnTlEzV1c0NnN5QW56RExqQXcifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: caveats not a list",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjp7InN2YyI6WyJzaG9wLmV4YW1wbGUiXX0sImlhdCI6MTc5MDAwMDAwMCwibm9uY2UiOiJuMjAifSwicyI6IjVCamRyNW9ndUE5dlVEV0Z3a2VUa0FiN1ZUTHhfdmEyRE9UeFpYVGJpLWxJUURGSXN5SDdGQ29FdWFYd2JSU1l0UU9McWllNEdMSGY1ZVVTOWk4dER3In1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: sub not a key, though it is the proof key",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJhZ2VudCIsImNhdmVhdHMiOltdLCJpYXQiOjE3OTAwMDAwMDAsIm5vbmNlIjoibjIwIn0sInMiOiJuOXFMLWRtTUx1aVl1Vm4yTklhMExzZFdHMDF2ZHVqMGt2aXhEVFk3bEg5ZTRoNWI3aGhfU3pOeVBTbGxiZzd6RWR2VUpNUTVyZjFRVER6LUNmTGRBQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "agent",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed delegation: no iat",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNBIn0seyJwIjp7InByZXYiOiJmY29haHZCQ2dqRnV4VlJ6VmdTOFVKZFRXQjVlUmwyQUZaVnlHbURaUk80Iiwic3ViIjoiZWQyNTUxOTo3VWtveGlqUndzYnE2UU00a0ZtVllTbFpKenBjWV9rMk5zRkdGS3lITjlFIiwiY2F2ZWF0cyI6W119LCJzIjoia1NvdU8zMzRSamw2ODgyeXgxM2RxOUVkTVcwcUJManF6RGFxMlU0bHFQQ0QtWmtMajNqanhnWTA2d3JZU1pOeUVEWmFfdXBWWFJXWlFMd3hIcjQtQ2cifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9E",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed delegation: prev not a string",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNBIn0seyJwIjp7InByZXYiOjAsInN1YiI6ImVkMjU1MTk6N1Vrb3hpalJ3c2JxNlFNNGtGbVZZU2xaSnpwY1lfazJOc0ZHRkt5SE45RSIsImNhdmVhdHMiOltdLCJpYXQiOjE3OTAwMDAwMDB9LCJzIjoib3k0b1dVZHdFeHNuWFhCYUxUazVyb2h3NWgtbHFkZ0kxUzcxQURRaWxLb3dSYlNtbXNNbEdoVlkwNGw1VGFrbmticE12R1loWFBGdWhubXVYSWp6Q3cifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9E",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed delegation: sub not a key, though it is the proof key",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNBIn0seyJwIjp7InByZXYiOiJmY29haHZCQ2dqRnV4VlJ6VmdTOFVKZFRXQjVlUmwyQUZaVnlHbURaUk80Iiwic3ViIjoic3ViIiwiY2F2ZWF0cyI6W10sImlhdCI6MTc5MDAwMDAwMH0sInMiOiJYREVwWThpX3JDSVRPbF9reUFrMlYzajMwQXluNnZneWZhX2lFdk43T3FuQ25mcjF1bm9Nanp0TFdzUC1kRWMxOFA0Sk90bVhIaE5NMWFuMGRXZXhEQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "sub",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "no canonical form: a non-integer in a caveat",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbeyJleHAiOjE3OTAwMDAwMDAuNX1dLCJpYXQiOjE3OTAwMDAwMDAsIm5vbmNlIjoibjIwIn0sInMiOiIyNW50eU1KSGVJeTlOam1aVDdGSHFYbVVRU2RuVEI5blJUUENqaG14OEFCdzlPQlB5WWx2aWx6NHh1bjhIM2g4YWFpM0xqa0trWkN1VmJPZ1FSaDlEQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "no canonical form: a lone surrogate in a caveat",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbeyJvbmx5IjoiXHVkODAwIn1dLCJpYXQiOjE3OTAwMDAwMDAsIm5vbmNlIjoibjIwIn0sInMiOiJTZzBQS0tVaVIzamJTVUd2TFM0ZHFWX2FVNGVzZTl2RHhZX3A5TW9CUTFVOHlfUlhYZk1ROTlQVWs2ZXdJdG5uUDktTWRlVlRxYUhSVlhjNFBlc1pCUSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
     }
   ],
   "consentCode": {

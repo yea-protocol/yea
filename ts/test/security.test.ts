@@ -2803,11 +2803,16 @@ describe.skipIf(typeof process.getuid !== 'function' || process.getuid() === 0)(
 
     // A well-formed (unverified) signature: the grants below are only decoded, never checked.
     const SIG = P.b64u(new Uint8Array(64));
+    // The fields a root block needs besides sub, caveats and iat (SPEC §6.2).
+    const ROOT = { iss: '', nonce: '' };
 
     it('a grant whose svc caveat is not a list of service ids covers no service', () => {
       const grant = (svc: unknown) =>
         P.encodeGrant([
-          { p: { sub: '', caveats: [{ svc } as P.Caveat], iat: 0 }, s: SIG },
+          {
+            p: { ...ROOT, sub: '', caveats: [{ svc } as P.Caveat], iat: 0 },
+            s: SIG,
+          },
         ]);
 
       expect(grantCovers(grant(['pay']), 'pay')).toBe(true);
@@ -2821,8 +2826,13 @@ describe.skipIf(typeof process.getuid !== 'function' || process.getuid() === 0)(
     it('a grant covers a service only if every svc caveat lists it', () => {
       const grant = (...svcs: string[][]) =>
         P.encodeGrant(
-          svcs.map((svc) => ({
-            p: { sub: '', caveats: [{ svc }], iat: 0 },
+          svcs.map((svc, i) => ({
+            p: {
+              ...(i ? { prev: '' } : ROOT),
+              sub: '',
+              caveats: [{ svc }],
+              iat: 0,
+            },
             s: SIG,
           })),
         );
@@ -2902,3 +2912,115 @@ describe.skipIf(typeof process.getuid !== 'function' || process.getuid() === 0)(
     });
   },
 );
+
+// TS checked only `s`, `sub` and `caveats` of each block, so it accepted grants Python refuses:
+// a root with no nonce or iat, a delegation with no iat, and a `sub` that isn't a key when the
+// proof named the same string. Content with no canonical form was `forbidden` in TS and
+// `unauthorized` in Python (#189). SPEC §6.2 now says a malformed block is `unauthorized`.
+describe('grant blocks are checked field by field (#158, #189)', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const ctx = (proofKey: string) => ({
+    service: 'pay',
+    verb: 'ASK' as const,
+    capability: 'pay.send',
+    now,
+    trusted: [principal.public],
+    proofKey,
+  });
+  // The token is the blocks' JSON, which can hold what canonical JSON refuses.
+  const token = (blocks: unknown[]) =>
+    `pg1.${P.b64u(new TextEncoder().encode(JSON.stringify(blocks)))}`;
+  const signed = async (seed: string, p: Record<string, unknown>) => {
+    let bytes: string;
+
+    try {
+      bytes = P.canonical(p);
+    } catch {
+      bytes = JSON.stringify(p);
+    }
+
+    return { p, s: await P.sign(seed, bytes) };
+  };
+  const root = (fields: Record<string, unknown>) =>
+    signed(principal.seed, {
+      iss: principal.public,
+      sub: agent.public,
+      caveats: [],
+      iat: now,
+      nonce: 'n',
+      ...fields,
+    });
+  const check = async (blocks: unknown[], proofKey = agent.public) => {
+    const got = await P.checkGrant(token(blocks), ctx(proofKey));
+
+    return got.ok ? 'ok' : `${got.code}: ${got.reason}`;
+  };
+
+  it('a well-formed root is accepted', async () => {
+    expect(await check([await root({})])).toBe('ok');
+  });
+
+  it('a root needs a string iss and nonce and an integer iat', async () => {
+    for (const fields of [
+      { nonce: undefined },
+      { nonce: 1 },
+      { iss: undefined },
+      { iat: undefined },
+      { iat: String(now) },
+      { iat: true },
+      { iat: now + 0.5 },
+      { caveats: {} },
+    ]) {
+      const blocks = [await root(fields)];
+
+      expect(await check(blocks), JSON.stringify(fields)).toBe(
+        'unauthorized: malformed grant: malformed block',
+      );
+      expect(() => P.decodeGrant(token(blocks))).toThrow('malformed block');
+    }
+  });
+
+  it('a delegation needs a string prev and an integer iat', async () => {
+    const first = await root({});
+    const link = (fields: Record<string, unknown>) =>
+      signed(agent.seed, {
+        prev: '',
+        sub: other.public,
+        caveats: [],
+        iat: now,
+        ...fields,
+      });
+    const prev = await P.sha256(first.s);
+
+    expect(await check([first, await link({ prev })], other.public)).toBe('ok');
+
+    for (const fields of [{ prev, iat: undefined }, { prev: undefined }]) {
+      expect(
+        await check([first, await link(fields)], other.public),
+        JSON.stringify(fields),
+      ).toBe('unauthorized: malformed grant: malformed block');
+    }
+  });
+
+  it('a sub that is not a public key is refused, even when the proof names it', async () => {
+    expect(await check([await root({ sub: 'agent' })], 'agent')).toBe(
+      'unauthorized: malformed grant: block 0 sub is not a public key',
+    );
+  });
+
+  it('content with no canonical form is unauthorized, not forbidden', async () => {
+    for (const caveat of [{ exp: now + 0.5 }, { only: 'x\ud800' }]) {
+      const got = await check([await root({ caveats: [caveat] })]);
+
+      expect(got, JSON.stringify(caveat)).toMatch(
+        /^unauthorized: malformed grant: /,
+      );
+    }
+  });
+
+  it('a token that is not a string is not a grant', () => {
+    expect(() => P.decodeGrant(7 as unknown as string)).toThrow(
+      'not a pg1 grant',
+    );
+  });
+});
