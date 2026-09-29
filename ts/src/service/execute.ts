@@ -58,7 +58,11 @@ export class Executor {
 
     this.reserve(auth, proposal, 1n);
 
-    const run = this.apply(stored, auth, reqId, emit);
+    // Store the run before apply starts: a synchronous throw from `plan.apply` then finds its
+    // entry to delete, so a retry runs apply again instead of replaying the ERROR.
+    const run = Promise.resolve().then(() =>
+      this.apply(stored, auth, reqId, emit),
+    );
 
     this.state.commits.set(proposal.id, run);
 

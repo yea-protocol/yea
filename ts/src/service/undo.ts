@@ -68,7 +68,10 @@ export class UndoHandler {
       );
     }
 
-    stored.undone = this.revert(stored, auth, req.id, emit);
+    // Stored before revert starts, so a synchronous throw from `plan.revert` can clear it (#187).
+    stored.undone = Promise.resolve().then(() =>
+      this.revert(stored, auth, req.id, emit),
+    );
 
     const out = await stored.undone;
 

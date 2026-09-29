@@ -19,7 +19,11 @@ export function errorReply(
     });
   }
 
-  opts.onError?.(e);
+  try {
+    opts.onError?.(e);
+  } catch {
+    // a failing onError must not fail the request (as in neverThrows)
+  }
 
   return replyFrame(re, 'ERROR', {
     code: 'internal',
