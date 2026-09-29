@@ -109,6 +109,50 @@ describe('policy-gated auto-commit', async () => {
 
     expect(forged.kind).toBe('ERROR');
   });
+  // A replay is a new frame, so it needs its own id (§2.1). TS re-sent any reply but a receipt
+  // with the original's id, which a client on the same connection had already seen (#159).
+  it('a replayed auto frame gets a fresh id, whatever the reply', async () => {
+    const svc = shop({ trust: [principal.public] });
+    const t = P.local(svc);
+    const sent: { frame: P.Request; reply: P.Reply }[] = [];
+    const spy: P.Transport = {
+      request: async (frame, e) => {
+        const reply = await t.request(frame, e);
+
+        sent.push({ frame, reply });
+
+        return reply;
+      },
+      close() {},
+    };
+    const order = { items: [{ sku: 'm001', qty: 1 }], deliver };
+
+    for (const max of [5000, 500]) {
+      const grant = await P.issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [{ each: { of: 'spend', max, scale: 2, unit: 'USD' } }],
+      });
+      const c = new P.Client(spy, { key: agent.seed, grants: [grant] });
+
+      await c.intent('shop.order', order, { auto: true });
+
+      const { frame, reply } = sent.at(-1) ?? {};
+
+      if (!frame || !reply) {
+        throw new Error('nothing was sent');
+      }
+
+      const again = await svc.handle(structuredClone(frame));
+      const twice = await svc.handle(structuredClone(frame));
+
+      expect(again.kind).toBe(max === 5000 ? 'RECEIPT' : 'PROPOSALS');
+      expect(again.kind).toBe(reply.kind);
+      expect(again.re).toBe(frame.id);
+      expect(new Set([reply.id, again.id, twice.id]).size).toBe(3);
+      expect('replay' in again && again.replay).toBe(again.kind === 'RECEIPT');
+    }
+  });
   it('reserves a total on the auto-commit path, so the next auto-commit past it asks', async () => {
     const grant = await P.issueGrant({
       principal,
