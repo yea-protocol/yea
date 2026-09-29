@@ -11,8 +11,9 @@ claude mcp add yea-demo -- npx @yea-protocol/cli mcp https://yea-demo.<account>.
 ```
 
 > **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so these `npx` commands fail for now.
-> Until it's published, run the same commands from a clone, with `node cli/bin/yea.js` in place of
-> `npx @yea-protocol/cli`:
+> Until it's published, run the same commands from a clone, with `node /path/to/yea/cli/bin/yea.js`
+> in place of `npx @yea-protocol/cli` (an absolute path, since `claude mcp add` runs it from
+> elsewhere):
 >
 > ```sh
 > git clone https://github.com/yea-protocol/yea && cd yea
