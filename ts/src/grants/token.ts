@@ -4,6 +4,7 @@ import { canonical } from '../canonical.js';
 import { sha256 } from '../crypto.js';
 import type { Risk, Verb } from '../types.js';
 import type { Limit } from '../uses.js';
+import { hasNonMinimalNumber } from './json-integers.js';
 
 export type Caveat =
   | { svc: string[] }
@@ -59,12 +60,18 @@ export function decodeGrant(token: string): Block[] {
   }
 
   // Language-neutral: every implementation reports the same text (SPEC-approval reasons).
+  let text: string;
   let blocks: unknown;
 
   try {
-    blocks = JSON.parse(fromUtf8(unb64u(token.slice(GRANT_PREFIX.length))));
+    text = fromUtf8(unb64u(token.slice(GRANT_PREFIX.length)));
+    blocks = JSON.parse(text);
   } catch {
     throw new Error('not valid b64url JSON');
+  }
+
+  if (hasNonMinimalNumber(text)) {
+    throw new Error('a number is not an integer in minimal form');
   }
 
   if (!Array.isArray(blocks) || blocks.length === 0) {

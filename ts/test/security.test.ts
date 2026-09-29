@@ -2968,7 +2968,6 @@ describe('grant blocks are checked field by field (#158, #189)', () => {
       { iat: undefined },
       { iat: String(now) },
       { iat: true },
-      { iat: now + 0.5 },
       { caveats: {} },
     ]) {
       const blocks = [await root(fields)];
@@ -3022,5 +3021,66 @@ describe('grant blocks are checked field by field (#158, #189)', () => {
     expect(() => P.decodeGrant(7 as unknown as string)).toThrow(
       'not a pg1 grant',
     );
+  });
+});
+
+// JSON.parse reads `1.0`, `1e3` and `-0` as integers, so TS accepted a token that spelled an
+// integer that way, where Python read a float and refused it (in `iat`) or accepted it (in a
+// caveat, or `-0`). SPEC §6.2 now wants every number in minimal form; both sides refuse others.
+describe('grant numbers are integers in minimal form (#158)', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const ctx = {
+    service: 'pay',
+    verb: 'ASK' as const,
+    capability: 'pay.send',
+    now,
+    trusted: [principal.public],
+    proofKey: agent.public,
+  };
+  const text = (token: string) =>
+    Buffer.from(token.slice(4), 'base64url').toString();
+  const respell = (token: string, from: string, to: string) =>
+    `pg1.${P.b64u(new TextEncoder().encode(text(token).replace(from, to)))}`;
+
+  it('a number spelled otherwise is refused, though it reads as the same integer', async () => {
+    const grant = await P.issueGrant({
+      principal,
+      to: agent.public,
+      iat: now,
+      caveats: [{ exp: now + 60 }, { nbf: 0 }],
+    });
+
+    expect((await P.checkGrant(grant, ctx)).ok).toBe(true);
+
+    for (const [from, to] of [
+      [`"iat":${now}`, `"iat":${now}.0`],
+      [`"iat":${now}`, `"iat":${now}.5`],
+      [`"iat":${now}`, `"iat":${now}e0`],
+      [`"exp":${now + 60}`, `"exp":${now + 60}.00`],
+      ['"nbf":0', '"nbf":-0'],
+      ['"nbf":0', '"nbf":0E1'],
+    ]) {
+      const token = respell(grant, from, to);
+
+      expect(text(token), to).toContain(to);
+      expect(() => P.decodeGrant(token), to).toThrow(
+        'a number is not an integer in minimal form',
+      );
+
+      const got = await P.checkGrant(token, ctx);
+
+      expect(got.ok ? 'ok' : got.code, to).toBe('unauthorized');
+    }
+  });
+
+  it('only number tokens are read: strings may hold anything', async () => {
+    const grant = await P.issueGrant({
+      principal,
+      to: agent.public,
+      nonce: '1.0 -0 1e3 "\\" 2.5',
+      caveats: [{ only: '-0.5' }, { exp: now + 60 }, { nbf: -1 }],
+    });
+
+    expect((await P.checkGrant(grant, ctx)).ok).toBe(true);
   });
 });

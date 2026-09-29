@@ -361,7 +361,10 @@ The **holder** of the grant is the `sub` of its last block. Anyone who holds a g
 append a block to delegate a *narrower* grant to another key (a sub-agent). Caveats
 accumulate, so a delegation can only restrict.
 
-Token encoding: `"pg1." + b64url(utf8(canonical(blocks)))`.
+Token encoding: `"pg1." + b64url(utf8(canonical(blocks)))`. Every number in a token's
+JSON is an integer written in minimal form (§10): a decoder MUST refuse a token that spells
+one otherwise, such as `1.0`, `1e3` or `-0`, as `unauthorized`, even though some JSON parsers
+read those as integers.
 
 **Block id:** `b64url(sha256(utf8(block.s)))`. The **grant id** is the id of its root block.
 
