@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from typing import Any
 
@@ -10,6 +11,24 @@ from ..risk import is_risk
 from ..uses import is_uses
 
 OnEvent = Callable[["Reply"], Any]
+KEEP_EVENTS = 64  # EVENTs a Reply keeps (the most recent); on_event sees every one
+
+
+class Kept:
+    """The EVENTs of one request as they arrive: the most recent ``KEEP_EVENTS``, and a count of
+    the older ones dropped, so a service can't grow the client's memory with EVENTs."""
+
+    def __init__(self) -> None:
+        self.events: deque[Reply] = deque(maxlen=KEEP_EVENTS)
+        self.dropped = 0
+
+    def add(self, ev: Reply) -> None:
+        if len(self.events) == KEEP_EVENTS:
+            self.dropped += 1
+        self.events.append(ev)
+
+    def reply(self, frame: dict) -> Reply:
+        return Reply(frame, list(self.events), self.dropped)
 
 
 class Reply:
@@ -18,9 +37,10 @@ class Reply:
     service's reply to a person or a model safely, use ``untrusted_lens(r.frame)`` (``from yea.lens import
     untrusted_lens``)."""
 
-    def __init__(self, frame: dict, events: list[Reply] | None = None):
+    def __init__(self, frame: dict, events: list[Reply] | None = None, events_dropped: int = 0):
         self.frame = frame
-        self.events = events or []
+        self.events = events or []  # the most recent KEEP_EVENTS EVENTs of this request
+        self.events_dropped = events_dropped  # how many older EVENTs weren't kept
 
     @property
     def kind(self) -> str:
@@ -64,7 +84,7 @@ def _checked_reply(r: Reply) -> Reply:
             what = "proposal" if f["kind"] == "PROPOSALS" else "receipt"
             err = {"yea": 1, "id": f.get("id", ""), "re": f.get("re", ""), "kind": "ERROR", "code": "bad_frame",
                    "message": f"{what} {item.get('id', '?')} from the service has {why}, so it was ignored"}
-            return Reply(err, r.events)
+            return Reply(err, r.events, r.events_dropped)
     return r
 
 

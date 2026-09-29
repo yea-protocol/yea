@@ -1012,3 +1012,213 @@ def test_a_request_with_a_lone_surrogate_is_a_bad_frame(caplog):
     assert not [rec for rec in caplog.records if rec.name == "yea"]
     # A surrogate pair is well-formed, so the frame is planned as usual.
     assert intent({"to": "🎉"})["kind"] == "PROPOSALS"
+
+
+def test_a_reply_keeps_only_the_most_recent_events_and_on_event_sees_them_all():
+    """A service can't grow the client's memory with EVENTs: the Reply keeps the most recent
+    KEEP_EVENTS and counts the rest; on_event still sees every one, on every transport (#175)."""
+    from yea.client.reply import KEEP_EVENTS
+
+    svc = Service("chatty.example", "Chatty", trust=[PRINCIPAL.public])
+
+    def apply(ctx):
+        for i in range(200):
+            ctx.progress(f"step {i}", i / 200)
+
+    @svc.intent("chatty.do")
+    def do(ctx):
+        return Plan("Do it", [create("thing")], apply=apply)
+
+    async def go():
+        tcp = await serve_tcp(svc, "127.0.0.1", 0)
+        http = await serve_http(svc, "127.0.0.1", 0)
+        try:
+            for how in ("local", "tcp", "http"):
+                g = grant({"svc": ["chatty.example"]}, {"can": ["chatty.*"]})
+                url = {"tcp": f"yea://127.0.0.1:{tcp.sockets[0].getsockname()[1]}",
+                       "http": f"http://127.0.0.1:{http.sockets[0].getsockname()[1]}/yea"}.get(how)
+                c = Client(local(svc), key=AGENT.seed, grants=[g]) if how == "local" else await connect(
+                    url, key=AGENT.seed, grants=[g])
+                async with c:
+                    props = await c.intent("chatty.do")
+                    seen = []
+                    rc = await asyncio.wait_for(c.commit(props.proposals[0], on_event=seen.append), 10)
+                assert rc.kind == "RECEIPT", how
+                assert len(seen) == 200 and len(rc.events) == KEEP_EVENTS, how
+                assert rc.events_dropped == 200 - KEEP_EVENTS and rc.events[-1].message == "step 199", how
+        finally:
+            tcp.close()
+            http.close()
+
+    run(go())
+
+
+def test_http_events_reach_on_event_before_the_final_reply():
+    """The HTTP client passes each EVENT on as it arrives, as TS does, not after the whole body."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from yea.client.transports import _HttpTransport
+
+    release, answered_after_event = threading.Event(), []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            fid = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["id"]
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(f'{{"yea":1,"id":"e","re":"{fid}","kind":"EVENT","message":"half"}}\n'.encode())
+            self.wfile.flush()
+            answered_after_event.append(release.wait(5))  # the final reply only once the client has seen the EVENT
+            self.wfile.write(f'{{"yea":1,"id":"s","re":"{fid}","kind":"ANSWER","data":1}}\n'.encode())
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        seen = []
+
+        def on_event(ev):
+            seen.append(ev.message)
+            release.set()
+
+        r = run(_HttpTransport(f"http://127.0.0.1:{server.server_address[1]}/yea").request(
+            {"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, on_event))
+        assert seen == ["half"] and r.kind == "ANSWER" and answered_after_event == [True]
+    finally:
+        release.set()
+        server.shutdown()
+
+
+def _http_server(body):
+    """An HTTP server that answers each POST with ``body(frame_id, write)``; returns (url, server, sent)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    sent = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            fid = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["id"]
+            self.send_response(200)
+            self.end_headers()
+
+            def write(line):
+                self.wfile.write(line.encode() + b"\n")
+                sent.append(1)
+            try:
+                body(fid, write)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the client stopped reading
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}/yea", server, sent
+
+
+def _event(fid, i, pad=""):
+    return json.dumps({"yea": 1, "id": f"e{i}", "re": fid, "kind": "EVENT", "message": f"step {i}{pad}"})
+
+
+def _ask_http_with(url, on_event):
+    from yea.client.transports import _HttpTransport
+
+    return _HttpTransport(url).request({"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, on_event)
+
+
+def test_a_slow_on_event_holds_an_http_flood_back_instead_of_buffering_it():
+    """The reading thread waits for the loop to take each line, so memory stays bounded however
+    many EVENTs a server sends, as TS's readFinal lets the socket hold the server back (#175)."""
+    import tracemalloc
+
+    def body(fid, write):
+        for i in range(5000):
+            write(_event(fid, i, "x" * 1000))
+        write(json.dumps({"yea": 1, "id": "s", "re": fid, "kind": "ANSWER", "data": 1}))
+
+    url, server, _ = _http_server(body)
+    seen = []
+
+    async def slow(ev):
+        seen.append(1)
+        await asyncio.sleep(0)
+
+    try:
+        tracemalloc.start()
+        r = run(_ask_http_with(url, slow))
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+    finally:
+        server.shutdown()
+    assert r.kind == "ANSWER" and len(seen) == 5000 and r.events_dropped == 5000 - 64
+    assert peak < 2 << 20, peak  # a few MiB of EVENTs were never all held at once
+
+
+def test_an_on_event_that_raises_stops_the_http_reading_thread():
+    """The error reaches the caller, and the thread stops reading instead of draining the body."""
+    def body(fid, write):
+        for i in range(20_000):
+            write(_event(fid, i, "x" * 500))
+
+    url, server, sent = _http_server(body)
+
+    def boom(ev):
+        raise RuntimeError("the callback failed")
+
+    try:
+        with pytest.raises(RuntimeError, match="the callback failed"):
+            run(_ask_http_with(url, boom))
+        time.sleep(1)
+        assert len(sent) < 20_000  # the server was cut off, not read to the end
+    finally:
+        server.shutdown()
+
+
+def test_an_http_stream_without_a_final_reply_and_a_null_line():
+    """EVENTs then a close is "closed without a final reply", as TS says; a JSON null line is dropped."""
+    def events_only(fid, write):
+        write(_event(fid, 1))
+
+    def with_null(fid, write):
+        write("null")
+        write(json.dumps({"yea": 1, "id": "s", "re": fid, "kind": "ANSWER", "data": 1}))
+
+    url, server, _ = _http_server(events_only)
+    try:
+        with pytest.raises(ConnectionError, match="closed without a final reply"):
+            run(_ask_http_with(url, None))
+    finally:
+        server.shutdown()
+    url, server, _ = _http_server(with_null)
+    try:
+        assert run(_ask_http_with(url, None)).data == 1
+    finally:
+        server.shutdown()
+
+
+def test_a_long_stall_in_on_event_delivers_each_http_event_once():
+    """A synchronous on_event that blocks the loop for longer than the thread's wait doesn't make
+    the thread hand the same line again: each EVENT arrives once, in order (#175 review)."""
+    def body(fid, write):
+        for i in range(20):
+            write(_event(fid, i))
+        write(json.dumps({"yea": 1, "id": "s", "re": fid, "kind": "ANSWER", "data": 1}))
+
+    url, server, _ = _http_server(body)
+    seen = []
+
+    def blocking(ev):
+        seen.append(ev.message)
+        if len(seen) == 1:
+            time.sleep(1.2)  # over two of the thread's 0.5 s waits
+
+    try:
+        r = run(_ask_http_with(url, blocking))
+    finally:
+        server.shutdown()
+    assert r.kind == "ANSWER" and seen == [f"step {i}" for i in range(20)]

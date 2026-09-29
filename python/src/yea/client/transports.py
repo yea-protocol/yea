@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import threading
 import urllib.request
+from collections.abc import Callable
 from typing import Any
 
 from .._json import dumps, loads
-from .reply import OnEvent, Reply
+from .reply import KEEP_EVENTS, Kept, OnEvent, Reply
 
 MAX_REPLY = 16 << 20  # the largest reply line a client reads (ts/src/client/transport.ts)
 TOO_BIG = "reply exceeds 16 MiB without a newline"
+_END = object()  # the end of an HTTP reply stream (a line of JSON null is a frame, not the end)
 
 
 def _frame_of(line: bytes) -> Any:
@@ -24,7 +28,7 @@ def _frame_of(line: bytes) -> Any:
 class _StreamTransport:
     def __init__(self, reader: asyncio.StreamReader, writer: Any, proc: Any = None):
         self.reader, self.writer, self.proc = reader, writer, proc
-        self.pending: dict[str, tuple[asyncio.Future, list, OnEvent | None]] = {}
+        self.pending: dict[str, tuple[asyncio.Future, Kept, OnEvent | None]] = {}
         self.closed: BaseException | None = None  # why the reader stopped; later requests fail with it
         self.task = asyncio.create_task(self._read())
 
@@ -46,10 +50,10 @@ class _StreamTransport:
                 entry = self.pending.get(re) if isinstance(re, str) else None  # anything else is dropped
                 if entry is None:
                     continue
-                fut, events, on_event = entry
+                fut, kept, on_event = entry
                 if frame.get("kind") == "EVENT":
                     ev = Reply(frame)
-                    events.append(ev)
+                    kept.add(ev)
                     if on_event:
                         r = on_event(ev)
                         if asyncio.iscoroutine(r):
@@ -57,7 +61,7 @@ class _StreamTransport:
                 else:
                     self.pending.pop(re, None)
                     if not fut.done():
-                        fut.set_result(Reply(frame, events))
+                        fut.set_result(kept.reply(frame))
         except Exception as e:  # e.g. an on_event callback that raised
             err = e
         # However the reader stops, the connection is done: close it, and fail what's pending and
@@ -73,7 +77,7 @@ class _StreamTransport:
         if self.closed is not None:
             raise self.closed
         fut = asyncio.get_running_loop().create_future()
-        self.pending[frame["id"]] = (fut, [], on_event)
+        self.pending[frame["id"]] = (fut, Kept(), on_event)
         self.writer.write((dumps(frame) + "\n").encode("utf-8"))
         await self.writer.drain()
         return await fut
@@ -92,32 +96,72 @@ class _HttpTransport:
     def __init__(self, url: str):
         self.url = url
 
-    def _post(self, frame: dict) -> list[dict]:
+    def _post(self, frame: dict, hand: Callable[[dict], None]) -> None:
+        """POST ``frame`` and hand each reply line to ``hand`` as it arrives, up to the final reply."""
         req = urllib.request.Request(
             self.url, data=dumps(frame).encode("utf-8"), method="POST", headers={"Content-Type": "application/json"}
         )
-        frames: list[dict] = []
         with urllib.request.urlopen(req, timeout=60) as resp:
             while line := resp.readline(MAX_REPLY + 1):
                 if len(line) > MAX_REPLY and not line.endswith(b"\n"):
                     raise ConnectionError(TOO_BIG)
-                if line.strip():
-                    frames.append(loads(line))
-                    if not (isinstance(frames[-1], dict) and frames[-1].get("kind") == "EVENT"):
-                        break  # the final reply: stop reading, as TS does
-        return frames
+                got = loads(line) if line.strip() else None
+                if isinstance(got, dict):  # anything else (a blank line, a JSON null) isn't a frame
+                    hand(got)
+                    if got.get("kind") != "EVENT":
+                        return  # the final reply: stop reading, as TS does
 
     async def request(self, frame: dict, on_event: OnEvent | None) -> Reply:
-        frames = await asyncio.to_thread(self._post, frame)
-        if not frames:
-            raise ConnectionError("empty response from HTTP bridge")
-        events = [Reply(f) for f in frames[:-1]]
-        for ev in events:
-            if on_event:
-                r = on_event(ev)
-                if asyncio.iscoroutine(r):
-                    await r
-        return Reply(frames[-1], events)
+        """EVENTs reach ``on_event`` as they arrive, and nothing piles up: the reading thread waits
+        for this loop to take each line (a queue of ``KEEP_EVENTS``), so a slow ``on_event`` holds the
+        server back as TS's ``readFinal`` does, and it stops at the next line once this returns."""
+        loop = asyncio.get_running_loop()
+        lines: asyncio.Queue = asyncio.Queue(maxsize=KEEP_EVENTS)
+        stop = threading.Event()
+
+        def hand(f: Any) -> None:
+            # One put per line, waited on until it's taken: a timeout only means the loop is busy
+            # (a slow on_event), so wait again rather than put the same line twice.
+            put = asyncio.run_coroutine_threadsafe(lines.put(f), loop)
+            while not stop.is_set():
+                try:
+                    put.result(timeout=0.5)
+                    return
+                except concurrent.futures.TimeoutError:
+                    continue
+            put.cancel()
+            raise ConnectionAbortedError("the request was abandoned")
+
+        def post() -> None:
+            # A thread blocked in a read notices `stop` only at its next line, or at the socket's
+            # 60-second timeout on a silent server.
+            try:
+                self._post(frame, hand)
+            finally:
+                try:
+                    hand(_END)
+                except ConnectionAbortedError:
+                    pass  # nobody is reading any more
+
+        reading = asyncio.ensure_future(asyncio.to_thread(post))
+        reading.add_done_callback(lambda t: t.cancelled() or t.exception())  # never "exception never retrieved"
+        kept = Kept()
+        try:
+            while (got := await lines.get()) is not _END:
+                if got.get("kind") == "EVENT":
+                    ev = Reply(got)
+                    kept.add(ev)
+                    if on_event:
+                        r = on_event(ev)
+                        if asyncio.iscoroutine(r):
+                            await r
+                else:
+                    await reading  # raises what the reading thread raised, if anything
+                    return kept.reply(got)
+            await reading
+            raise ConnectionError("HTTP bridge closed without a final reply")
+        finally:
+            stop.set()  # however this ends (returned, raised, cancelled), the thread stops reading
 
     async def close(self) -> None:
         pass
@@ -130,16 +174,16 @@ class _LocalTransport:
         self.service = service
 
     async def request(self, frame: dict, on_event: OnEvent | None) -> Reply:
-        events: list[Reply] = []
+        kept = Kept()
 
         def emit(f: dict) -> None:
             ev = Reply(loads(dumps(f)))
-            events.append(ev)
+            kept.add(ev)
             if on_event:
                 on_event(ev)
 
         final = await self.service.handle(loads(dumps(frame)), emit)
-        return Reply(loads(dumps(final)), events)
+        return kept.reply(loads(dumps(final)))
 
     async def close(self) -> None:
         pass
