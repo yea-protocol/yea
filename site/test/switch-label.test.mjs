@@ -41,6 +41,19 @@ test('changed switch markup fails loudly instead of silently dropping the name',
 
   assert.throws(
     () => labelAppearanceSwitch(reordered, 'guide/x.md'),
-    /guide\/x\.md has the appearance switch/,
+    /guide\/x\.md has an appearance switch whose markup changed/,
+  );
+});
+
+test('one changed switch among matching ones still fails', {
+  skip,
+}, async () => {
+  const { labelAppearanceSwitch } = await load();
+  const changed =
+    '<button type="button" class="VPSwitch VPSwitchAppearance" role="switch" title>';
+
+  assert.throws(
+    () => labelAppearanceSwitch(RENDERED + changed),
+    /markup changed/,
   );
 });

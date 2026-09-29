@@ -89,4 +89,12 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
   .out { grid-column: 1 / -1; }
   .models { grid-template-columns: 1fr; }
 }
+/* Phones: the number sits on the heading's line, and the body and output take the full width. */
+@media (max-width: 640px) {
+  .step { grid-template-columns: 2rem minmax(0, 1fr); gap: 12px; }
+  .text { display: contents; }
+  .n { grid-row: 1; align-self: center; }
+  .text h3 { grid-column: 2; grid-row: 1; align-self: center; }
+  .text p { grid-column: 1 / -1; }
+}
 </style>
