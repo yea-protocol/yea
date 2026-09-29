@@ -8,7 +8,7 @@ from yea import Plan
 from yea.approval import HashedPlan, Policy, Tightening, load_policy, plan_hash
 from yea.risk import resolve_risk
 
-from ..keys import has_total, read_policy, read_tightening_for
+from ..policy import has_total, read_policy, read_tightening_for
 from .model import JobDef, Yea
 
 

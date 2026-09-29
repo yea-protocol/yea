@@ -20,13 +20,7 @@ import {
   cmdServices,
   cmdUninstall,
 } from './cli/install.js';
-import {
-  cmdDemo,
-  cmdExamples,
-  cmdMcp,
-  cmdOpenapi,
-  cmdTestDrive,
-} from './cli/launch.js';
+import { cmdDemo, cmdExamples, cmdMcp, cmdOpenapi } from './cli/launch.js';
 import {
   type Command,
   client,
@@ -44,6 +38,7 @@ import {
   cmdIntent,
   cmdUndo,
 } from './cli/talk.js';
+import { cmdTestDrive } from './cli/test-drive.js';
 import { home } from './home.js';
 import { printable } from './text.js';
 

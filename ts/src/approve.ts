@@ -83,7 +83,7 @@ export async function checkProposal(p: Proposal): Promise<string | null> {
  * be `p`'s, and `p` must pass `checkProposal`. `service` is where `p` came from, when the
  * caller knows it apart from `k` (a consent code carries only its own claim).
  */
-export async function checkConsentRequest(
+async function checkConsentRequest(
   k: ConsentRequest,
   p: Proposal,
   service?: string,

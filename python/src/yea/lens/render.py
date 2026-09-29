@@ -6,6 +6,7 @@ from .format import more_line
 from .notation import lean
 from .proposals import _proposals
 from .replies import _brief, _clarify, _error, _event, _receipt
+from .shape import kind_fits, more_fits
 
 _RENDERERS = {
     "BRIEF": _brief,
@@ -17,16 +18,22 @@ _RENDERERS = {
     "ANSWER": lambda r: [lean(r.get("data"))],
 }
 
-# Not shown for a frame of unknown kind: the envelope, `more` (it has its own lines) and a
-# service-supplied `lens`, which Lens never shows.
-_HIDDEN = ("yea", "id", "re", "more", "lens")
+# Not shown for a frame of unknown kind: the envelope, `more` (it has its own lines, when
+# well-formed) and a service-supplied `lens`, which Lens never shows.
+_HIDDEN = ("yea", "id", "re", "lens")
 
 
 def lens(reply: dict) -> str:
-    """Render a reply frame. Ignores any service-supplied ``lens`` field."""
-    kind = reply.get("kind")
-    render = _RENDERERS.get(kind) if isinstance(kind, str) else None
-    # An unknown (or missing, or non-string) kind: the frame's other members in lean notation (§9.2).
-    lines = render(reply) if render else [lean({k: v for k, v in reply.items() if k not in _HIDDEN})]
-    lines.extend(more_line(m) for m in reply.get("more") or [])
+    """Render a reply frame. Ignores any service-supplied ``lens`` field. A missing or wrong-typed
+    member can't make it raise."""
+    frame = reply if isinstance(reply, dict) else {}
+    more_ok = more_fits(frame)
+    if more_ok and kind_fits(frame):
+        lines = _RENDERERS[frame["kind"]](frame)
+    else:
+        # An unknown (or missing, or non-string) kind, or not well-formed: the frame's other members
+        # in lean notation, a malformed `more` among them (§9.2).
+        lines = [lean({k: v for k, v in frame.items() if k not in _HIDDEN and (k != "more" or not more_ok)})]
+    if more_ok:
+        lines.extend(more_line(m) for m in frame.get("more") or [])
     return "\n".join(lines)

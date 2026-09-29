@@ -4,6 +4,7 @@ import { canonical } from '../canonical.js';
 import { sha256 } from '../crypto.js';
 import type { Risk, Verb } from '../types.js';
 import type { Limit } from '../uses.js';
+import { isObject } from '../util.js';
 import { hasNonMinimalNumber } from './json-integers.js';
 
 export type Caveat =
@@ -27,9 +28,6 @@ const GRANT_PREFIX = 'pg1.';
 /** The string fields a block's payload needs (SPEC §6.2): the root's, then a delegation's. */
 const ROOT_FIELDS = ['iss', 'sub', 'nonce'];
 const DELEGATION_FIELDS = ['prev', 'sub'];
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
  * Whether `b` has the fields and types of block `i` (SPEC §6.2). Keys, signatures and the

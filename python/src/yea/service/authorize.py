@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ..errors import YeaError, fix
 from ..grants import GrantContext, Verification, verify_grant
 from ..keys import verify_proof
-from .replies import request_grants
-
-if TYPE_CHECKING:
-    from . import Service
+from .state import ServiceState
 
 
 def _checked(proposal: dict) -> dict:
@@ -21,23 +16,23 @@ def _checked(proposal: dict) -> dict:
     return out
 
 
-def consent_request(svc: Service, proposal: dict, principal: str | None) -> dict:
+def consent_request(state: ServiceState, proposal: dict, principal: str | None) -> dict:
     return {
-        "proposal": proposal["id"], "hash": proposal["hash"], "service": svc.id,
+        "proposal": proposal["id"], "hash": proposal["hash"], "service": state.id,
         "capability": proposal["capability"], "principal": principal,
         "summary": proposal["summary"], "expires": proposal["expires"],
     }
 
 
 async def authorize(
-    svc: Service, frame: dict, verb: str, capability: str, target: str, proposal: dict | None = None,
+    state: ServiceState, frame: dict, verb: str, capability: str, target: str, proposal: dict | None = None,
     *, principal: str | None = None, replay: bool = False,
 ) -> Verification | None:
     """Verify grants and proof. ``principal``: only grants from this principal count (the
     one a proposal was made for). ``replay``: ``each``, ``total`` and risk were already checked by
     the original commit, so ``consent_required`` counts as authorized (§4.4)."""
     grants = request_grants(frame)
-    required = verb in ("COMMIT", "UNDO") or svc.require_grants
+    required = verb in ("COMMIT", "UNDO") or state.require_grants
     if not grants:
         if required:
             raise YeaError(
@@ -46,20 +41,20 @@ async def authorize(
                 fix=[fix("ask your principal to issue a grant (yea grant) and send it in `grants` with a `proof`")],
             )
         return None
-    now = svc.now()
-    err = verify_proof(frame.get("proof"), svc.id, verb, target, now)
+    now = state.now()
+    err = verify_proof(frame.get("proof"), state.id, verb, target, now)
     if err:
         raise YeaError(
-            "unauthorized", err, fix=[fix(f'sign {{aud:"{svc.id}",verb:"{verb}",target,ts}} with the grant holder key')]
+            "unauthorized", err, fix=[fix(f'sign {{aud:"{state.id}",verb:"{verb}",target,ts}} with the grant holder key')]
         )
     ctx = GrantContext(
-        svc.id, verb, capability, now,
+        state.id, verb, capability, now,
         _checked(proposal) if proposal else None,
-        svc._spent,
+        state.spent,
     )
     checks = []
     for g in grants:
-        c = verify_grant(g, svc.trust, frame["proof"]["key"], ctx)
+        c = verify_grant(g, state.trust, frame["proof"]["key"], ctx)
         if principal and c.principal and c.principal != principal:
             why = "grant is from a different principal than this proposal's"
             checks.append(Verification(False, "forbidden", why, c.grant, reason=why))
@@ -76,7 +71,7 @@ async def authorize(
         raise YeaError(
             "consent_required",
             f"{_why(consent)}; your principal must approve this exact proposal",
-            consent=consent_request(svc, proposal, consent.principal),
+            consent=consent_request(state, proposal, consent.principal),
         )
     forbidden = next((c for c in checks if c.code == "forbidden"), None)
     if forbidden:
@@ -87,3 +82,21 @@ async def authorize(
 def _why(c: Verification) -> str:
     """A failed check in the TS core's words (``reason``)."""
     return c.reason or c.message
+
+
+def request_grants(frame: dict) -> list[str]:
+    """A request's grants (SPEC §3). Only a missing, null or empty ``grants`` is none; anything
+    else must be a list of strings, or the request is a ``bad_frame``."""
+    grants = frame.get("grants")
+    if grants is None:
+        return []
+    if not isinstance(grants, list) or not all(isinstance(g, str) for g in grants):
+        raise YeaError("bad_frame", "`grants` must be a list of strings")
+    return grants
+
+
+def verified_key(frame: dict) -> str | None:
+    """The proof key of a request whose proof ``authorize`` verified: it verifies the proof
+    whenever ``request_grants`` finds grants, and rejects the request otherwise. Call it only
+    after ``authorize``."""
+    return frame["proof"]["key"] if request_grants(frame) else None

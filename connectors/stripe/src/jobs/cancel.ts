@@ -4,14 +4,7 @@
  * manages its cancellation there.
  */
 import { type JobPlan, update } from '@yea-protocol/sdk';
-import {
-  cancelling,
-  idOf,
-  period,
-  SCHEDULE_ID,
-  type Stripe,
-  SUB_ID,
-} from '../api.js';
+import { idOf, period, SCHEDULE_ID, type Stripe, SUB_ID } from '../api.js';
 import {
   applying,
   type Ctx,
@@ -28,10 +21,14 @@ import {
   priceName,
   SUBSCRIPTION_FIELD,
 } from '../find.js';
-import { getSchedule, onlyCurrentPhase } from '../schedule.js';
+import { getSchedule } from '../schedule.js';
 import { confirmPhrase, who } from '../text.js';
 import { cancelNow } from './cancel/now.js';
-import { type PeriodEnd, periodEnd } from './cancel/period-end.js';
+import {
+  canEndAtPeriodEnd,
+  type PeriodEnd,
+  periodEnd,
+} from './cancel/period-end.js';
 
 // --- input schema ---
 
@@ -82,23 +79,6 @@ function now(ctx: Ctx, t: Target): JobPlan {
   };
 }
 
-/**
- * Whether "at period end" can be offered: not when it's already cancelling, and on a schedule
- * only when nothing else is pending, so ending the schedule ends the current period.
- */
-function canEndAtPeriodEnd(t: Target): boolean {
-  const s = t.schedule;
-
-  if (cancelling(t.sub)) {
-    return false;
-  }
-
-  return (
-    !s ||
-    (s.end_behavior === 'release' && onlyCurrentPhase(s, period(t.sub).end))
-  );
-}
-
 /** The cancellation plans: at period end when it can be offered, and now. */
 async function plan(ctx: Ctx, input: CancelInput) {
   const found = await oneCustomerSubscription(ctx, input);
@@ -117,7 +97,7 @@ async function plan(ctx: Ctx, input: CancelInput) {
     schedule: sub.schedule ? await getSchedule(ctx, idOf(sub.schedule)) : null,
   };
 
-  return canEndAtPeriodEnd(t)
+  return canEndAtPeriodEnd(t.sub, t.schedule)
     ? [atPeriodEnd(ctx, t), now(ctx, t)]
     : [now(ctx, t)];
 }

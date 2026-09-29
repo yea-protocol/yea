@@ -8,6 +8,7 @@ import {
   type ServerContext,
 } from '@modelcontextprotocol/server';
 import type { Approvals } from '@yea-protocol/mcp';
+import { unixNow } from '@yea-protocol/sdk';
 import { isLiveKey, type StripeOptions, stripeApi } from './api.js';
 import { type Ctx, confirmOf, type JobSpec } from './context.js';
 import { registerCustomer } from './customer.js';
@@ -28,7 +29,7 @@ export function contextFor(o: Omit<ConnectorOptions, 'approvals'>): Ctx {
   return {
     stripe: stripeApi(o),
     live: isLiveKey(o.key),
-    now: o.now ?? (() => Math.floor(Date.now() / 1000)),
+    now: o.now ?? unixNow,
   };
 }
 
