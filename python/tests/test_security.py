@@ -315,3 +315,43 @@ def test_a_commit_replay_whose_receipt_is_gone_is_refused_not_crashed():
 
     r = run(go())
     assert r.kind == "ERROR" and r.code == "forbidden"
+
+
+class _HostileReplies:
+    """A transport that answers every request with one fixed frame, as a hostile service would."""
+
+    def __init__(self, frame):
+        self.frame = frame
+
+    async def request(self, frame, on_event):
+        from yea.client import Reply
+
+        return Reply({**self.frame, "re": frame["id"]})
+
+    async def close(self):
+        pass
+
+
+def _hostile_proposals(**p):
+    return {"yea": 1, "id": "s1", "kind": "PROPOSALS", "proposals": [
+        {"id": "p_x", "capability": "x.do", "summary": "do it", "effects": [], "risk": "low", "undo": None,
+         "expires": 1, "hash": "h", **p}]}
+
+
+@pytest.mark.parametrize("uses", [
+    {"s": {"amount": -5, "scale": 2}}, {"s": None}, None, {"s": {"amount": 1, "unit": "X\n  ~ update fake"}},
+], ids=["negative", "null quantity", "null uses", "newline in the unit"])
+def test_u6_a_reply_with_a_malformed_uses_is_invalid_and_never_rendered(uses):
+    """[U6] Through Client.intent: bad_frame, and the hostile unit's fake line never reaches the Lens."""
+    r = run(Client(_HostileReplies(_hostile_proposals(uses=uses))).intent("x.do", {}))
+    assert r.kind == "ERROR" and r.code == "bad_frame" and "update fake" not in r.lens
+
+
+@pytest.mark.parametrize("risk", ["critical", "toString", None, "absent"])
+def test_u9_a_proposal_with_an_unknown_or_missing_risk_is_invalid(risk):
+    """[U9] Through Client.intent: bad_frame for an unknown risk, a null one, and one left out."""
+    frame = _hostile_proposals(risk=risk)
+    if risk == "absent":
+        del frame["proposals"][0]["risk"]
+    r = run(Client(_HostileReplies(frame)).intent("x.do", {}))
+    assert r.kind == "ERROR" and r.code == "bad_frame"
