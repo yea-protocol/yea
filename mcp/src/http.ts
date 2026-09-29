@@ -3,15 +3,18 @@
  * (SPEC-mcp-ts: HTTP serves one person in v0). `sub` must come from the transport's
  * authentication, so every request carries a bearer token (`YEA_HTTP_TOKEN`), and a request that
  * has it is that person (`YEA_SUB`). Anything else gets 401 before the MCP handler sees it, and a
- * request body over `maxBody` gets 413. Fetch-level only (it needs `node:crypto`, which Bun, Deno
- * and Workers with `nodejs_compat` have); the Node server is in `./http/node`.
+ * request body over `maxBody` gets 413. On loopback, a foreign Host gets 421 and a foreign Origin
+ * 403. Fetch-level only (it needs `node:crypto`, which Bun, Deno and Workers with `nodejs_compat`
+ * have); the Node server is in `./http/node`.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   type AuthInfo,
   createMcpHandler,
   localhostAllowedHostnames,
+  localhostAllowedOrigins,
   type McpServer,
+  originValidationResponse,
   type ServerContext,
   validateHostHeader,
 } from '@modelcontextprotocol/server';
@@ -27,7 +30,7 @@ export interface HttpAuth {
 }
 
 export interface HttpAppOptions extends HttpAuth {
-  /** Listening on loopback only: check the `Host` header, against DNS rebinding. */
+  /** Listening on loopback only: check the `Host` and `Origin` headers, against DNS rebinding. */
   loopback: boolean;
   /** The `clientId` in the `authInfo` the MCP handler gets. Default `yea-http`. */
   clientId?: string;
@@ -100,19 +103,27 @@ const unauthorized = () =>
   });
 
 /**
- * The checks before anything else: on loopback the Host header (against DNS rebinding: 421),
- * then the bearer token, compared in constant time (401). Undefined lets the request through.
- * `httpApp` runs it on every request; pass it to `serveHttp` too, so it runs before the body is
- * read.
+ * On loopback, the headers a browser can be tricked into sending: a Host that isn't loopback
+ * (421), then an `Origin` that isn't (403, the SDK's JSON-RPC error: `null` and anything
+ * unparseable included). No `Origin` passes: only browsers send one. Undefined when both are fine.
+ */
+const foreign = (req: Request) =>
+  misdirected(req) ?? originValidationResponse(req, localhostAllowedOrigins());
+
+/**
+ * The checks before anything else: on loopback the Host header (against DNS rebinding: 421) and
+ * the Origin header (a browser page elsewhere: 403), then the bearer token, compared in constant
+ * time (401). Undefined lets the request through. `httpApp` runs it on every request; pass it to
+ * `serveHttp` too, so it runs before the body is read.
  */
 export function httpGate(
   o: Pick<HttpAppOptions, 'token' | 'loopback'>,
 ): (req: Request) => Response | undefined {
   return (req) => {
-    const badHost = o.loopback ? misdirected(req) : undefined;
+    const refused = o.loopback ? foreign(req) : undefined;
 
-    if (badHost) {
-      return badHost;
+    if (refused) {
+      return refused;
     }
 
     const header = req.headers.get('authorization') ?? '';

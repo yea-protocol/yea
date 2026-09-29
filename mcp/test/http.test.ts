@@ -1,4 +1,4 @@
-/** `@yea-protocol/mcp/http`: the bearer token, the Host check and the body cap, before MCP. */
+/** `@yea-protocol/mcp/http`: the bearer token, the Host and Origin checks and the body cap, before MCP. */
 import type { Server } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import {
@@ -180,6 +180,31 @@ describe('httpApp', () => {
     });
   });
 
+  it('on loopback, refuses a foreign Origin, null included, with a JSON-RPC error', async () => {
+    const { app } = whoami();
+    const tries: [string, string][] = [
+      ['https://evil.example', 'Invalid Origin: evil.example'],
+      [
+        'http://localhost.evil.example:8787',
+        'Invalid Origin: localhost.evil.example',
+      ],
+      ['null', 'Invalid Origin header: null'],
+    ];
+
+    for (const [origin, message] of tries) {
+      const r = await app(
+        post({ host: 'localhost', origin, authorization: `Bearer ${TOKEN}` }),
+      );
+
+      expect(r.status).toBe(403);
+      expect(await r.json()).toEqual({
+        jsonrpc: '2.0',
+        error: { code: -32000, message },
+        id: null,
+      });
+    }
+  });
+
   it('off loopback, leaves the Host alone', async () => {
     const factory = () => new McpServer({ name: 'x', version: '1' });
     const app = httpApp(factory, { token: TOKEN, sub: 'me', loopback: false });
@@ -222,6 +247,57 @@ describe('httpGate', () => {
         ?.status,
     ).toBe(421);
     expect(GATE(req({ authorization: `Bearer ${TOKEN}` }))?.status).toBe(421);
+  });
+
+  it('on loopback, lets a loopback Origin (any port) or none through, and no other', () => {
+    const req = (origin?: string) =>
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          host: 'localhost:8787',
+          authorization: `Bearer ${TOKEN}`,
+          ...(origin === undefined ? {} : { origin }),
+        },
+      });
+    const loopback = [
+      undefined,
+      'http://localhost',
+      'http://localhost:5173',
+      'https://localhost:8443',
+      'http://127.0.0.1:8787',
+      'http://[::1]:3000',
+    ];
+
+    for (const origin of loopback) {
+      expect(GATE(req(origin)), String(origin)).toBeUndefined();
+    }
+
+    for (const origin of [
+      'https://evil.example',
+      'http://127.0.0.1.evil.example',
+      'http://[::2]:3000',
+      'null',
+      'localhost',
+    ]) {
+      expect(GATE(req(origin))?.status, origin).toBe(403);
+    }
+
+    // Off loopback, Origin is left alone, as Host is.
+    expect(
+      httpGate({ token: TOKEN, loopback: false })(req('https://evil.example')),
+    ).toBeUndefined();
+  });
+
+  it('checks Host (421), then Origin (403), then the token (401)', () => {
+    const req = (headers: Record<string, string>) =>
+      new Request('http://localhost/mcp', { method: 'POST', headers });
+    const evil = 'https://evil.example';
+
+    expect(GATE(req({ host: 'evil.example', origin: evil }))?.status).toBe(421);
+    expect(GATE(req({ host: 'localhost', origin: evil }))?.status).toBe(403);
+    expect(
+      GATE(req({ host: 'localhost', origin: 'http://localhost:1' }))?.status,
+    ).toBe(401);
   });
 });
 

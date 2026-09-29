@@ -2,7 +2,7 @@
 (SPEC-mcp-py, "HTTP serves one person in v0"), as mcp-ts's ``@yea-protocol/mcp/http``. Every
 request carries a bearer token (``YEA_HTTP_TOKEN``), and a request that has it is that person
 (``YEA_SUB``): ``token_subject`` returns their ``sub``. Anything else is refused before the MCP
-handler sees it. It wraps the SDK's own Streamable HTTP app, which caps the request body (413)."""
+handler sees it, and on loopback so is a foreign Host (421) or Origin (403). It wraps the SDK's own Streamable HTTP app, which caps the request body (413)."""
 
 from __future__ import annotations
 
@@ -70,10 +70,30 @@ def _host_refusal(host: str | None) -> Refusal | None:
         else:
             name = f"[{name}]" if ":" in name else name  # an IPv6 address, bracketed as a URL has it
             why = "" if name in LOOPBACK_HOSTS else f"Invalid Host: {name}"
-    if not why:
+    return _jsonrpc_refusal(421, why) if why else None
+
+
+def _origin_refusal(origin: str | None) -> Refusal | None:
+    """A browser page elsewhere: a loopback server answers only to a loopback Origin (403). No
+    Origin passes, since only browsers send one; ``null`` and anything unparseable are refused. The
+    messages are the TypeScript SDK's (``validateOriginHeader``)."""
+    if not origin:
         return None
+    try:
+        parts = urlsplit(origin)
+        _ = parts.port  # an invalid port is an invalid header
+        name = (parts.hostname or "") if parts.scheme else ""
+    except ValueError:
+        name = ""
+    if not name:
+        return _jsonrpc_refusal(403, f"Invalid Origin header: {origin}")
+    name = f"[{name}]" if ":" in name else name
+    return None if name in LOOPBACK_HOSTS else _jsonrpc_refusal(403, f"Invalid Origin: {name}")
+
+
+def _jsonrpc_refusal(status: int, why: str) -> Refusal:
     body = {"jsonrpc": "2.0", "error": {"code": -32000, "message": why}, "id": None}
-    return Refusal(421, json.dumps(body, separators=(",", ":")).encode())
+    return Refusal(status, json.dumps(body, separators=(",", ":")).encode())
 
 
 def _digest(s: str) -> bytes:
@@ -85,11 +105,11 @@ UNAUTHORIZED = Refusal(401, b'{"error":"invalid_token"}',
 
 
 def http_gate(token: str, *, loopback: bool) -> Callable[[Scope], Refusal | None]:
-    """The checks before anything else: on loopback the Host header (421), then the bearer token,
-    compared in constant time (401). None lets the request through."""
+    """The checks before anything else: on loopback the Host header (421) and the Origin header
+    (403), then the bearer token, compared in constant time (401). None lets the request through."""
     def gate(scope: Scope) -> Refusal | None:
         headers = Headers(scope=scope)  # the first value of a repeated header wins, as in the SDK
-        if loopback and (refused := _host_refusal(headers.get("host"))):
+        if loopback and (refused := _host_refusal(headers.get("host")) or _origin_refusal(headers.get("origin"))):
             return refused
         header = headers.get("authorization", "")
         given = header[len("Bearer "):] if header.startswith("Bearer ") else ""

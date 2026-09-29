@@ -210,10 +210,16 @@ For a server that serves one person over HTTP (above), the package exports the f
 Stripe connector's `--http` runs on. `./http` is fetch-level (it needs only `node:crypto`, which
 Bun, Deno and Workers with `nodejs_compat` have); `./http/node` has the Node server.
 
-- `httpGate({ token, loopback })`: the checks, in one place. On loopback, the `Host` header
-  (DNS rebinding: 421 Misdirected Request, as the Python MCP SDK answers it; `createMcpHandler`
-  doesn't check Host itself); then `Authorization: Bearer <token>`, compared in constant time
-  (401). It returns the refusal, or undefined to let the request through.
+- `httpGate({ token, loopback })`: the checks, in one place, in this order. On loopback, the
+  `Host` header (DNS rebinding: 421 Misdirected Request, as the Python MCP SDK answers it;
+  `createMcpHandler` doesn't check Host itself), then the `Origin` header: a present one whose
+  hostname isn't `localhost`, `127.0.0.1` or `[::1]` (any port), or that doesn't parse (the
+  opaque `null` included), gets 403 (the SDK's `originValidationResponse`). No `Origin` passes,
+  since only browsers send one. Both refusals carry the same JSON-RPC error body,
+  `{ jsonrpc: '2.0', error: { code: -32000, message }, id: null }`, with the SDK's messages
+  (`Invalid Host: …`, `Invalid Origin: …`, `Invalid Origin header: …`). Then
+  `Authorization: Bearer <token>`, compared in constant time (401). Off loopback, Host and Origin
+  are left alone. It returns the refusal, or undefined to let the request through.
 - `httpApp(factory, { token, sub, loopback, clientId?, maxBody? })`: a fetch handler that runs
   `httpGate` on every request, then `createMcpHandler` with `authInfo`
   `{ clientId (default 'yea-http'), extra: { sub } }`. The MCP handler reads at most `maxBody`
@@ -432,7 +438,7 @@ mcp/src/server-key.ts      the server's name and key
 mcp/src/policy.ts          pinned principal, policy and tightening loading
 mcp/src/render.ts          Lens text and structuredContent for plans, receipts and codes
 mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk metadata
-mcp/src/http.ts            the Streamable HTTP front end: token, Host check, body cap (`./http`)
+mcp/src/http.ts            the Streamable HTTP front end: token, Host and Origin checks, body cap (`./http`)
 mcp/src/http-node.ts       its Node server, on the SDK's serveFetch (`./http/node`)
 mcp/src/util.ts            small internal helpers (isObject, errorMessage, warnOnce, errno, registryOf)
 mcp/test/*.test.ts         in-memory client tests; security cases in mcp/test/security.test.ts
@@ -464,7 +470,8 @@ can't elicit. For each:
 - the objective's shape: `serveStdio` (over an in-memory transport) with one `yea()` context,
   on both eras.
 - the HTTP front end (`mcp/test/http.test.ts`): no token, a wrong one or another scheme gets
-  401 and a foreign Host on loopback 421, before MCP; a call with the token runs as `sub`; a body
+  401, a foreign Host on loopback 421 and a foreign or `null` Origin 403 (loopback origins with
+  any port, and none, pass), checked in that order, before MCP; a call with the token runs as `sub`; a body
   over the cap, declared or streamed, even past what's drained, gets a readable 413 and the app
   never runs; a request without the token is refused before its body is read (declared under the cap,
   so the test fails if the body is read first), and never gets `100 Continue`; a slow request is

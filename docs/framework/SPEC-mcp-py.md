@@ -89,18 +89,20 @@ that serves one person:
 - `http_auth_from(env)` reads `YEA_HTTP_TOKEN` (a bearer token of 32 characters or more) and
   `YEA_SUB` (who that person is), and raises saying what's missing.
 - `http_gate(token, loopback=...)`: on loopback, the `Host` header must be `localhost`,
-  `127.0.0.1` or `[::1]`, against DNS rebinding (421 Misdirected Request, with the TypeScript
-  SDK's JSON-RPC error body); then `Authorization: Bearer <token>`, compared in constant time
-  (401 with `WWW-Authenticate: Bearer`). The Host is checked first, as in `mcp-ts`.
+  `127.0.0.1` or `[::1]`, against DNS rebinding (421 Misdirected Request), and a present
+  `Origin` must have one of those hostnames, any port (403; `null` and anything unparseable are
+  refused, and no `Origin` passes, since only browsers send one). Both refusals carry the
+  TypeScript SDK's JSON-RPC error body and messages. Then `Authorization: Bearer <token>`,
+  compared in constant time (401 with `WWW-Authenticate: Bearer`). Host, Origin, token: the
+  same order as `mcp-ts`.
 - `http_app(server, auth, loopback=True, client_id="yea-http", max_body=MAX_BODY)`: an ASGI app
   that runs the gate, then the SDK's `streamable_http_app` (which caps the body at `max_body`,
   1 MiB by default: 413), with each request authenticated as `auth.sub`. So
   `yea(transport="http", sub=token_subject)` sees that person.
   Only `lifespan` passes through ungated: a websocket is closed (1008) and any other scope
   dropped, so no route (the SDK's or one a server adds) is reachable without the token. The
-  SDK's own Host check is on with `loopback=True` and off with `loopback=False`; on loopback it
-  also refuses a foreign `Origin` (403), which `mcp-ts` doesn't check. A server that brings its
-  own auth doesn't use `http_app`.
+  SDK's own Host and Origin checks, behind the gate, are on with `loopback=True` and off with
+  `loopback=False`; they are stricter (they also want a port, and `http` for an Origin). A server that brings its own auth doesn't use `http_app`.
 - `serve_http(app, host=..., port=..., max_connections=None)` serves it with uvicorn, an MCP SDK
   dependency, with a 30-second keep-alive and `max_connections` as uvicorn's concurrency limit
   (503 past it). uvicorn has no request-read timeout, unlike `mcp-ts`'s `requestTimeout`, so off
@@ -420,7 +422,7 @@ Each gets its own test and a note in the code:
 python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), PartialApplyError, the undo tool
 python/mcp/src/yea_mcp/call/          the shared routine: steps 1–11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
-python/mcp/src/yea_mcp/http.py        the HTTP front end: the Host and bearer gate, http_app, serve_http
+python/mcp/src/yea_mcp/http.py        the HTTP front end: the Host, Origin and bearer gate, http_app, serve_http
 python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input
 python/mcp/src/yea_mcp/guard.py       the server middleware for guarded tools
 python/mcp/src/yea_mcp/keys.py        server key, pinned principal, policy and tightening loading
