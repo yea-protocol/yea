@@ -75,8 +75,31 @@ def js_number(x: int | float) -> str:
     return sign + body
 
 
+_INDEX = re.compile(r"0|[1-9][0-9]*")
+_MAX_INDEX = 2**32 - 2
+
+
+def _index(k: Any) -> int | None:
+    """``k`` as an ECMAScript array index ("0" to "4294967294", no sign or leading zero), else None.
+    The length is checked first: ``int()`` of a hostile key thousands of digits long would raise."""
+    s = str(k)
+    return int(s) if len(s) <= 10 and _INDEX.fullmatch(s) and int(s) <= _MAX_INDEX else None
+
+
+def js_keys(obj: dict) -> list:
+    """``obj``'s keys in ECMAScript property order, as ``Object.keys`` and ``JSON.stringify`` give
+    them (SPEC §9.1): array-index keys first in ascending numeric order, then the rest in
+    insertion order."""
+    indexed, rest = [], []
+    for k in obj:
+        i = _index(k)
+        (rest if i is None else indexed).append((i, k))
+    indexed.sort(key=lambda ik: ik[0])  # by index alone: 1 and "1" can't be compared
+    return [k for _, k in indexed] + [k for _, k in rest]
+
+
 def compact(v: Any) -> str:
-    """Serialize like ``JSON.stringify(v)``: insertion order, no whitespace."""
+    """Serialize like ``JSON.stringify(v)``: keys in ECMAScript order (``js_keys``), no whitespace."""
     if v is None:
         return "null"
     if v is True:
@@ -88,7 +111,7 @@ def compact(v: Any) -> str:
     if isinstance(v, str):
         return quote(v)
     if isinstance(v, dict):
-        return "{" + ",".join(quote(str(k)) + ":" + compact(val) for k, val in v.items()) + "}"
+        return "{" + ",".join(quote(str(k)) + ":" + compact(v[k]) for k in js_keys(v)) + "}"
     if isinstance(v, (list, tuple)):
         return "[" + ",".join(compact(x) for x in v) + "]"
     raise TypeError(f"not JSON-serializable: {type(v).__name__}")

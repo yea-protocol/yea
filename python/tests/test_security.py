@@ -2,6 +2,7 @@
 names the TS id it mirrors."""
 
 import asyncio
+import json
 import socket
 import time
 import urllib.error
@@ -383,3 +384,39 @@ def test_plan_and_run_never_see_an_unauthenticated_agent_member():
     assert len(seen) == 2
     for ctx in seen:
         assert not hasattr(ctx, "agent") and claimed not in vars(ctx).values()
+
+
+def test_lens_key_order_survives_hostile_and_mixed_keys():
+    """An integer-like key thousands of digits long is an ordinary key, not a crash (int() refuses
+    strings past 4300 digits), and 1 beside "1" doesn't make the sort compare an int with a str."""
+    from yea import lean
+    from yea._json import compact, js_keys
+
+    huge = "1" * 5000
+    assert js_keys({"b": 1, huge: 2, "3": 3}) == ["3", "b", huge]
+    assert lean({"b": 1, huge: 2}).splitlines()[0] == "b: 1"
+    assert compact({"a": 1, "4294967295": 2, "7": 3}) == '{"7":3,"a":1,"4294967295":2}'
+    assert js_keys({1: "int", "1": "str", "0": 0}) == ["0", 1, "1"]
+
+
+def test_budget_elides_ties_in_the_same_order_as_ts():
+    """Candidates are collected in Object.entries order, so a tie cuts the same path first
+    (TS gives data.1 then data.b for this frame)."""
+    from yea.budget import MemoryHandleStore, fit
+
+    data = json.loads('{"b":"' + "x " * 400 + '","1":"' + "y " * 400 + '"}')
+    out = fit({"yea": 1, "id": "s1", "re": "c1", "kind": "ANSWER", "data": data}, 500, MemoryHandleStore())
+    assert [m["path"] for m in out["more"]] == ["data.1", "data.b"]
+
+
+def test_invalid_params_lists_problems_in_the_same_order_as_ts():
+    """The model reads this message: schema and params are walked in Object.keys order, as in TS."""
+    from yea.errors import YeaError
+    from yea.validate import validate_params
+
+    with pytest.raises(YeaError) as e:
+        validate_params({"a": "string"}, json.loads('{"a":"x","b":1,"2":1,"1":1}'))
+    assert e.value.message == "unknown param `1`; unknown param `2`; unknown param `b`"
+    with pytest.raises(YeaError) as e:
+        validate_params(json.loads('{"b":"string","3":"int"}'), {})
+    assert e.value.message == "missing `3` (int); missing `b` (string)"

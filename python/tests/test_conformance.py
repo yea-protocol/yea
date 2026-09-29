@@ -1,5 +1,7 @@
 """Shared conformance vectors (../conformance/*.json), generated from the TS implementation."""
 
+import json
+
 import pytest
 from conftest import CONFORMANCE, load_vectors
 
@@ -114,7 +116,9 @@ def _block_ids(token):
 
 @pytest.mark.parametrize("case", cases("lens"))
 def test_lens(case):
-    out = lean(case["input"]) if case["type"] == "value" else lens(case["input"])
+    # `json`: the input as text, for a key order a parsed object can't carry (§9.1).
+    data = json.loads(case["json"]) if "json" in case else case["input"]
+    out = lean(data) if case["type"] == "value" else lens(data)
     assert out == case["lens"]
 
 

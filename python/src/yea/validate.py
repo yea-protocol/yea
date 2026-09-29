@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ._json import compact
+from ._json import compact, js_keys
 from .errors import YeaError, fix
 
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -81,8 +81,10 @@ def validate_params(schema: dict | None, params: dict, path: str = "") -> None:
         return
     problems: list[str] = []
     fixes: list[dict] = []
-    names = [k[:-1] if k.endswith("?") else k for k in schema]
-    for raw, type_ in schema.items():
+    order = js_keys(schema)  # TS walks both in Object.keys order, and the model reads the message
+    names = [k[:-1] if k.endswith("?") else k for k in order]
+    for raw in order:
+        type_ = schema[raw]
         optional = raw.endswith("?")
         name = raw[:-1] if optional else raw
         v = params.get(name)
@@ -113,7 +115,7 @@ def validate_params(schema: dict | None, params: dict, path: str = "") -> None:
                 validate_params(type_, v, f"{path}{name}.")
             except YeaError as e:
                 problems.append(e.message)
-    for k in params:
+    for k in js_keys(params):
         if k in names:
             continue
         near = closest(k, names)
