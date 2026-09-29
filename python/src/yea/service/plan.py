@@ -16,7 +16,6 @@ class Ctx:
     params: dict
     principal: str | None  # the principal behind a valid grant, if the agent presented one
     goal: str | None = None
-    agent: dict | None = None
 
 
 @dataclass

@@ -355,3 +355,31 @@ def test_u9_a_proposal_with_an_unknown_or_missing_risk_is_invalid(risk):
         del frame["proposals"][0]["risk"]
     r = run(Client(_HostileReplies(frame)).intent("x.do", {}))
     assert r.kind == "ERROR" and r.code == "bad_frame"
+
+
+def test_plan_and_run_never_see_an_unauthenticated_agent_member():
+    """SPEC §4.1: `agent` is informational only, so a frame's `agent` isn't handed to code that could authorize on it (#190)."""
+    seen = []
+    svc = Service("svc", "Svc", "svc", trust=[PRINCIPAL.public])
+
+    @svc.ask("svc.who", "who")
+    def who(ctx):
+        seen.append(ctx)
+        return {"ok": True}
+
+    @svc.intent("svc.do", "do it")
+    def do(ctx):
+        seen.append(ctx)
+        return Plan("do it", [create("thing/1")], apply=lambda c: None)
+
+    claimed = {"name": "admin", "key": PRINCIPAL.public}
+
+    async def go():
+        for verb, name in (("ASK", "svc.who"), ("INTENT", "svc.do")):
+            r = await svc.handle({"yea": 1, "id": verb, "verb": verb, "capability": name, "agent": claimed}, lambda e: None)
+            assert r["kind"] != "ERROR", r
+
+    run(go())
+    assert len(seen) == 2
+    for ctx in seen:
+        assert not hasattr(ctx, "agent") and claimed not in vars(ctx).values()

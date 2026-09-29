@@ -68,7 +68,7 @@ async def plan_intent(
         principal = auth.principal if auth else None
         requester = verified_key(frame)
         goal = frame.get("goal") if isinstance(frame.get("goal"), str) else None
-        out = await _call(d.plan, Ctx(params, principal, goal, frame.get("agent")))
+        out = await _call(d.plan, Ctx(params, principal, goal))
         if isinstance(out, Clarification):
             return reply_frame(frame["id"], "CLARIFY", {"question": out.question, "options": out.options})
         plans = list(out) if isinstance(out, (list, tuple)) else [out]
