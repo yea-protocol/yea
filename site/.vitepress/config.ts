@@ -8,6 +8,7 @@ import { appearanceMigration, fontPreloads, themeColor } from './head';
 import { lensFence } from './lens-fence';
 import { headingOrder, taskLists } from './markdown-rules';
 import { paperLight } from './shiki-light';
+import { labelAppearanceSwitch } from './switch-label';
 
 const repo = 'https://github.com/yea-protocol/yea';
 const site = 'https://yea-protocol.github.io/yea/';
@@ -87,6 +88,8 @@ export default defineConfig({
     },
   },
   // Preload the fonts the first paint needs, so it doesn't swap faces.
+  // Name the appearance switch in the static HTML too (switch-label.ts).
+  transformHtml: (html, id) => labelAppearanceSwitch(html, id),
   transformHead: ({ assets, pageData }) =>
     fontPreloads(assets, pageData.relativePath),
   markdown: {

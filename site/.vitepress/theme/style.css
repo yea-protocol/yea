@@ -173,3 +173,16 @@ h1, h2, h3, h4, .VPNavBarTitle .title { letter-spacing: -0.01em; }
 /* Task lists ("- [ ] item"): a checkbox instead of a bullet. */
 .vp-doc li.task-list-item { list-style: none; margin-left: -1.25em; }
 .vp-doc .task-list-item-checkbox { margin-right: 0.45em; accent-color: var(--vp-c-text-1); vertical-align: -1px; }
+
+/* Phones: VitePress's "On this page" button is 24px tall; give it a 44px target in its 48px bar.
+   Tables tighten their cells and set inline code at 12px, so a code-named first column
+   (the Stripe connector's jobs table) leaves the prose column room to read, without breaking
+   names mid-word. */
+@media (max-width: 959px) {
+  /* The negative margin keeps the bar 48px: the target overlaps the wrapper's padding. */
+  .VPLocalNavOutlineDropdown > button { min-height: 44px; margin-block: -10px; }
+}
+@media (max-width: 640px) {
+  .vp-doc th, .vp-doc td { padding: 8px 10px; }
+  .vp-doc td code { font-size: 12px; } /* the smallest mono DESIGN.md allows */
+}

@@ -47,6 +47,9 @@
 .landing .btn.primary { background: var(--vp-c-text-1); color: var(--vp-c-bg); border-color: var(--vp-c-text-1); }
 .landing .btn.primary:hover { background: var(--vp-c-text-2); border-color: var(--vp-c-text-2); }
 .landing .btn:disabled { cursor: progress; opacity: 0.55; }
+/* Ghost: a button's 44px target with a link's look, for the GitHub link beside the buttons. */
+.landing .btn.ghost { border-color: transparent; padding: 0 4px; text-decoration: underline; text-decoration-color: var(--vp-c-text-3); text-underline-offset: 0.2em; }
+.landing .btn.ghost:hover { border-color: transparent; text-decoration-color: currentColor; }
 .landing .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 
 /* Real protocol output, as a model reads it. */
