@@ -105,13 +105,17 @@ def _minimal_int(s: str) -> int:
 
 
 def _parse_blocks(text: bytes) -> Any:
-    """The token's JSON. Every number must be an integer in minimal form (``1.0``, ``1e3`` and ``-0``
-    are refused, as JavaScript would read them as integers), and ``NaN``/``Infinity`` aren't JSON."""
+    """The token's JSON. It is parsed plainly first, so a syntax error is reported before a number
+    is (as in TypeScript). Then every number must be an integer in minimal form (``1.0``, ``1e3`` and
+    ``-0`` are refused, as JavaScript would read them as integers), and ``NaN``/``Infinity`` aren't
+    JSON. Nesting too deep to parse is not valid JSON either, never an exception out of here."""
     try:
-        return json.loads(text.decode("utf-8"), parse_float=_not_minimal, parse_int=_minimal_int, parse_constant=_not_json)
+        source = text.decode("utf-8")
+        json.loads(source, parse_constant=_not_json)
+        return json.loads(source, parse_float=_not_minimal, parse_int=_minimal_int)
     except _NotMinimal:
         raise ValueError("a number is not an integer in minimal form") from None
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
         raise ValueError("not valid b64url JSON") from None
 
 

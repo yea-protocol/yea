@@ -10,7 +10,10 @@ import urllib.request
 
 import pytest
 
-from yea import Client, Plan, Service, create, issue_grant, key_from_seed, local, serve_http
+from yea import (
+    Client, GrantContext, Plan, Service, create, decode_grant, issue_grant, key_from_seed, local, serve_http, verify_grant,
+)
+from yea._json import b64url_encode
 from yea.approval import reserve_all
 from yea.store import LedgerKey, MemoryStore
 from yea.uses import quantity
@@ -420,3 +423,15 @@ def test_invalid_params_lists_problems_in_the_same_order_as_ts():
     with pytest.raises(YeaError) as e:
         validate_params(json.loads('{"b":"string","3":"int"}'), {})
     assert e.value.message == "missing `3` (int); missing `b` (string)"
+
+
+def test_g2_a_deeply_nested_grant_token_is_unauthorized_not_an_exception():
+    """A token nested past the recursion limit made json.loads raise RecursionError out of
+    decode_grant, so verify_grant (which never raises) did. It is not valid JSON: unauthorized."""
+    depth = 100_000
+    token = "pg1." + b64url_encode(("[" * depth + "]" * depth).encode())
+    with pytest.raises(ValueError, match="not valid b64url JSON"):
+        decode_grant(token)
+    ctx = GrantContext("pay", "ASK", "pay.send", int(time.time()))
+    v = verify_grant(token, [PRINCIPAL.public], AGENT.public, ctx)
+    assert (v.ok, v.code, v.reason) == (False, "unauthorized", "malformed grant: not valid b64url JSON")
