@@ -13,3 +13,7 @@ export const isStringList = (v: unknown): v is string[] =>
 /** A JSON object: not null and not an array. */
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** A whole number above 0, as a frame's `budget` must be; anything else is undefined. */
+export const positiveInt = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;

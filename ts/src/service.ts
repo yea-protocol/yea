@@ -27,7 +27,7 @@ import type {
   FinalReply,
   Request,
 } from './types.js';
-import { unixNow } from './util.js';
+import { positiveInt, unixNow } from './util.js';
 
 export class Service {
   readonly id: string;
@@ -187,9 +187,6 @@ function isRequestFrame(frame: unknown): frame is Request {
     typeof frame.id === 'string'
   );
 }
-
-const positiveInt = (v: unknown): number | undefined =>
-  typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
 
 const unknownVerb = (req: { verb?: unknown }) =>
   new YeaError(

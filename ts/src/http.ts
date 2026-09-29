@@ -1,11 +1,21 @@
 /** HTTP bridge server side (SPEC §2.4) as a standard fetch handler: Workers, Bun, Deno, Node. */
 import { errorLine, frameId } from './frames.js';
 import type { Service } from './service.js';
+import { positiveInt } from './util.js';
 
 const MAX_FRAME = 1 << 20;
 const TOO_LARGE = Symbol('too large');
+/** Plain decimal notation (`800`, `800.0`, `1e3`): no hex, binary, `Infinity` or non-ASCII digits. */
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 
 const tooLarge = () => new Response('frame exceeds 1 MiB', { status: 413 });
+
+/**
+ * `?budget=` read by the same rule as a frame's `budget`: a whole number above 0 in decimal
+ * notation (`800.0` and `1e3` count). Anything else is undefined, so the default applies.
+ */
+export const queryBudget = (text: string | null): number | undefined =>
+  text !== null && DECIMAL.test(text) ? positiveInt(Number(text)) : undefined;
 
 /** The POSTed JSON frame; null when unreadable or not JSON (the service answers that with an ERROR). */
 async function readFrame(req: Request): Promise<unknown> {
@@ -81,7 +91,7 @@ export function fetchHandler(svc: Service, o: { path?: string } = {}) {
       req.method === 'GET' &&
       (url.pathname === '/.well-known/yea' || url.pathname === endpoint)
     ) {
-      const budget = Number(url.searchParams.get('budget')) || undefined;
+      const budget = queryBudget(url.searchParams.get('budget'));
 
       return Response.json({ ...svc.brief(budget), endpoint });
     }
