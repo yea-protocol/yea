@@ -18,13 +18,7 @@ import {
 } from '../setup.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
-import { client, confirm, die, type Options } from './shared.js';
-
-/** Where to install for AI tools: this project (--local) or the user's home. */
-export const installScope = (o: Options) => ({
-  local: !!o.local,
-  cwd: process.cwd(),
-});
+import { client, confirm, die, installScope, type Options } from './shared.js';
 
 export async function cmdAdd(rest: string[], o: Options) {
   const url = rest[0] ?? die('usage: yea add <url>');
