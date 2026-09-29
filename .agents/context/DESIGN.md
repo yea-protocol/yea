@@ -62,17 +62,19 @@ typography:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "clamp(1.5rem, 1.2rem + 1vw, 1.9rem)"
     fontWeight: 700
-    lineHeight: 1.15
+    lineHeight: 1.1
   quote:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem)"
     fontWeight: 600
     lineHeight: 1.28
+    letterSpacing: "-0.018em"
   slip-summary:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "clamp(1.3rem, 1.1rem + 0.8vw, 1.6rem)"
     fontWeight: 700
     lineHeight: 1.2
+    letterSpacing: "-0.015em"
   subsection:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "1.25rem"
@@ -92,7 +94,7 @@ typography:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 400
-    lineHeight: 1.6
+    lineHeight: 1.65
   lede:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "1.1875rem"
@@ -103,11 +105,11 @@ typography:
     fontSize: "0.8125rem"
     fontWeight: 600
     lineHeight: 1.4
-  label-large:
+  fine:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "0.875rem"
-    fontWeight: 600
-    lineHeight: 1.4
+    fontWeight: 400
+    lineHeight: 1.65
   lens:
     fontFamily: "JetBrains Mono Variable, JetBrains Mono, ui-monospace, monospace"
     fontSize: "0.8125rem"
@@ -349,8 +351,9 @@ the swap barely moves the page.
 - **Title** (650, 1.375rem, 1.25): the protocol-state step titles; the slip's summary is 700 at
   clamp 1.3–1.6rem.
 - **Body** (400, 1.0625rem, 1.65; 1rem under 640px), capped at 62ch. The lede is 1.1875rem.
-- **Small** (400, 0.9375rem, 1.6): notes and asides beside the slip and chart, chart rows, the
-  comparison table and the paths' links.
+- **Small** (400, 0.9375rem, 1.65): notes and asides beside the slip and chart, chart rows, the
+  comparison table and the paths' tags.
+- **Fine** (400, 0.875rem, 1.65): the slip's fine print, receipt line and chart notes.
 - **Label** (600, 0.8125–0.875rem): the slip's facts, chart headers, table headers.
 - **Lens** (400, 0.8125rem, 1.7; 0.75rem under 640px): recorded exchange output, effects, the
   hash. Chart values stay in the body font with tabular numbers.
