@@ -8,8 +8,6 @@
     "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
     "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E"
   },
-  "policyBlockId": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
-  "now": 1790000000,
   "hash": [
     {
       "name": "move",
@@ -3636,10 +3634,73 @@
   },
   "fileStore": {
     "ops": [
-      "consumeOnce(\"n_1\", now + 600)",
-      "reserve({block: policyBlockId, of: \"emails\"}, 5, 10), then settle it",
-      "putConsent(<refund plan hash>, \"pg1.example\")",
-      "claimUndo(\"r_AAAAAAAAAAAA\"), then markUndone"
+      {
+        "op": "consumeOnce",
+        "args": [
+          "n_1",
+          1790000600
+        ],
+        "expect": true
+      },
+      {
+        "op": "consumeOnce",
+        "args": [
+          "n_1",
+          1790000600
+        ],
+        "expect": false
+      },
+      {
+        "op": "reserve",
+        "args": [
+          {
+            "block": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
+            "of": "emails"
+          },
+          5,
+          10
+        ],
+        "settle": true
+      },
+      {
+        "op": "reserve",
+        "args": [
+          {
+            "block": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
+            "of": "emails"
+          },
+          6,
+          10
+        ],
+        "expect": null
+      },
+      {
+        "op": "putConsent",
+        "args": [
+          "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
+          "pg1.example"
+        ]
+      },
+      {
+        "op": "claimUndo",
+        "args": [
+          "r_AAAAAAAAAAAA"
+        ],
+        "expect": true
+      },
+      {
+        "op": "markUndone",
+        "args": [
+          "r_AAAAAAAAAAAA"
+        ]
+      },
+      {
+        "op": "claimUndo",
+        "args": [
+          "r_AAAAAAAAAAAA"
+        ],
+        "expect": false
+      }
     ],
     "files": {
       "consents/UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "pg1.example",

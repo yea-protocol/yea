@@ -212,7 +212,8 @@ escapes, as in §6): the reason, each summary, each phrase (a second line of def
 phrase that isn't typeable is refused above), and each `oneOf` title. An effect line is
 rendered from its fields made one line (`oneLine`), keeping `from` and `to`, which Lens quotes
 itself, and the whole line then goes through `printable`. A summary can't add a line to
-the message or hide characters in it. The conformance cases pin this.
+the message or hide characters in it. The conformance cases pin this, and
+`conformance/printable.json` pins which code points `printable` escapes and which it leaves alone.
 
 An accepted form counts as approval **only** when `confirm` matches the phrase: both sides are
 NFC-normalized, then stripped of leading and trailing characters in **exactly** this set:

@@ -1259,15 +1259,33 @@ for (const [name, id, sub, at, want, first] of [
 const dir = mkdtempSync(join(tmpdir(), 'yea-store-'));
 const store = new FileStore(dir);
 const key = { block: blockId, of: 'emails' };
+// Replayed by both runners: `expect` is the result when present; `settle` settles the reservation.
+const fileOps = [
+  { op: 'consumeOnce', args: ['n_1', now + 600], expect: true },
+  { op: 'consumeOnce', args: ['n_1', now + 600], expect: false },
+  { op: 'reserve', args: [key, 5, 10], settle: true },
+  { op: 'reserve', args: [key, 6, 10], expect: null },
+  { op: 'putConsent', args: [refundHp.planHash, 'pg1.example'] },
+  { op: 'claimUndo', args: ['r_AAAAAAAAAAAA'], expect: true },
+  { op: 'markUndone', args: ['r_AAAAAAAAAAAA'] },
+  { op: 'claimUndo', args: ['r_AAAAAAAAAAAA'], expect: false },
+];
 
-await store.consumeOnce('n_1', now + 600);
-must('consumed twice', await store.consumeOnce('n_1', now + 600), false);
-await store.settle(await store.reserve(key, 5n, 10n));
-must('over max', await store.reserve(key, 6n, 10n), null);
-await store.putConsent(refundHp.planHash, 'pg1.example');
-must('claim', await store.claimUndo('r_AAAAAAAAAAAA'), true);
-await store.markUndone('r_AAAAAAAAAAAA');
-must('claim after done', await store.claimUndo('r_AAAAAAAAAAAA'), false);
+for (const [i, o] of fileOps.entries()) {
+  const args =
+    o.op === 'reserve'
+      ? [o.args[0], BigInt(o.args[1]), BigInt(o.args[2])]
+      : o.args;
+  const got = await store[o.op](...args);
+
+  if ('expect' in o) {
+    must(`fileStore op ${i}`, got, o.expect);
+  }
+
+  if (o.settle) {
+    await store.settle(got);
+  }
+}
 
 const files = {};
 const walk = (d) => {
@@ -1291,8 +1309,6 @@ rmSync(dir, { recursive: true });
 export const approval = {
   seeds: { principal: seed(1), server: seed(5), stranger: seed(6) },
   keys: { principal: principal.public, server: server.public },
-  policyBlockId: blockId,
-  now,
   hash,
   decide: decideOut,
   phrases,
@@ -1328,12 +1344,7 @@ export const approval = {
     code: consentCode,
   },
   fileStore: {
-    ops: [
-      'consumeOnce("n_1", now + 600)',
-      'reserve({block: policyBlockId, of: "emails"}, 5, 10), then settle it',
-      'putConsent(<refund plan hash>, "pg1.example")',
-      'claimUndo("r_AAAAAAAAAAAA"), then markUndone',
-    ],
+    ops: fileOps,
     files,
   },
 };

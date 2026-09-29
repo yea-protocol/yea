@@ -10,6 +10,55 @@ const DIR = new URL('../../conformance/', import.meta.url);
 /** Each vector file this runner loaded, with the top-level sections it read (none for a list). */
 const read = new Map<string, Set<string>>();
 
+/** One `fileStore.ops` step on `store`, by name; `settle` settles the reservation it made. */
+async function fileOp(
+  store: FileStore,
+  { op, args, settle }: { op: string; args: unknown[]; settle?: boolean },
+) {
+  const [a, b, c] = args;
+
+  switch (op) {
+    case 'consumeOnce':
+      return store.consumeOnce(String(a), Number(b));
+    case 'reserve': {
+      const r = await store.reserve(
+        ledgerKey(a),
+        BigInt(Number(b)),
+        BigInt(Number(c)),
+      );
+
+      if (settle && r) {
+        await store.settle(r);
+      }
+
+      return r;
+    }
+    case 'putConsent':
+      return store.putConsent(String(a), String(b));
+    case 'claimUndo':
+      return store.claimUndo(String(a));
+    case 'markUndone':
+      return store.markUndone(String(a));
+    default:
+      throw new Error(`unknown fileStore op ${op}`);
+  }
+}
+
+/** Who signed a grant, or null when it doesn't decode (some cases are malformed on purpose). */
+function signer(grant: unknown): string | null {
+  try {
+    return typeof grant === 'string' ? P.decodeGrant(grant)[0].p.iss : null;
+  } catch {
+    return null;
+  }
+}
+
+function ledgerKey(k: unknown): P.LedgerKey {
+  const { block, of } = Object(k);
+
+  return { block: String(block), of: String(of) };
+}
+
 /** A vector file; reading an object's sections is recorded, so an unread one fails below. */
 function load(n: string) {
   const data = JSON.parse(readFileSync(new URL(`${n}.json`, DIR), 'utf8'));
@@ -162,6 +211,17 @@ describe('conformance vectors', () => {
       server: (await P.keyPair(v.seeds.server)).public,
     });
 
+    // The stranger seed signs the one policy that isn't the principal's.
+    const signers = new Set(
+      v.decide.map((c: { policy: { grant?: unknown } }) =>
+        signer(c.policy.grant),
+      ),
+    );
+
+    signers.delete(v.keys.principal);
+    signers.delete(null);
+    expect([...signers]).toEqual([(await P.keyPair(v.seeds.stranger)).public]);
+
     const asHashed = (x: HP): HP => ({
       ...x,
       plan: { ...x.plan, apply: () => null },
@@ -313,18 +373,14 @@ describe('conformance vectors', () => {
     const v = load('approval');
     const dir = mkdtempSync(join(tmpdir(), 'yea-conf-'));
     const store = new FileStore(dir);
-    const key = { block: v.policyBlockId, of: 'emails' };
-    const r = await store.reserve(key, 5n, 10n);
 
-    await store.consumeOnce('n_1', v.now + 600);
+    for (const o of v.fileStore.ops) {
+      const got = await fileOp(store, o);
 
-    if (r) {
-      await store.settle(r);
+      if ('expect' in o) {
+        expect(got, o.op).toEqual(o.expect);
+      }
     }
-
-    await store.putConsent(v.consents.plan.planHash, 'pg1.example');
-    await store.claimUndo('r_AAAAAAAAAAAA');
-    await store.markUndone('r_AAAAAAAAAAAA');
 
     const files: Record<string, string> = {};
     const walk = (d: string) => {
@@ -343,6 +399,11 @@ describe('conformance vectors', () => {
 
     walk(dir);
     expect(files).toEqual(v.fileStore.files);
+  });
+  it('printable', () => {
+    for (const c of load('printable')) {
+      expect(P.printable(c.text)).toBe(c.printable);
+    }
   });
   it('estimate', () => {
     for (const c of load('estimate')) {
