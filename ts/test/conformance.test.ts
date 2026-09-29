@@ -375,6 +375,13 @@ describe('conformance vectors', () => {
     const store = new FileStore(dir);
 
     for (const o of v.fileStore.ops) {
+      // A misspelt key would skip its check.
+      expect(
+        Object.keys(o).filter(
+          (k) => !['op', 'args', 'expect', 'settle'].includes(k),
+        ),
+      ).toEqual([]);
+
       const got = await fileOp(store, o);
 
       if ('expect' in o) {

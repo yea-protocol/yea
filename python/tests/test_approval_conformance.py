@@ -135,6 +135,7 @@ def test_file_store(tmp_path):
     async def go():
         s = FileStore(tmp_path)
         for o in DATA["fileStore"]["ops"]:
+            assert set(o) <= {"op", "args", "expect", "settle"}, o  # a misspelt key would skip its check
             got = await _file_op(s, o)
             if "expect" in o:
                 assert got == o["expect"], o
