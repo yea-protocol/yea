@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from ..budget import fit
 from ..validate import validate_params
-from .authorize import authorize
+from .authorize import authorize, verified_key
+from .capabilities import unknown_capability
 from .plan import Ctx
-from .replies import params_of, reply_frame, unknown_capability, verified_key
+from .replies import params_of, reply_frame
 from .state import ServiceState
 from .util import _call
 

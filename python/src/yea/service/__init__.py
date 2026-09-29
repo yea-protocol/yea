@@ -16,6 +16,7 @@ from ..budget import HandleStore, MemoryHandleStore, fit
 from ..errors import YeaError, fix
 from ..grants import Trusted
 from .ask import on_ask
+from .capabilities import list_capabilities
 from .commit import on_commit
 from .expand import on_expand
 from .intent import on_intent
@@ -112,17 +113,7 @@ class Service:
 
     @property
     def capabilities(self) -> list[dict]:
-        out: list[dict] = []
-        for name, a in self.state.asks.items():
-            out.append({"name": name, "kind": "ask", "summary": a.summary, **({"params": a.params} if a.params else {})})
-        for name, i in self.state.intents.items():
-            c: dict[str, Any] = {"name": name, "kind": "intent", "summary": i.summary}
-            if i.params:
-                c["params"] = i.params
-            if i.risk:
-                c["risk"] = i.risk
-            out.append(c)
-        return out
+        return list_capabilities(self.state)
 
     def brief(self, budget: int | None = None, re: str = "discover") -> dict:
         r = reply_frame(re, "BRIEF", {"service": {"id": self.id, "name": self.name, "summary": self.summary}, "capabilities": self.capabilities})
