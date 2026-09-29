@@ -51,11 +51,11 @@ const open = ref(!matches(PHONE));
 .policy { border-top: 1px solid var(--vp-c-divider); padding-top: 12px; margin-top: 4px; }
 .policy summary { font-family: var(--font-head); font-weight: 600; cursor: pointer; margin-bottom: 8px; }
 .policy > * + * { margin-top: 10px; }
-.checks { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.85rem; color: var(--vp-c-text-2); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.82rem; color: var(--vp-c-text-2); }
 .checks input { accent-color: var(--vp-c-brand-1); }
 .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.grant code { font-size: 0.72rem; color: var(--vp-c-text-3); word-break: break-all; }
-.grant pre { margin: 6px 0 0; font-family: var(--vp-font-family-mono); font-size: 0.74rem; line-height: 1.6; color: var(--vp-c-text-2); background: var(--vp-c-bg-soft); padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.grant code { font-size: 0.75rem; color: var(--vp-c-text-3); word-break: break-all; }
+.grant pre { margin: 6px 0 0; font-family: var(--vp-font-family-mono); font-size: 0.75rem; line-height: 1.6; color: var(--vp-c-text-2); background: var(--vp-c-bg-soft); padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 640px) {
   .row3 { grid-template-columns: 1fr 1fr; }

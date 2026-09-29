@@ -18,7 +18,7 @@ const emit = defineEmits<{ approve: [] }>();
 <template>
   <div class="consent" role="region" aria-label="Approval needed">
     <h3>Your agent needs your approval</h3>
-    <p>{{ message }}</p>
+    <p class="reason">{{ message }}</p>
     <template v-if="facts && check === 'ok'">
       <p class="what">{{ facts.summary }}</p>
       <ul>
@@ -36,8 +36,10 @@ const emit = defineEmits<{ approve: [] }>();
 
 <style scoped>
 .consent { margin: 0 18px 18px; padding: 16px 18px; border: 1px solid var(--state-amber); border-radius: 12px; background: var(--state-amber-soft); }
-.consent h3 { font-family: var(--font-head); font-size: 1.05rem; margin: 0 0 6px; }
-.consent p { margin: 6px 0; font-size: 0.9rem; color: var(--vp-c-text-2); }
+.consent h3 { font-family: var(--font-head); font-size: 1.25rem; font-weight: 600; line-height: 1.35; margin: 0 0 8px; } /* Subsection */
+.consent p { margin: 6px 0; font-size: 0.875rem; color: var(--vp-c-text-2); }
+/* The service's reason is machine output, so it's set in mono (the Machine Voice Rule). */
+.consent .reason { font-family: var(--vp-font-family-mono); font-size: 0.8125rem; }
 .consent .what { color: var(--vp-c-text-1); font-weight: 600; }
 .consent ul { margin: 8px 0; padding-left: 18px; font-size: 0.84rem; }
 /* The small print is text-2 so it reads comfortably at 0.8rem on the amber tint. */

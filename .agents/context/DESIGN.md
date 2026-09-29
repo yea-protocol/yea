@@ -322,7 +322,7 @@ the swap barely moves the page.
   heading that jumps more than one level, as included README sections do.
 - **Body** (400, 16px, 1.75): VitePress doc prose, capped at 72ch for `p` and `li`.
 - **Label** (600, 0.82rem): playground form labels, segmented controls.
-- **Lens** (400, 13px, 1.75; 11.5px under 640px): playground output, frames.
+- **Lens** (400, 13px, 1.75; 12px under 640px): playground output, frames.
 
 ### Named Rules
 **The Machine Voice Rule.** Mono is reserved for what machines say or read: Lens, frames, verbs,

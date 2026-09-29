@@ -32,11 +32,11 @@
 .loading { grid-column: 1 / -1; margin: 0; color: var(--vp-c-text-2); }
 .ghost { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
 .bar { display: block; border-radius: 8px; background: var(--vp-c-bg-soft); animation: pulse 1.6s ease-in-out infinite; }
-.seg-bar { height: 40px; border-radius: 10px; }
+.seg-bar { height: 40px; border-radius: 8px; }
 .label { height: 12px; width: 30%; }
 .field { height: 38px; }
 .box { height: 150px; }
-.send { height: 44px; border-radius: 9px; }
+.send { height: 44px; border-radius: 8px; }
 .line { height: 14px; }
 .short { width: 60%; }
 

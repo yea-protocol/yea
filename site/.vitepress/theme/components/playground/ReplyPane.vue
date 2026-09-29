@@ -107,17 +107,17 @@ function onTabKey(e: KeyboardEvent, i: number) {
 <style scoped src="./segmented.css"></style>
 <style scoped>
 .out-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--vp-c-divider); }
-.badge { font-family: var(--vp-font-family-mono); font-size: 0.76rem; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid currentColor; }
+.badge { font-family: var(--vp-font-family-mono); font-size: 0.75rem; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid currentColor; }
 .badge.green { color: var(--state-green); }
 .badge.amber { color: var(--state-amber); }
 .badge.red { color: var(--state-red); }
 .badge.plain { color: var(--vp-c-text-2); }
 .req { font-family: var(--vp-font-family-mono); font-size: 0.8rem; color: var(--vp-c-text-2); }
-.tok { margin-left: auto; font-size: 0.78rem; color: var(--vp-c-text-3); font-variant-numeric: tabular-nums; }
+.tok { margin-left: auto; font-size: 0.75rem; color: var(--vp-c-text-3); font-variant-numeric: tabular-nums; }
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 18px 0; }
 .tabs { width: fit-content; }
 .tabs > button { flex: none; padding: 6px 14px; }
-.copy { font: inherit; font-size: 0.82rem; font-weight: 500; padding: 6px 10px; border: 0; border-radius: 7px; background: none; color: var(--vp-c-text-3); cursor: pointer; }
+.copy { font: inherit; font-size: 0.82rem; font-weight: 500; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--vp-c-text-3); cursor: pointer; }
 
 .lens:focus-visible { outline-offset: -2px; }
 .lens { font-family: var(--vp-font-family-mono); font-size: 13px; line-height: 1.75; padding: 16px 18px 20px; overflow-x: auto; min-height: 120px; }
@@ -129,13 +129,13 @@ function onTabKey(e: KeyboardEvent, i: number) {
 .ln.more, .ln.event { color: var(--vp-c-text-3); }
 .frames { padding: 8px 18px 18px; }
 .frames h3 { font-size: 0.8rem; color: var(--vp-c-text-3); margin: 14px 0 6px; font-family: var(--vp-font-family-base); font-weight: 600; }
-.frames pre { margin: 0 0 8px; font-family: var(--vp-font-family-mono); font-size: 0.76rem; line-height: 1.55; background: var(--vp-code-block-bg); padding: 12px 14px; border-radius: 8px; overflow: auto; max-height: 360px; }
+.frames pre { margin: 0 0 8px; font-family: var(--vp-font-family-mono); font-size: 0.75rem; line-height: 1.55; background: var(--vp-code-block-bg); padding: 12px 14px; border-radius: 8px; overflow: auto; max-height: 360px; }
 
 @media (max-width: 980px) {
   .tok { margin-left: 0; width: 100%; }
 }
 @media (max-width: 640px) {
-  .lens { font-size: 11.5px; }
+  .lens { font-size: 12px; }
 }
 @media (max-width: 640px), (pointer: coarse) {
   .copy { min-height: 44px; }

@@ -95,8 +95,9 @@ function onKey(e: KeyboardEvent) {
       <div>
         <h1>Playground</h1>
         <p>
-          You're the agent. A calendar, a meal shop and a billing system run in this page on the real YEA core, and your requests are
-          signed with a grant from the human's policy. The right side shows exactly what a model would read.
+          You play both sides. On the left you're the agent: your requests go to a calendar, a meal shop and a billing system that
+          run in this page on the real YEA core, signed with a grant from the human's policy. On the right is exactly what a model
+          would read, and when a request goes past that policy, you're the human it asks.
         </p>
       </div>
       <PresetBar @preset="runPreset" />

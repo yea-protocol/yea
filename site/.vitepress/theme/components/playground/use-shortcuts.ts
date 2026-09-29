@@ -72,23 +72,22 @@ export function useShortcuts({ form, current, examples, send }: ShortcutDeps) {
     }
   }
 
-  function runPreset(kind: PresetKind): void {
+  /** Run a preset scenario, one form step per tick; resolves once its last reply is in. */
+  async function runPreset(kind: PresetKind): Promise<void> {
     const p = presetFor(kind, examples);
 
     form.service = p.service;
-    void nextTick(() => {
-      form.verb = p.verb;
-      form.capability = p.capability;
-      form.params = JSON.stringify(p.params, null, 2);
-      Object.assign(form, { auto: false, useBudget: false }, p.form);
-      void nextTick(async () => {
-        await send();
+    await nextTick();
+    form.verb = p.verb;
+    form.capability = p.capability;
+    form.params = JSON.stringify(p.params, null, 2);
+    Object.assign(form, { auto: false, useBudget: false }, p.form);
+    await nextTick();
+    await send();
 
-        if (p.commit) {
-          await commitNext(p.commit, p.service);
-        }
-      });
-    });
+    if (p.commit) {
+      await commitNext(p.commit, p.service);
+    }
   }
 
   return { act, choose, runPreset };
