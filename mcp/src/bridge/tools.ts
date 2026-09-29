@@ -3,8 +3,9 @@
  * a service past 25 capabilities, plus the utilities. Built once at start, from `HELLO`.
  *
  * This file picks a service's tools and names them. The tools themselves are in tools/: one
- * per capability (capability.ts), or the two generic ones (generic.ts), each its spec, then its
- * handler, over the shared job handler (job-handler.ts) and in the shape of spec.ts.
+ * per capability (capability.ts), or the two generic ones (generic.ts), over the shared job
+ * handler (job-handler.ts); and the utilities, `yea_consent` (consent.ts) and `yea_expand` and
+ * `yea_undo` (utility.ts). Each is its spec, then its handler, in the shape of spec.ts.
  */
 import { printable } from '@yea-protocol/sdk';
 import { errorResult } from '../result.js';
@@ -14,8 +15,10 @@ import { clip } from './lens.js';
 import { assignNames, genericBase, sanitize, type ToNames } from './names.js';
 import type { Bridge } from './state.js';
 import { capabilityTool } from './tools/capability.js';
+import { consentTool } from './tools/consent.js';
 import { genericTool, isGeneric, type ToolMode } from './tools/generic.js';
 import type { Unnamed } from './tools/spec.js';
+import { expandTool, undoTool } from './tools/utility.js';
 import type { ToolSpec } from './types.js';
 
 /** In per-capability mode a service gets at most this many tools. */
@@ -83,6 +86,16 @@ export async function buildTools(
     return [{ name, ...t.build(name) }];
   });
 }
+
+/** `yea_consent`, `yea_expand` and `yea_undo`. */
+export const utilityTools = (
+  b: Bridge,
+  services: Map<string, Service>,
+): ToolSpec[] => [
+  consentTool(b, services),
+  expandTool(b, services),
+  undoTool(services),
+];
 
 export const errorOf = (e: unknown) =>
   errorResult([`✗ ${printable(errorMessage(e))}`]);
