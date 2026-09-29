@@ -80,17 +80,22 @@ _MAX_INDEX = 2**32 - 2
 
 
 def _index(k: Any) -> int | None:
-    """``k`` as an ECMAScript array index ("0" to "4294967294", no sign or leading zero), else None."""
+    """``k`` as an ECMAScript array index ("0" to "4294967294", no sign or leading zero), else None.
+    The length is checked first: ``int()`` of a hostile key thousands of digits long would raise."""
     s = str(k)
-    return int(s) if _INDEX.fullmatch(s) and int(s) <= _MAX_INDEX else None
+    return int(s) if len(s) <= 10 and _INDEX.fullmatch(s) and int(s) <= _MAX_INDEX else None
 
 
 def js_keys(obj: dict) -> list:
     """``obj``'s keys in ECMAScript property order, as ``Object.keys`` and ``JSON.stringify`` give
     them (SPEC §9.1): array-index keys first in ascending numeric order, then the rest in
     insertion order."""
-    indexed = sorted((i, k) for k in obj if (i := _index(k)) is not None)
-    return [k for _, k in indexed] + [k for k in obj if _index(k) is None]
+    indexed, rest = [], []
+    for k in obj:
+        i = _index(k)
+        (rest if i is None else indexed).append((i, k))
+    indexed.sort(key=lambda ik: ik[0])  # by index alone: 1 and "1" can't be compared
+    return [k for _, k in indexed] + [k for _, k in rest]
 
 
 def compact(v: Any) -> str:

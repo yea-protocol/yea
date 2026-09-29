@@ -8,7 +8,7 @@ import os
 import time
 from typing import Any, Protocol
 
-from ._json import b64url_encode, compact
+from ._json import b64url_encode, compact, js_keys
 from .lens import est, lean, lens
 
 MIN_STRING = 200
@@ -62,8 +62,8 @@ def _collect(v: Any, path: Path, out: list) -> None:
         for i, x in enumerate(v):
             _collect(x, path + (i,), out)
     elif isinstance(v, dict):
-        for k, x in v.items():
-            _collect(x, path + (k,), out)
+        for k in js_keys(v):  # in Object.entries order, so a tie elides the same path as TS
+            _collect(v[k], path + (k,), out)
 
 
 def _roots(r: dict) -> tuple[list[Path], list[Path]]:
