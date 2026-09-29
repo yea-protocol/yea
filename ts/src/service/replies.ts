@@ -19,7 +19,11 @@ export function errorReply(
     });
   }
 
-  opts.onError?.(e);
+  try {
+    opts.onError?.(e);
+  } catch {
+    // a failing onError must not fail the request, nor leave a commit half-released
+  }
 
   return replyFrame(re, 'ERROR', {
     code: 'internal',

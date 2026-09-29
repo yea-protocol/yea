@@ -685,6 +685,64 @@ describe('security regressions', () => {
     );
   });
 
+  // #187: a synchronous throw from apply() ran before the run was stored, so the ERROR was
+  // cached and a retry replayed it instead of running apply again.
+  it('[U5b] a sync apply that throws once is retried, and a success still runs once', async () => {
+    let runs = 0;
+    const errors: unknown[] = [];
+    const svc = P.service({
+      id: 'pay',
+      name: 'Pay',
+      summary: 'pay',
+      trust: [principal.public],
+      onError: (e) => {
+        errors.push(e);
+
+        throw new Error('onError failed too');
+      },
+    }).intent('pay.send', {
+      summary: 'send money',
+      params: { to: 'string', amt: 'int' },
+      plan: ({ params }) => ({
+        summary: `pay ${params.to}`,
+        effects: [P.create(`payment/${params.to}`)],
+        uses: { spend: P.quantity(params.amt, { scale: 2, unit: 'USD' }) },
+        apply: () => {
+          runs++;
+
+          if (runs === 1) {
+            throw new Error('card network down');
+          }
+
+          return { ok: true };
+        },
+      }),
+    });
+    const c = await client(svc, agent, principal, [
+      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
+    ]);
+    const p = await intent(c, { to: 'a', amt: 60 });
+    const failed = await c.commit(p);
+
+    // A throwing onError doesn't fail the request either.
+    expect(failed.kind === 'ERROR' && failed.code).toBe('internal');
+    expect(String(errors[0])).toMatch(/card network down/);
+
+    const retried = await c.commit(p);
+
+    expect(retried.kind === 'RECEIPT' && !retried.replay).toBe(true);
+    expect(runs).toBe(2);
+
+    const again = await c.commit(p);
+
+    expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
+    expect(runs).toBe(2);
+    // The failed attempt released its spend: only 60 of the 100 is used.
+    expect((await c.commit(await intent(c, { to: 'b', amt: 40 }))).kind).toBe(
+      'RECEIPT',
+    );
+  });
+
   it('[U10] a plan with an unknown risk never becomes a proposal', async () => {
     const errors: unknown[] = [];
     // `undefined` leaves the field out; anything else, `null` included, is set.
