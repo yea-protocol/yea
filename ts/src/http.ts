@@ -5,8 +5,13 @@ import { positiveInt } from './util.js';
 
 const MAX_FRAME = 1 << 20;
 const TOO_LARGE = Symbol('too large');
-/** Plain decimal notation (`800`, `800.0`, `1e3`): no hex, binary, `Infinity` or non-ASCII digits. */
-const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+/**
+ * Plain decimal notation (`800`, `800.0`, `1e3`): no hex, binary, `Infinity` or non-ASCII digits.
+ * Each part can match only one way, so a long input can't make it backtrack.
+ */
+const DECIMAL = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+/** Longer than any budget worth reading; checked before the pattern runs on untrusted text. */
+const MAX_BUDGET_TEXT = 32;
 
 const tooLarge = () => new Response('frame exceeds 1 MiB', { status: 413 });
 
@@ -15,7 +20,9 @@ const tooLarge = () => new Response('frame exceeds 1 MiB', { status: 413 });
  * notation (`800.0` and `1e3` count). Anything else is undefined, so the default applies.
  */
 export const queryBudget = (text: string | null): number | undefined =>
-  text !== null && DECIMAL.test(text) ? positiveInt(Number(text)) : undefined;
+  text !== null && text.length <= MAX_BUDGET_TEXT && DECIMAL.test(text)
+    ? positiveInt(Number(text))
+    : undefined;
 
 /** The POSTed JSON frame; null when unreadable or not JSON (the service answers that with an ERROR). */
 async function readFrame(req: Request): Promise<unknown> {

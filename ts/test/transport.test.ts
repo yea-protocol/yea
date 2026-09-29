@@ -141,13 +141,25 @@ describe('transports', async () => {
           new Request(`http://svc.test/.well-known/yea${q}`),
         )
       ).json()) as { more?: unknown };
-    const [small, same, hex, negative] = await Promise.all(
-      ['?budget=40', '?budget=40.0', '?budget=0x28', '?budget=-40'].map(brief),
+    const [small, same, signed, hex, negative, spaced] = await Promise.all(
+      [
+        '?budget=40',
+        '?budget=40.0',
+        '?budget=%2B40',
+        '?budget=0x28',
+        '?budget=-40',
+        // `+` in a query decodes to a space, so this is " 40": not a number.
+        '?budget=+40',
+      ].map(brief),
     );
 
-    // Fitted to 40 either way; hex and negative budgets get the default instead.
-    expect([small.more, same.more].every(Boolean)).toBe(true);
-    expect([hex.more, negative.more]).toEqual([undefined, undefined]);
+    // Fitted to 40 each way; the rest get the default budget instead.
+    expect([small.more, same.more, signed.more].every(Boolean)).toBe(true);
+    expect([hex.more, negative.more, spaced.more]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it('bad frames get bad_frame errors', async () => {

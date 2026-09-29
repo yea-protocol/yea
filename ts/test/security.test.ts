@@ -484,6 +484,25 @@ describe('security regressions', () => {
     },
   );
 
+  // #194: the first ?budget= pattern backtracked quadratically: 15,000 digits and an `x` held the
+  // event loop for about 0.6 s, on a GET that needs no grant.
+  it('[M7b] a huge ?budget= is refused without backtracking', async () => {
+    const handler = P.fetchHandler(payService());
+
+    for (const budget of [
+      `${'1'.repeat(15_000)}x`,
+      `${'1'.repeat(200_000)}x`,
+    ]) {
+      const t = performance.now();
+      const r = await handler(
+        new Request(`http://svc.test/.well-known/yea?budget=${budget}`),
+      );
+
+      expect(r.status).toBe(200);
+      expect(performance.now() - t).toBeLessThan(100);
+    }
+  });
+
   it("[M7] huge unknown names don't burn CPU on suggestions", async () => {
     const svc = payService();
     const t = Date.now();
