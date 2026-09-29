@@ -321,9 +321,18 @@ describe('guard refuses schemas it can’t carry preview on', () => {
 });
 
 describe('guard failure detection reads the value the original returned', () => {
-  /** A guarded tool that auto-runs under a policy with a total, and returns `result`. */
-  async function autoRun(result: Record<string, unknown>) {
+  /**
+   * A guarded tool (no outputSchema) that auto-runs under a policy with a total, and returns
+   * `result`; `before` can break the store first.
+   */
+  async function autoRun(
+    result: Record<string, unknown>,
+    before: (w: World) => void = () => undefined,
+  ) {
     const w = await world();
+
+    before(w);
+
     const token = await grantPolicy(w, [
       { can: ['charge'] },
       { risk: 'low' },
@@ -397,6 +406,27 @@ describe('guard failure detection reads the value the original returned', () => 
       exact(quantity(1)),
     );
   });
+
+  // #150: as in mcp-py, the original's result is kept with the line appended, whichever step fails.
+  it.each(['settle', 'putReceipt'] as const)(
+    'a %s failure after apply keeps the original result and appends the line',
+    async (step) => {
+      const ok = { content: [{ type: 'text', text: 'charged' }] };
+      const { r, calls } = await autoRun(ok, (w) => {
+        w.store[step] = () => Promise.reject(new Error('disk full'));
+      });
+
+      expect(calls()).toBe(1);
+      expect(r.isError).toBeFalsy();
+      expect(r.content).toEqual([
+        { type: 'text', text: 'charged' },
+        {
+          type: 'text',
+          text: "✓ Charge happened, but then disk full; its receipt wasn't saved, so it can't be undone.",
+        },
+      ]);
+    },
+  );
 });
 
 const filesIn = (root: string, dir: string) =>

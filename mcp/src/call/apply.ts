@@ -18,6 +18,14 @@ import { errorResult, textResult } from '../result.js';
 import { errorMessage, isObject } from '../util.js';
 import type { Call, JobDef, Result, Yea } from './context.js';
 
+/** What a failure after `apply()` can still report: the stored receipt, and a guarded tool's own result. */
+interface Saved {
+  /** Set once the receipt is stored, so a later failure can say undo is available. */
+  receipt: JobReceipt | null;
+  /** A guarded tool's own result, once it's known to be usable: kept, with the line appended. */
+  kept: CallToolResult | null;
+}
+
 /**
  * A guarded tool's own error, or a request for input, is a failed apply. This inspects the value
  * the original callback actually returned (a plain object, often a literal), structurally: no
@@ -121,14 +129,6 @@ function receiptFor(call: Call, hp: HashedPlan, result: unknown): JobReceipt {
   };
 }
 
-/** What a failure after `apply()` can still report: the stored receipt, and a guarded tool's own result. */
-interface Saved {
-  /** Set once the receipt is stored, so a later failure can say undo is available. */
-  receipt: JobReceipt | null;
-  /** A guarded tool's own result, once it's known to be usable: kept, with the line appended. */
-  kept: CallToolResult | null;
-}
-
 /**
  * Everything after a successful `apply()`. The action has happened, so nothing here may say
  * "nothing was run": any failure is reported as the action having happened, with whether undo
@@ -216,7 +216,10 @@ function happened(
   if (kept) {
     return {
       ...kept,
-      content: [...(kept.content ?? []), { type: 'text', text: line }],
+      content: [
+        ...(Array.isArray(kept.content) ? kept.content : []),
+        { type: 'text', text: line },
+      ],
     };
   }
 
