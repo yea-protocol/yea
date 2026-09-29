@@ -45,7 +45,8 @@ export interface PrivateFileOptions {
 const tooBig = (path: string) =>
   `${path} is larger than 64 KiB, too big for a key file`;
 
-const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
+/** A Node error's `code`, such as `ENOENT`. */
+export const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
 
 /** Why the owner and mode of an open private file can't be trusted, or null. */
 function unsafeOwnerOrMode(

@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomId } from '../crypto.js';
+import { errno } from '../key-file.js';
 
 /** Store directories and files are this user's alone, as Python's store makes them. */
 const PRIVATE = 0o700;
@@ -30,7 +31,7 @@ export function createOnce(path: string, text = ''): boolean {
 
     return true;
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+    if (errno(e) === 'EEXIST') {
       return false;
     }
 
@@ -52,7 +53,7 @@ export function readOrNull(path: string): string | null {
   try {
     return readFileSync(path, 'utf8');
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (errno(e) === 'ENOENT') {
       return null;
     }
 
