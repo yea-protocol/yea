@@ -17,6 +17,7 @@ import {
 import { dirname, join } from 'node:path';
 import { isB64u } from './b64.js';
 import { home } from './home.js';
+import { errno } from './util.js';
 
 /** Server names name a key file (`~/.yea/server/<name>.key`) and appear in consent codes. */
 export const SERVER_NAME = /^[a-z0-9._-]{1,64}$/;
@@ -44,8 +45,6 @@ export interface PrivateFileOptions {
 
 const tooBig = (path: string) =>
   `${path} is larger than 64 KiB, too big for a key file`;
-
-const errno = (e: unknown) => (e as NodeJS.ErrnoException).code;
 
 /** Why the owner and mode of an open private file can't be trusted, or null. */
 function unsafeOwnerOrMode(

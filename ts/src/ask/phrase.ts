@@ -23,7 +23,7 @@ export const phraseMatches = (typed: unknown, phrase: string) =>
   normalizePhrase(typed) === normalizePhrase(phrase);
 
 /** A phrase that is empty once normalized falls back to `approve`. */
-export const effectivePhrase = (phrase: string) =>
+const effectivePhrase = (phrase: string) =>
   normalizePhrase(phrase) === '' ? DEFAULT_PHRASE : phrase;
 
 /** Whitespace a person can't be sure of typing: a tab, or any space separator but U+0020. */
