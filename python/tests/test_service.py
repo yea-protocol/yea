@@ -1194,3 +1194,26 @@ def test_an_http_stream_without_a_final_reply_and_a_null_line():
         assert run(_ask_http_with(url, None)).data == 1
     finally:
         server.shutdown()
+
+
+def test_a_long_stall_in_on_event_delivers_each_http_event_once():
+    """A synchronous on_event that blocks the loop for longer than the thread's wait doesn't make
+    the thread hand the same line again: each EVENT arrives once, in order (#175 review)."""
+    def body(fid, write):
+        for i in range(20):
+            write(_event(fid, i))
+        write(json.dumps({"yea": 1, "id": "s", "re": fid, "kind": "ANSWER", "data": 1}))
+
+    url, server, _ = _http_server(body)
+    seen = []
+
+    def blocking(ev):
+        seen.append(ev.message)
+        if len(seen) == 1:
+            time.sleep(1.2)  # over two of the thread's 0.5 s waits
+
+    try:
+        r = run(_ask_http_with(url, blocking))
+    finally:
+        server.shutdown()
+    assert r.kind == "ANSWER" and seen == [f"step {i}" for i in range(20)]

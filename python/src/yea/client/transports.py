@@ -120,20 +120,28 @@ class _HttpTransport:
         stop = threading.Event()
 
         def hand(f: Any) -> None:
+            # One put per line, waited on until it's taken: a timeout only means the loop is busy
+            # (a slow on_event), so wait again rather than put the same line twice.
+            put = asyncio.run_coroutine_threadsafe(lines.put(f), loop)
             while not stop.is_set():
                 try:
-                    asyncio.run_coroutine_threadsafe(lines.put(f), loop).result(timeout=0.5)
+                    put.result(timeout=0.5)
                     return
                 except concurrent.futures.TimeoutError:
-                    continue  # the loop is busy (a slow on_event): wait, unless the caller has gone
+                    continue
+            put.cancel()
             raise ConnectionAbortedError("the request was abandoned")
 
         def post() -> None:
+            # A thread blocked in a read notices `stop` only at its next line, or at the socket's
+            # 60-second timeout on a silent server.
             try:
                 self._post(frame, hand)
             finally:
-                if not stop.is_set():
-                    asyncio.run_coroutine_threadsafe(lines.put(_END), loop)
+                try:
+                    hand(_END)
+                except ConnectionAbortedError:
+                    pass  # nobody is reading any more
 
         reading = asyncio.ensure_future(asyncio.to_thread(post))
         reading.add_done_callback(lambda t: t.cancelled() or t.exception())  # never "exception never retrieved"
