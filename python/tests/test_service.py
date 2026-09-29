@@ -954,3 +954,24 @@ def test_after_the_connection_fails_a_new_request_fails_at_once():
             srv.close()
 
     run(go())
+
+
+def test_a_request_with_a_lone_surrogate_is_a_bad_frame(caplog):
+    """An INTENT whose params held a lone surrogate reached the proposal hash, raised there and came
+    back as ``internal`` with ``retry: 5``, logged as a service failure. It is the client's mistake,
+    so the frame is refused as ``bad_frame`` before any handler runs (SPEC §10, #160)."""
+    svc = Service("mail.example", "Mail")
+
+    @svc.intent("mail.send")
+    def send(ctx):
+        return Plan(f"send {ctx.params.get('to')}", [], apply=lambda _ctx: None)  # the params reach the hash
+
+    def intent(params):
+        return run(svc.handle({"yea": 1, "id": "c1", "verb": "INTENT", "capability": "mail.send", "params": params}))
+
+    for params in ({"to": "a\ud800"}, {"\udfff": 1}, {"list": [{"deep": ["ok", "\udc00"]}]}):
+        r = intent(params)
+        assert (r["kind"], r["code"], r["message"], "retry" in r) == ("ERROR", "bad_frame", "a string holds a lone surrogate", False)
+    assert not [rec for rec in caplog.records if rec.name == "yea"]
+    # A surrogate pair is well-formed, so the frame is planned as usual.
+    assert intent({"to": "🎉"})["kind"] == "PROPOSALS"

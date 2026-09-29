@@ -2175,3 +2175,77 @@ describe.skipIf(typeof process.getuid !== 'function')(
     });
   },
 );
+
+// Canonical JSON wrote a lone surrogate raw, and UTF-8 encoding turned it into U+FFFD, so a
+// summary holding one hashed the same as one holding U+FFFD: a person's consent bound text they
+// weren't shown. SPEC §10 now refuses lone surrogates, so there is nothing to hash or sign.
+describe('lone surrogates have no canonical form (#160)', () => {
+  const base = {
+    id: 'p_1',
+    capability: 'mail.send',
+    params: {},
+    effects: [],
+    risk: 'low',
+    expires: 1790000000,
+  } as unknown as P.Proposal;
+
+  it('refuses to hash a proposal with a lone surrogate', async () => {
+    await expect(
+      P.proposalHash({ ...base, summary: 'pay \ud800' }),
+    ).rejects.toThrow(/lone surrogate/);
+    expect(await P.proposalHash({ ...base, summary: 'pay �' })).toMatch(
+      /^[\w-]+$/,
+    );
+  });
+
+  it('refuses one in a key, and keeps surrogate pairs', () => {
+    expect(() => P.canonical({ '\udc00': 1 })).toThrow(/lone surrogate/);
+    expect(P.canonical({ s: '🎉' })).toBe('{"s":"🎉"}');
+  });
+
+  // An INTENT whose params held one reached the proposal hash, threw there and came back as
+  // `internal` with `retry: 5`, reported to onError: a client's mistake read as a service fault.
+  it('a request holding one is a bad_frame, not an internal error', async () => {
+    const errors: unknown[] = [];
+    const svc = P.service({
+      id: 'mail',
+      name: 'Mail',
+      summary: 'mail',
+      onError: (e) => errors.push(e),
+    }).intent('mail.send', {
+      summary: 'send',
+      // The params reach the summary, and so the proposal hash.
+      plan: ({ params }) => ({
+        summary: `send ${String(params.to)}`,
+        effects: [],
+        apply: () => null,
+      }),
+    });
+    const intent = (params: unknown) =>
+      svc.handle({
+        yea: 1,
+        id: 'c1',
+        verb: 'INTENT',
+        capability: 'mail.send',
+        params,
+      });
+
+    for (const params of [
+      { to: 'a\ud800' },
+      { '\udfff': 1 },
+      { list: [{ deep: ['ok', '\udc00'] }] },
+    ]) {
+      const r = await intent(params);
+
+      expect(r.kind === 'ERROR' && [r.code, r.message, r.retry]).toEqual([
+        'bad_frame',
+        'a string holds a lone surrogate',
+        undefined,
+      ]);
+    }
+
+    expect(errors).toEqual([]);
+    // A surrogate pair is well-formed, so the frame is planned as usual.
+    expect((await intent({ to: '🎉' })).kind).toBe('PROPOSALS');
+  });
+});

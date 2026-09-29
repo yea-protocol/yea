@@ -164,6 +164,16 @@
     "lens": "has space: 1\n\"k,v\": 2\n\"\": 3"
   },
   {
+    "name": "lone surrogates",
+    "type": "value",
+    "input": {
+      "lone": "a\ud800",
+      "pair": "🎉",
+      "\udfff": "key"
+    },
+    "lens": "lone: \"a\\ud800\"\npair: \"🎉\"\n\"\\udfff\": key"
+  },
+  {
     "name": "brief",
     "type": "reply",
     "input": {

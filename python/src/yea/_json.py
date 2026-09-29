@@ -12,10 +12,13 @@ import base64
 import hashlib
 import json
 import math
+import re
 from decimal import Decimal
 from typing import Any
 
 MAX_SAFE_INT = 2**53 - 1
+
+_SURROGATE = re.compile("[\ud800-\udfff]")
 
 _ESCAPES = {'"': '\\"', "\\": "\\\\", "\b": "\\b", "\f": "\\f", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 
@@ -109,17 +112,53 @@ def canonical(v: Any) -> str:
             return str(int(v))
         raise CanonicalError(f"only integers are allowed in canonical JSON (got {v!r})")
     if isinstance(v, str):
-        return quote(v)
+        return quote(_well_formed(v))
     if isinstance(v, dict):
         for k in v:
             if not isinstance(k, str):
                 raise CanonicalError("object keys must be strings")
+        joined = {_well_formed(k): x for k, x in v.items()}
+        if len(joined) != len(v):
+            # "\ud83c\udf89" and "🎉" are one key once the pair is joined, as JavaScript reads it.
+            raise CanonicalError("two keys are the same once surrogate pairs are joined")
+        v = joined
         # Sort by code point. Python compares str by code point, unlike JS's UTF-16 sort,
         # but the two agree for all BMP keys (and keys SHOULD be ASCII).
         return "{" + ",".join(quote(k) + ":" + canonical(v[k]) for k in sorted(v)) + "}"
     if isinstance(v, (list, tuple)):
         return "[" + ",".join(canonical(x) for x in v) + "]"
     raise CanonicalError(f"not JSON-serializable: {type(v).__name__}")
+
+
+def _well_formed(s: str) -> str:
+    """``s`` with any surrogate pair joined into its character, as JavaScript reads it. A lone
+    surrogate has no UTF-8 encoding, so it has no canonical form (SPEC §10)."""
+    if not _SURROGATE.search(s):
+        return s
+    joined = s.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
+    lone = _SURROGATE.search(joined)
+    if lone is not None:
+        raise CanonicalError(f"a lone surrogate (U+{ord(lone.group()):04X}) has no canonical form")
+    return joined
+
+
+def has_lone_surrogate(v: Any) -> bool:
+    """Whether any string or key in ``v`` holds a lone surrogate, so ``v`` has no canonical form
+    (SPEC §10). It walks with its own stack, so a deeply nested frame can't hit the recursion limit."""
+    todo = [v]
+    while todo:
+        x = todo.pop()
+        if isinstance(x, dict):
+            todo.extend(x.keys())
+            todo.extend(x.values())
+        elif isinstance(x, (list, tuple)):
+            todo.extend(x)
+        elif isinstance(x, str) and _SURROGATE.search(x):
+            try:
+                _well_formed(x)
+            except CanonicalError:
+                return True
+    return False
 
 
 def canonical_bytes(v: Any) -> bytes:

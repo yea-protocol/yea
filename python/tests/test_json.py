@@ -20,6 +20,12 @@ def test_canonical_rejects(bad):
         canonical(bad)
 
 
+def test_canonical_refuses_keys_that_are_the_same_once_pairs_are_joined():
+    with pytest.raises(CanonicalError):
+        canonical({"\ud83c\udf89": 1, "🎉": 2})
+    assert canonical({"\ud83c\udf89": 1}) == '{"🎉":1}'
+
+
 def test_canonical_accepts_integral_floats_like_js():
     assert canonical({"n": 3.0}) == '{"n":3}'
 

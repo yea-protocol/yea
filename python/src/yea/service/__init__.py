@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from .._json import has_lone_surrogate
 from ..budget import HandleStore, MemoryHandleStore, fit
 from ..errors import YeaError, fix
 from ..grants import Trusted
@@ -115,6 +116,10 @@ class Service:
         try:
             if not isinstance(frame, dict) or frame.get("yea") != 1 or not isinstance(frame.get("id"), str):
                 raise YeaError("bad_frame", 'frames need "yea": 1 and a string "id"')
+            # A lone surrogate has no canonical form (SPEC §10): refuse the frame here, before a
+            # handler hashes it and fails as `internal`.
+            if has_lone_surrogate(frame):
+                raise YeaError("bad_frame", "a string holds a lone surrogate")
             budget = _positive_int(frame.get("budget")) or self.default_budget
             verb = frame.get("verb")
             if verb == "HELLO":

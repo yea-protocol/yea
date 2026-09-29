@@ -9,6 +9,15 @@ const out = (name, v) =>
   );
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
 
+/** `{canonical}`, or `{error: true}` when canonical JSON refuses the value. */
+function canonicalOrError(input) {
+  try {
+    return { canonical: P.canonical(input) };
+  } catch {
+    return { error: true };
+  }
+}
+
 // canonical
 const canon = [
   ['scalars', [null, true, false, 0, -1, 9007199254740991, '']],
@@ -22,7 +31,14 @@ const canon = [
   ],
   ['unicode', { s: 'café — 東京 🎉  ' }],
   ['slash', { s: 'a/b<c>&' }],
-].map(([name, input]) => ({ name, input, canonical: P.canonical(input) }));
+  ['surrogate pair', { s: '\ud83c\udf89' }],
+  // A lone surrogate has no UTF-8 encoding, so canonical JSON refuses it (SPEC §10).
+  ['lone high surrogate', { s: 'a\ud800b' }],
+  ['lone low surrogate', { s: '\udfff' }],
+  ['surrogates in the wrong order', { s: '\udf89\ud83c' }],
+  ['lone surrogate in a key', { '\ud800': 1 }],
+  ['lone surrogate in an array', ['ok', '\udc00']],
+].map(([name, input]) => ({ name, input, ...canonicalOrError(input) }));
 
 out('canonical', canon);
 
@@ -831,6 +847,11 @@ const values = [
   ['top scalar', 'just text'],
   ['empty object', {}],
   ['odd keys', { 'has space': 1, 'k,v': 2, '': 3 }],
+  // Lens quotes a lone surrogate as JSON.stringify does, though canonical JSON refuses it.
+  [
+    'lone surrogates',
+    { lone: 'a\ud800', pair: '\ud83c\udf89', '\udfff': 'key' },
+  ],
 ];
 const lensCases = values.map(([name, input]) => ({
   name,

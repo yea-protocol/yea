@@ -33,7 +33,11 @@ function load(n: string) {
 describe('conformance vectors', () => {
   it('canonical', () => {
     for (const c of load('canonical')) {
-      expect(P.canonical(c.input), c.name).toBe(c.canonical);
+      if (c.error) {
+        expect(() => P.canonical(c.input), c.name).toThrow();
+      } else {
+        expect(P.canonical(c.input), c.name).toBe(c.canonical);
+      }
     }
   });
   it('canonical rejects floats', () => {

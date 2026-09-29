@@ -60,5 +60,48 @@
       "s": "a/b<c>&"
     },
     "canonical": "{\"s\":\"a/b<c>&\"}"
+  },
+  {
+    "name": "surrogate pair",
+    "input": {
+      "s": "🎉"
+    },
+    "canonical": "{\"s\":\"🎉\"}"
+  },
+  {
+    "name": "lone high surrogate",
+    "input": {
+      "s": "a\ud800b"
+    },
+    "error": true
+  },
+  {
+    "name": "lone low surrogate",
+    "input": {
+      "s": "\udfff"
+    },
+    "error": true
+  },
+  {
+    "name": "surrogates in the wrong order",
+    "input": {
+      "s": "\udf89\ud83c"
+    },
+    "error": true
+  },
+  {
+    "name": "lone surrogate in a key",
+    "input": {
+      "\ud800": 1
+    },
+    "error": true
+  },
+  {
+    "name": "lone surrogate in an array",
+    "input": [
+      "ok",
+      "\udc00"
+    ],
+    "error": true
   }
 ]
