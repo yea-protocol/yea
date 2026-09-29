@@ -179,7 +179,8 @@ h1, h2, h3, h4, .VPNavBarTitle .title { letter-spacing: -0.01em; }
    (the Stripe connector's jobs table) leaves the prose column room to read, without breaking
    names mid-word. */
 @media (max-width: 959px) {
-  .VPLocalNavOutlineDropdown > button { min-height: 44px; }
+  /* The negative margin keeps the bar 48px: the target overlaps the wrapper's padding. */
+  .VPLocalNavOutlineDropdown > button { min-height: 44px; margin-block: -10px; }
 }
 @media (max-width: 640px) {
   .vp-doc th, .vp-doc td { padding: 8px 10px; }
