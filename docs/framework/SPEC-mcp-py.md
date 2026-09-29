@@ -108,6 +108,13 @@ the plaintext; a tampered, expired or rebound token never reaches it, because th
 with an error first. It does **not** stop replay: the same token sent twice runs the handler
 twice, which is why the core's `consume_once` on the state nonce stays.
 
+The boundary binds to the SDK's authenticated principal (the token's client, issuer and subject),
+not to our `sub(ctx)`. On HTTP with the recommended `sub=token_subject` that's at least as strict.
+With no access token (stdio, in-memory, or HTTP without the SDK's auth) it binds no principal at
+all, and our state's `sub` is the only caller binding. Either way `check_state` refuses a state
+replayed by another caller ("invalid, expired, already used, or for another call"), as `mcp-ts`'s
+own check does under a codec that doesn't bind `sub`.
+
 `approvals.request_state_security()` returns `RequestStateSecurity(keys=[state_key], ttl=600,
 audience=name)` for `MCPServer(request_state_security=...)` (FastMCP takes the same argument).
 Without it the SDK uses a random per-process key, which is fine for stdio but breaks
