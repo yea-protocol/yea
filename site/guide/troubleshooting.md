@@ -6,6 +6,16 @@ Start with:
 npx @yea-protocol/cli doctor
 ```
 
+::: warning Unreleased: run it from the repo
+`@yea-protocol/cli` isn't on npm yet, so `npx @yea-protocol/cli` fails for now. Until it is, run it from a clone:
+
+```sh
+git clone https://github.com/yea-protocol/yea && cd yea
+npm ci && npm run build
+node cli/bin/yea.js doctor
+```
+:::
+
 It checks your node version, keys, grants, services and AI-tool registration, and says what to run for each problem.
 
 ## My AI tool doesn't show the YEA tools

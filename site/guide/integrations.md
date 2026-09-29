@@ -7,6 +7,16 @@ npx @yea-protocol/cli install                  # detects your AI tools and confi
 npx @yea-protocol/cli install --target cursor --local   # one tool, this project only
 ```
 
+::: warning Unreleased: run it from the repo
+`@yea-protocol/cli` isn't on npm yet, so `npx @yea-protocol/cli` fails for now. Until it is, run the same commands from a clone:
+
+```sh
+git clone https://github.com/yea-protocol/yea && cd yea
+npm ci && npm run build
+node cli/bin/yea.js install
+```
+:::
+
 `install` (alias: `setup`) creates an agent key and registers the bridge with each tool. For Claude Code, Codex, Gemini CLI and Cursor it also writes a short, marker-fenced `YEA` block of agent instructions, because subagents don't see MCP server instructions. Add services with `yea add <url>`; the bridge serves everything in `yea services`.
 
 ## Where your key lives

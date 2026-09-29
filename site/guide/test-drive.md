@@ -6,6 +6,16 @@ Watch a real Claude model use YEA, live, in your terminal:
 npx @yea-protocol/cli test-drive
 ```
 
+::: warning Unreleased: run it from the repo
+`@yea-protocol/cli` isn't on npm yet, so `npx @yea-protocol/cli` fails for now. Until it is, run the same command from a clone:
+
+```sh
+git clone https://github.com/yea-protocol/yea && cd yea
+npm ci && npm run build
+node cli/bin/yea.js test-drive
+```
+:::
+
 It runs the example calendar and shop in-process, gives the model four generic tools (`yea_ask`, `yea_intent`, `yea_commit`, `yea_undo`), and hands it a task. The default task: move your 1:1 with Ana to a free slot, then order four vegan meals under 700 calories.
 
 ## What you'll see

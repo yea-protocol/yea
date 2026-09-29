@@ -130,6 +130,8 @@ h1, h2, h3, h4, .VPNavBarTitle .title { letter-spacing: -0.01em; }
 /* Quotes and notes: a hairline box, not a side stripe. */
 .vp-doc blockquote { border: 1px solid var(--vp-c-divider); border-radius: 8px; padding: 12px 16px; color: var(--vp-c-text-2); }
 .vp-doc blockquote > p { color: inherit; }
+/* VitePress pulls code blocks full-bleed on phones; inside a quote box they stay inside it. */
+.vp-doc blockquote div[class*='language-'] { margin: 12px 0; border-radius: 8px; }
 /* A page's source note (the spec page): one quiet line, not a callout. */
 .vp-doc .page-source { max-width: none; font-size: 0.875rem; color: var(--vp-c-text-2); padding-bottom: 16px; border-bottom: 1px solid var(--vp-c-divider); }
 .vp-doc p, .vp-doc li { max-width: 72ch; }

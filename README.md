@@ -332,16 +332,31 @@ Read the [full specification](SPEC.md). It's short on purpose.
 
 
 <!-- #region quickstart -->
-**Try it in 10 seconds** (no clone): `npx @yea-protocol/cli demo` runs a narrated session
-with two services, a human's policy, consent and undo, over real sockets.
-[Or try it in your browser →](https://yea-protocol.github.io/yea/playground)
+**Try it in your browser:** the [playground](https://yea-protocol.github.io/yea/playground) runs
+the real core, with nothing to install. **Or in your terminal:** `npx @yea-protocol/cli demo` runs a
+narrated session with two services, a human's policy, consent and undo, over real sockets.
+
+> **Unreleased:** the SDKs and the `yea` command aren't on npm or PyPI yet, so `npx` and the
+> installs below fail for now. Until they're published, run the demo from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js demo
+> ```
+>
+> In your own project, install the TypeScript SDK as a packed file, as the
+> [MCP guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows, and the Python SDK
+> from the repo:
+>
+> ```sh
+> uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"
+> ```
 
 ```sh
 npm install @yea-protocol/sdk        # TypeScript/JavaScript: Node ≥ 20, Bun, Deno (web-standard APIs only)
 uv add yea-sdk             # Python ≥ 3.10 (or: pip install yea-sdk)
 ```
-
-> The Python package isn't on PyPI yet. Until it is: `uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"`.
 
 ### Build a service
 
