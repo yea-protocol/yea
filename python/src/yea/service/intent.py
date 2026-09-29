@@ -13,17 +13,11 @@ from ..keys import verify_proof
 from ..risk import resolve_risk
 from ..uses import check_uses
 from ..validate import validate_params
-from .authorize import _checked, authorize
+from .authorize import _checked, authorize, request_grants, verified_key
+from .capabilities import unknown_capability
 from .execute import execute
 from .plan import _UNSET, Clarification, Ctx
-from .replies import (
-    error_reply,
-    params_of,
-    reply_frame,
-    request_grants,
-    unknown_capability,
-    verified_key,
-)
+from .replies import error_reply, params_of, reply_frame
 from .state import ServiceState, _IntentDef, _StoredProposal
 from .sweep import sweep
 from .util import DAY, Emit, _call, random_id
