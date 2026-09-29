@@ -22,58 +22,62 @@ colors:
   paper-text-3: "#5C616A"
   signal-amber: "#FFB224"
   signal-amber-hover: "#FFC04D"
-  signal-amber-press: "#E09A10"
-  amber-ink: "#8E5400"
-  amber-ink-hover: "#9A5B00"
   state-amber-light: "#8E5400"
+  consent-amber-soft: "#FFB2242E"
+  consent-amber-soft-dark: "#FFB2241A"
+  ink-lifted: "#385281"
+  ink-lifted-hover: "#2C4167"
+  ink-lifted-dark: "#A3B8DF"
+  ink-lifted-dark-hover: "#BFD0EC"
   receipt-green: "#2BD9A5"
   state-green-light: "#0B6E52"
   refusal-red: "#FF5C5C"
   state-red-light: "#B52F2F"
 typography:
   display:
-    fontFamily: "Space Grotesk Variable, Space Grotesk, system-ui, sans-serif"
-    fontSize: "clamp(2.3rem, 4.4vw, 3.6rem)"
-    fontWeight: 600
-    lineHeight: 1.02
-    letterSpacing: "-0.02em"
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
+    fontSize: "clamp(2.25rem, 1.75rem + 1.6vw, 3.125rem)"
+    fontWeight: 650
+    lineHeight: 1.06
+    letterSpacing: "-0.026em"
   headline:
-    fontFamily: "Space Grotesk Variable, Space Grotesk, system-ui, sans-serif"
-    fontSize: "clamp(1.6rem, 2.6vw, 2.1rem)"
-    fontWeight: 600
-    lineHeight: 1.15
-    letterSpacing: "-0.02em"
-  doc-title:
-    fontFamily: "Space Grotesk Variable, Space Grotesk, system-ui, sans-serif"
-    fontSize: "2.4rem"
-    fontWeight: 600
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
+    fontSize: "clamp(1.75rem, 1.3rem + 1.6vw, 2.5rem)"
+    fontWeight: 700
     lineHeight: 1.1
-    letterSpacing: "-0.01em"
+    letterSpacing: "-0.022em"
+  doc-title:
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
+    fontSize: "2.4rem"
+    fontWeight: 750
+    lineHeight: 1.1
+    letterSpacing: "-0.025em"
   title:
-    fontFamily: "Space Grotesk Variable, Space Grotesk, system-ui, sans-serif"
-    fontSize: "1.25rem"
-    fontWeight: 600
-    lineHeight: 1.3
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
+    fontSize: "1.375rem"
+    fontWeight: 650
+    lineHeight: 1.25
+    letterSpacing: "-0.012em"
   body:
-    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.75
   lede:
-    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
-    fontSize: "1.12rem"
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
+    fontSize: "1.1875rem"
     fontWeight: 400
-    lineHeight: 1.6
+    lineHeight: 1.55
   label:
-    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
-    fontSize: "0.82rem"
+    fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
+    fontSize: "0.8125rem"
     fontWeight: 600
     lineHeight: 1.4
   lens:
     fontFamily: "JetBrains Mono Variable, JetBrains Mono, ui-monospace, monospace"
-    fontSize: "13px"
+    fontSize: "0.8125rem"
     fontWeight: 400
-    lineHeight: 1.75
+    lineHeight: 1.7
 rounded:
   sm: "6px"
   md: "8px"
@@ -92,12 +96,18 @@ spacing:
   5xl: "96px"
 components:
   button-primary-dark:
+    backgroundColor: "{colors.ink-text}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.md}"
+    height: "44px"
+    padding: "0 20px"
+  button-consent:
     backgroundColor: "{colors.signal-amber}"
     textColor: "{colors.ink}"
     rounded: "{rounded.md}"
     height: "44px"
     padding: "0 20px"
-  button-primary-dark-hover:
+  button-consent-hover:
     backgroundColor: "{colors.signal-amber-hover}"
   button-primary-light:
     backgroundColor: "{colors.ink}"
@@ -126,7 +136,7 @@ components:
     textColor: "{colors.ink-text}"
     rounded: "{rounded.md}"
     padding: "8px 10px"
-  exchange-panel:
+  lens-block:
     backgroundColor: "{colors.ink-code}"
     textColor: "{colors.ink-text-2}"
     typography: "{typography.lens}"
@@ -137,18 +147,17 @@ components:
     rounded: "{rounded.sm}"
     padding: "3px 9px"
   consent-card:
-    backgroundColor: "{colors.ink-raised}"
-    textColor: "{colors.ink-text-2}"
+    backgroundColor: "{colors.consent-amber-soft}"
+    textColor: "{colors.paper-text-2}"
     rounded: "{rounded.lg}"
     padding: "16px 18px"
 ---
 
 # Design System: YEA docs site
 
-This file documents the site **as it is today** (September 2026): the VitePress default theme with
+This file documents the site **as it is today** (late September 2026): the VitePress default theme with
 a brand layer in `site/.vitepress/theme/style.css`, plus two custom components, `Landing.vue` and
-`Playground.vue`. Hex values for the dark theme are the frontmatter tokens; the light theme swaps
-them as described under Colors. The protocol's design decisions live in `docs/design.md`, which is
+`Playground.vue`. The frontmatter lists both themes' values; Colors says which is which. The protocol's design decisions live in `docs/design.md`, which is
 a different document.
 
 ## 1. Overview
@@ -156,18 +165,19 @@ a different document.
 **Creative North Star: "Ink, Paper, Signal"**
 
 The system is two surfaces and one signal. Ink (#0B0D12, a blue-black) and paper (#F7F5F0, a warm
-off-white) are the grounds; the dark theme is the default (`appearance: 'dark'` in the VitePress
-config), with a light theme one toggle away. Amber is the signal, and it is supposed to mean one
-thing: a proposal waiting on a person. Green is a receipt, red is a refusal. The logo carries the
+off-white) are the grounds. The site follows the reader's OS theme (`appearance: true`) and is
+designed and reviewed light first; both themes meet WCAG AA. Amber is the signal, and it means one
+thing: a proposal waiting on a person's consent. Green is a receipt, red is a refusal. The logo carries the
 same idea: a stroke-drawn Y (the "Junction" mark) where two strokes meet at an amber approval
 point and one action continues.
 
 Everything else is stock VitePress: the top nav, sidebar, local search, outline, prev/next
-footer, custom containers and Shiki code blocks (`github-light` / `github-dark-dimmed`). Brand
-presence comes from the palette, the landing's proposal slip, and the mono Lens that fills the
-landing's protocol states and the playground's output pane. Density is moderate on docs pages
-(VitePress defaults) and on the landing, which runs hero, two paths, five protocol states, one
-evidence chart, a quote, the comparison table and a closing band.
+footer, custom containers and Shiki code blocks (a paper-tuned github-light, built in
+`site/.vitepress/shiki-light.ts`, and `github-dark-dimmed`). Brand presence comes from the
+palette, Public Sans set heavy for headings, the landing's proposal slip, and the mono Lens that
+fills the landing's protocol states and the playground's output pane. Density is moderate on docs
+pages (VitePress defaults) and on the landing, which runs hero, two paths, five protocol states,
+one evidence chart, a quote, the comparison table and a closing band.
 
 Layout is a centred column: 1180px on the landing, 1360px on the playground, VitePress's doc
 width (688px content) on guide pages. Landing bands are separated by 1px hairline rules, with
@@ -178,42 +188,45 @@ buttons change over 150ms, both `cubic-bezier(0.25, 1, 0.5, 1)`; there is no ent
 choreography and no replay. VitePress's own chrome changes over 250ms.
 `prefers-reduced-motion` cuts every CSS animation and transition to 0.01ms in `style.css`.
 
-**Decided direction (James, 2026-09-28; not built yet).** These replace the current values as the
-theme and landing PRs in #117 land; update this file with each one.
+**Decided direction (James, 2026-09-28), all built in #117:**
 - **Type:** Public Sans (variable, via `@fontsource`) is the one family for all human-facing
-  text, with hierarchy carried by strong weight contrast; JetBrains Mono stays for Lens and other
-  machine output. Space Grotesk and Inter go.
+  text, with hierarchy carried by weight; JetBrains Mono for Lens and other machine output.
 - **Theme:** follow the OS (`appearance: true`), designed and reviewed light first; both themes
   meet WCAG AA.
-- **Colour:** a separate link/brand token, so amber means only proposed and waiting on consent;
-  inline code turns neutral.
-- **Landing (built, #117):** a proposal-slip hero in which the visitor approves a real
-  proposal, sees the receipt and undoes it, running the real core; sections ordered by
-  protocol state; one evidence chart with its caveats beside it; two paths, "I have an MCP
-  server" and "I'm building an agent or service". See the Proposal Slip component.
+- **Colour:** a separate link token (Ink, Lifted), so amber means only proposed and waiting on
+  consent; inline code and containers are neutral. Its hue was proposed in #171 and its chroma
+  lowered in review, not chosen by James.
+- **Landing:** a proposal-slip hero in which the visitor approves a real proposal, sees the
+  receipt and undoes it, running the real core; sections ordered by protocol state; one
+  evidence chart with its caveats beside it; two paths, "I have an MCP server" and "I'm
+  building an agent or service". See the Proposal Slip component.
 
 This system rejects, per PRODUCT.md: generic AI-agent startup marketing, crypto and web3
 aesthetics, security fear-marketing, SaaS landing templates, decorative terminal costume, and
 overclaiming numbers.
 
 **Key Characteristics:**
-- Dark by default today (light-first, OS-following is decided); warm paper for light, not white.
-- One signal colour whose meaning is protocol state.
+- Follows the OS, light first; warm paper for light, not white.
+- One signal colour whose meaning is protocol state; interaction is a separate ink-blue.
+- One type family, with hierarchy by weight and scale.
 - Real Lens output as the main image, set in mono.
 - Flat surfaces separated by hairlines; almost no shadow.
 - Stock VitePress navigation and doc layout.
 
 ## 2. Colors
 
-A near-monochrome ink-and-paper palette with three state colours that are meant to be used only
-for protocol state.
+A near-monochrome ink-and-paper palette, three state colours used only for protocol state, and one
+interaction colour.
 
 ### Primary
-- **Signal Amber** (signal-amber): the brand hue and the "proposed / waiting on a person" state.
-  In the dark theme it is also `--vp-c-brand-1`, so it colours links, the active nav item, inline
-  code, the primary button, and the checkbox and range accents in the playground.
-- **Amber Ink** (amber-ink): the light-theme `--vp-c-brand-1`. Amber is too light to read on
-  paper, so the hue is darkened for links, active nav and inline code.
+- **Signal Amber** (signal-amber; light-theme text state-amber-light): the brand hue and the
+  "proposed / waiting on consent" state. Lens proposal lines, `consent_required`, the consent card
+  (1px amber border on `--state-amber-soft`) and its Approve button (full amber fill with ink
+  text, which reads in both themes). Also the approval point in the logo.
+- **Ink, Lifted** (ink-lifted, ink-lifted-dark; `--vp-c-brand-*`): docs links, focus rings, the
+  active nav and sidebar item, playground form accents. It is the ink hue (about 262 in OKLCH) at
+  low chroma, lifted just enough to read as a link, so it belongs to the ink family rather than
+  competing with the states.
 
 ### Secondary
 - **Receipt Green** (receipt-green; light theme state-green-light): committed, a receipt exists.
@@ -224,10 +237,11 @@ for protocol state.
   `consent_required`, invalid params, the playground's fatal message.
 
 ### Neutral
-- **Ink** (ink): dark page background and the light theme's primary button and text.
+- **Ink** (ink): dark page background and the light theme's primary button and text. Inline code
+  is neutral text on the code tint.
 - **Raised Ink** (ink-raised) and **Soft Ink** (ink-soft): dark elevated panels (`--vp-c-bg-elv`)
   and the segmented-control track (`--vp-c-bg-soft`).
-- **Code Ink** (ink-code): dark code blocks and the hero exchange panel.
+- **Code Ink** (ink-code): dark code blocks and the landing's Lens blocks.
 - **Ink Divider / Ink Border** (ink-divider, ink-border): hairlines and control outlines in dark.
 - **Bone Text** (ink-text) and **Fog Text** (ink-text-2): dark primary and secondary text.
 - **Slate Muted** (slate-muted): tertiary text in dark: captions, table headers, wire lines.
@@ -238,28 +252,44 @@ for protocol state.
 
 ### Named Rules
 **The State Colour Rule.** Amber is proposed and waiting on a person, green is committed, red is
-refused. Nothing else gets those colours (stated in the header of `style.css`). *Current
-violations:* VitePress maps `--vp-c-brand-1` to amber, so every link, inline code chip, active
-nav item and "current step" in the hero stepper is amber too, and doc blockquotes carry a 2px
-amber left border (`.vp-doc blockquote` in `style.css`), which is also a side stripe. Fixing
-these is the first theme task.
+refused. Nothing else gets those colours (stated in the header of `style.css`). Primary buttons
+are neutral (ink on paper, bone on ink). Containers are neutral: tips and info use a soft fill,
+and VitePress's `warning` containers (yellow by default) use the soft fill with a full 1px
+border in tertiary text; inline code in any container stays neutral. A warning is a caution to
+the reader, not a protocol state. Danger containers stay red for now. Doc blockquotes keep
+VitePress's neutral 2px left rule.
+
+**The Consent Button Rule.** Every Approve that signs a proposal is amber: full amber fill with
+ink text (10.8:1 in both themes), hover a lighter amber. That is the playground's "Approve as
+human and commit" and the landing slip's Approve. No other button is amber.
+
+**The Two Link Rule.** Links are underlined everywhere; colour alone never marks a link. On
+product surfaces (guides, reference, spec, playground) links are Ink, Lifted, because readers
+scan dense pages for them and the nav needs an active colour. On the brand surface (the
+landing) links are ink with a tertiary-text underline, because there colour means protocol state
+and the slip carries it; a fourth hue beside the slip would compete with it.
+
+**The No Pure Extremes Rule.** No `#fff` or `#000`: the lightest surface is #FCFBF8 (raised
+panels), the darkest press state #05060A, and the dark primary button hovers to paper.
 
 **The Light Theme Is Equal Rule.** Every state colour has a light-theme partner darkened for
 contrast on paper. Light-theme text colours clear 4.5:1 on paper, on the code tint (#ECE8DF, also
-used for inline code) and on the warning tint. Four of Shiki's github-light token colours are
-darkened in light mode for the same reason.
+used for inline code) and on the container tints. Four of Shiki's github-light token colours are
+darkened, in a modified theme object, for the same reason. In dark, the consent tint is 10%
+amber so tertiary text on it still clears 4.5:1.
 
 ## 3. Typography
 
-**Display Font:** Space Grotesk Variable (with system-ui)
-**Body Font:** Inter Variable (with system-ui)
+**Display and Body Font:** Public Sans Variable, roman and italic (with system-ui)
 **Label/Mono Font:** JetBrains Mono Variable (with ui-monospace)
 
-**Character:** A quirky geometric grotesk for headings over a neutral workhorse sans, with a
-coding mono for everything the protocol emits. All three are self-hosted through `@fontsource`.
-Decided replacement: Public Sans for all human-facing text and JetBrains Mono for machine output
-(see Overview). The landing already works this way: every human-facing element there uses
-`--vp-font-family-base` (the slot Public Sans fills) and hierarchy comes from weight and scale.
+**Character:** One plain, institutional sans for everything a person reads, with hierarchy made by
+weight and scale, and a coding mono for everything the protocol emits. Both are self-hosted
+through `@fontsource`. `site/.vitepress/head.ts` preloads the Latin Public Sans file on every page
+and the Latin JetBrains Mono file on the home page (its hero shows Lens above the fold). Until
+Public Sans arrives, "Public Sans Fallback" (local Arial with size-adjust 105.6%, ascent 89.96%,
+descent 21.31%, measured against Public Sans at 400) holds the same line lengths and heights, so
+the swap barely moves the page.
 
 ### Landing hierarchy (one family)
 - **Display** (650, clamp 2.25–3.125rem, 1.06, -0.026em, one sentence per line): the landing headline only, a step below the slip so it doesn't compete with it.
@@ -272,18 +302,13 @@ Decided replacement: Public Sans for all human-facing text and JetBrains Mono fo
 - **Lens** (400, 0.8125rem, 1.7; 0.75rem under 640px): recorded exchange output, effects, the
   hash. Chart values stay in the body font with tabular numbers.
 
-### Hierarchy
-- **Display** (600, clamp 2.3–3.6rem, 1.02): the landing headline only.
-- **Headline** (600, clamp 1.6–2.1rem, 1.15): landing band headings; the pull quote uses Space
-  Grotesk 500 at clamp 1.5–2.2rem.
-- **Doc Title** (600, 2.4rem, 1.1): `h1` on guide and reference pages.
-- **Title** (600, 1.25rem): landing sub-headings (`.minor`), consent card heading at 1.05rem.
+### Docs and playground hierarchy (the weight ladder: 750 / 700 / 600 / 400)
+- **Doc Title** (750, 2.4rem, 1.1, -0.025em): `h1` on guide and reference pages; the playground
+  title is 750 at 2rem, and the nav title 750.
+- **Section** (700, -0.015em): doc `h2`. Doc `h3`/`h4` are 600.
 - **Body** (400, 16px, 1.75): VitePress doc prose, capped at 72ch for `p` and `li`.
-- **Lede** (400, 1.12rem, 1.6): the landing intro, capped at 46ch.
-- **Label** (600, 0.82rem): form labels, stepper labels, segmented controls, table headers
-  (0.84rem, tertiary colour).
-- **Lens** (400, 12.5–13px, 1.75; 11.5px under 640px): the hero exchange, playground output,
-  command blocks.
+- **Label** (600, 0.82rem): playground form labels, segmented controls.
+- **Lens** (400, 13px, 1.75; 11.5px under 640px): playground output, frames.
 
 ### Named Rules
 **The Machine Voice Rule.** Mono is reserved for what machines say or read: Lens, frames, verbs,
@@ -305,16 +330,17 @@ and a shadow on the same surface.
 
 ### Buttons
 - **Shape:** gently rounded (8px), 44px tall, 20px side padding, weight 600 at 0.95rem.
-- **Primary:** amber on ink in the dark theme; ink on paper in the light theme (amber text on
-  paper fails contrast, so the light primary button drops the brand hue entirely).
+- **Primary:** neutral: ink on paper in light, bone on ink in dark. Amber is kept for consent.
+- **Consent:** every Approve that signs a proposal (the playground's "Approve as human and
+  commit", the landing slip's Approve): full amber with ink text. See the Consent Button Rule.
 - **Secondary:** transparent with a 1px border; the border darkens to tertiary text on hover.
 - **Ghost:** no border (the GitHub link).
 - **Hover / Focus:** 150ms background and border transitions. Focus is the global
-  `:focus-visible` 2px brand outline with 2px offset.
+  `:focus-visible` 2px Ink, Lifted outline with 2px offset.
 
 ### Chips
 - **Preset chips** (playground scenarios, quick actions such as "Commit p_…", "Undo r_…"): pill
-  (999px), 1px border, page background, 0.84rem. Hover turns the border brand amber.
+  (999px), 1px border, page background, 0.84rem. Hover turns the border Ink, Lifted.
 
 ### Cards / Containers
 - **Corner Style:** 12px for tables, command blocks and the consent card; 14px for the hero
@@ -333,7 +359,7 @@ and a shadow on the same surface.
 
 ### Navigation
 - Stock VitePress: logo (the mark only) and "YEA" title, local search with ⌘K, four text links
-  (Why YEA, Guide, Playground, Spec), appearance switch, GitHub icon. Active item is brand amber.
+  (Why YEA, Guide, Playground, Spec), appearance switch, GitHub icon. Active item is Ink, Lifted.
   Sidebar groups: Start, Concepts, Build, Reference. Mobile collapses to a hamburger and a
   "Menu / On this page" bar.
 
@@ -369,7 +395,7 @@ the consent card, and a history list with state dots).
 ### Consent Card
 The approval moment: amber 1px border on an amber-tinted fill, 12px radius, a heading ("Your
 agent needs your approval"), the proposal summary, its effects in mono, the uses/risk/undo line,
-one primary button ("Approve as human and commit") and a fine-print line saying exactly what is
+one amber consent button ("Approve as human and commit") and a fine-print line saying exactly what is
 signed.
 
 ## 6. Do's and Don'ts
@@ -394,6 +420,7 @@ signed.
 - **Don't** overclaim: no figure without a method link, no "10x".
 - **Don't** imitate any other brand, including the MCP clients and APIs YEA works with.
 - **Don't** use `border-left` or `border-right` wider than 1px as a coloured accent on callouts;
-  use a tinted block with a full 1px border, as the landing's key warning does.
+  use a tinted block with a full 1px border, as the warning containers do (a neutral soft fill:
+  a caution is not a protocol state, so it isn't amber).
 - **Don't** set human-facing copy in mono, or machine output in the body font.
 - **Don't** mention how "YEA" is pronounced, and don't use Calendly as an example.

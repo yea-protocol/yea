@@ -91,7 +91,7 @@ watch(
       <p class="line">You approve this hash</p>
       <p class="hash">{{ slip.hash }}</p>
       <div class="row">
-        <button :class="['btn', 'primary', { off: phase === 'unavailable' }]" type="button" :disabled="phase !== 'waiting'" @click="press('approve')">{{ phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
+        <button :class="['btn', 'consent', { off: phase === 'unavailable' }]" type="button" :disabled="phase !== 'waiting'" @click="press('approve')">{{ phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
         <button v-if="live && phase === 'waiting'" class="btn quiet" type="button" @click="press('again')">Start again</button>
       </div>
       <p v-if="phase === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ error }}), so this is the recorded exchange.</p>
@@ -119,7 +119,9 @@ watch(
 /* Two lines kept for the note, so it doesn't move the page when the core starts. */
 .fine { font-size: 0.875rem; color: var(--vp-c-text-2); min-height: calc(2 * 1.65em); }
 .err { color: var(--state-red); }
-.btn.primary { min-width: 9.5rem; }
+/* Every Approve that signs a proposal is amber, the consent colour, like the playground's. */
+.btn.consent { min-width: 9.5rem; background: var(--consent-bg); color: var(--consent-text); border-color: var(--consent-bg); }
+.btn.consent:hover:not(:disabled) { background: var(--consent-hover-bg); border-color: var(--consent-hover-bg); }
 .btn.quiet { border-color: transparent; text-decoration: underline; text-underline-offset: 0.2em; }
 .btn.off:disabled { cursor: not-allowed; }
 </style>

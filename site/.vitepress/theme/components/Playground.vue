@@ -130,7 +130,7 @@ function onKey(e: KeyboardEvent) {
 <style scoped>
 .pg { max-width: 1360px; margin: 0 auto; padding: 32px 24px 80px; }
 .pg-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; margin-bottom: 24px; }
-.pg-head h1 { font-family: var(--font-head); font-size: 2rem; font-weight: 600; margin: 0 0 8px; }
+.pg-head h1 { font-family: var(--font-head); font-size: 2rem; font-weight: 750; margin: 0 0 8px; }
 .pg-head p { color: var(--vp-c-text-2); max-width: 70ch; margin: 0; line-height: 1.55; }
 .fatal { color: var(--state-red); padding: 48px 0; }
 

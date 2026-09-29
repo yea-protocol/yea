@@ -35,15 +35,16 @@ const emit = defineEmits<{ approve: [] }>();
 </template>
 
 <style scoped>
-.consent { margin: 0 18px 18px; padding: 16px 18px; border: 1px solid var(--state-amber); border-radius: 12px; background: var(--vp-c-brand-soft); }
+.consent { margin: 0 18px 18px; padding: 16px 18px; border: 1px solid var(--state-amber); border-radius: 12px; background: var(--state-amber-soft); }
 .consent h3 { font-family: var(--font-head); font-size: 1.05rem; margin: 0 0 6px; }
 .consent p { margin: 6px 0; font-size: 0.9rem; color: var(--vp-c-text-2); }
 .consent .what { color: var(--vp-c-text-1); font-weight: 600; }
 .consent ul { margin: 8px 0; padding-left: 18px; font-size: 0.84rem; }
-/* text-2, not text-3: text-3 falls under 4.5:1 on the amber tint in the dark theme */
+/* The small print is text-2 so it reads comfortably at 0.8rem on the amber tint. */
 .consent .meta, .consent .fine { font-size: 0.8rem; color: var(--vp-c-text-2); }
 .actions { margin-top: 12px; }
-.approve { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 8px; border: 0; background: var(--vp-button-brand-bg); color: var(--vp-button-brand-text); cursor: pointer; }
+.approve { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 8px; border: 0; background: var(--consent-bg); color: var(--consent-text); cursor: pointer; }
+.approve:hover { background: var(--consent-hover-bg); }
 
 @media (max-width: 640px), (pointer: coarse) {
   .approve { min-height: 44px; }
