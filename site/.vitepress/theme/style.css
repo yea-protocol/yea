@@ -65,8 +65,12 @@
   /* Tips are neutral too: a soft fill, no hue. */
   --vp-custom-block-tip-bg: var(--vp-c-bg-soft);
   --vp-custom-block-tip-code-bg: var(--vp-code-bg);
-  /* Code and links in danger blocks sit on a doubled red tint. */
-  --vp-c-danger-1: #A02127;
+  /* Danger is neutral too: red means refused, so "be careful" gets a stronger border instead.
+     --vp-c-danger-* keeps VitePress's red for anything else (badges, error line highlights). */
+  --vp-custom-block-danger-bg: var(--vp-c-bg-soft);
+  --vp-custom-block-danger-border: var(--vp-c-text-1);
+  --vp-custom-block-danger-text: var(--vp-c-text-1);
+  --vp-custom-block-danger-code-bg: var(--vp-code-bg);
   /* Warnings: VitePress tints them yellow, next to the state amber. Here they're neutral, marked
      by a full 1px border instead of a hue, so amber still means only proposed and consent. */
   --vp-c-warning-1: var(--vp-c-text-1);
@@ -108,7 +112,6 @@
   --vp-code-bg: var(--vp-c-default-soft);
   --vp-custom-block-info-code-bg: var(--vp-c-default-soft);
   --vp-custom-block-tip-code-bg: var(--vp-c-default-soft);
-  --vp-c-danger-1: var(--vp-c-red-1);
   --vp-button-brand-bg: var(--bone);
   --vp-button-brand-text: var(--ink);
   --vp-button-brand-hover-bg: var(--paper);
@@ -116,21 +119,36 @@
   --vp-button-brand-active-bg: #D6D3CB;
 }
 
-/* Hierarchy by weight: 750 for page titles, 700 for sections, 600 below; tighter tracking as
-   size grows. */
+/* Docs type scale: size and weight step down together (38.4 / 26 / 20 / 17 / 16px, weights
+   750 / 700 / 600 / 600 / 400); tighter tracking as size grows. */
 h1, h2, h3, h4, .VPNavBarTitle .title { letter-spacing: -0.01em; }
 .VPNavBarTitle .title { font-weight: 750; }
 .vp-doc h1 { font-size: 2.4rem; line-height: 1.1; font-weight: 750; letter-spacing: -0.025em; }
-.vp-doc h2 { font-weight: 700; letter-spacing: -0.015em; border-top: 0; }
-.vp-doc h3, .vp-doc h4 { font-weight: 600; }
+.vp-doc h2 { font-size: 1.625rem; line-height: 1.25; font-weight: 700; letter-spacing: -0.015em; border-top: 0; }
+.vp-doc h3 { font-size: 1.25rem; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; }
+.vp-doc h4 { font-size: 1.0625rem; line-height: 1.45; font-weight: 600; letter-spacing: 0; }
+/* Quotes and notes: a hairline box, not a side stripe. */
+.vp-doc blockquote { border: 1px solid var(--vp-c-divider); border-radius: 8px; padding: 12px 16px; color: var(--vp-c-text-2); }
+.vp-doc blockquote > p { color: inherit; }
+/* A page's source note (the spec page): one quiet line, not a callout. */
+.vp-doc .page-source { max-width: none; font-size: 0.875rem; color: var(--vp-c-text-2); padding-bottom: 16px; border-bottom: 1px solid var(--vp-c-divider); }
 .vp-doc p, .vp-doc li { max-width: 72ch; }
-.custom-block.warning a { color: var(--vp-c-brand-1); }
-.custom-block.warning a:hover { color: var(--vp-c-brand-2); }
+.custom-block.warning a, .custom-block.danger a { color: var(--vp-c-brand-1); }
+.custom-block.warning a:hover, .custom-block.danger a:hover { color: var(--vp-c-brand-2); }
+.custom-block.danger :not(a) > code { color: var(--vp-code-color); }
 /* Inline code stays neutral inside containers; VitePress colours it with the container's hue. */
 .custom-block.tip :not(a) > code,
 .custom-block.info :not(a) > code,
 .custom-block.note :not(a) > code { color: var(--vp-code-color); }
-.custom-block.warning a > code { color: inherit; }
+.custom-block.warning a > code, .custom-block.danger a > code { color: inherit; }
+
+/* Lens in plain-text code blocks, coloured by protocol state (lens-fence.ts), as in the
+   playground: amber proposed or waiting on consent, green committed, red refused. */
+.vp-doc .vp-code .line.lens-amber span { color: var(--state-amber); }
+.vp-doc .vp-code .line.lens-green span { color: var(--state-green); }
+.vp-doc .vp-code .line.lens-red span { color: var(--state-red); }
+.vp-doc .vp-code .line.lens-effect span { color: var(--vp-c-text-2); }
+.vp-doc .vp-code .line.lens-more span, .vp-doc .vp-code .line.lens-wire span { color: var(--vp-c-text-3); }
 .vp-doc table { font-size: 0.92rem; }
 
 :focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }

@@ -435,7 +435,7 @@ yea openapi https://petstore3.swagger.io/api/v3/openapi.json --base https://pets
 
 Real output against the live Swagger Petstore:
 
-```
+```text no-lens
 → ASK swagger_petstore.findPetsByStatus {status:"available"} budget=300
 items[7]:
   - id: 60689

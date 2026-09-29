@@ -256,8 +256,19 @@ refused. Nothing else gets those colours (stated in the header of `style.css`). 
 are neutral (ink on paper, bone on ink). Containers are neutral: tips and info use a soft fill,
 and VitePress's `warning` containers (yellow by default) use the soft fill with a full 1px
 border in tertiary text; inline code in any container stays neutral. A warning is a caution to
-the reader, not a protocol state. Danger containers stay red for now. Doc blockquotes keep
-VitePress's neutral 2px left rule.
+the reader, not a protocol state. `danger` containers are neutral too, with the strongest
+border (1px in primary text), because red means refused. Doc blockquotes are a box with a 1px
+divider border and secondary text, with no side stripe. A page's source note (the spec page) is one quiet line
+(`.page-source`), not a callout.
+
+**The Lens Block Rule.** Lens shown in the docs is coloured the same way everywhere: in code
+fences marked `text`, `txt`, `lens` or nothing, each line gets its state class from the shared
+`components/lens-lines.ts` (through the Shiki transformer in `site/.vitepress/lens-fence.ts`):
+amber for proposals and consent requests, green for receipts, red for refusals, secondary text for
+effects, tertiary for wire lines (`→`) and handles. A `✗` line that asks for approval
+(`consent_required`, "approval needed") is amber, not red. To show output that looks like Lens
+but isn't, mark the fence `plaintext`, or add `no-lens` after the language (```` ```text no-lens ````),
+as the README's Petstore listing does.
 
 **The Consent Button Rule.** Every Approve that signs a proposal is amber: full amber fill with
 ink text (10.8:1 in both themes), hover a lighter amber. That is the playground's "Approve as
@@ -305,7 +316,10 @@ the swap barely moves the page.
 ### Docs and playground hierarchy (the weight ladder: 750 / 700 / 600 / 400)
 - **Doc Title** (750, 2.4rem, 1.1, -0.025em): `h1` on guide and reference pages; the playground
   title is 750 at 2rem, and the nav title 750.
-- **Section** (700, -0.015em): doc `h2`. Doc `h3`/`h4` are 600.
+- **Section** (700, 1.625rem, 1.25, -0.015em): doc `h2`.
+- **Subsection** (600, 1.25rem, 1.35): doc `h3`; `h4` is 600 at 1.0625rem.
+- Heading levels never skip: a markdown rule (`site/.vitepress/markdown-rules.ts`) lifts a
+  heading that jumps more than one level, as included README sections do.
 - **Body** (400, 16px, 1.75): VitePress doc prose, capped at 72ch for `p` and `li`.
 - **Label** (600, 0.82rem): playground form labels, segmented controls.
 - **Lens** (400, 13px, 1.75; 11.5px under 640px): playground output, frames.
@@ -319,8 +333,8 @@ ids, commands. Human-facing copy is never set in mono.
 Flat. Depth comes from tonal steps (ink to raised ink, paper to paper soft) and 1px hairline
 borders, not shadow. The only shadow in the site is the segmented control's selected state, a
 1px ring (`box-shadow: 0 0 0 1px var(--vp-c-divider)`) that reads as a border. The social preview
-image (`docs/brand/social.html`) is the exception, with a large drop shadow and an amber radial
-glow; it sits outside the site.
+(`docs/brand/social.html`, rendered to `social.png`) follows the same system: ink on paper, the
+proposal slip in a 1.5px amber-ink border, Public Sans and JetBrains Mono, no shadow.
 
 ### Named Rules
 **The Hairline Rule.** Separate with a 1px divider or a tonal step. Never stack a border, a fill

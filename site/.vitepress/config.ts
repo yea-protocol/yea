@@ -5,6 +5,8 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
 import { appearanceMigration, fontPreloads, themeColor } from './head';
+import { lensFence } from './lens-fence';
+import { headingOrder, taskLists } from './markdown-rules';
 import { paperLight } from './shiki-light';
 
 const repo = 'https://github.com/yea-protocol/yea';
@@ -91,38 +93,12 @@ export default defineConfig({
     theme: { light: paperLight, dark: 'github-dark-dimmed' },
     // GitHub-style slugs, so anchors in the repo's markdown work here too.
     anchor: { slugify: githubSlug },
+    // Lens lines in plain-text blocks, coloured by protocol state.
+    codeTransformers: [lensFence],
     config(md) {
-      // GitHub-style task lists: "- [ ] item" renders as a checkbox readers can tick.
-      md.core.ruler.after('inline', 'task-lists', (state) => {
-        const toks = state.tokens;
-
-        for (let i = 2; i < toks.length; i++) {
-          const children = toks[i].children ?? [];
-          const first = children[0];
-
-          if (
-            toks[i].type !== 'inline' ||
-            toks[i - 2].type !== 'list_item_open' ||
-            first?.type !== 'text'
-          ) {
-            continue;
-          }
-
-          const m = /^\[( |x)\] /i.exec(first.content);
-
-          if (!m) {
-            continue;
-          }
-
-          first.content = first.content.slice(4);
-
-          const box = new state.Token('html_inline', '', 0);
-
-          box.content = `<input type="checkbox" class="task-list-item-checkbox"${m[1] === ' ' ? '' : ' checked'}> `;
-          children.unshift(box);
-          toks[i - 2].attrJoin('class', 'task-list-item');
-        }
-      });
+      // Task lists with labelled checkboxes, and heading levels that never skip.
+      taskLists(md);
+      headingOrder(md);
       md.core.ruler.push('repo-links', (state) => {
         for (const tok of state.tokens) {
           for (const t of tok.children ?? []) {
