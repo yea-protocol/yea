@@ -80,6 +80,7 @@ typography:
     fontSize: "1.25rem"
     fontWeight: 600
     lineHeight: 1.35
+    letterSpacing: "-0.01em"
   body:
     fontFamily: "Public Sans Variable, Public Sans Fallback, system-ui, sans-serif"
     fontSize: "16px"
@@ -353,7 +354,7 @@ the swap barely moves the page.
 - **Body** (400, 1.0625rem, 1.65; 1rem under 640px), capped at 62ch. The lede is 1.1875rem.
 - **Small** (400, 0.9375rem, 1.65): notes and asides beside the slip and chart, chart rows, the
   comparison table and the paths' tags.
-- **Fine** (400, 0.875rem, 1.65): the slip's fine print, receipt line and chart notes.
+- **Fine** (400, 0.875rem, 1.65): the slip's fine print, receipt line and kind, and the chart's values.
 - **Label** (600, 0.8125–0.875rem): the slip's facts, chart headers, table headers.
 - **Lens** (400, 0.8125rem, 1.7; 0.75rem under 640px): recorded exchange output, effects, the
   hash. Chart values stay in the body font with tabular numbers.
