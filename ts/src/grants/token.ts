@@ -23,12 +23,38 @@ export interface Block {
 
 const GRANT_PREFIX = 'pg1.';
 
+/** The string fields a block's payload needs (SPEC §6.2): the root's, then a delegation's. */
+const ROOT_FIELDS = ['iss', 'sub', 'nonce'];
+const DELEGATION_FIELDS = ['prev', 'sub'];
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Whether `b` has the fields and types of block `i` (SPEC §6.2). Keys, signatures and the
+ * canonical form are checked when the grant is verified.
+ */
+function isBlock(b: unknown, i: number): b is Block {
+  if (!isObject(b) || !isObject(b.p) || !isB64u(b.s, 64)) {
+    return false;
+  }
+
+  const p = b.p;
+  const fields = i === 0 ? ROOT_FIELDS : DELEGATION_FIELDS;
+
+  return (
+    fields.every((k) => typeof p[k] === 'string') &&
+    Array.isArray(p.caveats) &&
+    Number.isInteger(p.iat)
+  );
+}
+
 export function encodeGrant(blocks: Block[]): string {
   return GRANT_PREFIX + b64u(utf8(canonical(blocks)));
 }
 
 export function decodeGrant(token: string): Block[] {
-  if (!token.startsWith(GRANT_PREFIX)) {
+  if (typeof token !== 'string' || !token.startsWith(GRANT_PREFIX)) {
     throw new Error('not a pg1 grant');
   }
 
@@ -45,17 +71,11 @@ export function decodeGrant(token: string): Block[] {
     throw new Error('grant has no blocks');
   }
 
-  for (const b of blocks as Partial<Block>[]) {
-    if (
-      !isB64u(b?.s, 64) ||
-      typeof b?.p?.sub !== 'string' ||
-      !Array.isArray(b?.p?.caveats)
-    ) {
-      throw new Error('malformed block');
-    }
+  if (!blocks.every(isBlock)) {
+    throw new Error('malformed block');
   }
 
-  return blocks as Block[];
+  return blocks;
 }
 
 export const blockId = (b: Block) => sha256(b.s);

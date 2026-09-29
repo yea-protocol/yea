@@ -3,7 +3,7 @@ import { canonical } from '../canonical.js';
 import { verify } from '../crypto.js';
 import type { CheckContext, GrantCheck } from './context.js';
 import { evaluateCaveats } from './evaluate.js';
-import { type Block, blockId, decodeGrant } from './token.js';
+import { type Block, blockId, decodeGrant, isPublicKey } from './token.js';
 
 /** Verify a grant token against a request (SPEC §6.4). Never throws. */
 export async function checkGrant(
@@ -30,6 +30,22 @@ const unauthorized = (reason: string, iss?: string): GrantFailure => ({
   ...(iss === undefined ? {} : { iss }),
 });
 
+/**
+ * The bytes block `i` signs, or why it is malformed (SPEC §6.2): its `sub` is not a public key,
+ * or its payload has no canonical form (a non-integer number, a lone surrogate).
+ */
+function signedBytes(b: Block, i: number): string | GrantFailure {
+  if (!isPublicKey(b.p.sub)) {
+    return unauthorized(`malformed grant: block ${i} sub is not a public key`);
+  }
+
+  try {
+    return canonical(b.p);
+  } catch (e) {
+    return unauthorized(`malformed grant: ${(e as Error).message}`);
+  }
+}
+
 /** Check each block is chained to the previous one and signed by its holder; yields the final holder. */
 async function verifyChain(
   blocks: Block[],
@@ -44,7 +60,13 @@ async function verifyChain(
       return unauthorized(`block ${i} is not chained to block ${i - 1}`);
     }
 
-    if (!(await verify(signer, canonical(b.p), b.s))) {
+    const bytes = signedBytes(b, i);
+
+    if (typeof bytes !== 'string') {
+      return bytes;
+    }
+
+    if (!(await verify(signer, bytes, b.s))) {
       return unauthorized(`bad signature on block ${i}`);
     }
 
@@ -66,12 +88,8 @@ async function checkGrantUnsafe(
     return unauthorized(`malformed grant: ${(e as Error).message}`);
   }
 
-  const iss = blocks[0].p.iss;
-
-  if (typeof iss !== 'string') {
-    return unauthorized('root block has no iss');
-  }
-
+  // decodeGrant has checked that the root names its issuer.
+  const iss = blocks[0].p.iss as string;
   const chain = await verifyChain(blocks, iss);
 
   if (!chain.ok) {
