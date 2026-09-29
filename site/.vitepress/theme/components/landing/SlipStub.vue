@@ -5,8 +5,14 @@
  * again is always there. When a button is replaced by the next one, focus moves to it, and
  * one live line says what happened.
  */
+import { withBase } from 'vitepress';
 import { nextTick, useTemplateRef, watch } from 'vue';
-import type { ReceiptView, SlipView, UndoneView } from './slip-view';
+import {
+  keepDates,
+  type ReceiptView,
+  type SlipView,
+  type UndoneView,
+} from './slip-view';
 import type { Phase } from './use-slip';
 
 const props = defineProps<{
@@ -64,7 +70,12 @@ watch(
 <template>
   <div ref="stub" class="stub">
     <template v-if="phase === 'committed' || phase === 'undoing'">
-      <p class="line">Receipt <span class="mono">{{ receipt?.id }}</span>{{ receipt?.undoUntil ? `, undo until ${receipt.undoUntil}` : ", can't be undone" }}</p>
+      <p class="line">
+        Order placed.
+        <template v-if="receipt?.undoUntil">You can undo it until <template v-for="(part, i) in keepDates(receipt.undoUntil)" :key="i"><span v-if="part.date" class="nowrap">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>.</template>
+        <template v-else>It can't be undone.</template>
+      </p>
+      <p class="receipt">Receipt <span class="mono">{{ receipt?.id }}</span></p>
       <pre class="result">{{ receipt?.result.join('\n') }}</pre>
       <div class="row">
         <button class="btn" type="button" :disabled="phase === 'undoing'" @click="press('undo')">{{ phase === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
@@ -74,9 +85,11 @@ watch(
     </template>
 
     <template v-else-if="phase === 'undone'">
-      <p class="line">Undone: receipt <span class="mono">{{ undone?.id }}</span> reverses <span class="mono">{{ undone?.undoes }}</span>. The order is cancelled.</p>
+      <p class="line">Order cancelled.</p>
+      <p class="receipt">Receipt <span class="mono">{{ undone?.id }}</span> reverses <span class="mono">{{ undone?.undoes }}</span>.</p>
       <div class="row">
         <button class="btn" type="button" @click="press('again')">Start again</button>
+        <a :href="withBase('/guide/mcp-typescript')">Put this in front of your own tools</a>
       </div>
     </template>
 
@@ -111,6 +124,9 @@ watch(
 .stub::after { right: -10px; clip-path: inset(0 50% 0 0); }
 
 .line { font-weight: 650; }
+/* The outcome leads; the receipt id follows as the reference. */
+.receipt { font-size: 0.875rem; color: var(--vp-c-text-2); margin-top: -6px; }
+.nowrap { white-space: nowrap; }
 .mono, .hash, .result { font-family: var(--l-mono); }
 .mono { font-size: 0.92em; font-weight: 500; }
 .hash { font-size: 0.875rem; color: var(--vp-c-text-1); overflow-wrap: anywhere; line-height: 1.5; }
