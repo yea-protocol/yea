@@ -118,7 +118,8 @@ const noTargetHint = computed(() =>
 .budget { display: flex; gap: 12px; align-items: center; }
 .budget input { flex: 1; accent-color: var(--vp-c-brand-1); }
 .budget output { font-family: var(--vp-font-family-mono); font-size: 0.85rem; min-width: 3.5em; text-align: right; }
-.send { font: inherit; font-weight: 700; font-size: 0.95rem; height: 44px; border: 0; border-radius: 9px; background: var(--vp-button-brand-bg); color: var(--vp-button-brand-text); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+/* flex-shrink 0: the pane is a fixed-height column, and shrinking would squash the button below 44px. */
+.send { font: inherit; font-weight: 700; font-size: 0.95rem; height: 44px; flex-shrink: 0; border: 0; border-radius: 9px; background: var(--vp-button-brand-bg); color: var(--vp-button-brand-text); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .send:hover { background: var(--vp-button-brand-hover-bg); }
 .send:disabled { opacity: 0.6; cursor: progress; }
 .send kbd { font-family: var(--vp-font-family-mono); font-size: 0.72rem; opacity: 0.7; }
