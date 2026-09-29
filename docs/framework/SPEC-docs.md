@@ -130,7 +130,9 @@ The landing (`site/.vitepress/theme/components/Landing.vue`, a layout over `land
 the framework as the first of two paths after the hero: "I have an MCP server", marked
 unreleased (install from the repo), next to "I'm building an agent or service". The hero is a
 proposal slip the visitor approves, then undoes, on the real core, per James's decision of
-2026-09-28 (#117); its headline stays with James. The benchmark numbers are hand-typed
+2026-09-28 (#117). Its headline ("Your agent proposes. You decide what goes ahead.") and its
+two buttons ("Try it in the playground", then "Add it to your MCP server", marked unreleased)
+are James's decision of 2026-09-29. The benchmark numbers are hand-typed
 constants in one module, `landing/numbers.ts`. A check compares the payload figures with
 `bench/RESULTS.md`, and the live-agent figures with `bench/agent-eval/RESULTS*.md`, and fails
 on drift.
