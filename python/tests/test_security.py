@@ -355,3 +355,28 @@ def test_u9_a_proposal_with_an_unknown_or_missing_risk_is_invalid(risk):
         del frame["proposals"][0]["risk"]
     r = run(Client(_HostileReplies(frame)).intent("x.do", {}))
     assert r.kind == "ERROR" and r.code == "bad_frame"
+
+
+def test_plan_and_run_never_see_the_unauthenticated_hello_agent():
+    """SPEC §4.1: HELLO's `agent` is informational only, so it isn't handed to code that could authorize on it (#190)."""
+    seen = []
+    svc = Service("svc", "Svc", "svc", trust=[PRINCIPAL.public])
+
+    @svc.ask("svc.who", "who")
+    def who(ctx):
+        seen.append(ctx)
+        return {"ok": True}
+
+    @svc.intent("svc.do", "do it")
+    def do(ctx):
+        seen.append(ctx)
+        return Plan("do it", [create("thing/1")])
+
+    async def go():
+        c = Client(local(svc), key=AGENT, name="admin")
+        await c.hello()
+        await c.ask("svc.who")
+        await c.intent("svc.do")
+
+    run(go())
+    assert len(seen) == 2 and not any(hasattr(ctx, "agent") for ctx in seen)

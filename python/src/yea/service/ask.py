@@ -23,5 +23,5 @@ async def on_ask(svc: Service, frame: dict, budget: int) -> dict:
     params = params_of(frame)
     validate_params(d.params, params)
     auth = await authorize(svc, frame, "ASK", name, name)
-    data = await _call(d.run, Ctx(params, auth.principal if auth else None, agent=frame.get("agent")))
+    data = await _call(d.run, Ctx(params, auth.principal if auth else None))
     return fit(reply_frame(frame["id"], "ANSWER", {"data": data}), budget, svc.handles, verified_key(frame))
