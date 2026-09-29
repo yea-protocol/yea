@@ -580,6 +580,20 @@ A top-level object renders its entries at indent 0. A top-level array renders as
   sign and no digit grouping. `{amount: 2290, scale: 2, unit: "USD"}` renders `22.90 USD`,
   `{amount: 5, scale: 3}` renders `0.005`, and `{amount: 1}` renders `1`.
 
+**Malformed values.** These fields render a fixed way when malformed (the wrong type or out of
+range):
+
+- A time that is not an integer in [0, 253402300799] (up to 9999-12-31T23:59:59Z) renders as
+  its lean scalar (§9.1): `1.5`, `soon`, `true`, and `-` when it is missing or `null`.
+- A duration that is not an integer in [−2^53+1, 2^53−1] renders as its lean scalar.
+- A `uses` that is not well-formed (§5.1: every name a measure name, every value a quantity)
+  renders as `?` as a whole. Its names are not shown.
+- An `undo` that is not an object with a `window` (on a proposal) or an `until` (on a receipt)
+  renders as `never` or `irreversible`; the `window` or `until` inside one renders by the rules
+  above.
+- A proposal's `risk` renders as its lean scalar, so a missing one is `-`.
+- An EVENT's `progress` that is not a number in [0, 1] is left out.
+
 **Effect line:** `SYM op target[.field][: from → to][ — detail]`, where SYM is `+` create, `~` update, `-` delete, `>` send, `*` other. `from → to` appears when either is present. A missing side renders as `-`.
 
 **BRIEF**
@@ -642,6 +656,11 @@ them in the proposal. For an undo receipt, the first line is
 (Only the lines whose fields are present.)
 
 **EVENT:** `… {message}[ ({floor(progress×100 + 0.5)}%)]`
+
+**Unknown kind:** a frame whose `kind` is none of the above (or is missing) renders as the lean
+notation (§9.1) of the frame without its `yea`, `id`, `re`, `more` and `lens` members, in their
+order, so its `kind` shows as a member (`kind: STATUS`). A newer service's reply stays readable,
+its `more` renders as usual, and a service-supplied `lens` is ignored here as everywhere.
 
 **More (appended to any reply that has `more`):** `… {remaining} more at {path} — EXPAND {handle} (~{est} tokens)`
 

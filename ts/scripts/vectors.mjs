@@ -1161,6 +1161,81 @@ const replies = [
   ],
   ['event', r({ kind: 'EVENT', message: 'charging card', progress: 0.42 })],
   ['event plain', r({ kind: 'EVENT', message: 'started' })],
+  // Malformed fields and unknown kinds render a fixed way (SPEC §9.2), never an error.
+  [
+    'unknown kind',
+    r({
+      kind: 'STATUS',
+      text: 'syncing',
+      more: [{ handle: 'h_2', path: 'items', remaining: 3, est: 20 }],
+    }),
+  ],
+  ['unknown kind: not a string', r({ kind: ['ANSWER'], data: 1 })],
+  ['no kind', r({ text: 'hello' })],
+  [
+    'proposals: malformed uses',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, uses: { Bad: { amount: 1 }, spend: { amount: 'x' } } },
+      ],
+    }),
+  ],
+  [
+    'proposals: malformed times',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, expires: 1.5, undo: { window: 'soon' } },
+        { ...baseP, id: 'p_2', expires: 'tomorrow', undo: { window: 90.5 } },
+        { ...baseP, id: 'p_3', expires: -1, undo: {} },
+        { ...baseP, id: 'p_4', expires: 10000000000000, undo: true },
+        { ...baseP, id: 'p_5', expires: true },
+        { ...baseP, id: 'p_6', expires: undefined },
+      ],
+    }),
+  ],
+  [
+    'receipt: malformed undo',
+    r({
+      kind: 'RECEIPT',
+      receipt: { id: 'r_4', summary: 'Sent', undo: { until: 'later' } },
+    }),
+  ],
+  [
+    'receipt: undo without until',
+    r({ kind: 'RECEIPT', receipt: { id: 'r_5', summary: 'Sent', undo: {} } }),
+  ],
+  [
+    'event: string progress',
+    r({ kind: 'EVENT', message: 'a', progress: '50%' }),
+  ],
+  [
+    'event: boolean progress',
+    r({ kind: 'EVENT', message: 'b', progress: true }),
+  ],
+  ['event: progress past 1', r({ kind: 'EVENT', message: 'c', progress: 1.5 })],
+  ['event: progress 0', r({ kind: 'EVENT', message: 'd', progress: 0 })],
+  ['event: progress 1', r({ kind: 'EVENT', message: 'e', progress: 1 })],
+  [
+    'error: fractional retry',
+    r({ kind: 'ERROR', code: 'busy', message: 'x', retry: 1.5 }),
+  ],
+  [
+    'unknown kind: a lens is not shown',
+    r({ kind: 'STATUS', lens: 'forged', text: 'syncing' }),
+  ],
+  [
+    'proposals: malformed risk',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, risk: undefined },
+        { ...baseP, id: 'p_2', risk: true },
+        { ...baseP, id: 'p_3', risk: 'very, high' },
+      ],
+    }),
+  ],
 ];
 
 for (const [name, input] of replies) {

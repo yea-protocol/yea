@@ -4,14 +4,22 @@
  */
 import type { Proposal } from '../types.js';
 import { fmtUses } from '../uses.js';
+import { isObject } from '../util.js';
 import { effectLine, fmtDuration, fmtTime } from './format.js';
-import { entry } from './notation.js';
+import { entry, scalar } from './notation.js';
+
+/** An undo object with a `window` renders it as a duration; anything else is `never`. */
+function undoWindow(undo: unknown): string {
+  return isObject(undo) && 'window' in undo
+    ? fmtDuration(undo.window)
+    : 'never';
+}
 
 const ATTRS: [string, (p: Proposal) => string][] = [
   // Absent means nothing to show; anything else present renders, and a malformed one as `?`.
   ['uses', (p) => (p.uses === undefined ? '' : fmtUses(p.uses))],
-  ['risk', (p) => p.risk],
-  ['undo', (p) => (p.undo ? fmtDuration(p.undo.window) : 'never')],
+  ['risk', (p) => scalar(p.risk)],
+  ['undo', (p) => undoWindow(p.undo)],
   ['expires', (p) => fmtTime(p.expires)],
 ];
 

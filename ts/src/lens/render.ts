@@ -37,8 +37,21 @@ function bodyLines(r: Reply): string[] {
     case 'EVENT':
       return [eventLine(r)];
     default:
-      return []; // a frame of unknown kind (untyped caller) renders only its `more` lines
+      return unknownLines(r);
   }
+}
+
+/**
+ * Members a frame of unknown kind doesn't show: the envelope, `more` (it has its own lines) and
+ * a service-supplied `lens`, which Lens never shows.
+ */
+const HIDDEN = new Set(['yea', 'id', 're', 'more', 'lens']);
+
+/** A frame of a kind Lens doesn't know (SPEC §9.2): its other members in lean notation. */
+function unknownLines(frame: object): string[] {
+  const shown = Object.entries(frame).filter(([k]) => !HIDDEN.has(k));
+
+  return [lean(Object.fromEntries(shown))];
 }
 
 /** Render a reply frame as Lens (SPEC §9.2). */

@@ -17,10 +17,16 @@ _RENDERERS = {
     "ANSWER": lambda r: [lean(r.get("data"))],
 }
 
+# Not shown for a frame of unknown kind: the envelope, `more` (it has its own lines) and a
+# service-supplied `lens`, which Lens never shows.
+_HIDDEN = ("yea", "id", "re", "more", "lens")
+
 
 def lens(reply: dict) -> str:
     """Render a reply frame. Ignores any service-supplied ``lens`` field."""
-    render = _RENDERERS.get(reply.get("kind", ""))
-    lines = render(reply) if render else [lean({k: v for k, v in reply.items() if k not in ("yea", "id", "re")})]
+    kind = reply.get("kind")
+    render = _RENDERERS.get(kind) if isinstance(kind, str) else None
+    # An unknown (or missing, or non-string) kind: the frame's other members in lean notation (§9.2).
+    lines = render(reply) if render else [lean({k: v for k, v in reply.items() if k not in _HIDDEN})]
     lines.extend(more_line(m) for m in reply.get("more") or [])
     return "\n".join(lines)
