@@ -8,12 +8,12 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import MODES, PRINCIPAL, Person, text
+from yea_mcp import yea
+
 from mcp import Client
 from yea import issue_grant
 from yea.store import FileStore
-
-from conftest import MODES, PRINCIPAL, Person, text
-from yea_mcp import yea
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 import mcp_quickstart  # noqa: E402
@@ -103,9 +103,9 @@ async def test_step_6_a_client_that_cant_ask_gets_a_code_and_a_consent_runs_once
 def test_the_start_up_lines(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("YEA_HOME", str(tmp_path))
     monkeypatch.delenv("YEA_PRINCIPAL_PUB", raising=False)
-    import yea_mcp.keys
+    import yea_mcp.util
 
-    monkeypatch.setattr(yea_mcp.keys, "_warned", set())  # the warning is printed once per process
+    monkeypatch.setattr(yea_mcp.util, "_warned", set())  # the warning is printed once per process
     ap = yea(name="files", transport="stdio", server_key=tmp_path / "k" / "files.key")
     err = capsys.readouterr().err
     assert f"yea: service id {ap.service_id()} (name files)" in err

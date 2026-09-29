@@ -18,15 +18,34 @@ import mcp_types as t
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.mcpserver import Context
 from mcp.server.request_state import RequestStateSecurity
+
 from yea.approval import STATE_TTL, HashedPlan, undo_receipt
-from yea.store import ApprovalStore, FileStore, MemoryStore, default_store_dir, is_receipt_id
+from yea.store import (
+    ApprovalStore,
+    FileStore,
+    MemoryStore,
+    default_store_dir,
+    is_receipt_id,
+)
 from yea.text import printable
 
-from .call import JobDef, PartialApplyError, Req, Yea, _maybe, caller_of, is_memory_store, is_partial, run_job
+from .call import (
+    JobDef,
+    PartialApplyError,
+    Req,
+    Yea,
+    _maybe,
+    caller_of,
+    is_memory_store,
+    is_partial,
+    run_job,
+)
 from .guard import Guarded, GuardMiddleware, job_annotations, job_meta
-from .keys import check_name, default_key_path, load_server_key, pinned_principal, warn_once
+from .policy import pinned_principal
 from .render import error_result
+from .server_key import check_name, default_key_path, load_server_key
 from .signature import job_wrapper
+from .util import warn_once
 
 __all__ = ["Approvals", "PartialApplyError", "token_subject", "yea"]
 

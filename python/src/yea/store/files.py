@@ -7,10 +7,15 @@ import secrets
 from pathlib import Path
 
 
+def yea_home() -> Path:
+    """``$YEA_HOME``, else ``~/.yea``: where the store, keys and policy live."""
+    home = os.environ.get("YEA_HOME")
+    return Path(home) if home else Path.home() / ".yea"
+
+
 def default_store_dir() -> Path:
     """``$YEA_HOME/store``, else ``~/.yea/store``."""
-    home = os.environ.get("YEA_HOME")
-    return Path(home) / "store" if home else Path.home() / ".yea" / "store"
+    return yea_home() / "store"
 
 
 def make_private_dirs(path: Path) -> None:
