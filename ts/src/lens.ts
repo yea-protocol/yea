@@ -4,7 +4,7 @@
  * The parts live in lens/; this file re-exports them.
  */
 
-export { effectsTooDeep, MAX_EFFECT_DEPTH } from './lens/depth.js';
+export { MAX_APPROVAL_DEPTH, tooDeepToApprove } from './lens/depth.js';
 
 export { est } from './lens/estimate.js';
 

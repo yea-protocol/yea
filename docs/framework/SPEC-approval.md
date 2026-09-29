@@ -94,9 +94,10 @@ planHash = b64url(sha256(canonical({ tool, input, summary, effects, uses, risk, 
 - Canonical JSON allows only integers, so a job tool's input MUST NOT contain other numbers.
   A call whose input has one fails closed with an error that tells the author to use a string
   or an integer instead.
-- A plan with an effect that nests objects and arrays more than 32 levels deep (the effect
-  itself being the first) gets no plan hash and fails closed: the form would cut part of what
-  the person approves (SPEC.md §6.6, §9.1).
+- A plan whose summary, effects and uses, taken as one object, nest objects and arrays more
+  than 32 levels deep (that object being the first) gets no plan hash and fails closed, and
+  `yea approve` refuses a consent code carrying one: the form would cut part of what the person
+  approves (SPEC.md §6.6, §9.1).
 
 ### 2. Policy
 

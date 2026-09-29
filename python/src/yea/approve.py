@@ -10,7 +10,7 @@ from typing import Any
 
 from ._json import CanonicalError, proposal_hash
 from .lens import untrusted_lens
-from .lens.depth import effects_too_deep
+from .lens.depth import too_deep_to_approve
 from .risk import is_risk
 from .text import printable
 from .uses import is_uses
@@ -18,14 +18,14 @@ from .uses import is_uses
 
 def check_proposal(p: Mapping[str, Any]) -> str | None:
     """Why a proposal can't be bound by a consent, or None if it can (SPEC §5.1, §6.6): its ``uses``
-    well formed, its ``risk`` known, its effects shallow enough to show in full, and it hashes to
+    well formed, its ``risk`` known, its bound fields shallow enough to show in full, and it hashes to
     its ``hash`` (an unhashable one can't)."""
     if "uses" in p and not is_uses(p["uses"]):
         return "the proposal has a malformed uses"
     if not is_risk(p.get("risk")):
         return "the proposal has an unknown risk"
-    if effects_too_deep(p.get("effects")):
-        return "the proposal's effects are nested too deep to show in full"
+    if too_deep_to_approve({k: v for k, v in p.items() if k != "data"}):
+        return "the proposal is nested too deep to show in full"
     try:
         if proposal_hash(p) == p.get("hash"):
             return None

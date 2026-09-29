@@ -530,8 +530,10 @@ def test_lens_never_overflows_the_stack_on_a_deeply_nested_value():
 
 
 def test_approval_never_covers_content_lens_cuts():
-    """#213: a proposal or plan whose effect nests objects past 32 levels (the effect being the
-    first) is never shown for approval, since Lens would cut part of what the person signs."""
+    """#213: a proposal (without data) or a plan's summary, effects and uses nested past 32 levels,
+    itself being the first, is never shown for approval: Lens would cut part of what the person signs.
+    The proposal or plan is level 0, an effect 2 and its ``to`` 3, so ``buried(n)`` puts the innermost
+    object at n + 3: 28 is the deepest a person can approve."""
     import pytest
 
     from yea import proposal_hash
@@ -546,27 +548,35 @@ def test_approval_never_covers_content_lens_cuts():
             v = {"settings": v}
         return v
 
-    def proposal(levels):
-        p = {
-            "id": "p1",
-            "capability": "s.set",
-            "summary": "Update settings",
-            "effects": [{"op": "update", "target": "settings", "from": "x", "to": buried(levels)}],
-            "risk": "low",
-        }
+    def effect(levels):
+        return {"op": "update", "target": "settings", "to": buried(levels)}
+
+    def hashed(p):
         return {**p, "hash": proposal_hash(p)}
 
-    too_deep = "the proposal's effects are nested too deep to show in full"
-    assert check_proposal(proposal(30)) is None
-    assert check_proposal(proposal(31)) == too_deep
+    base = {"id": "p1", "capability": "s.set", "risk": "low"}
+
+    def proposal(levels):
+        return hashed({**base, "summary": "Update settings", "effects": [effect(levels)]})
+
+    too_deep = "the proposal is nested too deep to show in full"
+    assert check_proposal(proposal(28)) is None
+    assert check_proposal(proposal(29)) == too_deep
     assert check_proposal(proposal(300)) == too_deep
+    for p in (
+        {**base, "summary": buried(40), "effects": []},
+        {**base, "summary": "s", "effects": {"a": buried(40)}},
+        {**base, "summary": "s", "effects": [], "undo": {"window": 60, "x": buried(40)}},
+    ):
+        assert check_proposal(hashed(p)) == too_deep
 
-    def plan(levels):
-        return Plan("Update settings", [{"op": "update", "target": "settings", "to": buried(levels)}], apply=lambda: None)
+    def plan(levels, wrap=list):
+        return Plan("Update settings", wrap([effect(levels)]), apply=lambda: None)
 
-    assert plan_preimage("t", {}, plan(30), "low")["tool"] == "t"
-    with pytest.raises(ValueError, match="nested past 32 levels"):
-        plan_preimage("t", {}, plan(31), "low")
+    assert plan_preimage("t", {}, plan(28), "low")["tool"] == "t"
+    for p in (plan(29), plan(29, tuple)):
+        with pytest.raises(ValueError, match="nested past 32 levels"):
+            plan_preimage("t", {}, p, "low")
 
-    shown = safe_effect_line(proposal(30)["effects"][0])
+    shown = safe_effect_line(proposal(28)["effects"][0])
     assert "attacker@evil.test" in shown and "…" not in shown

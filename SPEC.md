@@ -466,9 +466,9 @@ notification or a page. The consent request comes from the service, so the agent
 tooling MUST check that its `proposal`, `hash`, `service` and `capability` match the
 proposal the agent actually received from that service. It MUST show the human that
 proposal's effects, uses, risk and undo, not the service-written summary alone. A
-mismatched consent request is never shown for signing, and neither is a proposal with an
-effect that nests objects and arrays more than 32 levels deep, the effect itself being the
-first: Lens would cut part of what the principal signs (§9.1). If the principal approves, they sign a **consent grant**:
+mismatched consent request is never shown for signing, and neither is a proposal that,
+without its `data`, nests objects and arrays more than 32 levels deep, the proposal itself
+being the first: Lens would cut part of what the principal signs (§9.1). If the principal approves, they sign a **consent grant**:
 a root grant with `iss` = principal, `sub` = agent key and exactly these caveats:
 
 ```json

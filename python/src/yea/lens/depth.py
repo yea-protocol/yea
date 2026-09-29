@@ -10,10 +10,10 @@ from typing import Any
 # by its own limit, never by the cut.
 MAX_DEPTH = 64
 
-# How deep an effect a person is asked to approve may nest (SPEC §6.6). No view puts an effect more
-# than a few levels into its frame, so an effect within this always shows in full: approval never
-# covers content cut to "…".
-MAX_EFFECT_DEPTH = 32
+# How deep what a person approves may nest (SPEC §6.6): a proposal without its ``data``, or a plan's
+# summary, effects and uses, itself being the first level. No view puts it more than two levels into
+# its frame, so it always shows in full: approval never covers content cut to "…".
+MAX_APPROVAL_DEPTH = 32
 
 # What an object or array nested past MAX_DEPTH becomes: a string, so it renders as one.
 _CUT = "…"
@@ -41,6 +41,7 @@ def nested_past(v: Any, levels: int, depth: int = 0) -> bool:
     return depth >= levels or any(nested_past(x, levels, depth + 1) for x in children)
 
 
-def effects_too_deep(effects: Any) -> bool:
-    """True when any of ``effects`` nests past ``MAX_EFFECT_DEPTH``, so it can't be shown for approval."""
-    return isinstance(effects, list) and any(nested_past(e, MAX_EFFECT_DEPTH) for e in effects)
+
+def too_deep_to_approve(v: Any) -> bool:
+    """True when ``v``, something a person would approve, nests past ``MAX_APPROVAL_DEPTH``."""
+    return nested_past(v, MAX_APPROVAL_DEPTH)
