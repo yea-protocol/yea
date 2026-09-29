@@ -1671,6 +1671,304 @@
     "lens": "kind: constructor\ntext: x"
   },
   {
+    "name": "well-formed: an auto receipt without effects",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "RECEIPT",
+      "receipt": {
+        "id": "r_1",
+        "summary": "sent"
+      },
+      "auto": true
+    },
+    "lens": "✓ sent (receipt r_1) · irreversible"
+  },
+  {
+    "name": "well-formed: an effect op named constructor",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "constructor",
+              "target": "t"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600
+        }
+      ]
+    },
+    "lens": "1 proposal:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  * constructor t\n  risk: low · undo: 1h · expires: 2026-09-21T14:23:20Z"
+  },
+  {
+    "name": "not well-formed: an effect from that is an object",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "t",
+              "from": {
+                "a": [
+                  1
+                ]
+              }
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600
+        }
+      ]
+    },
+    "lens": "kind: PROPOSALS\nproposals[1]:\n  - id: p_1\n    capability: calendar.reschedule\n    summary: \"Move \\\"1:1 with Ana\\\" to Thu 15:00\"\n    effects[1]:\n      - op: update\n        target: t\n        from:\n          a: [1]\n    risk: low\n    undo:\n      window: 3600\n    expires: 1790000600"
+  },
+  {
+    "name": "proposals: an object expires renders as compact JSON",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": [
+            "x"
+          ],
+          "undo": {
+            "window": 3600
+          },
+          "expires": {
+            "at": 1
+          }
+        }
+      ]
+    },
+    "lens": "1 proposal:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: [\"x\"] · undo: 1h · expires: {\"at\":1}"
+  },
+  {
+    "name": "well-formed: params 32 levels below the top",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S"
+      },
+      "capabilities": [
+        {
+          "kind": "ask",
+          "name": "s.q",
+          "params": {
+            "a": {
+              "a": {
+                "a": {
+                  "a": {
+                    "a": {
+                      "a": {
+                        "a": {
+                          "a": {
+                            "a": {
+                              "a": {
+                                "a": {
+                                  "a": {
+                                    "a": {
+                                      "a": {
+                                        "a": {
+                                          "a": {
+                                            "a": {
+                                              "a": {
+                                                "a": {
+                                                  "a": {
+                                                    "a": {
+                                                      "a": {
+                                                        "a": {
+                                                          "a": {
+                                                            "a": {
+                                                              "a": {
+                                                                "a": {
+                                                                  "a": {
+                                                                    "a": {
+                                                                      "a": {
+                                                                        "a": {
+                                                                          "a": {
+                                                                            "a": "string"
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "lens": "# S (s)\nask s.q(a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: string}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}})"
+  },
+  {
+    "name": "not well-formed: params 33 levels below the top",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S"
+      },
+      "capabilities": [
+        {
+          "kind": "ask",
+          "name": "s.q",
+          "params": {
+            "a": {
+              "a": {
+                "a": {
+                  "a": {
+                    "a": {
+                      "a": {
+                        "a": {
+                          "a": {
+                            "a": {
+                              "a": {
+                                "a": {
+                                  "a": {
+                                    "a": {
+                                      "a": {
+                                        "a": {
+                                          "a": {
+                                            "a": {
+                                              "a": {
+                                                "a": {
+                                                  "a": {
+                                                    "a": {
+                                                      "a": {
+                                                        "a": {
+                                                          "a": {
+                                                            "a": {
+                                                              "a": {
+                                                                "a": {
+                                                                  "a": {
+                                                                    "a": {
+                                                                      "a": {
+                                                                        "a": {
+                                                                          "a": {
+                                                                            "a": {
+                                                                              "a": "string"
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "lens": "kind: BRIEF\nservice:\n  id: s\n  name: S\ncapabilities[1]:\n  - kind: ask\n    name: s.q\n    params:\n      a:\n        a:\n          a:\n            a:\n              a:\n                a:\n                  a:\n                    a:\n                      a:\n                        a:\n                          a:\n                            a:\n                              a:\n                                a:\n                                  a:\n                                    a:\n                                      a:\n                                        a:\n                                          a:\n                                            a:\n                                              a:\n                                                a:\n                                                  a:\n                                                    a:\n                                                      a:\n                                                        a:\n                                                          a:\n                                                            a:\n                                                              a:\n                                                                a:\n                                                                  a:\n                                                                    a:\n                                                                      a:\n                                                                        a: string"
+  },
+  {
     "name": "well-formed: null optional members",
     "type": "reply",
     "input": {

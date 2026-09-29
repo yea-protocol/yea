@@ -465,3 +465,32 @@ def test_lens_never_raises_on_a_malformed_frame(kind):
             else:
                 frame[k] = w
             assert isinstance(lens(frame), str), (k, w)
+
+
+def test_lens_never_raises_on_a_malformed_nested_member_or_a_deep_param_schema():
+    """#188 review: nested members too (an auto receipt's effects, an effect's op and from, a proposal's
+    expires, a more count), and a param schema deeper than the limit falls back to the unknown kind."""
+    from yea import lens
+
+    def frame(kind, **members):
+        return {"yea": 1, "id": "s1", "re": "c1", "kind": kind, **members}
+
+    def effect(e):
+        return frame("PROPOSALS", proposals=[{"id": "p", "summary": "s", "effects": [e]}])
+
+    for w in (None, 5, "x", True, [], {}, [5], [{}], "constructor", "__proto__"):
+        for f in (
+            frame("RECEIPT", receipt={"id": "r", "summary": "s", "effects": w}, auto=True),
+            effect({"op": w, "target": "t"}),
+            effect({"op": "update", "target": "t", "from": w}),
+            frame("PROPOSALS", proposals=[{"id": "p", "summary": "s", "effects": [], "expires": w}]),
+            frame("ANSWER", data=1, more=[{"remaining": w, "path": "p", "handle": "h", "est": 1}]),
+        ):
+            assert isinstance(lens(f), str), (f, w)
+    for v in (None, 5, "x", []):
+        assert lens(v) == "{}"
+    params = "string"
+    for _ in range(250):
+        params = {"a": params}
+    deep = frame("BRIEF", service={"id": "s", "name": "S"}, capabilities=[{"kind": "ask", "name": "s.q", "params": params}])
+    assert lens(deep).startswith("kind: BRIEF")

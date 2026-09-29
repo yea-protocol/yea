@@ -3279,6 +3279,7 @@ describe('requests are read as Python reads them (#157)', () => {
       'PROPOSALS',
     );
   });
+});
 
 describe('Lens never throws on a malformed frame (#188)', () => {
   const kinds: Record<string, Record<string, unknown>> = {
@@ -3332,5 +3333,75 @@ describe('Lens never throws on a malformed frame (#188)', () => {
         }
       }
     }
+  });
+
+  it('nor a nested member of any type, a frame that is not an object, or a deep param schema', () => {
+    const effect = (e: Record<string, unknown>) => ({
+      proposals: [{ id: 'p', summary: 's', effects: [e] }],
+    });
+    const nested: [string, string, (w: unknown) => Record<string, unknown>][] =
+      [
+        [
+          'RECEIPT',
+          'receipt.effects',
+          (w) => ({
+            receipt: { id: 'r', summary: 's', effects: w },
+            auto: true,
+          }),
+        ],
+        ['PROPOSALS', 'effect.op', (w) => effect({ op: w, target: 't' })],
+        [
+          'PROPOSALS',
+          'effect.from',
+          (w) => effect({ op: 'update', target: 't', from: w }),
+        ],
+        [
+          'PROPOSALS',
+          'proposal.expires',
+          (w) => ({
+            proposals: [{ id: 'p', summary: 's', effects: [], expires: w }],
+          }),
+        ],
+        [
+          'ANSWER',
+          'more[0].remaining',
+          (w) => ({
+            data: 1,
+            more: [{ remaining: w, path: 'p', handle: 'h', est: 1 }],
+          }),
+        ],
+      ];
+
+    for (const [kind, name, make] of nested) {
+      for (const w of [...wrong, 'constructor', '__proto__']) {
+        const frame = { yea: 1, id: 's1', re: 'c1', kind, ...make(w) };
+
+        expect(
+          () => P.lens(frame as P.Reply),
+          `${name} = ${JSON.stringify(w)}`,
+        ).not.toThrow();
+      }
+    }
+
+    for (const v of [null, 5, 'x', []]) {
+      expect(P.lens(v as unknown as P.Reply)).toBe('{}');
+    }
+
+    let params: unknown = 'string';
+
+    for (let i = 0; i < 1000; i++) {
+      params = { a: params };
+    }
+
+    const deep = {
+      yea: 1,
+      id: 's1',
+      re: 'c1',
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params }],
+    };
+
+    expect(P.lens(deep as P.Reply)).toMatch(/^kind: BRIEF/);
   });
 });

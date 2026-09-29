@@ -1,8 +1,9 @@
 /**
  * Which frames of a known kind Lens renders as that kind (SPEC §9.2, well-formed frames): each
- * listed member has its type. Anything else renders as an unknown kind, so an untrusted reply
- * can't make rendering throw.
+ * listed member has its type. Anything else renders as an unknown kind, so a missing or
+ * wrong-typed member can't make rendering throw.
  */
+import type { More } from '../types.js';
 import { isObject } from '../util.js';
 
 /**
@@ -14,6 +15,7 @@ type Shape =
   | 'string'
   | 'boolean'
   | 'integer'
+  | 'scalar'
   | 'params'
   | readonly [Shape]
   | { readonly [member: string]: Shape };
@@ -23,6 +25,8 @@ const EFFECT: Shape = {
   target: 'string',
   'field?': 'string',
   'detail?': 'string',
+  'from?': 'scalar',
+  'to?': 'scalar',
 };
 
 const SHAPES: Record<string, Shape> = {
@@ -70,11 +74,20 @@ const MORE: Shape = [
   { remaining: 'integer', path: 'string', handle: 'string', est: 'integer' },
 ];
 
-/** A param schema: every value a type name, a nested schema, or a one-element array of either. */
-function isParams(v: unknown): boolean {
+/** How deep a param schema may nest, so checking and rendering one can't overflow the stack. */
+const MAX_PARAM_DEPTH = 32;
+
+/**
+ * A param schema: every value a type name, a nested schema, or a one-element array of either,
+ * nested at most MAX_PARAM_DEPTH deep.
+ */
+function isParams(v: unknown, depth = 0): boolean {
   const isType = (t: unknown): boolean =>
     typeof t === 'string' ||
-    (Array.isArray(t) ? t.length === 1 && isType(t[0]) : isParams(t));
+    (depth < MAX_PARAM_DEPTH &&
+      (Array.isArray(t)
+        ? t.length === 1 && isParams({ t: t[0] }, depth + 1)
+        : isParams(t, depth + 1)));
 
   return isObject(v) && Object.values(v).every(isType);
 }
@@ -88,6 +101,8 @@ function fits(v: unknown, s: Shape): boolean {
       return typeof v === s;
     case 'integer':
       return Number.isSafeInteger(v);
+    case 'scalar':
+      return ['string', 'number', 'boolean'].includes(typeof v);
     case 'params':
       return isParams(v);
   }
@@ -109,9 +124,17 @@ function member(o: Record<string, unknown>, k: string, t: Shape): boolean {
   return v === undefined || v === null || fits(v, t);
 }
 
-/** True when the frame's `more` is absent, null or well-formed. */
-export function moreFits(frame: Record<string, unknown>): boolean {
-  return member(frame, 'more?', MORE);
+const isMoreList = (v: unknown): v is More[] => fits(v, MORE);
+
+/** The frame's `more` lines to render: none when it's absent or null, null when it's malformed. */
+export function moreOf(frame: Record<string, unknown>): More[] | null {
+  const m = frame.more;
+
+  if (m === undefined || m === null) {
+    return [];
+  }
+
+  return isMoreList(m) ? m : null;
 }
 
 /** True when the frame is of a known kind and has every member that kind's rendering reads. */

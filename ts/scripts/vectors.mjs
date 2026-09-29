@@ -1134,6 +1134,8 @@ const lensCases = values.map(([name, input]) => ({
   lens: P.lean(input),
 }));
 const r = (x) => ({ yea: 1, id: 's1', re: 'c1', ...x });
+// A param schema of `n` nested objects: {a: {a: … 'string'}}.
+const nestParams = (n) => (n === 0 ? 'string' : { a: nestParams(n - 1) });
 const replies = [
   [
     'brief',
@@ -1590,6 +1592,52 @@ const replies = [
   [
     'not well-formed: a kind named constructor',
     r({ kind: 'constructor', text: 'x' }),
+  ],
+  [
+    'well-formed: an auto receipt without effects',
+    r({ kind: 'RECEIPT', receipt: { id: 'r_1', summary: 'sent' }, auto: true }),
+  ],
+  [
+    'well-formed: an effect op named constructor',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [{ ...baseP, effects: [{ op: 'constructor', target: 't' }] }],
+    }),
+  ],
+  [
+    'not well-formed: an effect from that is an object',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        {
+          ...baseP,
+          effects: [{ op: 'update', target: 't', from: { a: [1] } }],
+        },
+      ],
+    }),
+  ],
+  [
+    'proposals: an object expires renders as compact JSON',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [{ ...baseP, expires: { at: 1 }, risk: ['x'] }],
+    }),
+  ],
+  [
+    'well-formed: params 32 levels below the top',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: nestParams(33) }],
+    }),
+  ],
+  [
+    'not well-formed: params 33 levels below the top',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: nestParams(34) }],
+    }),
   ],
   // Well-formed: null counts as absent for a `?` member and for `more`.
   [

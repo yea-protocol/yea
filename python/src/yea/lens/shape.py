@@ -1,6 +1,6 @@
 """Which frames of a known kind Lens renders as that kind (SPEC §9.2, well-formed frames): each listed
-member has its type. Anything else renders as an unknown kind, so an untrusted reply can't make rendering
-fail. Mirrors ts/src/lens/shape.ts."""
+member has its type. Anything else renders as an unknown kind, so a missing or wrong-typed member can't make
+rendering fail. Mirrors ts/src/lens/shape.ts."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 # A member's type: a JSON type by name, a one-element list for an array of it, or a dict of an
 # object's members. A member named ``k?`` may be absent or null.
-_EFFECT = {"op": "string", "target": "string", "field?": "string", "detail?": "string"}
+_EFFECT = {"op": "string", "target": "string", "field?": "string", "detail?": "string", "from?": "scalar", "to?": "scalar"}
 
 _KINDS: dict[str, Any] = {
     "BRIEF": {
@@ -36,6 +36,7 @@ _KINDS: dict[str, Any] = {
 _MORE = [{"remaining": "integer", "path": "string", "handle": "string", "est": "integer"}]
 
 _MAX_SAFE = 2**53 - 1
+_MAX_PARAM_DEPTH = 32  # so checking and rendering a param schema can't overflow the stack
 _ABSENT = object()
 
 
@@ -46,14 +47,17 @@ def is_safe_integer(v: Any) -> bool:
     return float(v).is_integer() and abs(v) <= _MAX_SAFE if isinstance(v, float) else abs(v) <= _MAX_SAFE
 
 
-def _is_params(v: Any) -> bool:
-    """A param schema: every value a type name, a nested schema, or a one-element array of either."""
+def _is_params(v: Any, depth: int = 0) -> bool:
+    """A param schema: every value a type name, a nested schema, or a one-element array of either,
+    nested at most _MAX_PARAM_DEPTH deep."""
     def is_type(t: Any) -> bool:
         if isinstance(t, str):
             return True
+        if depth >= _MAX_PARAM_DEPTH:
+            return False
         if isinstance(t, (list, tuple)):
-            return len(t) == 1 and is_type(t[0])
-        return _is_params(t)
+            return len(t) == 1 and _is_params({"t": t[0]}, depth + 1)
+        return _is_params(t, depth + 1)
 
     return isinstance(v, dict) and all(is_type(t) for t in v.values())
 
@@ -67,6 +71,8 @@ def _fits(v: Any, s: Any) -> bool:
         return isinstance(v, bool)
     if s == "integer":
         return is_safe_integer(v)
+    if s == "scalar":
+        return isinstance(v, (str, int, float))  # bool is an int
     if s == "params":
         return _is_params(v)
     if isinstance(s, list):

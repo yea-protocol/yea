@@ -24,8 +24,8 @@ _HIDDEN = ("yea", "id", "re", "lens")
 
 
 def lens(reply: dict) -> str:
-    """Render a reply frame. Ignores any service-supplied ``lens`` field. An untrusted frame renders,
-    never raises."""
+    """Render a reply frame. Ignores any service-supplied ``lens`` field. A missing or wrong-typed
+    member can't make it raise."""
     frame = reply if isinstance(reply, dict) else {}
     more_ok = more_fits(frame)
     if more_ok and kind_fits(frame):

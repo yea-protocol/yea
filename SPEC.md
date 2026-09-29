@@ -568,6 +568,8 @@ Rendering a value `v` at indent `n` (two spaces per level):
 - numbers → ECMAScript `Number::toString` (so `1.5`, `1e+21`, `1e-7`)
 - strings → **bare** if they match `^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$`, do not start or end with a space, are not `-`, `true`, `false`, or `null`, and do not match the JSON number grammar. Otherwise they are quoted as in §10, except that a lone surrogate, which §10 refuses, is written `\uXXXX` (lowercase hex) as ECMAScript `JSON.stringify` writes it.
 - object keys are rendered with the same string rule.
+- an object or array where a scalar is expected (a malformed time or `risk`, say) → its compact
+  JSON (§9.2).
 
 **Key order.** Everywhere in Lens, an object's keys come in ECMAScript property order, as
 `Object.keys` and `JSON.stringify` give them: keys that are array indices (`"0"` to
@@ -700,8 +702,10 @@ count.
 | ERROR | `code`, `message`: string; `fix?`: array of {`say`: string, `params?`: object}; `need?`: array; `consent?`: {`hash`, `summary`: string} |
 | EVENT | `message`: string |
 
-An effect is {`op`, `target`: string, `field?`, `detail?`: string}. A param schema is an object
-whose every value is a string, a param schema, or an array whose one element is one of these.
+An effect is {`op`, `target`: string, `field?`, `detail?`: string, `from?`, `to?`: a string,
+number or boolean}. A param schema is an object whose every value is a string, a param schema,
+or an array whose one element is one of these, nested at most 32 levels below the top one (each
+nested schema or array is a level).
 An integer is a number with no fractional part in [−2^53+1, 2^53−1].
 
 Any frame's `more`, unless it is absent or `null`, must be an array of {`remaining`: integer, `path`: string,

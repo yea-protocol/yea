@@ -13,10 +13,10 @@ import {
   eventLine,
   receiptLines,
 } from './replies.js';
-import { kindFits, moreFits } from './shape.js';
+import { kindFits, moreOf } from './shape.js';
 
-function moreLines(more: More[] | undefined): string[] {
-  return (more ?? []).map(
+function moreLines(more: More[]): string[] {
+  return more.map(
     (m) =>
       `… ${m.remaining} more at ${m.path} — EXPAND ${m.handle} (~${m.est} tokens)`,
   );
@@ -61,15 +61,15 @@ function unknownLines(frame: object, moreOk: boolean): string[] {
   return [lean(Object.fromEntries(shown))];
 }
 
-/** Render a reply frame as Lens (SPEC §9.2). An untrusted frame renders, never throws. */
+/** Render a reply frame as Lens (SPEC §9.2). A missing or wrong-typed member can't make it throw. */
 export function lens(r: Reply): string {
   const frame = isObject(r) ? r : {};
-  const moreOk = moreFits(frame);
+  const more = moreOf(frame);
   const out =
-    moreOk && kindFits(frame) ? bodyLines(r) : unknownLines(frame, moreOk);
+    more && kindFits(frame) ? bodyLines(r) : unknownLines(frame, more !== null);
 
-  if (moreOk && 'more' in r) {
-    out.push(...moreLines(r.more));
+  if (more) {
+    out.push(...moreLines(more));
   }
 
   return out.join('\n');
