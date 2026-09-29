@@ -68,11 +68,14 @@ const consentFields = (c: ReturnType<typeof useConsent>) => ({
 interface OpenDeps {
   runtime: Runtime;
   rebuild: () => Promise<void>;
-  send: () => Promise<void>;
+  open: () => Promise<void>;
 }
 
-/** On mount: start everything, sign the grant and open on a real exchange; `opened` then turns true. */
-function openOnMount({ runtime, rebuild, send }: OpenDeps) {
+/**
+ * On mount: start everything, sign the grant and open on a real exchange, the order over the
+ * policy's limit, so the first reply asks the human; `opened` then turns true.
+ */
+function openOnMount({ runtime, rebuild, open }: OpenDeps) {
   const failed = ref('');
   const opened = ref(false);
 
@@ -81,7 +84,7 @@ function openOnMount({ runtime, rebuild, send }: OpenDeps) {
       await start(runtime);
       await rebuild();
       await nextTick();
-      await send();
+      await open();
       opened.value = true;
     } catch (e) {
       failed.value = errorText(e);
@@ -118,7 +121,7 @@ export function usePlayground() {
   const { failed, opened } = openOnMount({
     runtime,
     rebuild: grants.rebuild,
-    send,
+    open: () => shortcuts.runPreset('consent'),
   });
 
   return {

@@ -25,15 +25,15 @@ const newestFirst = computed(() => [...props.log].reverse());
 
 <style scoped>
 .history { list-style: none; margin: 0; padding: 8px; border-top: 1px solid var(--vp-c-divider); max-height: 260px; overflow: auto; }
-.history button { width: 100%; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--vp-c-text-2); font: inherit; font-size: 0.8rem; text-align: left; cursor: pointer; }
+.history button { width: 100%; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 10px; border: 0; border-radius: 6px; background: none; color: var(--vp-c-text-2); font: inherit; font-size: 0.8rem; text-align: left; cursor: pointer; }
 .history button:hover, .history button.on { background: var(--vp-c-bg-soft); color: var(--vp-c-text-1); }
 .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--vp-c-text-3); }
 .dot.green { background: var(--state-green); }
 .dot.amber { background: var(--state-amber); }
 .dot.red { background: var(--state-red); }
 .h-req { font-family: var(--vp-font-family-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.h-rep { font-family: var(--vp-font-family-mono); font-size: 0.74rem; }
-.h-ms { font-size: 0.72rem; color: var(--vp-c-text-3); font-variant-numeric: tabular-nums; }
+.h-rep { font-family: var(--vp-font-family-mono); font-size: 0.75rem; }
+.h-ms { font-size: 0.75rem; color: var(--vp-c-text-3); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 640px), (pointer: coarse) {
   .history button { min-height: 44px; }
