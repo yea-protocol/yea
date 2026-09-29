@@ -1485,6 +1485,48 @@ for (const [name, input] of replies) {
   lensCases.push({ name, type: 'reply', input, lens: P.lens(input) });
 }
 
+// Key order (§9.1): integer-like keys first, ascending, then insertion order. Given as JSON text,
+// since a parsed object already has that order and so couldn't show another parser's.
+const keyOrder = [
+  [
+    'value',
+    'integer-like keys first',
+    '{"b":1,"10":2,"2":3,"a":4,"01":5,"4294967295":6,"4294967294":7,"-1":8,"1.5":9,"0":10}',
+  ],
+  [
+    'value',
+    'integer-like table columns',
+    '{"rows":[{"z":1,"3":2},{"z":3,"3":4}]}',
+  ],
+  ['value', 'integer-like keys in compact JSON', '{"x":[[{"b":1,"0":2}]]}'],
+  [
+    'reply',
+    'integer-like keys in fix params and need',
+    '{"yea":1,"id":"s1","re":"c1","kind":"ERROR","code":"bad_params","message":"m","fix":[{"say":"try","params":{"b":1,"2":2}}],"need":[{"z":1,"1":2}]}',
+  ],
+  [
+    'reply',
+    'integer-like capability params',
+    '{"yea":1,"id":"s1","re":"c1","kind":"BRIEF","service":{"id":"s","name":"S"},"capabilities":[{"name":"s.go","kind":"ask","params":{"b":"string","7":"int"}}]}',
+  ],
+  [
+    'reply',
+    'integer-like keys in an unknown kind',
+    '{"yea":1,"id":"s1","re":"c1","kind":"NEW","z":1,"5":2}',
+  ],
+];
+
+for (const [type, name, json] of keyOrder) {
+  const input = JSON.parse(json);
+
+  lensCases.push({
+    name,
+    type,
+    json,
+    lens: type === 'value' ? P.lean(input) : P.lens(input),
+  });
+}
+
 out('lens', lensCases);
 
 // uses: quantity rendering and which values are well-formed

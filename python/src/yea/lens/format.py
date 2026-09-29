@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .._json import js_keys
 from .notation import scalar
 
 _EFFECT_SYM = {"create": "+", "update": "~", "delete": "-", "send": ">", "other": "*"}
@@ -70,7 +71,7 @@ def param_list(params: Any) -> str:
             return f"[{ty(t[0])}]"
         return "{" + param_list(t)[1:-1] + "}"
 
-    return "(" + ", ".join(f"{k}: {ty(t)}" for k, t in params.items()) + ")"
+    return "(" + ", ".join(f"{k}: {ty(params[k])}" for k in js_keys(params)) + ")"
 
 
 def more_line(m: dict) -> str:

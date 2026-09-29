@@ -566,7 +566,13 @@ Rendering a value `v` at indent `n` (two spaces per level):
 - strings → **bare** if they match `^[A-Za-z0-9_@./+\-:() '!?&%$#*=<>~^]+$`, do not start or end with a space, are not `-`, `true`, `false`, or `null`, and do not match the JSON number grammar. Otherwise they are quoted as in §10, except that a lone surrogate, which §10 refuses, is written `\uXXXX` (lowercase hex) as ECMAScript `JSON.stringify` writes it.
 - object keys are rendered with the same string rule.
 
-**Objects** (keys in insertion order), one line per key:
+**Key order.** Everywhere in Lens, an object's keys come in ECMAScript property order, as
+`Object.keys` and `JSON.stringify` give them: keys that are array indices (`"0"` to
+`"4294967294"`, with no sign or leading zero) first, in ascending numeric order, then the others
+in insertion order (the order they appear in the frame's JSON text). So `{"b":1,"10":2,"2":3}`
+renders `2`, `10`, `b`. Canonical JSON (§10) sorts differently; it isn't used here.
+
+**Objects** (keys in that order), one line per key:
 - scalar value → `key: scalar`
 - empty object → `key: {}`; empty array → `key: []`
 - non-empty object → `key:` then its entries at indent n+1
@@ -575,7 +581,7 @@ Rendering a value `v` at indent `n` (two spaces per level):
 **Arrays**, under a key `k`:
 - all scalars → `k: [a, b, c]`
 - **table form**: every element is a non-empty object with the **same keys in the same order** and only scalar values → `k[N]{k1,k2,…}:` followed by one row per element at indent n+1: the values rendered as scalars and joined with `,`. (Strings containing `,` are never bare, so rows are unambiguous.)
-- otherwise → `k[N]:` followed by each element at indent n+1 as `- ` plus the element: scalars inline; empty objects as `{}`; non-empty objects with their first entry on the dash line and later entries aligned under it (indent n+2); arrays as `[a, b]` in scalar-list form if all scalars, else compact JSON (no whitespace, insertion order).
+- otherwise → `k[N]:` followed by each element at indent n+1 as `- ` plus the element: scalars inline; empty objects as `{}`; non-empty objects with their first entry on the dash line and later entries aligned under it (indent n+2); arrays as `[a, b]` in scalar-list form if all scalars, else compact JSON (no whitespace, keys in the order above).
 
 A top-level object renders its entries at indent 0. A top-level array renders as if under the key `items`. A top-level scalar renders as a scalar.
 
@@ -584,7 +590,7 @@ A top-level object renders its entries at indent 0. A top-level array renders as
 - Times (fields `expires`, `at`, `until`) render as UTC `YYYY-MM-DDTHH:MMZ`, with `:SS` inserted when seconds ≠ 0.
 - Durations render in the largest of `d`/`h`/`m`/`s` that divides them exactly.
 - Compact JSON (used in `fix`, `need` and non-scalar list items) is exactly ECMAScript
-  `JSON.stringify(v)`: insertion order, no whitespace, numbers per `Number::toString`.
+  `JSON.stringify(v)`: keys in the order of §9.1, no whitespace, numbers per `Number::toString`.
 - A quantity (§5.1) renders as its value in plain decimal with exactly `scale` digits after
   the point (none when `scale` is 0), then a space and the unit if it has one. There is no
   sign and no digit grouping. `{amount: 2290, scale: 2, unit: "USD"}` renders `22.90 USD`,

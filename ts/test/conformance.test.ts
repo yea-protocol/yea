@@ -184,10 +184,12 @@ describe('conformance vectors', () => {
   });
   it('lens', () => {
     for (const c of load('lens')) {
-      expect(
-        c.type === 'value' ? P.lean(c.input) : P.lens(c.input),
-        c.name,
-      ).toBe(c.lens);
+      // `json`: the input as text, for a key order a parsed object can't carry (§9.1).
+      const input = c.json === undefined ? c.input : JSON.parse(c.json);
+
+      expect(c.type === 'value' ? P.lean(input) : P.lens(input), c.name).toBe(
+        c.lens,
+      );
     }
   });
   it('uses', () => {
