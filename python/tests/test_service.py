@@ -1085,3 +1085,112 @@ def test_http_events_reach_on_event_before_the_final_reply():
     finally:
         release.set()
         server.shutdown()
+
+
+def _http_server(body):
+    """An HTTP server that answers each POST with ``body(frame_id, write)``; returns (url, server, sent)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    sent = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            fid = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["id"]
+            self.send_response(200)
+            self.end_headers()
+
+            def write(line):
+                self.wfile.write(line.encode() + b"\n")
+                sent.append(1)
+            try:
+                body(fid, write)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the client stopped reading
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}/yea", server, sent
+
+
+def _event(fid, i, pad=""):
+    return json.dumps({"yea": 1, "id": f"e{i}", "re": fid, "kind": "EVENT", "message": f"step {i}{pad}"})
+
+
+def _ask_http_with(url, on_event):
+    from yea.client.transports import _HttpTransport
+
+    return _HttpTransport(url).request({"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, on_event)
+
+
+def test_a_slow_on_event_holds_an_http_flood_back_instead_of_buffering_it():
+    """The reading thread waits for the loop to take each line, so memory stays bounded however
+    many EVENTs a server sends, as TS's readFinal lets the socket hold the server back (#175)."""
+    import tracemalloc
+
+    def body(fid, write):
+        for i in range(5000):
+            write(_event(fid, i, "x" * 1000))
+        write(json.dumps({"yea": 1, "id": "s", "re": fid, "kind": "ANSWER", "data": 1}))
+
+    url, server, _ = _http_server(body)
+    seen = []
+
+    async def slow(ev):
+        seen.append(1)
+        await asyncio.sleep(0)
+
+    try:
+        tracemalloc.start()
+        r = run(_ask_http_with(url, slow))
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+    finally:
+        server.shutdown()
+    assert r.kind == "ANSWER" and len(seen) == 5000 and r.events_dropped == 5000 - 64
+    assert peak < 2 << 20, peak  # a few MiB of EVENTs were never all held at once
+
+
+def test_an_on_event_that_raises_stops_the_http_reading_thread():
+    """The error reaches the caller, and the thread stops reading instead of draining the body."""
+    def body(fid, write):
+        for i in range(20_000):
+            write(_event(fid, i, "x" * 500))
+
+    url, server, sent = _http_server(body)
+
+    def boom(ev):
+        raise RuntimeError("the callback failed")
+
+    try:
+        with pytest.raises(RuntimeError, match="the callback failed"):
+            run(_ask_http_with(url, boom))
+        time.sleep(1)
+        assert len(sent) < 20_000  # the server was cut off, not read to the end
+    finally:
+        server.shutdown()
+
+
+def test_an_http_stream_without_a_final_reply_and_a_null_line():
+    """EVENTs then a close is "closed without a final reply", as TS says; a JSON null line is dropped."""
+    def events_only(fid, write):
+        write(_event(fid, 1))
+
+    def with_null(fid, write):
+        write("null")
+        write(json.dumps({"yea": 1, "id": "s", "re": fid, "kind": "ANSWER", "data": 1}))
+
+    url, server, _ = _http_server(events_only)
+    try:
+        with pytest.raises(ConnectionError, match="closed without a final reply"):
+            run(_ask_http_with(url, None))
+    finally:
+        server.shutdown()
+    url, server, _ = _http_server(with_null)
+    try:
+        assert run(_ask_http_with(url, None)).data == 1
+    finally:
+        server.shutdown()
