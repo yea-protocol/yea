@@ -1,0 +1,210 @@
+[
+  {
+    "text": "Refund\n  ~ update event/e1 \u2014 fake",
+    "printable": "Refund\\u{a}  ~ update event/e1 \u2014 fake"
+  },
+  {
+    "text": "\r\u001b[2Kapproved",
+    "printable": "\\u{d}\\u{1b}[2Kapproved"
+  },
+  {
+    "text": "pay \u202eDSU 001",
+    "printable": "pay \\u{202e}DSU 001"
+  },
+  {
+    "text": "a\u2028b\u061cc",
+    "printable": "a\\u{2028}b\\u{61c}c"
+  },
+  {
+    "text": "a\nb\u007fc\u0085d",
+    "printable": "a\\u{a}b\\u{7f}c\\u{85}d"
+  },
+  {
+    "text": "acct\u200b_1",
+    "printable": "acct\\u{200b}_1"
+  },
+  {
+    "text": "acct\u200c_1",
+    "printable": "acct\\u{200c}_1"
+  },
+  {
+    "text": "acct\u200d_1",
+    "printable": "acct\\u{200d}_1"
+  },
+  {
+    "text": "acct\u2060_1",
+    "printable": "acct\\u{2060}_1"
+  },
+  {
+    "text": "acct\ufeff_1",
+    "printable": "acct\\u{feff}_1"
+  },
+  {
+    "text": "acct\u00ad_1",
+    "printable": "acct\\u{ad}_1"
+  },
+  {
+    "text": "acct\u180e_1",
+    "printable": "acct\\u{180e}_1"
+  },
+  {
+    "text": "acct\ufff9_1",
+    "printable": "acct\\u{fff9}_1"
+  },
+  {
+    "text": "acct\ufffa_1",
+    "printable": "acct\\u{fffa}_1"
+  },
+  {
+    "text": "acct\ufffb_1",
+    "printable": "acct\\u{fffb}_1"
+  },
+  {
+    "text": "acct\u206a_1",
+    "printable": "acct\\u{206a}_1"
+  },
+  {
+    "text": "acct\u206b_1",
+    "printable": "acct\\u{206b}_1"
+  },
+  {
+    "text": "acct\u206c_1",
+    "printable": "acct\\u{206c}_1"
+  },
+  {
+    "text": "acct\u206d_1",
+    "printable": "acct\\u{206d}_1"
+  },
+  {
+    "text": "acct\u206e_1",
+    "printable": "acct\\u{206e}_1"
+  },
+  {
+    "text": "acct\u206f_1",
+    "printable": "acct\\u{206f}_1"
+  },
+  {
+    "text": "acct\u115f_1",
+    "printable": "acct\\u{115f}_1"
+  },
+  {
+    "text": "acct\u1160_1",
+    "printable": "acct\\u{1160}_1"
+  },
+  {
+    "text": "acct\u3164_1",
+    "printable": "acct\\u{3164}_1"
+  },
+  {
+    "text": "acct\uffa0_1",
+    "printable": "acct\\u{ffa0}_1"
+  },
+  {
+    "text": "acct\u034f_1",
+    "printable": "acct\\u{34f}_1"
+  },
+  {
+    "text": "acct\u17b4_1",
+    "printable": "acct\\u{17b4}_1"
+  },
+  {
+    "text": "acct\u17b5_1",
+    "printable": "acct\\u{17b5}_1"
+  },
+  {
+    "text": "acct\u2028_1",
+    "printable": "acct\\u{2028}_1"
+  },
+  {
+    "text": "acct\u2029_1",
+    "printable": "acct\\u{2029}_1"
+  },
+  {
+    "text": "acct\udb40\udc01_1",
+    "printable": "acct\\u{e0001}_1"
+  },
+  {
+    "text": "acct\udb40\udc20_1",
+    "printable": "acct\\u{e0020}_1"
+  },
+  {
+    "text": "acct\udb40\udc41_1",
+    "printable": "acct\\u{e0041}_1"
+  },
+  {
+    "text": "acct\udb40\udc7f_1",
+    "printable": "acct\\u{e007f}_1"
+  },
+  {
+    "text": "acct\udb40\udc00_1",
+    "printable": "acct\\u{e0000}_1"
+  },
+  {
+    "text": "acct\udb40\udc10_1",
+    "printable": "acct\\u{e0010}_1"
+  },
+  {
+    "text": "acct\udb40\udd00_1",
+    "printable": "acct\\u{e0100}_1"
+  },
+  {
+    "text": "acct\udb40\uddef_1",
+    "printable": "acct\\u{e01ef}_1"
+  },
+  {
+    "text": "acct\ufff0_1",
+    "printable": "acct\\u{fff0}_1"
+  },
+  {
+    "text": "acct\u180b_1",
+    "printable": "acct\\u{180b}_1"
+  },
+  {
+    "text": "acct\u2065_1",
+    "printable": "acct\\u{2065}_1"
+  },
+  {
+    "text": "ok\udb40\udc70\udb40\udc61\udb40\udc79",
+    "printable": "ok\\u{e0070}\\u{e0061}\\u{e0079}"
+  },
+  {
+    "text": "\u0600123",
+    "printable": "\\u{600}123"
+  },
+  {
+    "text": "\ud83d\udc69\u200d\ud83d\udcbb",
+    "printable": "\ud83d\udc69\\u{200d}\ud83d\udcbb"
+  },
+  {
+    "text": "tab\there",
+    "printable": "tab\there"
+  },
+  {
+    "text": "caf\u00e9, na\u00efve, \u00c5ngstr\u00f6m, \u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac, \u0440\u0443\u0441\u0441\u043a\u0438\u0439",
+    "printable": "caf\u00e9, na\u00efve, \u00c5ngstr\u00f6m, \u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac, \u0440\u0443\u0441\u0441\u043a\u0438\u0439"
+  },
+  {
+    "text": "\u6771\u4eac\u3067\u4f1a\u8b70 \u00b7 \uc11c\uc6b8 \u00b7 \u5317\u4eac",
+    "printable": "\u6771\u4eac\u3067\u4f1a\u8b70 \u00b7 \uc11c\uc6b8 \u00b7 \u5317\u4eac"
+  },
+  {
+    "text": "thanks \ud83d\udc4d \ud83c\udf89 \ud83d\ude00",
+    "printable": "thanks \ud83d\udc4d \ud83c\udf89 \ud83d\ude00"
+  },
+  {
+    "text": "\u05e9\u05dc\u05d5\u05dd \u0645\u0631\u062d\u0628\u0627",
+    "printable": "\u05e9\u05dc\u05d5\u05dd \u0645\u0631\u062d\u0628\u0627"
+  },
+  {
+    "text": "ok \u2764\ufe0f \u263a\ufe0e",
+    "printable": "ok \u2764\ufe0f \u263a\ufe0e"
+  },
+  {
+    "text": "a\u2800b",
+    "printable": "a\u2800b"
+  },
+  {
+    "text": "",
+    "printable": ""
+  }
+]

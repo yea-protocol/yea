@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from conftest import CONFORMANCE, load_vectors
 
-from yea import Plan, key_from_seed
+from yea import Plan, decode_grant, key_from_seed
 from yea.approval import (
     HashedPlan, Policy, Tightening, build_form, check_job_consent, checked_phrase, undo_receipt, check_state, decide, job_consent_code, judge_answer,
     load_policy,
@@ -117,18 +117,28 @@ def test_consent_code():
     assert job_consent_code(c["server"], c["principal"], c["input"], to_hashed(c["plan"]), c["phrase"], c["now"]) == c["code"]
 
 
-def test_file_store(tmp_path):
-    """Replay the four operations; every file but receipts is byte-pinned."""
-    refund = next(p for p in DATA["hash"] if p["name"] == "refund")["planHash"]
+async def _file_op(s: FileStore, o: dict):
+    """One ``fileStore.ops`` step, by its TS name; ``settle`` settles the reservation it made."""
+    a = o["args"]
+    if o["op"] == "reserve":
+        r = await s.reserve(LedgerKey(a[0]["block"], a[0]["of"]), a[1], a[2])
+        if o.get("settle") and r:
+            await s.settle(r)
+        return r
+    ops = {"consumeOnce": s.consume_once, "putConsent": s.put_consent, "claimUndo": s.claim_undo,
+           "markUndone": s.mark_undone}
+    return await ops[o["op"]](*a)  # an unknown op is a KeyError: the vectors changed
 
+
+def test_file_store(tmp_path):
+    """Replay the vectors' operations; every file but undo claims is byte-pinned."""
     async def go():
         s = FileStore(tmp_path)
-        await s.consume_once("n_1", DATA["now"] + 600)
-        r = await s.reserve(LedgerKey(DATA["policyBlockId"], "emails"), 5, 10)
-        await s.settle(r)
-        await s.put_consent(refund, "pg1.example")
-        await s.claim_undo("r_AAAAAAAAAAAA")
-        await s.mark_undone("r_AAAAAAAAAAAA")
+        for o in DATA["fileStore"]["ops"]:
+            assert set(o) <= {"op", "args", "expect", "settle"}, o  # a misspelt key would skip its check
+            got = await _file_op(s, o)
+            if "expect" in o:
+                assert got == o["expect"], o
 
     asyncio.run(go())
     files = {p.relative_to(tmp_path).as_posix(): "*" if p.suffix == ".claim" else p.read_text(encoding="utf-8")
@@ -174,6 +184,20 @@ def test_phrase_checks(c):
 
 
 def test_seeds_are_the_keys():
-    """The seeds the vectors were made from give the keys they name."""
+    """The seeds the vectors were made from give the keys they name; the stranger's signs the one
+    policy that isn't the principal's."""
     for who in ("principal", "server"):
         assert key_from_seed(DATA["seeds"][who]).public == DATA["keys"][who]
+    assert _signers(c["policy"].get("grant") for c in DATA["decide"]) - {DATA["keys"]["principal"]} == {
+        key_from_seed(DATA["seeds"]["stranger"]).public}
+
+
+def _signers(grants) -> set[str]:
+    """Who signed each grant that decodes (some cases are malformed on purpose)."""
+    out = set()
+    for g in grants:
+        try:
+            out.add(decode_grant(g).principal)
+        except (TypeError, ValueError):
+            pass
+    return out

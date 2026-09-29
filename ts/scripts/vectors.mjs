@@ -2,11 +2,15 @@
 import { writeFileSync } from 'node:fs';
 import * as P from '../dist/index.js';
 
-const out = (name, v) =>
+// `ascii`: every other character as a \u escape, so a file of invisible characters shows them.
+const out = (name, v, { ascii = false } = {}) => {
+  const json = JSON.stringify(v, null, 2);
+
   writeFileSync(
     new URL(`../../conformance/${name}.json`, import.meta.url),
-    `${JSON.stringify(v, null, 2)}\n`,
+    `${ascii ? json.replace(/[^\n\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`) : json}\n`,
   );
+};
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
 // Canonical base64url (SPEC §6.1): another spelling of the same bytes is malformed. Not every
 // length has one; keys, seeds and signatures do.
@@ -1537,6 +1541,42 @@ out(
     'p_KEs5H7dM · 2026-09-24T15:00Z',
     '  lead\n    deep\n z',
   ].map((text) => ({ text, est: P.est(text) })),
+);
+
+// printable: what a consent screen escapes (security.test.ts [A8]), so both sides escape the same code points
+const invisible = [
+  0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0xad, 0x180e, 0xfff9, 0xfffa, 0xfffb,
+  0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x115f, 0x1160, 0x3164,
+  0xffa0, 0x034f, 0x17b4, 0x17b5, 0x2028, 0x2029, 0xe0001, 0xe0020, 0xe0041,
+  0xe007f,
+  // Default-ignorable, some unassigned: tags, variation selectors 17-256, specials.
+  0xe0000,
+  0xe0010, 0xe0100, 0xe01ef, 0xfff0, 0x180b, 0x2065,
+];
+
+out(
+  'printable',
+  [
+    'Refund\n  ~ update event/e1 — fake',
+    '\r\x1b[2Kapproved',
+    'pay \u202eDSU 001',
+    'a\u2028b\u061cc',
+    'a\nb\x7fc\x85d',
+    ...invisible.map((cp) => `acct${String.fromCodePoint(cp)}_1`),
+    `ok${[...'pay'].map((c) => String.fromCodePoint(0xe0000 + (c.codePointAt(0) ?? 0))).join('')}`,
+    '\u0600123',
+    '\u{1f469}\u200d\u{1f4bb}',
+    // Left alone: tabs, ordinary text in any script, emoji style selectors, the Braille blank.
+    'tab\there',
+    'café, naïve, Ångström, Ελληνικά, русский',
+    '東京で会議 · 서울 · 北京',
+    'thanks 👍 🎉 😀',
+    'שלום مرحبا',
+    'ok \u2764\ufe0f \u263a\ufe0e',
+    'a\u2800b',
+    '',
+  ].map((text) => ({ text, printable: P.printable(text) })),
+  { ascii: true },
 );
 out('approval', (await import('./approval-vectors.mjs')).approval);
 console.log('vectors written');

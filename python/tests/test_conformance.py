@@ -6,6 +6,7 @@ from conftest import CONFORMANCE, load_vectors
 from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
 from yea._json import CanonicalError
 from yea.keys import verify_proof
+from yea.text import printable
 from yea.uses import is_uses
 
 
@@ -42,6 +43,12 @@ def test_canonical_joins_a_surrogate_pair_built_in_python():
 @pytest.mark.parametrize("case", cases("estimate", "text"))
 def test_estimate(case):
     assert est(case["text"]) == case["est"]
+
+
+@pytest.mark.parametrize("case", cases("printable", "text"))
+def test_printable(case):
+    """A consent screen escapes the same code points on both sides (security.test.ts [A8])."""
+    assert printable(case["text"]) == case["printable"]
 
 
 @pytest.mark.parametrize("case", cases("hash"))
