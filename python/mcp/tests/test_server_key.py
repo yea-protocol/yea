@@ -123,3 +123,10 @@ def test_the_file_read_is_the_file_checked_even_if_another_replaces_the_path(tmp
     monkeypatch.setattr(keys.os, "open", open_then_swap)
     assert keys._read_key(p) == SEED
     assert p.read_text().strip() == other
+
+
+def test_a_seed_that_isnt_canonical_is_refused(tmp_path):
+    """A seed's last character changed only in its unused bits is refused, as a malformed seed."""
+    odd = SEED[:-1] + ("F" if SEED[-1] != "F" else "B")  # 'E' ends 1 bits; 'F' differs only there
+    with pytest.raises(ValueError, match="does not hold an Ed25519 seed"):
+        load_server_key(key_at(tmp_path, text=odd + "\n"))

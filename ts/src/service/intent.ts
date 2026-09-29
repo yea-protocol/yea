@@ -181,11 +181,18 @@ export class IntentHandler {
     return { ...p, hash: await proposalHash(p) } as Proposal;
   }
 
-  /** Commit an auto INTENT's proposal now if a grant allows it outright; null leaves it a proposal. */
+  /**
+   * Commit an auto INTENT's proposal now if it is undoable and a grant allows it outright; null
+   * leaves it a proposal. An undo window of 0 can never be used, so it doesn't count (§4.3.1).
+   */
   private async autoCommit(
     stored: StoredProposal,
     run: IntentRun,
   ): Promise<FinalReply | null> {
+    if ((stored.proposal.undo?.window ?? 0) <= 0) {
+      return null;
+    }
+
     const ok = await this.state.authorizer.autoAuth(run.req, stored.proposal);
 
     if (!ok || (stored.principal && stored.principal !== ok.iss)) {

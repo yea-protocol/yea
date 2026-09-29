@@ -43,6 +43,10 @@ export function newState(o: {
   };
 }
 
+/** A round counts the forms shown, from 1; one past the last is never sent round (§4). */
+const isRound = (r: unknown): r is number =>
+  Number.isSafeInteger(r) && (r as number) >= 1 && (r as number) <= MAX_ROUNDS;
+
 function isState(v: unknown): v is ApprovalState {
   const s = v as Partial<ApprovalState> | null;
 
@@ -53,7 +57,7 @@ function isState(v: unknown): v is ApprovalState {
     typeof s.inputHash === 'string' &&
     typeof s.sub === 'string' &&
     isStringList(s.plans) &&
-    Number.isSafeInteger(s.round) &&
+    isRound(s.round) &&
     typeof s.nonce === 'string' &&
     Number.isSafeInteger(s.exp)
   );

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from ._json import MAX_SAFE_INT, b64url_decode, b64url_encode, canonical_bytes
+from ._json import MAX_SAFE_INT, b64url_decode, b64url_encode, canonical_bytes, is_b64url
 
 KEY_PREFIX = "ed25519:"
 PROOF_SKEW = 300  # seconds (SPEC §6.5)
@@ -48,6 +49,11 @@ def generate_key() -> KeyPair:
 
 def key_from_seed(seed: bytes | str) -> KeyPair:
     return KeyPair.from_seed(seed)
+
+
+def is_public_key(v: Any) -> bool:
+    """An Ed25519 public key as YEA writes it (SPEC §6.1): ``ed25519:`` and 32 bytes in canonical b64url."""
+    return isinstance(v, str) and v.startswith(KEY_PREFIX) and is_b64url(v[len(KEY_PREFIX):], 32)
 
 
 def parse_public_key(key: str) -> Ed25519PublicKey:

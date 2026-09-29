@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .._json import b64url_decode, b64url_encode, canonical_bytes, loads, sha256_b64url
+from .._json import b64url_decode, b64url_encode, canonical_bytes, is_b64url, loads, sha256_b64url
 from ..keys import KeyPair
 
 TOKEN_PREFIX = "pg1."
@@ -96,7 +96,7 @@ def decode_grant(token: str) -> Grant:
     if not isinstance(blocks, list) or not blocks:
         raise ValueError("grant has no blocks")
     for i, b in enumerate(blocks):
-        if not isinstance(b, dict) or not isinstance(b.get("p"), dict) or not isinstance(b.get("s"), str):
+        if not isinstance(b, dict) or not isinstance(b.get("p"), dict) or not is_b64url(b.get("s"), 64):
             raise ValueError("malformed block")
         p = b["p"]
         need = ("iss", "sub", "nonce") if i == 0 else ("prev", "sub")

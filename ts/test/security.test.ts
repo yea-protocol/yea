@@ -8,9 +8,12 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
@@ -26,9 +29,11 @@ import {
   consentView,
   NO_DETAIL,
 } from '../src/approve.js';
+import { grantCovers } from '../src/client/grant-scope.js';
 import * as P from '../src/index.js';
 import {
   checkKeyFile,
+  checkServerKeyDir,
   connect,
   FileStore,
   listen,
@@ -41,23 +46,52 @@ import {
 import { printable } from '../src/text.js';
 import { createToolHost } from '../src/tools.js';
 
-// A pass-through `openSync` that can run a hook right after the real open, to swap a key file
-// between the open and the read (the private key files block below). Null leaves fs alone.
+// Pass-through `openSync`, `renameSync`, `mkdirSync` and `accessSync` with hooks: to swap a file
+// just before or after an open (the key file blocks below), to act right after a rename or a
+// mkdir (the undo claim tests), and to say which paths this user may write (the pinned key tests, which can't make
+// root-owned files). Null leaves fs alone.
 const fsHook = vi.hoisted(() => ({
+  beforeOpen: null as ((path: string) => void) | null,
   afterOpen: null as ((path: string) => void) | null,
+  afterRename: null as ((from: string) => void) | null,
+  afterMkdir: null as ((path: string) => void) | null,
+  writable: null as ((path: string) => boolean) | null,
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal<typeof import('node:fs')>();
   const openSync = (...args: Parameters<typeof real.openSync>) => {
+    fsHook.beforeOpen?.(String(args[0]));
+
     const fd = real.openSync(...args);
 
     fsHook.afterOpen?.(String(args[0]));
 
     return fd;
   };
+  const renameSync = (...args: Parameters<typeof real.renameSync>) => {
+    real.renameSync(...args);
+    fsHook.afterRename?.(String(args[0]));
+  };
+  const mkdirSync = (...args: Parameters<typeof real.mkdirSync>) => {
+    const made = real.mkdirSync(...args);
 
-  return { ...real, default: { ...real, openSync }, openSync };
+    fsHook.afterMkdir?.(String(args[0]));
+
+    return made;
+  };
+  const accessSync = (...args: Parameters<typeof real.accessSync>) => {
+    if (!fsHook.writable) {
+      return real.accessSync(...args);
+    }
+
+    if (!fsHook.writable(String(args[0]))) {
+      throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+    }
+  };
+  const hooked = { openSync, renameSync, mkdirSync, accessSync };
+
+  return { ...real, ...hooked, default: { ...real, ...hooked } };
 });
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
@@ -2249,3 +2283,493 @@ describe('lone surrogates have no canonical form (#160)', () => {
     expect((await intent({ to: '🎉' })).kind).toBe('PROPOSALS');
   });
 });
+
+// Another spelling of the same bytes that isn't canonical base64url (SPEC §6.1). Not every
+// length has one; 43 (keys, seeds) and 86 (signatures) do.
+function nonCanonical(s: string): string {
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const last = alphabet.indexOf(s[s.length - 1]);
+
+  if (s.length % 4 < 2 || last < 0) {
+    throw new Error(`no non-canonical spelling of ${s}`);
+  }
+
+  return s.slice(0, -1) + alphabet[last | 1];
+}
+
+describe('canonical base64url (SPEC §6.1)', () => {
+  const withSig = (token: string, s: (s: string) => string) => {
+    const [root, ...rest] = P.decodeGrant(token);
+
+    return P.encodeGrant([{ ...root, s: s(root.s) }, ...rest]);
+  };
+  const ask = {
+    service: 'pay',
+    verb: 'ASK' as const,
+    capability: 'pay.send',
+    now: Math.floor(Date.now() / 1000),
+  };
+
+  it('[B64] a re-encoded signature is refused', async () => {
+    const svc = payService();
+    const grant = await P.issueGrant({
+      principal,
+      to: agent.public,
+      caveats: [{ total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } }],
+    });
+    const c = new P.Client(P.local(svc), { key: agent.seed, grants: [grant] });
+
+    expect((await c.commit(await intent(c, { to: 'a', amt: 60 }))).kind).toBe(
+      'RECEIPT',
+    );
+
+    const again = new P.Client(P.local(svc), {
+      key: agent.seed,
+      grants: [withSig(grant, nonCanonical)],
+    });
+    const r = await again.commit(await intent(again, { to: 'b', amt: 60 }));
+
+    expect(r.kind === 'ERROR' && r.code).toBe('unauthorized');
+
+    // The original grant has 60 of its 100 used, so another 60 still needs consent.
+    const more = await c.commit(await intent(c, { to: 'c', amt: 60 }));
+
+    expect(more.kind === 'ERROR' && more.code).toBe('consent_required');
+  });
+
+  it('[B64] a grant whose signature is non-canonical, padded or off-alphabet is refused', async () => {
+    const grant = await P.issueGrant({ principal, to: agent.public });
+    const ctx = { ...ask, trusted: [principal.public], proofKey: agent.public };
+
+    expect((await P.checkGrant(grant, ctx)).ok).toBe(true);
+
+    for (const s of [
+      nonCanonical,
+      (s: string) => `${s}==`,
+      (s: string) => `+${s.slice(1)}`,
+      (s: string) => `${s}A`,
+    ]) {
+      const bad = withSig(grant, s);
+
+      expect(bad).not.toBe(grant);
+      expect(await P.checkGrant(bad, ctx)).toMatchObject({
+        ok: false,
+        code: 'unauthorized',
+      });
+      await expect(P.inspectGrant(bad)).rejects.toThrow(/malformed block/);
+    }
+  });
+
+  it('[B64] a non-canonical key is refused in grants, proofs and signatures', async () => {
+    const msg = 'm';
+    const sig = await P.sign(agent.seed, msg);
+    const key = `ed25519:${nonCanonical(agent.public.slice(8))}`;
+
+    expect(await P.verify(agent.public, msg, sig)).toBe(true);
+    expect(await P.verify(key, msg, sig)).toBe(false);
+    expect(await P.verify(agent.public, msg, nonCanonical(sig))).toBe(false);
+    expect(P.isPublicKey(agent.public)).toBe(true);
+    expect(P.isPublicKey(key)).toBe(false);
+
+    const target = { aud: 'pay', verb: 'ASK' as const, target: 'pay.send' };
+    const proof = await P.makeProof(agent.seed, target);
+
+    expect(await P.checkProof(proof, target)).toBeNull();
+    expect(await P.checkProof({ ...proof, key }, target)).toMatch(/invalid/);
+    expect(
+      await P.checkProof({ ...proof, sig: nonCanonical(proof.sig) }, target),
+    ).toMatch(/invalid/);
+
+    // The principal signs a root to the agent's key written non-canonically; the agent delegates.
+    const root = await P.issueGrant({ principal, to: key });
+    const delegated = await P.delegateGrant(root, {
+      holder: { seed: agent.seed, public: key },
+      to: otherAgent.public,
+    });
+
+    expect(
+      await P.checkGrant(delegated, {
+        ...ask,
+        trusted: [principal.public],
+        proofKey: otherAgent.public,
+      }),
+    ).toMatchObject({ ok: false, code: 'unauthorized' });
+    await expect(P.keyPair(nonCanonical(agent.seed))).rejects.toThrow();
+  });
+
+  it('[B64] grant tokens and consent codes decode only from canonical base64url', async () => {
+    // A nonce chosen so the token has a non-canonical spelling.
+    const tokens = await Promise.all(
+      ['n', 'nn', 'nnn'].map((nonce) =>
+        P.issueGrant({ principal, to: agent.public, nonce }),
+      ),
+    );
+    const grant = tokens.find((t) => t.length % 4 > 1);
+
+    if (!grant) {
+      throw new Error('no grant token with a non-canonical spelling');
+    }
+
+    const body = grant.slice(4);
+
+    expect(P.decodeGrant(grant)).toHaveLength(1);
+    expect(() => P.decodeGrant(`pg1.${nonCanonical(body)}`)).toThrow(
+      'not valid b64url JSON',
+    );
+    expect(() => P.decodeGrant(`${grant}=`)).toThrow('not valid b64url JSON');
+
+    // A summary chosen so the code has a non-canonical spelling.
+    const code = ['x', 'xx', 'xxx']
+      .map((summary) =>
+        P.consentCode({
+          proposal: 'p_1',
+          hash: 'h',
+          service: 'pay',
+          capability: 'pay.send',
+          principal: principal.public,
+          summary,
+          expires: 1,
+        }),
+      )
+      .find((c) => c.length % 4 > 1);
+
+    if (!code) {
+      throw new Error('no consent code with a non-canonical spelling');
+    }
+
+    const reencoded = `pc1.${nonCanonical(code.slice(4))}`;
+
+    expect(P.decodeConsentCode(code).proposal).toBe('p_1');
+    expect(() => P.decodeConsentCode(reencoded)).toThrow();
+  });
+});
+
+// Stricter checks on the files the SDK trusts and the approval state it keeps. The pinned key
+// tests pretend to be another user (`asOtherUser`), since a test can't make root-owned files.
+describe.skipIf(typeof process.getuid !== 'function' || process.getuid() === 0)(
+  'stricter key file and store checks',
+  () => {
+    const OTHER_UID = (process.getuid?.() ?? 0) + 12345;
+
+    /** Run `fn` as if this process were another user, who can write only what `writable` allows. */
+    const asOtherUser = <T>(writable: (p: string) => boolean, fn: () => T) => {
+      const getuid = vi
+        .spyOn(process as { getuid: () => number }, 'getuid')
+        .mockReturnValue(OTHER_UID);
+
+      fsHook.writable = writable;
+
+      try {
+        return fn();
+      } finally {
+        fsHook.writable = null;
+        getuid.mockRestore();
+      }
+    };
+    const mkfifo = (path: string) => {
+      try {
+        execFileSync('mkfifo', [path]);
+
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const receipt = (undo: unknown): P.JobReceipt =>
+      ({
+        id: 'r_AAAAAAAAAAAA',
+        service: 'S',
+        proposal: 'H',
+        capability: 'x',
+        summary: 'x',
+        at: now,
+        effects: [],
+        undo,
+        tool: 'x',
+        input: {},
+        planHash: 'H',
+        sub: '',
+        result: null,
+      }) as P.JobReceipt;
+
+    it('checks every symlink on the way to the pinned key, not only the first and the last', () => {
+      const safe = tmp();
+      const risky = tmp();
+      const key = join(safe, 'principal.pub');
+      const hop = join(risky, 'hop.pub');
+      const entry = join(safe, 'entry.pub');
+
+      writeFileSync(key, principal.public);
+      symlinkSync(key, hop);
+      symlinkSync(hop, entry);
+
+      const riskyReal = realpathSync(risky);
+
+      asOtherUser(
+        (p) => p.startsWith(riskyReal),
+        () => {
+          expect(readPinnedKey(key)).toEqual({ key: principal.public });
+          expect(checkKeyFile(entry)).toBe(
+            `${riskyReal} can be changed by this user, so the agent could replace the principal key`,
+          );
+          expect('why' in readPinnedKey(entry)).toBe(true);
+        },
+      );
+    });
+
+    it('refuses a pinned key that is a directory, cleanly', () => {
+      const sub = join(tmp(), 'principal.pub');
+
+      mkdirSync(sub);
+      asOtherUser(
+        () => false,
+        () =>
+          expect(readPinnedKey(sub)).toEqual({
+            why: `${sub} is not a regular file`,
+          }),
+      );
+    });
+
+    it('refuses a pinned key that is a FIFO without blocking', (ctx) => {
+      const fifo = join(tmp(), 'principal.pub');
+
+      if (!mkfifo(fifo)) {
+        ctx.skip();
+      }
+
+      asOtherUser(
+        () => false,
+        () =>
+          expect(readPinnedKey(fifo)).toEqual({
+            why: `${fifo} is not a regular file`,
+          }),
+      );
+    });
+
+    it('reads the pinned key through one descriptor: a FIFO or symlink swapped in after the check is refused', (ctx) => {
+      const dir = tmp();
+      const key = join(dir, 'principal.pub');
+      const fifo = join(dir, 'fifo');
+      const other = join(dir, 'other.pub');
+
+      writeFileSync(key, principal.public);
+      writeFileSync(other, principal.public);
+
+      if (!mkfifo(fifo)) {
+        ctx.skip();
+      }
+
+      const real = realpathSync(key);
+      const swapIn = (replacement: string) => {
+        fsHook.beforeOpen = (p) => {
+          if (p === real) {
+            fsHook.beforeOpen = null;
+            renameSync(replacement, real);
+          }
+        };
+      };
+
+      try {
+        asOtherUser(
+          () => false,
+          () => {
+            swapIn(fifo);
+            expect(readPinnedKey(key)).toEqual({
+              why: `${real} is not a regular file`,
+            });
+            rmSync(real);
+            writeFileSync(real, principal.public);
+            symlinkSync(other, `${real}.link`);
+            swapIn(`${real}.link`);
+            expect(readPinnedKey(key)).toEqual({
+              why: `refusing the principal key: ${real} is a symlink`,
+            });
+          },
+        );
+      } finally {
+        fsHook.beforeOpen = null;
+      }
+    });
+
+    it('refuses a symlinked server key directory', () => {
+      const dir = tmp();
+      const keys = join(dir, 'keys');
+      const link = join(dir, 'server');
+
+      mkdirSync(keys, { mode: 0o700 });
+      symlinkSync(keys, link);
+      expect(checkServerKeyDir(keys)).toBeNull();
+      expect(checkServerKeyDir(link)).toBe(`${link} is a symlink`);
+    });
+
+    it('does not claim an undo again once a slow revert finished while its stale claim was broken', async () => {
+      const root = tmp();
+      const store = new FileStore(root);
+      const id = 'r_AAAAAAAAAAAA';
+      const claim = join(root, 'undo', `${id}.claim`);
+      const old = new Date(Date.now() - 3_600_000);
+
+      expect(await store.claimUndo(id)).toBe(true);
+      utimesSync(claim, old, old);
+      // The slow revert finishes just as another process breaks its claim as stale.
+      fsHook.afterRename = (from) => {
+        if (from === claim) {
+          fsHook.afterRename = null;
+          writeFileSync(join(root, 'undo', `${id}.done`), '');
+        }
+      };
+
+      try {
+        expect(await store.claimUndo(id)).toBe(false);
+      } finally {
+        fsHook.afterRename = null;
+      }
+    });
+
+    it('does not claim an undo that was marked done while the claim was being made', async () => {
+      const root = tmp();
+      const store = new FileStore(root);
+      const id = 'r_AAAAAAAAAAAA';
+
+      // Another process finishes the undo between the first look for `done` and the claim.
+      fsHook.afterMkdir = (path) => {
+        if (path === join(root, 'undo')) {
+          fsHook.afterMkdir = null;
+          writeFileSync(join(root, 'undo', `${id}.done`), '');
+        }
+      };
+
+      try {
+        expect(await store.claimUndo(id)).toBe(false);
+      } finally {
+        fsHook.afterMkdir = null;
+      }
+
+      expect(existsSync(join(root, 'undo', `${id}.claim`))).toBe(false);
+    });
+
+    it('the file store makes its files 0600 and its directories 0700', async () => {
+      const root = tmp();
+      const store = new FileStore(root);
+
+      await store.putReceipt(receipt({ until: now }));
+      await store.putConsent('H', 'pg1.x');
+      await store.consumeOnce('n_1', now + 600);
+      await store.claimUndo('r_AAAAAAAAAAAA');
+      await store.reserve({ block: 'B', of: 'emails' }, 1n, 5n);
+
+      const modes = readdirSync(root, { recursive: true }).map((name) => {
+        const st = statSync(join(root, String(name)));
+
+        return [String(name), st.mode & 0o777, st.isDirectory()] as const;
+      });
+
+      expect(modes.length).toBeGreaterThan(5);
+
+      for (const [name, mode, isDir] of modes) {
+        expect(mode, name).toBe(isDir ? 0o700 : 0o600);
+      }
+    });
+
+    // A well-formed (unverified) signature: the grants below are only decoded, never checked.
+    const SIG = P.b64u(new Uint8Array(64));
+
+    it('a grant whose svc caveat is not a list of service ids covers no service', () => {
+      const grant = (svc: unknown) =>
+        P.encodeGrant([
+          { p: { sub: '', caveats: [{ svc } as P.Caveat], iat: 0 }, s: SIG },
+        ]);
+
+      expect(grantCovers(grant(['pay']), 'pay')).toBe(true);
+      expect(grantCovers(grant(['payments']), 'pay')).toBe(false);
+
+      for (const svc of ['xpayx', 'pay', '', null, {}, 0]) {
+        expect(grantCovers(grant(svc), 'pay'), JSON.stringify(svc)).toBe(false);
+      }
+    });
+
+    it('a grant covers a service only if every svc caveat lists it', () => {
+      const grant = (...svcs: string[][]) =>
+        P.encodeGrant(
+          svcs.map((svc) => ({
+            p: { sub: '', caveats: [{ svc }], iat: 0 },
+            s: SIG,
+          })),
+        );
+
+      expect(grantCovers(grant(['pay'], ['pay', 'shop']), 'pay')).toBe(true);
+      expect(grantCovers(grant(['pay'], ['shop']), 'pay')).toBe(false);
+      expect(grantCovers(grant(['shop'], ['pay']), 'pay')).toBe(false);
+    });
+
+    it('an approval state past the last round, or before the first, is refused', () => {
+      const expect_ = { tool: 't', inputHash: 'h', sub: '', now };
+      const state = (round: number) =>
+        P.newState({
+          tool: 't',
+          inputHash: 'h',
+          sub: '',
+          plans: [],
+          round,
+          now,
+        });
+
+      for (let round = 1; round <= P.MAX_ROUNDS; round++) {
+        expect(P.checkState(state(round), expect_)).not.toBeNull();
+      }
+
+      for (const round of [0, -1, P.MAX_ROUNDS + 1, 1000]) {
+        expect(P.checkState(state(round), expect_), String(round)).toBeNull();
+      }
+    });
+
+    it('a receipt with a malformed undo can never be undone', async () => {
+      for (const undo of [{}, { until: 'soon' }, { until: 1.5 }]) {
+        const store = new P.MemoryStore();
+        const revert = vi.fn();
+
+        await store.putReceipt(receipt(undo));
+
+        const out = await P.undoJob(store, {
+          id: 'r_AAAAAAAAAAAA',
+          service: 'S',
+          sub: '',
+          now,
+          revert,
+        });
+
+        expect(out, JSON.stringify(undo)).toEqual({
+          kind: 'refused',
+          why: 'this job can never be undone',
+        });
+        expect(revert).not.toHaveBeenCalled();
+      }
+    });
+
+    it('an auto INTENT whose plan has an undo window of 0 is not committed on its own', async () => {
+      const apply = vi.fn(() => null);
+      const svc = P.service({
+        id: 'cal',
+        name: 'Cal',
+        summary: 'cal',
+        trust: [principal.public],
+      }).intent('cal.move', {
+        summary: 'move',
+        plan: () => ({
+          summary: 'move it',
+          effects: [P.update('event/1', 'start', 'a', 'b')],
+          undoWindow: 0,
+          apply,
+          revert: () => null,
+        }),
+      });
+      const c = await client(svc, agent, principal);
+
+      expect((await c.intent('cal.move', {}, { auto: true })).kind).toBe(
+        'PROPOSALS',
+      );
+      expect(apply).not.toHaveBeenCalled();
+    });
+  },
+);

@@ -69,6 +69,7 @@ class Service:
         self._receipts: dict[str, _StoredReceipt] = {}
         self._spent: dict[tuple[str, str], int] = {}  # (block id, measure) -> exact value at scale 18
         self._auto_seen: dict[str, tuple[asyncio.Task, int]] = {}
+        self._sweeps = 0  # INTENTs since start, for the periodic sweep (service/sweep.py)
 
     def now(self) -> int:
         return int(self._now())

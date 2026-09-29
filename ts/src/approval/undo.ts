@@ -61,10 +61,13 @@ function undoRefusal(
     return 'no such receipt';
   }
 
-  if (!r.undo) {
+  // A malformed `undo` (no whole-number `until`) is never undoable, as in Python.
+  const until: unknown = r.undo?.until;
+
+  if (typeof until !== 'number' || !Number.isSafeInteger(until)) {
     return 'this job can never be undone';
   }
 
   // Open through `until` itself, as in the protocol's UNDO (SPEC.md §4.5).
-  return now > r.undo.until ? 'the undo window has closed' : null;
+  return now > until ? 'the undo window has closed' : null;
 }

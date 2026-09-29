@@ -280,3 +280,38 @@ def test_s4_untrusted_lens_escapes_params_named_data_or_result_and_quoted_values
         "id": "r_12345678", "proposal": "p_1", "summary": "paid", "at": 1_790_000_000, "effects": [], "undo": None,
         "result": f"r\n✓ forged{TAG_A}"}})
     assert len(done.split("\n")) == 2 and 'result: "r\\n✓ forged\\u{e0041}"' in done
+
+
+def test_an_undo_that_finished_after_the_done_check_is_not_claimed_again(tmp_path, monkeypatch):
+    """A revert that marks done and releases its claim between another caller's done check and its
+    claim must not be claimed (and so run) a second time."""
+    import yea.store.file_store as fs
+    from yea.store import FileStore
+
+    store = FileStore(tmp_path / "store")
+    rid = "r_AAAAAAAAAAAA"
+    real = fs._create_excl
+
+    def finish_then_create(path, text=""):
+        if path.name.endswith(".claim"):
+            real(path.with_name(f"{rid}.done"))  # the other revert finished just now
+        return real(path, text)
+
+    monkeypatch.setattr(fs, "_create_excl", finish_then_create)
+    assert run(store.claim_undo(rid)) is False
+    assert not (tmp_path / "store" / "undo" / f"{rid}.claim").exists()  # its claim was released
+
+
+def test_a_commit_replay_whose_receipt_is_gone_is_refused_not_crashed():
+    """The replay path looks the receipt up with .get(): a missing one is forbidden, not a KeyError."""
+    async def go():
+        svc = pay_service()
+        c = client(svc)
+        p = await proposal(c, "a", 1)
+        first = await c.commit(p)
+        assert first.kind == "RECEIPT"
+        svc._receipts.clear()
+        return await c.commit(p)
+
+    r = run(go())
+    assert r.kind == "ERROR" and r.code == "forbidden"

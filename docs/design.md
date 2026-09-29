@@ -243,6 +243,18 @@ It confirmed 15 findings, and every one now has a regression test in
   `risk: "toString"` failing open, a mismatched `re` on concurrent failing `UNDO`s,
   grant selection that ignored the proposal's principal, an unenforced 1 MiB frame
   limit, unbounded state maps, and `checkGrant` throwing on a `null` caveat.
+- **Base64url and local state
+  ([GHSA-8mvj-4xpr-rmqw](https://github.com/yea-protocol/yea/security/advisories/GHSA-8mvj-4xpr-rmqw)),
+  fixed before the first release:** base64url decoding accepted more than one spelling
+  of the same bytes, so a grant's signature could be re-encoded into a new block id and
+  its `total` limit counted from zero again. Keys, seeds, signatures and grants now
+  decode only from canonical base64url (§6.1), and Python checks the strict alphabet
+  too. Alongside it: the principal key path is checked link by link and read without
+  following a symlink or opening a FIFO; the server key directory may not be a symlink
+  or group-writable; store files are 0600 in 0700 directories; an undo claim re-checks
+  whether the undo already finished; a `svc` caveat covers a service only if every list
+  names it; out-of-range approval state is refused; and Python's client checks
+  `INTENT` replies and sweeps service state as TypeScript does.
 
 ## Non-goals and known limits (v1)
 

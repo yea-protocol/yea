@@ -83,7 +83,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
       inputSchema: z.object({ path: z.string() }),
     },
     async ({ path }) => {
-      await rm(await inside(root, path));
+      await rm(await fileInside(root, path));
 
       return { content: [{ type: 'text', text: `deleted ${path}` }] };
     },
@@ -92,7 +92,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
   // One call: now it shows its plan and asks the person before it runs.
   approvals.guard(server, deleteFile, {
     describe: async (input) => {
-      await inside(root, String(input.path)); // refuse before anyone is asked
+      await fileInside(root, String(input.path)); // refuse before anyone is asked
 
       return {
         summary: `Delete ${String(input.path)}`,
@@ -106,8 +106,8 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
 ```
 
 Call it from your server factory, with `approvals` from
-`yea({ name: 'files', transport: 'stdio' })`, created once per process. `inside()` keeps
-paths in one folder; it's in the guide. From there, the
+`yea({ name: 'files', transport: 'stdio' })`, created once per process. `fileInside()` keeps
+paths to files in one folder; it's in the guide. From there, the
 [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed policy
 that lets undoable jobs run on their own, and consent codes for clients that can't ask. The
 whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).

@@ -54,11 +54,16 @@ class FileStore:
         undo = self.root / "undo"
         if (undo / f"{_receipt_id(id)}.done").exists():
             return False
-        claim = undo / f"{id}.claim"
-        if _create_excl(claim, _token()):
-            return True
-        _break_if_stale(claim, CLAIM_STALE)  # a revert that crashed mid-way can be tried again
-        return not (undo / f"{id}.done").exists() and _create_excl(claim, _token())
+        claim, token = undo / f"{id}.claim", _token()
+        if not _create_excl(claim, token):
+            _break_if_stale(claim, CLAIM_STALE)  # a revert that crashed mid-way can be tried again
+            if not _create_excl(claim, token):
+                return False
+        # A revert that finished (and released its claim) after the done check above: never twice.
+        if (undo / f"{id}.done").exists():
+            _release(claim, token)
+            return False
+        return True
 
     async def release_undo(self, id: str) -> None:
         (self.root / "undo" / f"{_receipt_id(id)}.claim").unlink(missing_ok=True)

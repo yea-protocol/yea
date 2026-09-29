@@ -169,13 +169,28 @@ def b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
+_B64URL = re.compile(r"[A-Za-z0-9_-]*")
+
+
 def b64url_decode(s: str) -> bytes:
-    if not isinstance(s, str) or "=" in s:
-        raise ValueError("b64url must be an unpadded string")
+    """Decode canonical base64url (SPEC §6.1): the alphabet only, no padding, and the unused bits
+    of the last character zero, so every byte string has exactly one encoding. Anything else
+    raises ValueError."""
+    if not isinstance(s, str) or not _B64URL.fullmatch(s) or len(s) % 4 == 1:
+        raise ValueError("invalid base64url")
+    out = base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+    if b64url_encode(out) != s:
+        raise ValueError("non-canonical base64url")
+    return out
+
+
+def is_b64url(s: Any, nbytes: int | None = None) -> bool:
+    """Whether ``s`` is canonical base64url (see ``b64url_decode``), of exactly ``nbytes`` bytes if given."""
     try:
-        return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
-    except Exception as e:  # binascii.Error
-        raise ValueError(f"invalid b64url: {e}") from None
+        raw = b64url_decode(s)
+    except ValueError:
+        return False
+    return nbytes is None or len(raw) == nbytes
 
 
 def sha256_b64url(data: bytes) -> str:

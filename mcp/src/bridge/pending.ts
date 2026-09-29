@@ -22,7 +22,7 @@ export interface Pending {
   proposals: Proposal[];
   /** A code per proposal that can be approved (`yea approve`). */
   codes: { proposal: string; code: string }[];
-  /** Consents a COMMIT failed with: never tried again for this entry. */
+  /** The ids (`consentId`) of consents a COMMIT failed with: never tried again for this entry. */
   refused: Set<string>;
 }
 

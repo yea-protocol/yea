@@ -16,5 +16,25 @@
     "ts": 1,
     "key": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
     "sig": "Pw-ICUcRTFmKS5H0iys1cW_g4UUUhH9d74MODaEpRQD1yaezRIfHooyaGHiQkt1t70GT1kXenHzAD5LZL0p-Ag"
+  },
+  {
+    "seed": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+    "aud": "cal.example.com",
+    "verb": "COMMIT",
+    "target": "abc",
+    "ts": 1790000000,
+    "key": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+    "sig": "sFOOC1BWcGs0vubIEO-pGnF6GUQisyMj2WJOuAinJnVWMoVBcLOrU2YT8fU7qCMoowzdH4eRyTR5IAZdXaA8Ah",
+    "valid": false
+  },
+  {
+    "seed": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+    "aud": "cal.example.com",
+    "verb": "COMMIT",
+    "target": "abc",
+    "ts": 1790000000,
+    "key": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5R",
+    "sig": "sFOOC1BWcGs0vubIEO-pGnF6GUQisyMj2WJOuAinJnVWMoVBcLOrU2YT8fU7qCMoowzdH4eRyTR5IAZdXaA8Ag",
+    "valid": false
   }
 ]

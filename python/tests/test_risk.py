@@ -75,3 +75,42 @@ def test_check_consent_refuses_an_unknown_risk():
     consent = {"proposal": "p1", "hash": p["hash"], "service": "svc", "capability": "x.do"}
     with pytest.raises(ValueError, match="unknown risk"):
         check_consent(consent, p, "svc")
+
+
+class _Replies:
+    """A transport that answers every request with one fixed frame, as a hostile service would."""
+
+    def __init__(self, frame):
+        self.frame = frame
+
+    async def request(self, frame, on_event):
+        return Reply({**self.frame, "re": frame["id"]})
+
+    async def close(self):
+        pass
+
+
+BAD_PROPOSALS = {"yea": 1, "id": "s_1", "kind": "PROPOSALS", "proposals": [
+    {"id": "p_1", "hash": "h", "summary": "x", "effects": [], "risk": "critical", "undo": None, "expires": 1}]}
+BAD_AUTO = {"yea": 1, "id": "s_1", "kind": "RECEIPT", "auto": True, "receipt": {
+    "id": "r_1", "proposal": "p_1", "summary": "x", "at": 1, "effects": [], "undo": None,
+    "uses": {"spend": {"amount": "x"}}}}
+VERBS = {
+    "hello": lambda c: c.hello(),
+    "ask": lambda c: c.ask("cap", {}),
+    "intent": lambda c: c.intent("cap", {}),
+    "intent auto": lambda c: c.intent("cap", {}, auto=True),
+    "commit": lambda c: c.commit({"id": "p_1", "hash": "h"}),
+    "undo": lambda c: c.undo("r_1"),
+    "expand": lambda c: c.expand("h_1"),
+}
+
+
+@pytest.mark.parametrize("verb", VERBS)
+@pytest.mark.parametrize("frame", [BAD_PROPOSALS, BAD_AUTO], ids=["unknown risk", "malformed uses"])
+def test_every_client_verb_checks_the_reply(verb, frame):
+    """Every verb's reply goes through the §5.1 check; intent() used to skip it."""
+    c = Client(_Replies(frame), key=key_from_seed(bytes([5]) * 32))
+    c.service_id = "s"  # skip HELLO, so each verb's own reply is the one checked
+    r = asyncio.run(VERBS[verb](c))
+    assert r.kind == "ERROR" and r.code == "bad_frame"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 
@@ -156,6 +157,19 @@ def test_the_server_key_directory_and_file_are_checked(tmp_path, monkeypatch):
     assert not list(good.glob("*.tmp"))
 
 
+def test_a_key_directory_whose_parent_its_group_can_write_is_refused(tmp_path, monkeypatch):
+    """A group member who can write the parent could swap the key directory, so it's refused as in
+    mcp-ts (& 0o022); a sticky parent, like /tmp, is still fine."""
+    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    os.chmod(shared, 0o775)
+    with pytest.raises(ValueError, match="can be changed by other users"):
+        yea(name="s", transport="stdio", server_key=shared / "keys" / "k.key")
+    os.chmod(shared, 0o1775)
+    assert yea(name="s", transport="stdio", server_key=shared / "sticky" / "k.key").service_id()
+
+
 def test_a_memory_store_subclass_is_still_a_memory_store(tmp_path, monkeypatch):
     monkeypatch.setenv("YEA_HOME", str(tmp_path))
 
@@ -209,3 +223,19 @@ async def test_a_memory_store_says_why_no_consent_code_and_what_to_do(tmp_path, 
         r = await c.call_tool("move", {"event": "e1"})
     assert r.is_error and ("this server keeps approvals in memory, where `yea approve` can't reach them; use a "
                            "client that can show approval forms, or run the server with a FileStore") in text(r)
+
+
+def test_a_fresh_yea_home_is_private_under_a_group_umask(tmp_path, monkeypatch):
+    """Under umask 002 (the default for users with their own group on Debian and Ubuntu) every
+    directory created on first run is 0700, as Node's recursive mkdir makes it, so the parent
+    check doesn't refuse the ~/.yea it just made."""
+    home = tmp_path / "home" / ".yea"
+    monkeypatch.setenv("YEA_HOME", str(home))
+    old = os.umask(0o002)
+    try:
+        yea(name="s", transport="stdio")
+        assert asyncio.run(FileStore(tmp_path / "a" / "b" / "store").consume_once("x", 2**31))
+    finally:
+        os.umask(old)
+    for d in (home, home / "server", tmp_path / "a", tmp_path / "a" / "b" / "store" / "consumed"):
+        assert (d.stat().st_mode & 0o777) == 0o700, d

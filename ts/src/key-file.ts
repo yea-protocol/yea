@@ -9,18 +9,17 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   openSync,
   readSync,
   statSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isB64u } from './b64.js';
 import { home } from './home.js';
 
 /** Server names name a key file (`~/.yea/server/<name>.key`) and appear in consent codes. */
 export const SERVER_NAME = /^[a-z0-9._-]{1,64}$/;
-
-/** An Ed25519 seed as a key file holds it: 32 bytes, b64url. */
-const SEED = /^[A-Za-z0-9_-]{43}$/;
 
 /** Seeds are 44 bytes and API keys a few hundred; anything this big is not a key file. */
 const MAX_PRIVATE_FILE = 64 * 1024;
@@ -97,7 +96,7 @@ function unsafePrivateFile(
  * Open `path` read-only without following a symlink (O_NOFOLLOW). O_NONBLOCK keeps a FIFO from
  * blocking the open forever; fstat then refuses it as not a regular file.
  */
-function openNoFollow(path: string, label: string): number {
+export function openNoFollow(path: string, label: string): number {
   const flags =
     constants.O_RDONLY |
     (constants.O_NOFOLLOW ?? 0) |
@@ -117,7 +116,7 @@ function openNoFollow(path: string, label: string): number {
  * Read at most MAX_PRIVATE_FILE bytes from `fd`; null if there are more. fstat's size is only a
  * snapshot, so a file that grows after the check still can't be read past the cap.
  */
-function readCapped(fd: number): string | null {
+export function readCapped(fd: number): string | null {
   const buf = Buffer.alloc(MAX_PRIVATE_FILE + 1);
   let total = 0;
 
@@ -169,11 +168,16 @@ export function readPrivateFile(
 }
 
 /**
- * Why the directory holding a server key can't be trusted, or null: it must be this user's,
+ * Why the directory holding a server key can't be trusted, or null: it must be a real directory
+ * (not a symlink to one, which whoever controls the link could point elsewhere), this user's,
  * and not writable by group or others (who could replace the key file).
  */
 function unsafeKeyDir(dir: string): string | null {
-  const st = statSync(dir);
+  const st = lstatSync(dir);
+
+  if (st.isSymbolicLink()) {
+    return `${dir} is a symlink`;
+  }
 
   if (!st.isDirectory()) {
     return `${dir} is not a directory`;
@@ -218,7 +222,7 @@ function unsafeParentDir(dir: string): string | null {
 
 /**
  * Why the directory `dir` holding a server key (or its parent) can't be trusted, or null.
- * Throws the `statSync` error if `dir` doesn't exist.
+ * Throws the `lstatSync` error if `dir` doesn't exist.
  */
 export function checkServerKeyDir(dir: string): string | null {
   return unsafeKeyDir(dir) ?? unsafeParentDir(dirname(dir));
@@ -231,7 +235,8 @@ export function checkServerKeyDir(dir: string): string | null {
 export function readServerSeed(path: string): string {
   const seed = readPrivateFile(path, { label: 'the server key' }).trim();
 
-  if (!SEED.test(seed)) {
+  // An Ed25519 seed as a key file holds it: 32 bytes, canonical b64url.
+  if (!isB64u(seed, 32)) {
     throw new Error(`${path} does not hold an Ed25519 seed`);
   }
 

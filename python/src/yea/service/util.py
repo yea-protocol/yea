@@ -12,6 +12,7 @@ from typing import Any
 from .._json import b64url_encode, compact
 
 Emit = Callable[[dict], None]
+DAY = 86400
 
 
 def random_id(prefix: str, nbytes: int = 6) -> str:

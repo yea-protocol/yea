@@ -18,5 +18,9 @@
   {
     "seed": "__________________________________________8",
     "public": "ed25519:dqFZIESm5PURJlvKc6YE2QsFKdHfYCvjChmpJXZg0fU"
+  },
+  {
+    "seed": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQF",
+    "valid": false
   }
 ]

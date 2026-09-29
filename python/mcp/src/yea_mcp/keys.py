@@ -16,12 +16,12 @@ from pathlib import Path
 from typing import Any
 
 from yea import KeyPair, decode_grant
-from yea._json import b64url_encode
+from yea._json import b64url_encode, is_b64url
 from yea.approval import RISK_ORDER, Tightening, load_principal_key, read_tightening
+from yea.keys import is_public_key
+from yea.store.files import make_private_dirs
 
 NAME = re.compile(r"[a-z0-9._-]{1,64}")
-SEED = re.compile(r"[A-Za-z0-9_-]{43}")
-PUBLIC_KEY = re.compile(r"ed25519:[A-Za-z0-9_-]{43}")
 
 
 def home() -> Path:
@@ -43,7 +43,7 @@ def default_key_path(name: str) -> Path:
 
 def _check_dir(d: Path) -> None:
     """The key's directory is this user's and writable by no one else; its parent is this user's or
-    root's, and not writable by others unless sticky (like /tmp)."""
+    root's, and not writable by its group or others unless sticky (like /tmp), as mcp-ts."""
     if not hasattr(os, "geteuid"):
         return  # no POSIX owners (Windows): as mcp-ts, only the file checks apply
     st = d.lstat()
@@ -51,8 +51,8 @@ def _check_dir(d: Path) -> None:
         raise ValueError(f"yea(): refusing the server key: {d} must be a directory owned by this user, "
                          "writable by no one else")
     p = d.parent.stat()
-    if p.st_uid not in (os.geteuid(), 0) or (p.st_mode & 0o002 and not p.st_mode & stat.S_ISVTX):
-        raise ValueError(f"yea(): refusing the server key: {d.parent} can be changed by other users")
+    if p.st_uid not in (os.geteuid(), 0) or (p.st_mode & 0o022 and not p.st_mode & stat.S_ISVTX):
+        raise ValueError(f"yea(): refusing the server key: {d.parent} can be changed by other users (chmod 755 it)")
 
 
 def _create_key(path: Path) -> None:
@@ -114,12 +114,12 @@ def load_server_key(path: str | os.PathLike[str]) -> KeyPair:
     and a link), the same one-line b64url seed as mcp-ts. A symlink, a file or directory others
     can change or read, or a file that isn't a seed is refused."""
     p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    make_private_dirs(p.parent)
     _check_dir(p.parent)
     if not p.exists() and not p.is_symlink():
         _create_key(p)
     seed = _read_key(p)
-    if not SEED.fullmatch(seed):
+    if not is_b64url(seed, 32):  # 32 bytes in canonical b64url, as mcp-ts
         raise ValueError(f"yea(): {p} does not hold an Ed25519 seed")
     return KeyPair.from_seed(seed)
 
@@ -135,7 +135,7 @@ class Pinned:
 def pinned_principal(option: str | None) -> Pinned:
     """The option if given (taken as the author's code gives it), else ``YEA_PRINCIPAL_PUB``, checked."""
     if option is not None:
-        if PUBLIC_KEY.fullmatch(option):
+        if is_public_key(option):
             return Pinned(key=option)
         return Pinned(why="the principal option is not an ed25519 public key")
     path = os.environ.get("YEA_PRINCIPAL_PUB")

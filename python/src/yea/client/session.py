@@ -121,7 +121,7 @@ class Client:
         body.update(self._budget(budget))
         # Auto-commit proofs are bound to this frame id, so a captured frame can't mint new commits.
         body.update(await self._signed("INTENT", f"auto:{capability}:{rid}" if auto else capability))
-        return await self._t.request(body, on_event)
+        return _checked_reply(await self._t.request(body, on_event))
 
     async def commit(
         self, proposal: dict, *, grants: Sequence[str | Grant] | None = None,
