@@ -1,6 +1,6 @@
 /** Commands that launch something: the demo, the example services and bridges. */
 import { principalKey } from '../home.js';
-import { DEFAULT_PORT } from '../node.js';
+import { DEFAULT_PORT, listen, serveHttp } from '../node.js';
 import { die, type Options } from './shared.js';
 
 /** Principals whose grants a local service trusts: YEA_TRUST, else the principal key here. */
@@ -26,7 +26,6 @@ export async function cmdDemo() {
 
 export async function cmdExamples(_rest: string[], o: Options) {
   const { calendar, shop, billing } = await import('../examples/index.js');
-  const { listen } = await import('../node.js');
   const trust = await trustedPrincipals();
   const port = Number(o.port ?? DEFAULT_PORT);
 
@@ -42,7 +41,6 @@ export async function cmdExamples(_rest: string[], o: Options) {
 
 export async function cmdOpenapi(rest: string[], o: Options) {
   const { fromOpenAPI, loadOpenAPI } = await import('../openapi.js');
-  const { listen, serveHttp } = await import('../node.js');
   const { PRESETS, presetOptions } = await import('../presets.js');
   const preset = o.preset
     ? (PRESETS[o.preset] ??
