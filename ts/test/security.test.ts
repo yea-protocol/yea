@@ -29,6 +29,7 @@ import {
 import * as P from '../src/index.js';
 import {
   checkKeyFile,
+  connect,
   FileStore,
   listen,
   readPinnedKey,
@@ -427,6 +428,61 @@ describe('security regressions', () => {
         .code,
     ).toBe('consent_required');
   });
+
+  // #166: the transports serialized EVENTs outside any try, so a BigInt in progress data threw
+  // inside apply(). The commit was released as failed, and a retry ran apply() a second time.
+  it.each([
+    ['yea://', listen],
+    ['http://', serveHttp],
+  ])(
+    '[M6b] over %s an EVENT that cannot be serialized is dropped and apply runs once',
+    async (scheme, serve) => {
+      let applied = 0;
+      const onError = vi.fn();
+      const svc = P.service({
+        id: 'pay',
+        name: 'Pay',
+        summary: 'pay',
+        trust: [principal.public],
+        onError,
+      }).intent('pay.send', {
+        summary: 'send money',
+        params: { to: 'string', amt: 'int' },
+        plan: ({ params }) => ({
+          summary: `pay ${params.to} ${params.amt}`,
+          effects: [P.create(`payment/${params.to}`)],
+          apply: async (ctx) => {
+            applied++;
+            ctx.progress('charging', 0.5, { cents: 10n });
+
+            return { ok: true };
+          },
+        }),
+      });
+      const server = await serve(svc, { port: 0 });
+
+      closers.push(() => server.close());
+
+      const { port } = server.address() as AddressInfo;
+      const c = await connect(`${scheme}127.0.0.1:${port}/yea`, {
+        key: agent.seed,
+        grants: [await P.issueGrant({ principal, to: agent.public })],
+      });
+
+      closers.push(() => c.close());
+
+      const p = await intent(c, { to: 'a', amt: 5 });
+
+      expect((await c.commit(p)).kind).toBe('RECEIPT');
+
+      const again = await c.commit(p);
+
+      expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
+      expect(applied).toBe(1);
+      expect(onError).toHaveBeenCalledOnce();
+      expect(String(onError.mock.calls[0][0])).toMatch(/dropped an EVENT/);
+    },
+  );
 
   it("[M7] huge unknown names don't burn CPU on suggestions", async () => {
     const svc = payService();
