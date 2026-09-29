@@ -2,10 +2,11 @@
  * The bridge's tools (SPEC-bridge, "Tools"): one per remote capability, or two generic ones for
  * a service past 25 capabilities, plus the utilities. Built once at start, from `HELLO`.
  *
- * This file picks a service's tools and names them. The tools themselves are in tools/: one
- * per capability (capability.ts), or the two generic ones (generic.ts), over the shared job
- * handler (job-handler.ts); and the utilities, `yea_consent` (consent.ts) and `yea_expand` and
- * `yea_undo` (utility.ts). Each is its spec, then its handler, in the shape of spec.ts.
+ * This file picks a service's tools and names them, and lists the utilities. The tools
+ * themselves are in tools/: one per capability (capability.ts), or the two generic ones
+ * (generic.ts), over the shared job handler (job-handler.ts); and the utilities, `yea_consent`
+ * (consent.ts) and `yea_expand` and `yea_undo` (utility.ts). Each is its spec, then its
+ * handler, in the shape of spec.ts.
  */
 import { printable } from '@yea-protocol/sdk';
 import { errorResult } from '../result.js';

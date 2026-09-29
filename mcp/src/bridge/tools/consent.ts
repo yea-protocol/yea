@@ -25,6 +25,9 @@ interface ConsentContext {
   now: number;
 }
 
+const consentRefused = (why: string) =>
+  errorResult([`✗ consent refused: ${why}; nothing was saved`]);
+
 /** `yea_consent`: only saves a consent `yea approve` signed; it signs and commits nothing. */
 export const consentTool = (
   b: Bridge,
@@ -66,9 +69,6 @@ function entryFor(c: ConsentContext, token: unknown): Pending | undefined {
         e.proposals.some((p) => p.hash === f.only),
     );
 }
-
-const consentRefused = (why: string) =>
-  errorResult([`✗ consent refused: ${why}; nothing was saved`]);
 
 /**
  * `yea_consent({ token })`: keep a consent from `yea approve` for the pending proposal it names,

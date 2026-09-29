@@ -17,6 +17,9 @@ import type { Bridge } from '../state.js';
 import type { ToolSpec } from '../types.js';
 import { object, str } from './spec.js';
 
+const isResult = (v: Service | CallToolResult): v is CallToolResult =>
+  'content' in v;
+
 /** The service a utility call names, or an error listing the ones there are. */
 function serviceFor(
   services: Map<string, Service>,
@@ -31,9 +34,6 @@ function serviceFor(
     ])
   );
 }
-
-const isResult = (v: Service | CallToolResult): v is CallToolResult =>
-  'content' in v;
 
 /** A utility's handler that needs a known service and one string field. */
 function withService(
