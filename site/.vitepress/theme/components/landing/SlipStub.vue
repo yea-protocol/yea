@@ -7,7 +7,12 @@
  */
 import { withBase } from 'vitepress';
 import { nextTick, useTemplateRef, watch } from 'vue';
-import { keepDates, type ReceiptView, type SlipView, type UndoneView } from './slip-view';
+import {
+  keepDates,
+  type ReceiptView,
+  type SlipView,
+  type UndoneView,
+} from './slip-view';
 import type { Phase } from './use-slip';
 
 const props = defineProps<{
