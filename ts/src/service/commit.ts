@@ -26,7 +26,7 @@ export class CommitHandler {
     if (!stored) {
       throw new YeaError(
         'not_found',
-        `no proposal ${JSON.stringify(req.proposal)}`,
+        `no proposal ${JSON.stringify(req.proposal ?? null)}`,
         { fix: [fix('send INTENT again to get fresh proposals')] },
       );
     }

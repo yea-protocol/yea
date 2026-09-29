@@ -385,3 +385,130 @@ describe('consent grants authorize exactly one commit', () => {
     );
   });
 });
+
+// The small wire differences the parity audit found between TS and Python (#159).
+describe('wire details shared with Python (#159)', () => {
+  const noteService = (result: unknown) =>
+    P.service({
+      id: 'notes',
+      name: 'Notes',
+      summary: 'notes',
+      trust: [principal.public],
+    }).intent('notes.edit', {
+      summary: 'edit a note',
+      plan: () => ({
+        summary: 'edit the note',
+        effects: [
+          { op: 'update', target: 'note/1', field: 'title', to: 'b' },
+          { op: 'update', target: 'note/2', from: null, to: 'c' },
+        ],
+        undoWindow: 60,
+        apply: () => result,
+        revert: () => undefined,
+      }),
+    });
+  const commitNote = async (svc: P.Service) => {
+    const c = new P.Client(P.local(svc), {
+      key: agent.seed,
+      grants: [await P.issueGrant({ principal, to: agent.public })],
+    });
+    const p = await c.intent('notes.edit');
+
+    if (p.kind !== 'PROPOSALS') {
+      throw new Error(p.lens);
+    }
+
+    const r = await c.commit(p.proposals[0]);
+
+    if (r.kind !== 'RECEIPT') {
+      throw new Error(r.lens);
+    }
+
+    return { c, r };
+  };
+
+  it('a missing value in an error message reads null, never undefined', async () => {
+    const svc = noteService(null);
+    const reply = (frame: object) =>
+      svc.handle({ yea: 1, id: '1', ...frame }) as Promise<P.ErrorReply>;
+
+    expect((await reply({})).message).toBe('unknown verb null');
+    expect((await reply({ verb: 'ASK' })).message).toBe(
+      'no capability named null',
+    );
+    expect((await reply({ verb: 'COMMIT' })).message).toBe('no proposal null');
+    expect((await reply({ verb: 'UNDO' })).message).toBe(
+      'no undoable receipt null',
+    );
+    expect((await reply({ verb: 'EXPAND' })).message).toBe(
+      'handle null is unknown or expired',
+    );
+  });
+
+  it('a receipt leaves result out when the commit returned null or nothing', async () => {
+    for (const result of [null, undefined]) {
+      const { r } = await commitNote(noteService(result));
+
+      expect('result' in r.receipt).toBe(false);
+    }
+
+    expect((await commitNote(noteService(0))).r.receipt.result).toBe(0);
+  });
+
+  it('undoing an update swaps from and to, and a side left out stays out', async () => {
+    const { c, r } = await commitNote(noteService(null));
+    const u = await c.undo(r.receipt.id);
+
+    if (u.kind !== 'RECEIPT') {
+      throw new Error(u.lens);
+    }
+
+    expect(u.receipt.effects).toEqual([
+      { op: 'update', target: 'note/1', field: 'title', from: 'b' },
+      { op: 'update', target: 'note/2', from: 'c', to: null },
+    ]);
+    expect('to' in u.receipt.effects[0]).toBe(false);
+  });
+
+  it('HELLO names the agent and, when it has a key, sends its public key', async () => {
+    const sent: P.Request[] = [];
+    const inner = P.local(noteService(null));
+    const spy: P.Transport = {
+      request: (frame, onEvent) => {
+        sent.push(frame);
+
+        return inner.request(frame, onEvent);
+      },
+      close: () => inner.close(),
+    };
+
+    await new P.Client(spy, { key: agent.seed }).hello();
+    await new P.Client(spy, { name: 'claude' }).hello();
+    expect(sent.map((f) => f.agent)).toEqual([
+      { name: 'agent', key: agent.public },
+      { name: 'claude' },
+    ]);
+  });
+
+  it('a client whose HELLO fails refuses to sign, rather than sign for ""', async () => {
+    const failing: P.Transport = {
+      request: async (frame) => ({
+        yea: 1,
+        id: 's1',
+        re: frame.id,
+        kind: 'ERROR',
+        code: 'internal',
+        message: 'down',
+      }),
+      close: () => undefined,
+    };
+    const c = new P.Client(failing, {
+      key: agent.seed,
+      grants: [await P.issueGrant({ principal, to: agent.public })],
+    });
+
+    await expect(c.ask('notes.read')).rejects.toThrow(
+      /did not identify itself/,
+    );
+  });
+});

@@ -58,7 +58,7 @@ export function unknownCapability(
 
   throw new YeaError(
     'unknown_capability',
-    `no capability named ${JSON.stringify(name)}`,
+    `no capability named ${JSON.stringify(name ?? null)}`,
     {
       fix: near
         ? [fix(`did you mean ${near}?`)]

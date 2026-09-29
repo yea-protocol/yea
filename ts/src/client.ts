@@ -6,7 +6,7 @@
 import { grantCovers } from './client/grant-scope.js';
 import { rejectMalformed } from './client/reply-check.js';
 import type { Transport } from './client/transport.js';
-import { randomId } from './crypto.js';
+import { keyPair, randomId } from './crypto.js';
 import { lens } from './lens.js';
 import { autoTarget, makeProof } from './proof.js';
 import type {
@@ -125,12 +125,21 @@ export class Client {
     return this.serviceId;
   }
 
+  /** What HELLO says about the agent (SPEC §4.1): its name, and its public key when it has one. */
+  private async agentInfo(): Promise<{ name: string; key?: string }> {
+    const name = this.opts.name ?? 'agent';
+
+    return this.opts.key
+      ? { name, key: (await keyPair(this.opts.key)).public }
+      : { name };
+  }
+
   async hello(
     budget = this.opts.budget,
   ): Promise<WithLens<Brief | ErrorReply>> {
     const r = await this.send<Brief | ErrorReply>({
       verb: 'HELLO',
-      agent: { name: this.opts.name },
+      agent: await this.agentInfo(),
       ...(budget ? { budget } : {}),
     });
 
