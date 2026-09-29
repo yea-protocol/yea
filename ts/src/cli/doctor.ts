@@ -6,8 +6,7 @@ import { fmtTime, untrustedLens } from '../lens.js';
 import { CLIENTS, listServices } from '../setup.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
-import { installScope } from './install.js';
-import { client, type Options } from './shared.js';
+import { client, installScope, type Options } from './shared.js';
 
 const ok = (m: string) => console.log(`✓ ${m}`);
 const warn = (m: string) => console.log(`! ${m}`);

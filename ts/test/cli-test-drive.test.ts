@@ -21,7 +21,7 @@ import {
   anthropicSdkSpec,
   TEST_DRIVE_REEXEC,
   testDriveNpxArgs,
-} from '../src/cli/launch.js';
+} from '../src/cli/test-drive.js';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 const readJson = (path: string) =>
