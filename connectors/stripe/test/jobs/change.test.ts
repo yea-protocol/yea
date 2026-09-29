@@ -318,6 +318,16 @@ describe('change_plan plans', () => {
     expect(await plansOf(changeJob(s.ctx), toBasic)).toHaveLength(1);
   });
 
+  it('a discount on the item alone also leaves only "now"', async () => {
+    const s = setup();
+
+    s.stripe.subs[0].items.data[0].discounts = ['di_1'];
+    expect(s.stripe.subs[0].discounts).toEqual([]);
+    expect(
+      (await plansOf(changeJob(s.ctx), toBasic)).map((p) => p.summary),
+    ).toEqual([expect.stringMatching(/ now; /)]);
+  });
+
   it('a schedule we didn’t make: never at renewal; now only when nothing else is pending', async () => {
     const s = setup();
     const [renewal] = await plansOf(changeJob(s.ctx), toBasic);

@@ -128,9 +128,9 @@ index.
 
 **Repeatable shapes.** Files of the same kind look the same:
 
-- a Stripe job module (`jobs/<job>.ts`): its input schema; its plan builders, each `X` paired
-  with an `applyX`; `plan()`; the `applyX` functions; `revert()` (a note, where the job has
-  none); then the `xJob` factory. Its helpers live in `jobs/<job>/`;
+- a Stripe job module (`jobs/<job>.ts`): its input schema; its types and text helpers, then its
+  plan builders (each `X` paired with an `applyX`); `plan()`; the `applyX` functions; `revert()`
+  (a note, where the job has none); then the `xJob` factory. Its helpers live in `jobs/<job>/`;
 - a service verb: one that needs collaborators or private helpers is a `<Verb>Handler` class
   holding a `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`;
 - a CLI command module: one exported `cmdX` per command, sharing `cli/shared.ts`;
