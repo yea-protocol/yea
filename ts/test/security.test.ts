@@ -3280,3 +3280,128 @@ describe('requests are read as Python reads them (#157)', () => {
     );
   });
 });
+
+describe('Lens never throws on a malformed frame (#188)', () => {
+  const kinds: Record<string, Record<string, unknown>> = {
+    BRIEF: {
+      service: { id: 's', name: 'S', summary: 'x' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: { a: 'string' } }],
+    },
+    ANSWER: { data: { a: 1 } },
+    PROPOSALS: {
+      proposals: [
+        { id: 'p_1', summary: 's', effects: [{ op: 'create', target: 't' }] },
+      ],
+    },
+    CLARIFY: { question: 'q', options: [{ label: 'a' }] },
+    RECEIPT: {
+      receipt: {
+        id: 'r_1',
+        summary: 's',
+        effects: [{ op: 'send', target: 't' }],
+      },
+      auto: true,
+    },
+    ERROR: {
+      code: 'bad',
+      message: 'm',
+      fix: [{ say: 'x', params: {} }],
+      need: ['a'],
+      consent: { hash: 'h', summary: 's' },
+    },
+    EVENT: { message: 'm' },
+  };
+  const wrong: unknown[] = [undefined, null, 5, 'x', true, [], {}, [5], [{}]];
+
+  it('a service that sends any member as any type gets a rendering, not a TypeError', () => {
+    for (const [kind, members] of Object.entries(kinds)) {
+      for (const k of [...Object.keys(members), 'more']) {
+        for (const w of wrong) {
+          const frame = {
+            yea: 1,
+            id: 's1',
+            re: 'c1',
+            kind,
+            ...members,
+            [k]: w,
+          };
+
+          expect(
+            () => P.lens(frame as P.Reply),
+            `${kind}.${k} = ${JSON.stringify(w)}`,
+          ).not.toThrow();
+        }
+      }
+    }
+  });
+
+  it('nor a nested member of any type, a frame that is not an object, or a deep param schema', () => {
+    const effect = (e: Record<string, unknown>) => ({
+      proposals: [{ id: 'p', summary: 's', effects: [e] }],
+    });
+    const nested: [string, string, (w: unknown) => Record<string, unknown>][] =
+      [
+        [
+          'RECEIPT',
+          'receipt.effects',
+          (w) => ({
+            receipt: { id: 'r', summary: 's', effects: w },
+            auto: true,
+          }),
+        ],
+        ['PROPOSALS', 'effect.op', (w) => effect({ op: w, target: 't' })],
+        [
+          'PROPOSALS',
+          'effect.from',
+          (w) => effect({ op: 'update', target: 't', from: w }),
+        ],
+        [
+          'PROPOSALS',
+          'proposal.expires',
+          (w) => ({
+            proposals: [{ id: 'p', summary: 's', effects: [], expires: w }],
+          }),
+        ],
+        [
+          'ANSWER',
+          'more[0].remaining',
+          (w) => ({
+            data: 1,
+            more: [{ remaining: w, path: 'p', handle: 'h', est: 1 }],
+          }),
+        ],
+      ];
+
+    for (const [kind, name, make] of nested) {
+      for (const w of [...wrong, 'constructor', '__proto__']) {
+        const frame = { yea: 1, id: 's1', re: 'c1', kind, ...make(w) };
+
+        expect(
+          () => P.lens(frame as P.Reply),
+          `${name} = ${JSON.stringify(w)}`,
+        ).not.toThrow();
+      }
+    }
+
+    for (const v of [null, 5, 'x', []]) {
+      expect(P.lens(v as unknown as P.Reply)).toBe('{}');
+    }
+
+    let params: unknown = 'string';
+
+    for (let i = 0; i < 1000; i++) {
+      params = { a: params };
+    }
+
+    const deep = {
+      yea: 1,
+      id: 's1',
+      re: 'c1',
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params }],
+    };
+
+    expect(P.lens(deep as P.Reply)).toMatch(/^kind: BRIEF/);
+  });
+});

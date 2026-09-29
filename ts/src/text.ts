@@ -28,7 +28,7 @@ const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 const keep = (cp: number) => cp === 0x09 || (cp >= 0xfe00 && cp <= 0xfe0f);
 
 /** `s` with each unsafe code point (see `UNSAFE`, less `keep`) replaced by `esc(c)`. */
-export const escapeUnsafe = (s: string, esc: (c: string) => string) =>
+const escapeUnsafe = (s: string, esc: (c: string) => string) =>
   s.replace(UNSAFE, (c) => (keep(c.codePointAt(0) ?? 0) ? c : esc(c)));
 
 /**

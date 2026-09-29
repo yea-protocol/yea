@@ -57,7 +57,7 @@ export function fmtDuration(s: unknown): string {
 }
 
 export function effectLine(e: Effect): string {
-  let s = `${SYM[e.op] ?? '*'} ${e.op} ${e.target}${e.field ? `.${e.field}` : ''}`;
+  let s = `${Object.hasOwn(SYM, e.op) ? SYM[e.op] : '*'} ${e.op} ${e.target}${e.field ? `.${e.field}` : ''}`;
 
   if (e.from !== undefined || e.to !== undefined) {
     s += `: ${scalar(e.from ?? null)} → ${scalar(e.to ?? null)}`;

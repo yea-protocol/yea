@@ -1134,6 +1134,8 @@ const lensCases = values.map(([name, input]) => ({
   lens: P.lean(input),
 }));
 const r = (x) => ({ yea: 1, id: 's1', re: 'c1', ...x });
+// A param schema of `n` nested objects: {a: {a: … 'string'}}.
+const nestParams = (n) => (n === 0 ? 'string' : { a: nestParams(n - 1) });
 const replies = [
   [
     'brief',
@@ -1507,6 +1509,164 @@ const replies = [
         { ...baseP, risk: undefined },
         { ...baseP, id: 'p_2', risk: true },
         { ...baseP, id: 'p_3', risk: 'very, high' },
+      ],
+    }),
+  ],
+  // Not well-formed (§9.2): each renders as an unknown kind.
+  ['not well-formed: receipt with no receipt', r({ kind: 'RECEIPT' })],
+  [
+    'not well-formed: brief with no service',
+    r({ kind: 'BRIEF', capabilities: [] }),
+  ],
+  [
+    'not well-formed: clarify with no options',
+    r({ kind: 'CLARIFY', question: 'which?' }),
+  ],
+  ['not well-formed: proposals with no proposals', r({ kind: 'PROPOSALS' })],
+  [
+    'not well-formed: effects not an array',
+    r({ kind: 'PROPOSALS', proposals: [{ ...baseP, effects: 'none' }] }),
+  ],
+  ['not well-formed: error with no code or message', r({ kind: 'ERROR' })],
+  [
+    'not well-formed: event with no message',
+    r({ kind: 'EVENT', progress: 0.5 }),
+  ],
+  [
+    'not well-formed: an optional member of the wrong type',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S', summary: 5 },
+      capabilities: [],
+    }),
+  ],
+  [
+    'not well-formed: a param type that is a number',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: { a: 5 } }],
+    }),
+  ],
+  [
+    'not well-formed: an empty param array',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: { a: [] } }],
+    }),
+  ],
+  [
+    'not well-formed: auto not a boolean',
+    r({
+      kind: 'RECEIPT',
+      receipt: { id: 'r_1', summary: 'done', effects: [] },
+      auto: 'yes',
+    }),
+  ],
+  [
+    'not well-formed: fix params not an object',
+    r({
+      kind: 'ERROR',
+      code: 'bad',
+      message: 'm',
+      fix: [{ say: 'retry', params: 3 }],
+    }),
+  ],
+  [
+    'not well-formed: more not an array',
+    r({ kind: 'ANSWER', data: 1, more: 'x' }),
+  ],
+  [
+    'not well-formed: a fractional more count',
+    r({
+      kind: 'ANSWER',
+      data: 1,
+      more: [{ remaining: 1.5, path: 'p', handle: 'h_1', est: 2 }],
+    }),
+  ],
+  [
+    'not well-formed: more on an unknown kind',
+    r({ kind: 'STATUS', text: 'x', more: [{ path: 'p' }] }),
+  ],
+  [
+    'not well-formed: a kind named constructor',
+    r({ kind: 'constructor', text: 'x' }),
+  ],
+  [
+    'well-formed: an auto receipt without effects',
+    r({ kind: 'RECEIPT', receipt: { id: 'r_1', summary: 'sent' }, auto: true }),
+  ],
+  [
+    'well-formed: an effect op named constructor',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [{ ...baseP, effects: [{ op: 'constructor', target: 't' }] }],
+    }),
+  ],
+  [
+    'not well-formed: an effect from that is an object',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        {
+          ...baseP,
+          effects: [{ op: 'update', target: 't', from: { a: [1] } }],
+        },
+      ],
+    }),
+  ],
+  [
+    'proposals: an object expires renders as compact JSON',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [{ ...baseP, expires: { at: 1 }, risk: ['x'] }],
+    }),
+  ],
+  [
+    'well-formed: params 32 levels below the top',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: nestParams(33) }],
+    }),
+  ],
+  [
+    'not well-formed: params 33 levels below the top',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: nestParams(34) }],
+    }),
+  ],
+  // Well-formed: null counts as absent for a `?` member and for `more`.
+  [
+    'well-formed: null optional members',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S', summary: null },
+      capabilities: [
+        { kind: 'ask', name: 's.q', summary: null, risk: null, params: null },
+      ],
+      more: null,
+    }),
+  ],
+  [
+    'well-formed: nested param schema',
+    r({
+      kind: 'BRIEF',
+      service: { id: 's', name: 'S' },
+      capabilities: [
+        {
+          kind: 'ask',
+          name: 's.q',
+          params: {
+            a: 'string',
+            b: [{ c: 'int' }],
+            d: { e: 'bool' },
+            f: ['string'],
+          },
+        },
       ],
     }),
   ],

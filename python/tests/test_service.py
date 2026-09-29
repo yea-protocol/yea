@@ -839,9 +839,9 @@ def test_an_in_flight_total_refusal_names_its_measure():
     proposal = {"hash": "h", "risk": "low", "uses": {"spend": spend("0.60", "USD")}}
     auth = verify_grant(g, [PRINCIPAL.public], AGENT.public, GrantContext("shop.example", "COMMIT", "shop.order", 1, proposal))
     assert auth.ok, auth.message
-    held, over = reserve(svc, proposal, auth)
+    held, over = reserve(svc.state, proposal, auth)
     assert held and over is None
-    held, over = reserve(svc, proposal, auth)  # 0.60 + 0.60 > 1.00
+    held, over = reserve(svc.state, proposal, auth)  # 0.60 + 0.60 > 1.00
     assert held is None and over == "spend"
 
 

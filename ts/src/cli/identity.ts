@@ -18,7 +18,7 @@ import { fmtTime, lean } from '../lens.js';
 import { isRisk } from '../risk.js';
 import type { Verb } from '../types.js';
 import { isLimit, type Limit } from '../uses.js';
-import { unixNow } from '../util.js';
+import { errno, isObject, unixNow } from '../util.js';
 import { die, type Options } from './shared.js';
 
 function duration(s: string): number {
@@ -148,10 +148,7 @@ function checkedServerSeed(path: string): string {
 
 /** Whether `e`, or the error it wraps, is ENOENT. */
 function missing(e: unknown): boolean {
-  const err = e as NodeJS.ErrnoException & { cause?: unknown };
-  const cause = err.cause as NodeJS.ErrnoException | undefined;
-
-  return err.code === 'ENOENT' || cause?.code === 'ENOENT';
+  return errno(e) === 'ENOENT' || (isObject(e) && errno(e.cause) === 'ENOENT');
 }
 
 export async function cmdGrant(_rest: string[], o: Options) {
