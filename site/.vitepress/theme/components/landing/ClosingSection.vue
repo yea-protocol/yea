@@ -15,7 +15,7 @@ const REPO = 'https://github.com/yea-protocol/yea';
     <div class="actions">
       <a class="btn primary" :href="withBase('/playground')">Open the playground</a>
       <a class="btn" :href="withBase('/reference/spec')">Read the spec</a>
-      <a :href="REPO">Star on GitHub</a>
+      <a class="btn ghost" :href="REPO">Star on GitHub</a>
     </div>
   </section>
 </template>

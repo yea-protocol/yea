@@ -87,6 +87,13 @@ export default defineConfig({
     },
   },
   // Preload the fonts the first paint needs, so it doesn't swap faces.
+  // VitePress renders the appearance switch with an empty title and names it only on the client:
+  // name it in the static HTML too, so it isn't an unnamed control before hydration or without JS.
+  transformHtml: (html) =>
+    html.replaceAll(
+      'class="VPSwitch VPSwitchAppearance" type="button" role="switch" title ',
+      'class="VPSwitch VPSwitchAppearance" type="button" role="switch" aria-label="Dark theme" title ',
+    ),
   transformHead: ({ assets, pageData }) =>
     fontPreloads(assets, pageData.relativePath),
   markdown: {
