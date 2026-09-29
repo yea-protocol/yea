@@ -353,6 +353,8 @@ narrated session with two services, a human's policy, consent and undo, over rea
 > uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"
 > ```
 
+Once they're published, each SDK installs with one command:
+
 ```sh
 npm install @yea-protocol/sdk        # TypeScript/JavaScript: Node ≥ 20, Bun, Deno (web-standard APIs only)
 uv add yea-sdk             # Python ≥ 3.10 (or: pip install yea-sdk)
@@ -410,7 +412,7 @@ if (r.kind === "PROPOSALS") await cal.commit(r.proposals[0]);
 
 Python has the same concepts in snake_case (`issue_grant`, `consent_grant`, `lens`, `connect`), with decorators and a `Plan` dataclass instead of chaining. The CLI and MCP bridge are TypeScript-only. See [python/README.md](python/README.md).
 
-### Delegate like you mean it
+### Delegate with a policy
 
 ```sh
 yea init                                              # your principal key + an agent key (~/.yea)
