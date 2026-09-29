@@ -36,7 +36,7 @@ const emit = defineEmits<{ approve: [] }>();
 
 <style scoped>
 .consent { margin: 0 18px 18px; padding: 16px 18px; border: 1px solid var(--state-amber); border-radius: 12px; background: var(--state-amber-soft); }
-.consent h3 { font-family: var(--font-head); font-size: 1.2rem; font-weight: 650; line-height: 1.3; margin: 0 0 8px; }
+.consent h3 { font-family: var(--font-head); font-size: 1.25rem; font-weight: 600; line-height: 1.35; margin: 0 0 8px; } /* Subsection */
 .consent p { margin: 6px 0; font-size: 0.875rem; color: var(--vp-c-text-2); }
 /* The service's reason is machine output, so it's set in mono (the Machine Voice Rule). */
 .consent .reason { font-family: var(--vp-font-family-mono); font-size: 0.8125rem; }

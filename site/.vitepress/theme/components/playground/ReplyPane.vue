@@ -135,7 +135,7 @@ function onTabKey(e: KeyboardEvent, i: number) {
   .tok { margin-left: 0; width: 100%; }
 }
 @media (max-width: 640px) {
-  .lens { font-size: 11.5px; }
+  .lens { font-size: 12px; }
 }
 @media (max-width: 640px), (pointer: coarse) {
   .copy { min-height: 44px; }
