@@ -752,12 +752,15 @@ def test_a_whole_number_float_budget_counts_like_the_integer():
 
 
 def test_the_http_budget_query_reads_like_a_frame_budget():
-    """?budget= follows the frame rule: 800.0 counts; -5, 0x10 and a non-ASCII digit get the
-    default instead of a crash or a surprise (#148)."""
+    """?budget= follows the frame rule in decimal notation: 800.0 counts; -5, 0x10 and a non-ASCII
+    digit get the default instead of a crash or a surprise (#148). The same table as TS (#193)."""
     from yea.transport import _query_budget
 
-    assert [_query_budget(t) for t in ("800", "800.0", "1e3")] == [800, 800, 1000]
-    assert [_query_budget(t) for t in ("", "-5", "0.5", "inf", "nan", "0x10", "٣", "²")] == [None] * 8
+    assert [_query_budget(t) for t in ("800", "800.0", "1e3", "+800", ".8e3")] == [800, 800, 1000, 800, 800]
+    rejected = ("", " ", "0", "-5", "0.5", "1.5", "inf", "Infinity", "-Infinity", "nan", "NaN", "1e400",
+                "0x10", "0b11", "0o7", "1_000", " 800", "\u0663", "\u00b2", "\uff18\uff10\uff10",
+                "1" * 15_000 + "x")
+    assert [_query_budget(t) for t in rejected] == [None] * len(rejected)
 
     async def go():
         http = await serve_http(shop(), "127.0.0.1", 0)
@@ -766,11 +769,13 @@ def test_the_http_budget_query_reads_like_a_frame_budget():
             def brief(q):
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/yea{q}") as r:
                     return json.loads(r.read())
-            small, same, default = await asyncio.gather(*(asyncio.to_thread(brief, q) for q in (
-                "?budget=40", "?budget=40.0", "?budget=%C2%B2")))
-            # Fitted to 40 either way (exactly how much fits varies with the random ids it counts), and
-            # the default budget for ², which used to close the connection with no response.
-            assert small.get("more") and same.get("more") and not default.get("more")
+            small, same, signed, default, spaced = await asyncio.gather(*(asyncio.to_thread(brief, q) for q in (
+                "?budget=40", "?budget=40.0", "?budget=%2B40", "?budget=%C2%B2", "?budget=+40")))
+            # Fitted to 40 each way (exactly how much fits varies with the random ids it counts), and
+            # the default budget for ², which used to close the connection with no response, and for
+            # +40, since `+` in a query decodes to a space.
+            assert small.get("more") and same.get("more") and signed.get("more")
+            assert not default.get("more") and not spaced.get("more")
         finally:
             http.close()
 

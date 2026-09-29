@@ -1,6 +1,7 @@
 import { type AddressInfo, createServer } from 'node:net';
 import { afterAll, describe, expect, it } from 'vitest';
 import { calendar } from '../../examples/calendar.ts';
+import { queryBudget } from '../src/http.js';
 import * as P from '../src/index.js';
 import { connect, listen, serveHttp } from '../src/node.js';
 
@@ -102,6 +103,63 @@ describe('transports', async () => {
     }
 
     expect((await c.commit(p.proposals[0])).kind).toBe('RECEIPT');
+  });
+
+  // #193: `Number(q) || undefined` let -5, Infinity and 0x10 through as a budget.
+  it('?budget= reads like a frame budget', async () => {
+    expect(['800', '800.0', '1e3', '+800', '.8e3'].map(queryBudget)).toEqual([
+      800, 800, 1000, 800, 800,
+    ]);
+
+    const rejected = [
+      null,
+      '',
+      ' ',
+      '0',
+      '-5',
+      '0.5',
+      '1.5',
+      'Infinity',
+      '-Infinity',
+      'NaN',
+      '1e400',
+      '0x10',
+      '0b11',
+      '0o7',
+      '1_000',
+      ' 800',
+      '\u0663',
+      '\u00b2',
+      '\uff18\uff10\uff10',
+    ];
+
+    expect(rejected.map(queryBudget)).toEqual(rejected.map(() => undefined));
+
+    const brief = async (q: string) =>
+      (await (
+        await P.fetchHandler(calendar({ trust: [] }))(
+          new Request(`http://svc.test/.well-known/yea${q}`),
+        )
+      ).json()) as { more?: unknown };
+    const [small, same, signed, hex, negative, spaced] = await Promise.all(
+      [
+        '?budget=40',
+        '?budget=40.0',
+        '?budget=%2B40',
+        '?budget=0x28',
+        '?budget=-40',
+        // `+` in a query decodes to a space, so this is " 40": not a number.
+        '?budget=+40',
+      ].map(brief),
+    );
+
+    // Fitted to 40 each way; the rest get the default budget instead.
+    expect([small.more, same.more, signed.more].every(Boolean)).toBe(true);
+    expect([hex.more, negative.more, spaced.more]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it('bad frames get bad_frame errors', async () => {

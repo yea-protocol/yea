@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import ssl as ssl_module
 import sys
 from typing import Any
@@ -15,6 +16,9 @@ from .service import Service, _positive_int
 log = logging.getLogger("yea")
 
 MAX_FRAME = 1 << 20  # 1 MiB (SPEC §2.1)
+# ?budget= takes plain decimal notation, as in TS (http.ts): no hex, inf, underscores, spaces or non-ASCII digits.
+_DECIMAL = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?", re.ASCII)
+_MAX_BUDGET_TEXT = 32  # longer than any budget worth reading; checked before the pattern runs
 MAX_INFLIGHT = 64  # concurrent requests per stream connection
 DEFAULT_PORT = 7447
 TLS_PORT = 7448
@@ -44,12 +48,11 @@ def _event_line(event: dict) -> str | None:
 
 
 def _query_budget(text: str) -> int | None:
-    """``?budget=`` read by the same rule as a frame's ``budget``: a whole number above 0 (``800.0``
-    counts); anything else, including non-ASCII digits, gets the default."""
-    try:
-        return _positive_int(float(text)) if text.isascii() else None
-    except ValueError:
+    """``?budget=`` read by the same rule as a frame's ``budget``: a whole number above 0 in decimal
+    notation (``800.0`` and ``1e3`` count); anything else, including non-ASCII digits, gets the default."""
+    if len(text) > _MAX_BUDGET_TEXT or not _DECIMAL.fullmatch(text):
         return None
+    return _positive_int(float(text))
 
 
 def _frame_id(frame: Any) -> str:

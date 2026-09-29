@@ -50,9 +50,14 @@ function options(argv) {
     die(`yea mcp: --tools must be one of ${MODES.join(', ')}\n${USAGE}`);
   }
 
-  const budget = o.budget === undefined ? undefined : Number(o.budget);
+  // Digits only: Number() alone would also take 0x10, 1e3 or " 5 ".
+  const budget =
+    o.budget !== undefined && /^\d+$/.test(o.budget) ? Number(o.budget) : undefined;
 
-  if (budget !== undefined && !(Number.isSafeInteger(budget) && budget > 0)) {
+  if (
+    o.budget !== undefined &&
+    !(budget !== undefined && Number.isSafeInteger(budget) && budget > 0)
+  ) {
     die(`yea mcp: --budget must be a positive integer\n${USAGE}`);
   }
 
