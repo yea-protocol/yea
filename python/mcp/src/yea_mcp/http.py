@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from mcp.server.auth.middleware.auth_context import auth_context_var
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from mcp.server.auth.provider import AccessToken
+from starlette.datastructures import Headers
 
 MAX_BODY = 1 << 20  # the largest request body served by default: 1 MiB, the same cap as a YEA frame
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
@@ -44,7 +45,7 @@ class Refusal:
 def http_auth_from(env: Mapping[str, str] = os.environ) -> HttpAuth:
     """The HTTP settings from the environment; raises ValueError, saying what's missing."""
     token, sub = env.get("YEA_HTTP_TOKEN", ""), env.get("YEA_SUB", "")
-    if len(token) < 32:
+    if len(token) < 32 or not token.isascii():
         raise ValueError("--http needs YEA_HTTP_TOKEN, a bearer token of at least 32 characters that every request "
                          "must carry")
     if not sub:
@@ -57,6 +58,8 @@ def _host_refusal(host: str | None) -> Refusal | None:
     the TypeScript SDK's; the status is 421 Misdirected Request, as the Python SDK answers."""
     if not host:
         why = "Missing Host header"
+    elif any(c in host for c in "@/?#"):  # userinfo or a path: never a Host a browser sends
+        why = f"Invalid Host header: {host}"
     else:
         try:
             parts = urlsplit(f"http://{host}")
@@ -85,7 +88,7 @@ def http_gate(token: str, *, loopback: bool) -> Callable[[Scope], Refusal | None
     """The checks before anything else: on loopback the Host header (421), then the bearer token,
     compared in constant time (401). None lets the request through."""
     def gate(scope: Scope) -> Refusal | None:
-        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+        headers = Headers(scope=scope)  # the first value of a repeated header wins, as in the SDK
         if loopback and (refused := _host_refusal(headers.get("host"))):
             return refused
         header = headers.get("authorization", "")
@@ -110,8 +113,12 @@ def http_app(server: Any, auth: HttpAuth, *, loopback: bool = True, client_id: s
     user = AuthenticatedUser(AccessToken(token="verified", client_id=client_id, scopes=[], subject=auth.sub))
 
     async def app(scope: Scope, receive: Any, send: Any) -> None:
-        if scope["type"] != "http":  # lifespan: the SDK's session manager starts and stops here
+        if scope["type"] == "lifespan":  # the SDK's session manager starts and stops here
             await inner(scope, receive, send)
+            return
+        if scope["type"] != "http":  # a websocket (or anything else) never reaches the SDK: fail closed
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
             return
         if refused := gate(scope):
             await _send(refused, send)
@@ -125,8 +132,12 @@ def http_app(server: Any, auth: HttpAuth, *, loopback: bool = True, client_id: s
     return app
 
 
-def serve_http(app: ASGIApp, *, host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Serve ``app`` on ``host:port`` with uvicorn (an MCP SDK dependency) until the process ends."""
+def serve_http(app: ASGIApp, *, host: str = "127.0.0.1", port: int = 8000, max_connections: int | None = None) -> None:
+    """Serve ``app`` on ``host:port`` with uvicorn (an MCP SDK dependency) until the process ends.
+    ``max_connections`` caps concurrent connections (uvicorn's ``limit_concurrency``). uvicorn has
+    no timeout for reading a request, unlike mcp-ts's ``requestTimeout``, so serve anything but
+    loopback behind a reverse proxy that has one."""
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port, log_level="warning", timeout_keep_alive=30)
+    uvicorn.run(app, host=host, port=port, log_level="warning", timeout_keep_alive=30,
+                limit_concurrency=max_connections)

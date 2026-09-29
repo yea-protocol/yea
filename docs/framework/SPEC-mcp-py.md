@@ -96,7 +96,16 @@ that serves one person:
   that runs the gate, then the SDK's `streamable_http_app` (which caps the body at `max_body`,
   1 MiB by default: 413), with each request authenticated as `auth.sub`. So
   `yea(transport="http", sub=token_subject)` sees that person.
-- `serve_http(app, host=..., port=...)` serves it with uvicorn, an MCP SDK dependency.
+  Only `lifespan` passes through ungated: a websocket is closed (1008) and any other scope
+  dropped, so no route (the SDK's or one a server adds) is reachable without the token. The
+  SDK's own Host check is on with `loopback=True` and off with `loopback=False`; on loopback it
+  also refuses a foreign `Origin` (403), which `mcp-ts` doesn't check. A server that brings its
+  own auth doesn't use `http_app`.
+- `serve_http(app, host=..., port=..., max_connections=None)` serves it with uvicorn, an MCP SDK
+  dependency, with a 30-second keep-alive and `max_connections` as uvicorn's concurrency limit
+  (503 past it). uvicorn has no request-read timeout, unlike `mcp-ts`'s `requestTimeout`, so off
+  loopback put a reverse proxy in front. `loopback` describes the address served: serving
+  `loopback=True` on a public interface refuses every public Host.
 
 ### Request state: the SDK seals it
 

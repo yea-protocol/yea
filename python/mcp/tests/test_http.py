@@ -85,11 +85,11 @@ def test_end_to_end_the_person_is_the_tokens_sub_and_others_are_refused(tmp_path
     monkeypatch.setenv("YEA_POLICY", issue_grant(PRINCIPAL, ap.service_id(), [{"can": ["move"]}, {"risk": "low"}]).encode())
 
     async def go(url):
-        async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {TOKEN}"}) as hc:
-            async with Client(streamable_http_client(url, http_client=hc)) as c:
-                assert (await c.call_tool("who", {})).content[0].text == "alice"
-                r = await c.call_tool("move", {"event": "e1"})
-                assert not r.is_error and r.structured_content["receipt"]["sub"] == "alice"
+        hc = httpx2.AsyncClient(headers={"Authorization": f"Bearer {TOKEN}"})
+        async with hc, Client(streamable_http_client(url, http_client=hc)) as c:
+            assert (await c.call_tool("who", {})).content[0].text == "alice"
+            r = await c.call_tool("move", {"event": "e1"})
+            assert not r.is_error and r.structured_content["receipt"]["sub"] == "alice"
         async with httpx2.AsyncClient() as hc:
             assert (await hc.post(url, json={})).status_code == 401
             assert (await hc.post(url, json={}, headers={"Host": "evil.example"})).status_code == 421
@@ -100,3 +100,60 @@ def test_end_to_end_the_person_is_the_tokens_sub_and_others_are_refused(tmp_path
     with serving(http_app(srv, HttpAuth(TOKEN, "alice"))) as url:
         asyncio.run(go(url))
     assert done == ["e1"]
+
+
+def test_a_websocket_or_other_scope_never_reaches_the_sdk_app():
+    """Only lifespan passes through ungated; a websocket is closed and anything else dropped (fail closed)."""
+    reached, sent = [], []
+
+    class Stub:
+        def streamable_http_app(self, **kw):
+            async def inner(scope, receive, send):
+                reached.append(scope["type"])
+            return inner
+
+    async def send(message):
+        sent.append(message)
+
+    async def go():
+        app = http_app(Stub(), HttpAuth(TOKEN, "alice"))
+        for kind in ("websocket", "something-new", "lifespan"):
+            await app({"type": kind, "headers": []}, None, send)
+
+    asyncio.run(go())
+    assert reached == ["lifespan"] and sent == [{"type": "websocket.close", "code": 1008}]
+
+
+def test_the_gate_refuses_a_host_with_userinfo_or_a_path_and_a_non_ascii_token():
+    gate = http_gate(TOKEN, loopback=True)
+    for host in ("evil@localhost:8000", "localhost/x", "localhost?x", "localhost#x"):
+        assert gate(scope(host=host, authorization=f"Bearer {TOKEN}")).status == 421, host
+    with pytest.raises(ValueError, match="YEA_HTTP_TOKEN"):
+        http_auth_from({"YEA_HTTP_TOKEN": "é" * 40, "YEA_SUB": "alice"})
+
+
+def test_off_loopback_a_public_host_is_served_and_on_loopback_the_sdk_checks_origin(tmp_path, monkeypatch):
+    """loopback=False turns the SDK's Host check off too (else every public Host would get its 421);
+    loopback=True keeps its Origin check, a second layer mcp-ts doesn't have."""
+    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+
+    def server():
+        srv = MCPServer("h")
+
+        @srv.tool()
+        async def who() -> str:
+            return token_subject()
+        return srv
+
+    init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}
+    headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"}
+
+    async def post(url, **extra):
+        async with httpx2.AsyncClient() as hc:
+            return (await hc.post(url, json=init, headers={**headers, **extra})).status_code
+
+    with serving(http_app(server(), HttpAuth(TOKEN, "alice"), loopback=False)) as url:
+        assert asyncio.run(post(url, Host="mcp.example.com")) == 200
+    with serving(http_app(server(), HttpAuth(TOKEN, "alice"))) as url:
+        assert asyncio.run(post(url, Origin="https://evil.example")) == 403
