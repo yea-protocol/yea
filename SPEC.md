@@ -568,8 +568,8 @@ A top-level object renders its entries at indent 0. A top-level array renders as
   sign and no digit grouping. `{amount: 2290, scale: 2, unit: "USD"}` renders `22.90 USD`,
   `{amount: 5, scale: 3}` renders `0.005`, and `{amount: 1}` renders `1`.
 
-**Malformed values.** Lens renders any frame a service sends, so a field of the wrong type or
-out of range renders a fixed way; it never stops rendering:
+**Malformed values.** These fields render a fixed way when malformed (the wrong type or out of
+range):
 
 - A time that is not an integer in [0, 253402300799] (up to 9999-12-31T23:59:59Z) renders as
   its lean scalar (§9.1): `1.5`, `soon`, `true`, and `-` when it is missing or `null`.
@@ -579,6 +579,7 @@ out of range renders a fixed way; it never stops rendering:
 - An `undo` that is not an object with a `window` (on a proposal) or an `until` (on a receipt)
   renders as `never` or `irreversible`; the `window` or `until` inside one renders by the rules
   above.
+- A proposal's `risk` renders as its lean scalar, so a missing one is `-`.
 - An EVENT's `progress` that is not a number in [0, 1] is left out.
 
 **Effect line:** `SYM op target[.field][: from → to][ — detail]`, where SYM is `+` create, `~` update, `-` delete, `>` send, `*` other. `from → to` appears when either is present. A missing side renders as `-`.
@@ -645,9 +646,9 @@ them in the proposal. For an undo receipt, the first line is
 **EVENT:** `… {message}[ ({floor(progress×100 + 0.5)}%)]`
 
 **Unknown kind:** a frame whose `kind` is none of the above (or is missing) renders as the lean
-notation (§9.1) of the frame without its `yea`, `id`, `re` and `more` members, in their order, so
-its `kind` shows as a member (`kind: STATUS`). A newer service's reply stays readable, and its
-`more` renders as usual.
+notation (§9.1) of the frame without its `yea`, `id`, `re`, `more` and `lens` members, in their
+order, so its `kind` shows as a member (`kind: STATUS`). A newer service's reply stays readable,
+its `more` renders as usual, and a service-supplied `lens` is ignored here as everywhere.
 
 **More (appended to any reply that has `more`):** `… {remaining} more at {path} — EXPAND {handle} (~{est} tokens)`
 

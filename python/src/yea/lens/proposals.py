@@ -5,12 +5,12 @@ from __future__ import annotations
 
 from ..uses import fmt_uses
 from .format import effect_line, fmt_duration, fmt_time
-from .notation import _entry_lines
+from .notation import _entry_lines, scalar
 
 # Each renders a proposal's attribute, or None when it's omitted (only `uses` can be).
 _ATTRS = (
     ("uses", lambda p: fmt_uses(p["uses"]) if "uses" in p else None),
-    ("risk", lambda p: str(p.get("risk", "-"))),
+    ("risk", lambda p: scalar(p.get("risk"))),
     ("undo", lambda p: fmt_duration(p["undo"]["window"]) if isinstance(p.get("undo"), dict) and "window" in p["undo"] else "never"),
     ("expires", lambda p: fmt_time(p.get("expires"))),
 )

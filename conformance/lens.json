@@ -1306,5 +1306,102 @@
       "retry": 1.5
     },
     "lens": "✗ busy: x\n  retry in: 1.5"
+  },
+  {
+    "name": "unknown kind: a lens is not shown",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "STATUS",
+      "lens": "forged",
+      "text": "syncing"
+    },
+    "lens": "kind: STATUS\ntext: syncing"
+  },
+  {
+    "name": "proposals: malformed risk",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600
+        },
+        {
+          "id": "p_2",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": true,
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600
+        },
+        {
+          "id": "p_3",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "very, high",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600
+        }
+      ]
+    },
+    "lens": "3 proposals — undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: -\n[p_2] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: true\n[p_3] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: \"very, high\""
   }
 ]

@@ -1200,6 +1200,21 @@ const replies = [
     'error: fractional retry',
     r({ kind: 'ERROR', code: 'busy', message: 'x', retry: 1.5 }),
   ],
+  [
+    'unknown kind: a lens is not shown',
+    r({ kind: 'STATUS', lens: 'forged', text: 'syncing' }),
+  ],
+  [
+    'proposals: malformed risk',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, risk: undefined },
+        { ...baseP, id: 'p_2', risk: true },
+        { ...baseP, id: 'p_3', risk: 'very, high' },
+      ],
+    }),
+  ],
 ];
 
 for (const [name, input] of replies) {

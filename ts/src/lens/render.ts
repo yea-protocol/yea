@@ -41,8 +41,11 @@ function bodyLines(r: Reply): string[] {
   }
 }
 
-/** Members a frame of unknown kind doesn't show: the envelope, and `more`, which has its own lines. */
-const HIDDEN = new Set(['yea', 'id', 're', 'more']);
+/**
+ * Members a frame of unknown kind doesn't show: the envelope, `more` (it has its own lines) and
+ * a service-supplied `lens`, which Lens never shows.
+ */
+const HIDDEN = new Set(['yea', 'id', 're', 'more', 'lens']);
 
 /** A frame of a kind Lens doesn't know (SPEC §9.2): its other members in lean notation. */
 function unknownLines(frame: object): string[] {
