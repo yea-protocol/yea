@@ -3458,3 +3458,61 @@ describe('Lens never overflows the stack on a deeply nested value (#213)', () =>
     }
   });
 });
+
+describe('Approval never covers content Lens cuts (#213)', () => {
+  const buried = (levels: number) => {
+    let v: unknown = { forward_to: 'attacker@evil.test' };
+
+    for (let i = 0; i < levels; i++) {
+      v = { settings: v };
+    }
+
+    return v;
+  };
+  // The effect is level 0 and its `to` level 1, so `buried(n)` puts its innermost object at n + 1.
+  const proposal = async (levels: number) => {
+    const p = {
+      id: 'p1',
+      capability: 's.set',
+      summary: 'Update settings',
+      effects: [
+        { op: 'update', target: 'settings', from: 'x', to: buried(levels) },
+      ],
+      risk: 'low',
+    } as unknown as P.Proposal;
+
+    return { ...p, hash: await P.proposalHash(p) };
+  };
+
+  it('a proposal whose effect nests past 32 levels is never shown for consent', async () => {
+    expect(await P.checkProposal(await proposal(30))).toBeNull();
+    expect(await P.checkProposal(await proposal(31))).toBe(
+      "the proposal's effects are nested too deep to show in full",
+    );
+    expect(await P.checkProposal(await proposal(70))).toBe(
+      "the proposal's effects are nested too deep to show in full",
+    );
+  });
+
+  it('a plan whose effect nests past 32 levels gets no plan hash', async () => {
+    const plan = (levels: number) => ({
+      summary: 'Update settings',
+      effects: [{ op: 'update', target: 'settings', to: buried(levels) }],
+      apply: () => null,
+    });
+
+    await expect(
+      P.hashPlans({ name: 't' }, {}, [plan(30)]),
+    ).resolves.toHaveLength(1);
+    await expect(P.hashPlans({ name: 't' }, {}, [plan(31)])).rejects.toThrow(
+      /nested past 32 levels/,
+    );
+  });
+
+  it('an effect just within the limit shows in full', async () => {
+    const shown = P.safeEffectLine((await proposal(30)).effects[0]);
+
+    expect(shown).toContain('attacker@evil.test');
+    expect(shown).not.toContain('…');
+  });
+});

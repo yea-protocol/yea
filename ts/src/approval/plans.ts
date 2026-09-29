@@ -1,6 +1,7 @@
 /** Job plans and their hashes (SPEC-approval §1): the preimage, its integer check, and each plan's risk. */
 import { canonical } from '../canonical.js';
 import { sha256 } from '../crypto.js';
+import { effectsTooDeep, MAX_EFFECT_DEPTH } from '../lens.js';
 import { knownRisk, resolveRisk } from '../risk.js';
 import type { Effect, Risk } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
@@ -61,6 +62,13 @@ export function planPreimage(
   }
 
   knownRisk(risk);
+
+  // A person approves what the form shows, so nothing in an effect may be cut from it (SPEC.md §6.6).
+  if (effectsTooDeep(plan.effects)) {
+    throw new TypeError(
+      `plan has effects nested past ${MAX_EFFECT_DEPTH} levels, too deep to show in full`,
+    );
+  }
 
   return {
     tool,

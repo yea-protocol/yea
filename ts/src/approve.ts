@@ -10,6 +10,7 @@ import {
   decodeConsentCode,
 } from './consent.js';
 import { type KeyPair, proposalHash, sha256 } from './crypto.js';
+import { effectsTooDeep } from './lens/depth.js';
 import { fmtTime, untrustedLens } from './lens.js';
 import { isRisk } from './risk.js';
 import { printable } from './text.js';
@@ -53,9 +54,9 @@ export function consentView(p: Proposal): string[] {
 }
 
 /**
- * Why a proposal can't be bound by a consent, or null if it can (SPEC.md §5.1): its `uses`
- * must be well formed, its `risk` known, and it must hash to its `hash`. One that canonical JSON can't hash (a
- * float, say) can't be bound either.
+ * Why a proposal can't be bound by a consent, or null if it can (SPEC.md §5.1, §6.6): its `uses`
+ * must be well formed, its `risk` known, its effects shallow enough to show in full, and it must
+ * hash to its `hash`. One that canonical JSON can't hash (a float, say) can't be bound either.
  */
 export async function checkProposal(p: Proposal): Promise<string | null> {
   if (p.uses !== undefined && !isUses(p.uses)) {
@@ -64,6 +65,10 @@ export async function checkProposal(p: Proposal): Promise<string | null> {
 
   if (!isRisk(p.risk)) {
     return 'the proposal has an unknown risk';
+  }
+
+  if (effectsTooDeep(p.effects)) {
+    return "the proposal's effects are nested too deep to show in full";
   }
 
   try {

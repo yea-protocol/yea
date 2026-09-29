@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .._json import CanonicalError, canonical, sha256_b64url
+from ..lens.depth import MAX_EFFECT_DEPTH, effects_too_deep
 from ..risk import known_risk
 from ..uses import check_uses
 
@@ -13,6 +14,9 @@ from ..uses import check_uses
 def plan_preimage(tool: str, input: Any, plan: Any, risk: str) -> dict:
     """``{tool, input, summary, effects, uses, risk, undoWindow}``, absent optional fields left out."""
     known_risk(risk)  # a plan with an unknown risk never gets a plan hash
+    # A person approves what the form shows, so nothing in an effect may be cut from it (SPEC §6.6).
+    if effects_too_deep(plan.effects):
+        raise ValueError(f"plan has effects nested past {MAX_EFFECT_DEPTH} levels, too deep to show in full")
     pre: dict[str, Any] = {"tool": tool, "input": input, "summary": plan.summary, "effects": plan.effects}
     uses = check_uses(plan.uses)
     if uses is not None:

@@ -11,6 +11,13 @@ import { isObject } from '../util.js';
  */
 export const MAX_DEPTH = 64;
 
+/**
+ * How deep an effect a person is asked to approve may nest (SPEC §6.6). No view puts an effect
+ * more than a few levels into its frame, so an effect within this always shows in full: approval
+ * never covers content cut to `…`.
+ */
+export const MAX_EFFECT_DEPTH = 32;
+
 /** What an object or array nested past MAX_DEPTH becomes: a string, so it renders as one. */
 const CUT = '…';
 
@@ -33,3 +40,23 @@ export function clipDepth(v: unknown, depth = 0): unknown {
 
   return v;
 }
+
+/**
+ * True when `v` holds an object or array `levels` or more levels below it (`v` is level 0), so
+ * clipping it to that many levels would cut something. It recurses at most `levels` deep.
+ */
+export function nestedPast(v: unknown, levels: number, depth = 0): boolean {
+  if (!Array.isArray(v) && !isObject(v)) {
+    return false;
+  }
+
+  return (
+    depth >= levels ||
+    Object.values(v).some((x) => nestedPast(x, levels, depth + 1))
+  );
+}
+
+/** True when any of `effects` nests past MAX_EFFECT_DEPTH, so it can't be shown for approval. */
+export const effectsTooDeep = (effects: unknown): boolean =>
+  Array.isArray(effects) &&
+  effects.some((e) => nestedPast(e, MAX_EFFECT_DEPTH));
