@@ -7,14 +7,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from mcp_types.methods import is_input_required
 from yea.approval import HashedPlan, Policy
 from yea.store import ApprovalStore
 
 from ..policy import Pinned
 
 Result = Any  # a CallToolResult, an InputRequiredResult, or (guard) the original's wire mapping
-NOTHING_RAN = "nothing was run"
 BAD_STATE = ("this approval is invalid, expired, already used, or for another call; nothing was run. "
              "Call the tool again to ask again.")
 
@@ -34,19 +32,10 @@ class Yea:
     sub: Callable[[Any], str]
 
 
-def wire_failed(result: Any) -> bool:
-    """``MCPServer``'s ``call_next`` hands back the wire mapping: read it structurally, assume no class."""
-    if is_input_required(result):
-        return True
-    return result.get("isError") is True if isinstance(result, dict) else True
-
-
-def wire_with_receipt(result: Any, receipt: dict) -> Any:
-    return {**result, "_meta": {**(result.get("_meta") or {}), "dev.yea/receipt": receipt}}
-
-
-def wire_with_note(result: Any, note: str) -> Any:
-    return {**result, "content": [*(result.get("content") or []), {"type": "text", "text": note}]}
+def _unadapted(*_: Any) -> Any:
+    """A guarded job reads its original's result through its SDK's adapters (guard.py, fastmcp.py);
+    one built without them fails closed rather than misreading a result."""
+    raise TypeError("a guarded job needs its SDK's result adapters")
 
 
 @dataclass
@@ -60,9 +49,9 @@ class JobDef:
     confirm_with: Callable[[HashedPlan, dict], str] | None
     guarded: bool = False
     own_results_are_errors: Callable[[], bool] = lambda: False
-    failed: Callable[[Any], bool] = wire_failed
-    with_receipt: Callable[[Any, dict], Any] = wire_with_receipt
-    with_note: Callable[[Any, str], Any] = wire_with_note
+    failed: Callable[[Any], bool] = _unadapted
+    with_receipt: Callable[[Any, dict], Any] = _unadapted
+    with_note: Callable[[Any, str], Any] = _unadapted
 
 
 @dataclass

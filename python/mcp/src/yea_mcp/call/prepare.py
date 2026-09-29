@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from yea import Plan
@@ -9,7 +10,7 @@ from yea.approval import HashedPlan, Policy, Tightening, load_policy, plan_hash
 from yea.risk import resolve_risk
 
 from ..policy import has_total, read_policy, read_tightening_for
-from .model import JobDef, Yea
+from .model import JobDef, Yea, _maybe
 
 
 def is_memory_store(store: Any) -> bool:
@@ -55,3 +56,10 @@ def described_risk(d: dict) -> Any:
     if "risk" in d and d["risk"] is None:
         raise ValueError("plan has an unknown risk: None")
     return d.get("risk")
+
+
+async def described_plans(describe: Callable[[dict], Any], args: dict, apply: Callable[[], Any]) -> list[Plan]:
+    """A guarded tool's one plan: what ``describe(args)`` says, applied by running the original."""
+    d = await _maybe(describe(args))
+    return [Plan(d["summary"], d["effects"], apply=apply, uses=d.get("uses"), risk=described_risk(d),
+                 undo_window=d.get("undo_window"))]

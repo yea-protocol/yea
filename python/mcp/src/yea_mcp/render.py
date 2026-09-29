@@ -9,9 +9,11 @@ import mcp_types as t
 from yea import lean
 from yea.approval import HashedPlan
 from yea.lens import fmt_duration, safe_effect_line, untrusted_lens
-from yea.text import printable
 from yea.service import Clarification
+from yea.text import printable
 from yea.uses import check_uses, fmt_uses
+
+from .result import error_result, text_content
 
 
 def plan_view(hp: HashedPlan) -> dict:
@@ -39,24 +41,15 @@ def plans_text(plans: list[HashedPlan]) -> list[str]:
     return [head, *(line for i, hp in enumerate(plans, 1) for line in _plan_lines(i, hp))]
 
 
-def _text(lines: list[str]) -> list[t.TextContent]:
-    return [t.TextContent(type="text", text="\n".join(lines))]
-
-
 def preview_result(plans: list[HashedPlan], as_error: bool) -> t.CallToolResult:
     """``preview: true``: the plans, and nothing run or stored. ``as_error`` is for a guarded tool
     with an output schema, which only describes its real results (decision 6)."""
     return t.CallToolResult(
-        content=_text(["preview: nothing was run", *plans_text(plans),
-                       "Call again without preview to run the first plan, or to ask the user."]),
+        content=text_content(["preview: nothing was run", *plans_text(plans),
+                              "Call again without preview to run the first plan, or to ask the user."]),
         structured_content={"plans": [plan_view(hp) for hp in plans]},
         is_error=as_error,
     )
-
-
-def error_result(lines: list[str], structured: dict | None = None) -> t.CallToolResult:
-    """A refusal or failure: ``is_error``, so the model sees the reason and the fix."""
-    return t.CallToolResult(content=_text(lines), is_error=True, structured_content=structured)
 
 
 def consent_result(why: str, plans: list[HashedPlan], codes: list[dict], unavailable: str | None) -> t.CallToolResult:
@@ -78,7 +71,7 @@ def receipt_result(receipt: dict, auto: bool) -> t.CallToolResult:
     """A job's receipt as Lens (the protocol's RECEIPT), with the job's result."""
     line = untrusted_lens({"yea": 1, "id": receipt["id"], "re": receipt["proposal"], "kind": "RECEIPT",
                            "receipt": receipt, "auto": auto})
-    return t.CallToolResult(content=_text([line]),
+    return t.CallToolResult(content=text_content([line]),
                             structured_content={"receipt": receipt, "result": receipt.get("result")})
 
 
@@ -87,5 +80,5 @@ def clarify_result(c: Clarification) -> t.CallToolResult:
     lines = [f"? {printable(c.question)}"]
     lines += [printable(f"  {i}. {printable(str(o.get('label', '')))} → {', '.join(lean(o.get('params', {})).split(chr(10)))}")
               for i, o in enumerate(c.options, 1)]
-    return t.CallToolResult(content=_text(lines),
+    return t.CallToolResult(content=text_content(lines),
                             structured_content={"clarify": {"question": c.question, "options": c.options}})

@@ -9,15 +9,15 @@ params are validated; ``call_next`` returns the wire mapping for ``tools/call`` 
 from __future__ import annotations
 
 import copy
-import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from mcp_types.methods import is_input_required
 from yea import Plan
 
-from .call import described_risk, JobDef, Req, Yea, run_job
-from .render import error_result
+from .call import JobDef, Req, Yea, described_plans, run_job
+from .result import error_result, job_annotations, job_meta
 
 
 @dataclass
@@ -102,21 +102,25 @@ class GuardMiddleware:
         stripped = replace(ctx, params={**params, "arguments": args})
 
         async def plan() -> list[Plan]:
-            d = g.describe(dict(args))
-            d = await d if inspect.isawaitable(d) else d
-            return [Plan(d["summary"], d["effects"], apply=lambda: call_next(stripped), uses=d.get("uses"),
-                         risk=described_risk(d), undo_window=d.get("undo_window"))]
+            return await described_plans(g.describe, dict(args), lambda: call_next(stripped))
 
-        job = JobDef(name, g.risk, g.revert, g.confirm_with, guarded=True, own_results_are_errors=lambda: info.has_output)
+        job = JobDef(name, g.risk, g.revert, g.confirm_with, guarded=True, own_results_are_errors=lambda: info.has_output,
+                     failed=wire_failed, with_receipt=wire_with_receipt, with_note=wire_with_note)
         req = Req(ctx, ctx.session, ctx.request_id, ctx.protocol_version, params.get("requestState"),
                   params.get("inputResponses"))
         return await run_job(self.y, job, args, preview, req, plan)
 
 
-def job_annotations(given: dict | None = None) -> dict:
-    """Job defaults, under whatever the author set: a job changes things."""
-    return {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, **(given or {})}
+def wire_failed(result: Any) -> bool:
+    """``MCPServer``'s ``call_next`` hands back the wire mapping: read it structurally, assume no class."""
+    if is_input_required(result):
+        return True
+    return result.get("isError") is True if isinstance(result, dict) else True
 
 
-def job_meta(risk: str | None, undoable: bool) -> dict:
-    return {"dev.yea/job": {"risk": risk or "medium", "undoable": undoable}}
+def wire_with_receipt(result: Any, receipt: dict) -> Any:
+    return {**result, "_meta": {**(result.get("_meta") or {}), "dev.yea/receipt": receipt}}
+
+
+def wire_with_note(result: Any, note: str) -> Any:
+    return {**result, "content": [*(result.get("content") or []), {"type": "text", "text": note}]}

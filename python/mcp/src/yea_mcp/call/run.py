@@ -11,7 +11,8 @@ from yea.store import Reservation
 from yea.text import printable
 from yea.uses import check_uses
 
-from ..render import error_result, receipt_result
+from ..render import receipt_result
+from ..result import error_result
 from .model import Call, Result, _maybe, is_partial
 
 

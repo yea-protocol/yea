@@ -23,8 +23,9 @@ from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from pydantic_core import to_jsonable_python
 from yea import Plan
 
-from .call import described_risk, JobDef, Req, Yea, run_job
-from .guard import Guarded, job_annotations, job_meta
+from .call import JobDef, Req, Yea, described_plans, run_job
+from .guard import Guarded
+from .result import job_annotations, job_meta
 from .signature import job_wrapper
 
 
@@ -46,14 +47,16 @@ def add_job(y: Yea, server: FastMCP, plan_fn: Callable[..., Any], job: JobDef, t
 
 
 def add_undo(server: FastMCP, undo: Callable[..., Any]) -> None:
+    from .undo import (  # undo imports this module lazily too
+        UNDO_ANNOTATIONS,
+        UNDO_DESCRIPTION,
+    )
+
     async def undo_tool(receipt: str, ctx: FastContext) -> t.CallToolResult:
-        """Undo a job by its receipt id, within its undo window."""
         return await undo(receipt, ctx)
 
-    server.add_tool(Tool.from_function(undo_tool, name="undo",
-                                       description="Undo a job by its receipt id, within its undo window.",
-                                       annotations=t.ToolAnnotations(read_only_hint=False, destructive_hint=True,
-                                                                     idempotent_hint=True)))
+    server.add_tool(Tool.from_function(undo_tool, name="undo", description=UNDO_DESCRIPTION,
+                                       annotations=UNDO_ANNOTATIONS))
 
 
 def _runs_as_task(tool: Any) -> bool:
@@ -205,10 +208,7 @@ def _plan_fn(inner: Any, g: Guarded, injected: set[str]) -> Callable[..., Any]:
 
     async def plan(**kw: Any) -> list[Plan]:
         args = {k: v for k, v in kw.items() if k not in injected}
-        d = g.describe(to_jsonable_python(args, by_alias=True))
-        d = await d if inspect.isawaitable(d) else d
-        return [Plan(d["summary"], d["effects"], apply=lambda: inner.run(args), uses=d.get("uses"),
-                     risk=described_risk(d), undo_window=d.get("undo_window"))]
+        return await described_plans(g.describe, to_jsonable_python(args, by_alias=True), lambda: inner.run(args))
 
     plan.__signature__ = inspect.signature(fn)  # type: ignore[attr-defined]
     plan.__annotations__ = typing.get_type_hints(fn)
