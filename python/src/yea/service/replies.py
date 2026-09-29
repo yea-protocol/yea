@@ -52,7 +52,19 @@ def params_of(frame: dict) -> dict:
     return params
 
 
+def request_grants(frame: dict) -> list[str]:
+    """A request's grants (SPEC §3). Only a missing, null or empty ``grants`` is none; anything
+    else must be a list of strings, or the request is a ``bad_frame``."""
+    grants = frame.get("grants")
+    if grants is None:
+        return []
+    if not isinstance(grants, list) or not all(isinstance(g, str) for g in grants):
+        raise YeaError("bad_frame", "`grants` must be a list of strings")
+    return grants
+
+
 def verified_key(frame: dict) -> str | None:
-    """The proof key of a request whose proof ``authorize`` verified (it always verifies
-    the proof when grants are present, and rejects the request otherwise)."""
-    return frame["proof"]["key"] if frame.get("grants") else None
+    """The proof key of a request whose proof ``authorize`` verified: it verifies the proof
+    whenever ``request_grants`` finds grants, and rejects the request otherwise. Call it only
+    after ``authorize``."""
+    return frame["proof"]["key"] if request_grants(frame) else None

@@ -3084,3 +3084,199 @@ describe('grant numbers are integers in minimal form (#158)', () => {
     expect((await P.checkGrant(grant, ctx)).ok).toBe(true);
   });
 });
+
+// TS read `grants`, `params` and `auto` more loosely than Python and the spec: a string of grants
+// was walked character by character and `[123]` threw a TypeError, both silently anonymous on
+// ASK/INTENT; `params` wasn't checked to be an object; a truthy `auto` changed the proof target;
+// and an auto-commit gave up at the first valid grant if it came from another principal.
+describe('requests are read as Python reads them (#157)', () => {
+  const now = () => Math.floor(Date.now() / 1000);
+  const service = (trust: string[] = [principal.public]) =>
+    P.service({ id: 'v', name: 'V', summary: 'v', trust })
+      .ask('v.read', {
+        summary: 'read',
+        run: ({ principal: p }) => ({ principal: p }),
+      })
+      .intent('v.do', {
+        summary: 'do',
+        plan: () => ({
+          summary: 'do it',
+          effects: [],
+          apply: () => ({ done: true }),
+          revert: () => null,
+        }),
+      });
+  let n = 0;
+  const send = (
+    svc: ReturnType<typeof service>,
+    verb: 'ASK' | 'INTENT',
+    extra: Record<string, unknown>,
+  ) =>
+    svc.handle({
+      yea: 1,
+      id: `f${n++}`,
+      verb,
+      capability: verb === 'ASK' ? 'v.read' : 'v.do',
+      ...extra,
+    } as P.Request);
+  const errorOf = (r: P.FinalReply) =>
+    r.kind === 'ERROR' ? [r.code, r.message] : r.kind;
+
+  it('grants that are not a list of strings are a bad_frame', async () => {
+    const svc = service();
+
+    for (const grants of ['pg1.x', [123], ['pg1.x', null], { a: 1 }, 5, true]) {
+      for (const verb of ['ASK', 'INTENT'] as const) {
+        expect(
+          errorOf(await send(svc, verb, { grants })),
+          `${verb} ${JSON.stringify(grants)}`,
+        ).toEqual(['bad_frame', '`grants` must be a list of strings']);
+      }
+    }
+  });
+
+  it('only a missing, null or empty grants is no grants', async () => {
+    const svc = service();
+
+    for (const grants of [undefined, null, []]) {
+      const r = await send(svc, 'ASK', { grants });
+
+      expect(r.kind === 'ANSWER' && r.data, JSON.stringify(grants)).toEqual({
+        principal: null,
+      });
+    }
+
+    // Any other value, falsy or not, and a sparse array (whose holes `every` would skip).
+    for (const grants of [
+      {},
+      '',
+      0,
+      false,
+      new Array(1),
+      Object.assign(new Array(3), { 0: 'pg1.x', 2: 'pg1.y' }),
+    ]) {
+      for (const verb of ['ASK', 'INTENT'] as const) {
+        expect(
+          errorOf(await send(svc, verb, { grants })),
+          `${verb} ${String(grants)}`,
+        ).toEqual(['bad_frame', '`grants` must be a list of strings']);
+      }
+    }
+  });
+
+  // A sparse `grants` passed the empty-grants check as "no grants" (so its proof was never
+  // verified) while the replay key read `req.grants.length` and trusted `req.proof.key`. Anyone
+  // could get another agent's auto-INTENT receipt back by replaying its id with that agent's key
+  // in a forged proof. The replay key now comes only from the proof authorize() verified.
+  it('a forged proof never replays another agent’s auto INTENT', async () => {
+    const svc = service();
+    const grant = await P.issueGrant({ principal, to: agent.public });
+    const frames: P.Request[] = [];
+    const t = P.local(svc);
+    const spy: P.Transport = {
+      request: (f, e) => {
+        frames.push(f);
+
+        return t.request(f, e);
+      },
+      close() {},
+    };
+    const c = new P.Client(spy, { key: agent.seed, grants: [grant] });
+    const first = await c.intent('v.do', {}, { auto: true });
+
+    expect(first.kind).toBe('RECEIPT');
+
+    const victim = frames.find((f) => f.verb === 'INTENT');
+
+    if (!victim) {
+      throw new Error('no INTENT was sent');
+    }
+
+    const forged = {
+      key: agent.public,
+      ts: now(),
+      sig: P.b64u(new Uint8Array(64)),
+    };
+
+    const replay = (grants: unknown) =>
+      svc.handle(
+        structuredClone({ ...victim, grants, proof: forged }) as P.Request,
+      );
+
+    for (const grants of [new Array(1), {}, 0, '']) {
+      expect(errorOf(await replay(grants)), String(grants)).toEqual([
+        'bad_frame',
+        '`grants` must be a list of strings',
+      ]);
+    }
+
+    // With no grants the forged proof is never read: a plain, anonymous INTENT.
+    for (const grants of [[], undefined]) {
+      expect((await replay(grants)).kind, String(grants)).toBe('PROPOSALS');
+    }
+  });
+
+  it('params that are not an object are invalid_params', async () => {
+    const svc = service();
+
+    for (const params of [[], 'x', 5, true]) {
+      for (const verb of ['ASK', 'INTENT'] as const) {
+        expect(
+          errorOf(await send(svc, verb, { params })),
+          `${verb} ${JSON.stringify(params)}`,
+        ).toEqual(['invalid_params', '`params` must be an object']);
+      }
+    }
+
+    expect((await send(svc, 'ASK', { params: null })).kind).toBe('ANSWER');
+  });
+
+  it('auto must be true itself: a truthy value is a plain INTENT', async () => {
+    const svc = service();
+    const grants = [await P.issueGrant({ principal, to: agent.public })];
+
+    for (const auto of ['yes', 1]) {
+      // Signed as a plain INTENT is: over the capability, not the auto target.
+      const proof = await P.makeProof(
+        agent.seed,
+        { aud: 'v', verb: 'INTENT', target: 'v.do' },
+        now(),
+      );
+      const r = await send(svc, 'INTENT', { auto, grants, proof });
+
+      expect(r.kind, JSON.stringify(auto)).toBe('PROPOSALS');
+    }
+  });
+
+  it('an auto-commit looks past a valid grant from another principal', async () => {
+    const svc = service([principal.public, other.public]);
+    // The INTENT is authorized by the first grant, so its proposal is the principal's. Only
+    // the third grant, also the principal's, allows the COMMIT; the second is another's.
+    const grants = [
+      await P.issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [{ verbs: ['INTENT'] }],
+      }),
+      await P.issueGrant({ principal: other, to: agent.public }),
+      await P.issueGrant({ principal, to: agent.public }),
+    ];
+    const c = new P.Client(P.local(svc), { key: agent.seed, grants });
+    const r = await c.intent('v.do', {}, { auto: true });
+
+    expect(r.kind === 'RECEIPT' && r.auto).toBe(true);
+
+    // Without the principal's own COMMIT grant, the other principal's doesn't commit it.
+    const without = new P.Client(
+      P.local(service([principal.public, other.public])),
+      {
+        key: agent.seed,
+        grants: grants.slice(0, 2),
+      },
+    );
+
+    expect((await without.intent('v.do', {}, { auto: true })).kind).toBe(
+      'PROPOSALS',
+    );
+  });
+});

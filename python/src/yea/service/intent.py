@@ -20,6 +20,7 @@ from .replies import (
     error_reply,
     params_of,
     reply_frame,
+    request_grants,
     unknown_capability,
     verified_key,
 )
@@ -44,7 +45,8 @@ async def on_intent(svc: Service, frame: dict, budget: int, emit: Emit) -> dict:
     auth = await authorize(svc, frame, "INTENT", name, f"auto:{name}:{frame['id']}" if auto else name)
     # A repeated auto INTENT (same holder key + frame id) gets the original reply, never a
     # second commit (§4.3.1). Only proofs that authorize verified are used as keys.
-    key = f"{frame['proof']['key']}:{frame['id']}" if auto and frame.get("grants") else None
+    holder = verified_key(frame) if auto else None
+    key = f"{holder}:{frame['id']}" if holder else None
     if key:
         now = svc.now()
         prior = svc._auto_seen.get(key)
@@ -109,7 +111,7 @@ async def plan_intent(
 def auto_auth(svc: Service, frame: dict, proposal: dict, principal: str | None) -> Verification | None:
     """A grant (from ``principal``, when set) that authorizes COMMIT of ``proposal``
     outright, if the proposal is undoable."""
-    grants = frame.get("grants")
+    grants = request_grants(frame)
     if not proposal["undo"] or not grants:
         return None
     now = svc.now()
