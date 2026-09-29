@@ -1,4 +1,7 @@
-/** Reply frames the verb handlers share: ERROR from a thrown error, replays, EVENTs, and the holder key a reply is fitted for. */
+/**
+ * Reading requests and building the reply frames the verb handlers share: a request's params,
+ * ERROR from a thrown error, replays, EVENTs, and the holder key a reply is fitted for.
+ */
 import { randomId } from '../crypto.js';
 import { YeaError } from '../errors.js';
 import { replyFrame } from '../frames.js';
@@ -30,6 +33,21 @@ export function errorReply(
     message: 'the service failed unexpectedly',
     retry: 5,
   });
+}
+
+/** A request's params: `{}` when absent or null, and otherwise an object (SPEC §4.2, §4.3). */
+export function paramsOf(req: { params?: unknown }): Record<string, unknown> {
+  const params: unknown = req.params;
+
+  if (params === undefined || params === null) {
+    return {};
+  }
+
+  if (typeof params !== 'object' || Array.isArray(params)) {
+    throw new YeaError('invalid_params', '`params` must be an object');
+  }
+
+  return params as Record<string, unknown>;
 }
 
 /** The holder key of a request whose proof has already been verified by authorize() (grants present ⇒ proof checked). */

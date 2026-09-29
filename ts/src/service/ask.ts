@@ -4,7 +4,7 @@ import { replyFrame } from '../frames.js';
 import type { FinalReply, Request } from '../types.js';
 import { validateParams } from '../validate.js';
 import { unknownCapability } from './capabilities.js';
-import { verifiedKey } from './replies.js';
+import { paramsOf, verifiedKey } from './replies.js';
 import type { ServiceState } from './state.js';
 
 export async function onAsk(
@@ -15,7 +15,7 @@ export async function onAsk(
   const def =
     state.asks.get(req.capability) ??
     unknownCapability(state, req.capability, 'ask');
-  const params = req.params ?? {};
+  const params = paramsOf(req);
 
   validateParams(def.params, params);
 

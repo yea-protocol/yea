@@ -53,7 +53,7 @@ export class Authorizer {
       return this.authorizeRequired(req, scope);
     }
 
-    if (!req.grants?.length) {
+    if (!grantsOf(req).length) {
       return null;
     }
 
@@ -63,7 +63,7 @@ export class Authorizer {
 
   /** Like authorize(), for a request that must carry a grant: never anonymous. */
   async authorizeRequired(req: Request, scope: AuthScope): Promise<Authorized> {
-    if (!req.grants?.length) {
+    if (!grantsOf(req).length) {
       throw new YeaError(
         'unauthorized',
         `${scope.verb} needs a grant from your principal`,
@@ -94,7 +94,7 @@ export class Authorizer {
     const proof = await this.verifyProof(req.proof, scope.verb, scope.target);
     const failed: Failed[] = [];
 
-    for (const g of req.grants ?? []) {
+    for (const g of grantsOf(req)) {
       const c = await checkGrant(
         g,
         this.grantContext(
@@ -188,11 +188,20 @@ export class Authorizer {
     };
   }
 
-  /** Policy-gated auto-commit (SPEC §4.3.1): only if a grant authorizes it outright and it is undoable. */
-  async autoAuth(req: Intent, proposal: Proposal): Promise<Authorized | null> {
+  /**
+   * Policy-gated auto-commit (SPEC §4.3.1): a grant that authorizes it outright, if it is undoable.
+   * When `principal` is set, only a grant from that principal (the proposal's) counts, so the
+   * search goes on past a valid grant from another one.
+   */
+  async autoAuth(
+    req: Intent,
+    proposal: Proposal,
+    principal: string | null,
+  ): Promise<Authorized | null> {
     const { proof } = req;
+    const grants = grantsOf(req);
 
-    if (!proposal.undo || !req.grants?.length || !proof) {
+    if (!proposal.undo || !grants.length || !proof) {
       return null;
     }
 
@@ -208,19 +217,37 @@ export class Authorizer {
       return null;
     }
 
-    for (const g of req.grants) {
+    for (const g of grants) {
       const c = await checkGrant(
         g,
         this.grantContext('COMMIT', proposal.capability, proof.key, proposal),
       );
 
-      if (c.ok) {
+      if (c.ok && (principal === null || c.iss === principal)) {
         return c;
       }
     }
 
     return null;
   }
+}
+
+/**
+ * A request's grants (SPEC §3). As in Python, a missing or empty value (null, false, 0, '', [] or
+ * {}) is no grants; anything else must be a list of strings.
+ */
+function grantsOf(req: Request): string[] {
+  const grants: unknown = req.grants;
+
+  if (!grants || (typeof grants === 'object' && !Object.keys(grants).length)) {
+    return [];
+  }
+
+  if (!Array.isArray(grants) || !grants.every((g) => typeof g === 'string')) {
+    throw new YeaError('bad_frame', '`grants` must be a list of strings');
+  }
+
+  return grants;
 }
 
 /** The most useful error when no grant authorized: consent, then forbidden, then the first failure. */

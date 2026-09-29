@@ -12,13 +12,14 @@ import { DAY } from '../util.js';
 import { validateParams } from '../validate.js';
 import { unknownCapability } from './capabilities.js';
 import type { Executor } from './execute.js';
-import { replayOf, verifiedKey } from './replies.js';
+import { paramsOf, replayOf, verifiedKey } from './replies.js';
 import type { ServiceState, StoredProposal } from './state.js';
 import type { Sweeper } from './sweep.js';
 
 interface IntentRun {
   def: IntentDef;
   req: Intent;
+  params: Record<string, unknown>;
   budget: number;
   emit: (e: Event) => void;
   principal: string | null;
@@ -50,12 +51,14 @@ export class IntentHandler {
       this.state.intents.get(req.capability) ??
       unknownCapability(this.state, req.capability, 'intent');
 
-    validateParams(def.params, req.params ?? {});
+    const params = paramsOf(req);
+
+    validateParams(def.params, params);
 
     const auth = await this.state.authorizer.authorize(req, {
       verb: 'INTENT',
       capability: req.capability,
-      target: req.auto ? autoTarget(req.capability, req.id) : req.capability,
+      target: isAuto(req) ? autoTarget(req.capability, req.id) : req.capability,
     });
     const principal = auth?.iss ?? null;
     // A replayed auto INTENT (same holder key + request id) gets the original reply, never a second commit.
@@ -69,7 +72,14 @@ export class IntentHandler {
       }
     }
 
-    const reply = this.planIntent({ def, req, budget, emit, principal });
+    const reply = this.planIntent({
+      def,
+      req,
+      params,
+      budget,
+      emit,
+      principal,
+    });
 
     if (auto) {
       this.rememberAuto(auto.key, reply, auto.proofTs);
@@ -99,9 +109,9 @@ export class IntentHandler {
   }
 
   private async planIntent(run: IntentRun): Promise<FinalReply> {
-    const { def, req, budget, principal } = run;
+    const { def, req, params, budget, principal } = run;
     const out = await def.plan({
-      params: req.params ?? {},
+      params,
       goal: req.goal,
       principal,
     });
@@ -137,7 +147,9 @@ export class IntentHandler {
 
     this.sweeper.sweep(now);
 
-    const committed = req.auto ? await this.autoCommit(stored[0], run) : null;
+    const committed = isAuto(req)
+      ? await this.autoCommit(stored[0], run)
+      : null;
 
     if (committed) {
       return committed;
@@ -191,9 +203,13 @@ export class IntentHandler {
       return null;
     }
 
-    const ok = await this.state.authorizer.autoAuth(run.req, stored.proposal);
+    const ok = await this.state.authorizer.autoAuth(
+      run.req,
+      stored.proposal,
+      stored.principal,
+    );
 
-    if (!ok || (stored.principal && stored.principal !== ok.iss)) {
+    if (!ok) {
       return null;
     }
 
@@ -210,9 +226,12 @@ export class IntentHandler {
   }
 }
 
+/** Whether an INTENT asks for auto-commit: `auto` must be `true` itself (SPEC §4.3.1), not merely truthy. */
+const isAuto = (req: Intent): boolean => req.auto === true;
+
 /** Replay key for an auto INTENT: the holder key (proof verified by authorize()) plus the request id. */
 function autoReplayKey(req: Intent): { key: string; proofTs: number } | null {
-  if (!req.auto || !req.grants?.length || !req.proof) {
+  if (!isAuto(req) || !req.grants?.length || !req.proof) {
     return null;
   }
 
