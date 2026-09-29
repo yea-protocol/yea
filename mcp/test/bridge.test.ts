@@ -1,9 +1,13 @@
 /**
  * The bridge (SPEC-bridge, Testing): the example services in-process, behind MCP clients of
- * both eras, with and without elicitation. Security cases are in bridge-security.test.ts.
+ * both eras, with and without elicitation: job calls, proposals near expiry, consents that fail
+ * to commit, a named proposal is the one acted on, deny and unreadable policy files, and the
+ * utilities. Security cases are in bridge-security.test.ts.
  */
 
-import { unixNow } from '@yea-protocol/sdk';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { service, unixNow } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { saveGrant } from '@yea-protocol/sdk/node';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -24,6 +28,27 @@ import {
 import { connect, type Kind, textOf } from './helpers.js';
 
 const shopService = (k: Keys) => shop({ trust: [k.principal.public] });
+
+/** A service whose one job offers two plans that expire `a` and `b` seconds from now. */
+function twoTimes(k: Keys, a: number, b: number) {
+  return service({
+    id: 'lab.example',
+    name: 'Lab',
+    summary: 's',
+    trust: [k.principal.public],
+  }).intent('lab.pick', {
+    summary: 'pick',
+    params: { 'n?': 'int' },
+    risk: 'high',
+    plan: () =>
+      [a, b].map((expiresIn, i) => ({
+        summary: `plan ${i}`,
+        effects: [{ op: 'create' as const, target: `thing/${i}` }],
+        expiresIn,
+        apply: () => ({ plan: i }),
+      })),
+  });
+}
 
 afterEach(() => {
   delete process.env.YEA_HOME;
@@ -296,6 +321,181 @@ describe('a job tool call', () => {
   });
 });
 
+describe('proposals expire one by one, and only kept ones get codes', () => {
+  it('a proposal arriving with under 2 minutes left gets no code and is not kept', async () => {
+    const k = await keys();
+    const rec = recorded(twoTimes(k, 60, 600));
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)]),
+    );
+    const r = await conn.call({}, 'lab_pick');
+    const { proposals, codes } = proposalsOf(r);
+
+    expect(proposals.map((p) => p.summary)).toEqual(['plan 1']);
+    expect(codes.map((c) => c.proposal)).toEqual([proposals[0].id]);
+    expect(textOf(r)).toMatch(
+      /1 proposal expires in under 2 minutes, so it isn't offered/,
+    );
+    expect(textOf(r)).not.toContain('plan 0');
+  });
+
+  it('every proposal arriving too close to expiry: nothing offered or kept', async () => {
+    const k = await keys();
+    const rec = recorded(twoTimes(k, 30, 60));
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)]),
+    );
+    const r = await conn.call({}, 'lab_pick');
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(
+      /2 proposals expire in under 2 minutes, so they aren't offered/,
+    );
+    await conn.call({}, 'lab_pick');
+    expect(rec.verbs('INTENT')).toHaveLength(2);
+  });
+
+  it('a kept proposal near expiry loses its code, but a saved approval still commits it until it expires', async () => {
+    const k = await keys();
+    let now = unixNow();
+    const rec = recorded(twoTimes(k, 300, 900));
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)], { now: () => now }),
+    );
+    const first = proposalsOf(await conn.call({}, 'lab_pick'));
+
+    expect(first.codes).toHaveLength(2);
+    now = first.proposals[0].expires - 100;
+
+    // No new code for the first; the second still has one.
+    const again = await conn.call({}, 'lab_pick');
+
+    expect(rec.verbs('INTENT')).toHaveLength(1);
+    expect(proposalsOf(again).codes.map((c) => c.proposal)).toEqual([
+      first.proposals[1].id,
+    ]);
+    expect(textOf(again)).toMatch(
+      /1 pending proposal expires in under 2 minutes/,
+    );
+
+    // An approval of the first (from its earlier code) is still taken, and commits it.
+    const saved = await conn.call(
+      { token: await approveCode(k.principal, first.codes[0].code) },
+      'yea_consent',
+    );
+
+    expect(saved.isError).toBeFalsy();
+    expect(textOf(await conn.call({}, 'lab_pick'))).toMatch(/^✓ plan 0/);
+  });
+
+  it('once only uncoded proposals are left and none is approved, the call starts over', async () => {
+    const k = await keys();
+    let now = unixNow();
+    const rec = recorded(twoTimes(k, 300, 300));
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)], { now: () => now }),
+    );
+    const first = proposalsOf(await conn.call({}, 'lab_pick'));
+
+    now = first.proposals[0].expires - 100;
+    await conn.call({}, 'lab_pick');
+    expect(rec.verbs('INTENT')).toHaveLength(2);
+  });
+});
+
+describe('a failed consent never wedges the call, and a named proposal is the one acted on', () => {
+  it('a consent the service refuses is reported once, then set aside', async () => {
+    const k = await keys();
+    // The service refuses any COMMIT that carries a consent on top of the agent's grant.
+    const rec = recorded(shop({ trust: [k.principal.public] }), (f, r) =>
+      f.verb === 'COMMIT' && (f.grants?.length ?? 0) > 1
+        ? {
+            yea: 1,
+            id: 's',
+            re: f.id,
+            kind: 'ERROR',
+            code: 'forbidden',
+            message: 'consent not accepted here',
+          }
+        : r,
+    );
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)]),
+    );
+    const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const token = await approveCode(k.principal, codes[0].code);
+
+    await conn.call({ token }, 'yea_consent');
+
+    const failed = await conn.call(BIG_ORDER, 'shop_order');
+
+    expect(failed.isError).toBe(true);
+    expect(textOf(failed)).toMatch(/^✗ forbidden: consent not accepted here/);
+    expect(textOf(failed)).toMatch(/won't use it again/);
+
+    const next = await conn.call(BIG_ORDER, 'shop_order');
+
+    expect(textOf(next)).toMatch(
+      /^nothing was run: still waiting for approval/,
+    );
+    expect(rec.verbs('COMMIT')).toHaveLength(1);
+
+    // The same consent again is refused as refused, not saved.
+    const again = await conn.call({ token }, 'yea_consent');
+
+    expect(again.isError).toBe(true);
+    expect(textOf(again)).toMatch(
+      /refused by the service when it was used; ask the user to approve the code again/,
+    );
+
+    // A fresh approval of the same proposal replaces the one that failed.
+    const fresh = await approveCode(k.principal, codes[0].code);
+
+    expect(
+      (await conn.call({ token: fresh }, 'yea_consent')).isError,
+    ).toBeFalsy();
+  });
+
+  it('naming proposal B commits B with the grants only, never a consented A', async () => {
+    const k = await keys();
+    const { conn, shop: rec } = await bridged(k);
+    const { proposals, codes } = proposalsOf(
+      await conn.call(BIG_ORDER, 'shop_order'),
+    );
+    const [a, b] = proposals;
+
+    await conn.call(
+      { token: await approveCode(k.principal, codes[0].code) },
+      'yea_consent',
+    );
+
+    const named = await conn.call(
+      { ...BIG_ORDER, proposal: b.id },
+      'shop_order',
+    );
+
+    expect(textOf(named)).toMatch(/needs the user's approval/);
+    expect(proposalsOf(named).codes.map((c) => c.proposal)).toEqual([b.id]);
+    expect(rec.verbs('COMMIT').map((f) => ('hash' in f ? f.hash : ''))).toEqual(
+      [b.hash],
+    );
+    expect(rec.verbs('COMMIT')[0].grants).toHaveLength(1);
+
+    // Naming A uses A's own consent.
+    const done = await conn.call(
+      { ...BIG_ORDER, proposal: a.id },
+      'shop_order',
+    );
+
+    expect(textOf(done)).toContain(`✓ ${a.summary}`);
+  });
+});
+
 describe('deny', () => {
   it('refuses first, previews included, on the capability name', async () => {
     const k = await keys();
@@ -342,6 +542,35 @@ describe('deny', () => {
       /never allows/,
     );
     expect(textOf(await conn.call(SMALL_ORDER, names[1]))).toMatch(/^✓/);
+  });
+});
+
+describe('a policy file that can not be read refuses job calls', () => {
+  it('invalid JSON, or a bad deny, refuses every job call; reads still work', async () => {
+    const k = await keys();
+    const { conn, shop: rec } = await bridged(k);
+
+    writeFileSync(join(k.home, 'policy.json'), '{"deny": [');
+
+    const r = await conn.call(BIG_ORDER, 'shop_order');
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/policy.json is not valid JSON/);
+    expect(
+      (await conn.call({ tag: 'vegan' }, 'shop_search')).isError,
+    ).toBeFalsy();
+
+    writePolicy(k, { deny: 'shop.order' });
+    expect(textOf(await conn.call(BIG_ORDER, 'shop_order'))).toMatch(
+      /bad value/,
+    );
+    expect(rec.verbs('INTENT')).toHaveLength(0);
+
+    // Unknown fields only warn.
+    writePolicy(k, { deny: [], note: 'hi' });
+    expect(textOf(await conn.call(BIG_ORDER, 'shop_order'))).toMatch(
+      /^nothing was run/,
+    );
   });
 });
 
