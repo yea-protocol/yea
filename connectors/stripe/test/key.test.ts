@@ -1,3 +1,7 @@
+/**
+ * Where the Stripe key comes from (src/key.ts): `STRIPE_SECRET_KEY_FILE`, refused unless it is a
+ * 0600 file the server's user owns, and `STRIPE_SECRET_KEY` when there is no key file.
+ */
 import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';

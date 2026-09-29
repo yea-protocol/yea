@@ -335,6 +335,49 @@ describe('start-up', () => {
     ]);
   });
 
+  it('stops after 64 EXPANDs of a capability list that never ends', async () => {
+    const k = await keys();
+    const sent: Request[] = [];
+    let n = 0;
+    const endless: Transport = {
+      async request(f) {
+        sent.push(f);
+
+        const more = [
+          { handle: `h_${n++}`, path: 'capabilities', remaining: 1, est: 1 },
+        ];
+
+        return f.verb === 'HELLO'
+          ? {
+              yea: 1,
+              id: 's',
+              re: f.id,
+              kind: 'BRIEF',
+              service: { id: 'endless', name: 'E', summary: '' },
+              capabilities: [],
+              more,
+            }
+          : {
+              yea: 1,
+              id: 's',
+              re: f.id,
+              kind: 'ANSWER',
+              data: { items: [] },
+              more,
+            };
+      },
+      close() {},
+    };
+    const factory = await bridge([
+      { client: await agentClient(k, endless), url: 'test:endless' },
+    ]);
+
+    expect(sent.filter((f) => f.verb === 'EXPAND')).toHaveLength(64);
+    expect(factory.instructions).toMatch(
+      /test:endless could not be reached: too many EXPANDs/,
+    );
+  });
+
   it('refuses to start when two services claim the same id, naming both', async () => {
     const k = await keys();
     const trust = [k.principal.public];
@@ -495,9 +538,7 @@ describe('the pending key', () => {
       sortedJson({ b: 1.5, a: { d: [2.25, { z: 1, y: 0.1 }], c: null } }),
     ).toBe('{"a":{"c":null,"d":[2.25,{"y":0.1,"z":1}]},"b":1.5}');
   });
-});
 
-describe('the pending cache and EXPAND bounds', () => {
   it('the pending cache keeps at most 256 entries, dropping the oldest', () => {
     const cache = new PendingProposals();
     const p = { id: 'p', expires: unixNow() + 600 } as Proposal;
@@ -519,48 +560,5 @@ describe('the pending cache and EXPAND bounds', () => {
     expect(cache.size).toBe(MAX_PENDING);
     expect(cache.get('k0', unixNow())).toBeUndefined();
     expect(cache.get(`k${MAX_PENDING}`, unixNow())).toBeDefined();
-  });
-
-  it('stops after 64 EXPANDs of a capability list that never ends', async () => {
-    const k = await keys();
-    const sent: Request[] = [];
-    let n = 0;
-    const endless: Transport = {
-      async request(f) {
-        sent.push(f);
-
-        const more = [
-          { handle: `h_${n++}`, path: 'capabilities', remaining: 1, est: 1 },
-        ];
-
-        return f.verb === 'HELLO'
-          ? {
-              yea: 1,
-              id: 's',
-              re: f.id,
-              kind: 'BRIEF',
-              service: { id: 'endless', name: 'E', summary: '' },
-              capabilities: [],
-              more,
-            }
-          : {
-              yea: 1,
-              id: 's',
-              re: f.id,
-              kind: 'ANSWER',
-              data: { items: [] },
-              more,
-            };
-      },
-      close() {},
-    };
-    const factory = await bridge([
-      { client: await agentClient(k, endless), url: 'test:endless' },
-    ]);
-
-    expect(sent.filter((f) => f.verb === 'EXPAND')).toHaveLength(64);
-    expect(factory.instructions).toMatch(
-      /test:endless could not be reached: too many EXPANDs/,
-    );
   });
 });

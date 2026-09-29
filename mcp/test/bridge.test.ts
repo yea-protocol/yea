@@ -1,8 +1,8 @@
 /**
  * The bridge (SPEC-bridge, Testing): the example services in-process, behind MCP clients of
  * both eras, with and without elicitation: job calls, proposals near expiry, consents that fail
- * to commit, deny and unreadable policy files, and the utilities. Security cases are in
- * bridge-security.test.ts.
+ * to commit, a named proposal is the one acted on, deny and unreadable policy files, and the
+ * utilities. Security cases are in bridge-security.test.ts.
  */
 
 import { writeFileSync } from 'node:fs';
