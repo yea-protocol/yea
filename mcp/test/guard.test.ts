@@ -192,6 +192,31 @@ describe('guard failures', () => {
     expect(r._meta?.['dev.yea/receipt']).toBeUndefined();
   });
 
+  // #150: the original's result used to be replaced by the line; now it's kept, as in mcp-py.
+  it('a guarded tool keeps its own result when its receipt can’t be saved, with the line appended', async () => {
+    const w = await world();
+    const c: Counter = { charged: [] };
+    const conn = await connect('2025', guarded(w, c));
+
+    w.store.putReceipt = () => Promise.reject(new Error('disk full'));
+    // Cache the tool list, so the client validates the kept result against the outputSchema.
+    await conn.client.listTools();
+    conn.answers.push({ action: 'accept', content: { confirm: 'approve' } });
+
+    const r = await conn.call({ amount: '5' }, 'charge');
+
+    expect(c.charged).toEqual(['5']);
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent).toEqual({ charged: '5' });
+    expect(r.content).toEqual([
+      { type: 'text', text: 'charged 5' },
+      {
+        type: 'text',
+        text: "✓ Charge 5 USD happened, but then disk full; its receipt wasn't saved, so it can't be undone.",
+      },
+    ]);
+  });
+
   it('a failed update leaves the tool disabled', () => {
     const server = new McpServer({ name: 'b', version: '1' });
     const tool = server.registerTool(
