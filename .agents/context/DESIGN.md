@@ -224,12 +224,19 @@ one evidence chart, a quote, the comparison table and a closing band.
 
 Layout is a centred column: 1180px on the landing, 1360px on the playground, VitePress's doc
 width (688px content) on guide pages. Landing bands are separated by 1px hairline rules, with
-fluid padding (`clamp(64px, 8vw, 112px)`) that varies by section.
+fluid padding (`clamp(64px, 8vw, 112px)`) that varies by section. Three run edge to edge: the
+hero band in the slip's state colour, the protocol steps' tinted rows, and the closing band, which
+inverts the theme (ink in light, paper in dark).
 
 Motion: only state changes move. On the landing, the slip's border changes colour over 300ms and
-buttons change over 150ms, both `cubic-bezier(0.25, 1, 0.5, 1)`; there is no entrance
+buttons change over 150ms, both `cubic-bezier(0.25, 1, 0.5, 1)`. When the slip's state changes, the
+hero band's new colour spreads as a circle from the button the visitor pressed (a `clip-path`,
+900ms, ease-out expo, `cubic-bezier(0.16, 1, 0.3, 1)`), and the band's text follows over 600ms.
+Where the browser has scroll-driven animations, a protocol step's row tints with its state as it
+crosses the middle of the viewport; elsewhere the tint stays put. There is no entrance
 choreography and no replay. VitePress's own chrome changes over 250ms.
-`prefers-reduced-motion` cuts every CSS animation and transition to 0.01ms in `style.css`.
+`prefers-reduced-motion` cuts every CSS animation and transition to 0.01ms in `style.css`, so
+the band changes at once, and the steps' tints stay put.
 
 **Decided direction (James, 2026-09-28), all built in #117:**
 - **Type:** Public Sans (variable, via `@fontsource`) is the one family for all human-facing
@@ -294,6 +301,15 @@ interaction colour.
 - **Graphite** (paper-text-2) and **Pewter** (paper-text-3): light secondary and tertiary text.
 
 ### Named Rules
+**The State Drench Rule.** On the landing a state's colour may fill a whole surface, but only
+where that surface is in that state: the hero band is amber while its proposal waits on the
+visitor, green once they approve, red if a step fails, and the page's own colour once undone or
+expired, or when the core can't start (`landing/tone.ts`). The protocol steps fill their number with their state's colour and
+tint their row with it (28% over paper, 14% over ink). Text on a full-strength band is ink in both
+themes (secondary text is ink at 78%, 6.9:1 on amber and green and 4.8:1 on red); text on a tint
+keeps the theme's colours. A band with no state never takes a state colour: the closing band
+inverts the theme instead.
+
 **The State Colour Rule.** Amber is proposed and waiting on a person, green is committed, red is
 refused. Nothing else gets those colours (stated in the header of `style.css`). Primary buttons
 are neutral (ink on paper, bone on ink). Containers are neutral: tips and info use a soft fill,
@@ -426,6 +442,8 @@ and a shadow on the same surface.
 ### Proposal Slip (signature component)
 The landing hero's right column (`landing/ProposalSlip.vue`, `SlipStub.vue`, `use-slip.ts`): a
 real proposal from the example shop, over the example policy's $40 limit, as a permission slip.
+It sits on the hero band, which takes the slip's state colour (the State Drench Rule; the spread
+is `use-flood.ts`), and the stub's notches are painted in the band's colour.
 - **Top half:** what the service proposes. The proposal id and service, a state chip, the
   summary, the effects in mono, three facts (uses, risk, undo window) and the service's reason
   for asking.

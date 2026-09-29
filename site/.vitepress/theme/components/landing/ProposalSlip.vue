@@ -2,12 +2,14 @@
 /**
  * The hero's proposal slip: a real proposal from the example shop, waiting on the visitor.
  * The top half is what the service proposes; the tear-off stub below is the consent the
- * visitor signs, then the receipt, then the undo. Colour follows the protocol state.
+ * visitor signs, then the receipt, then the undo. Colour follows the protocol state, and
+ * the phase goes up to the hero, whose band follows it too.
  */
-import { computed, useId } from 'vue';
+import { computed, useId, watch } from 'vue';
 import SlipStub from './SlipStub.vue';
 import { keepDates } from './slip-view';
-import { useSlip } from './use-slip';
+import { phaseTone } from './tone';
+import { type Phase, useSlip } from './use-slip';
 
 const {
   phase,
@@ -22,29 +24,32 @@ const {
   again,
 } = useSlip();
 const titleId = useId();
+/** The phase, for the hero band around the slip to take its colour from. */
+const emit = defineEmits<{ phase: [Phase] }>();
 
-/** The chip: the protocol state in a word, coloured by it; neutral until the core is live. */
-const state = computed(() => {
-  switch (phase.value) {
-    case 'waiting':
-    case 'approving':
-      return { tone: 'amber', text: 'Waiting on you' };
-    case 'committed':
-    case 'undoing':
-      return { tone: 'green', text: '✓ Committed' };
-    case 'undone':
-      return { tone: 'plain', text: '↶ Undone' };
-    case 'expired':
-      return { tone: 'plain', text: 'Expired' };
-    case 'error':
-      return { tone: 'red', text: "✗ Didn't go through" };
-    default:
-      return {
-        tone: 'plain',
-        text: live.value ? 'Starting again…' : 'Recorded',
-      };
-  }
-});
+watch(phase, (p) => emit('phase', p), { immediate: true });
+
+/** The chip's words for each phase; its colour is the phase's tone (tone.ts). */
+const CHIP: Record<Exclude<Phase, 'loading'>, string> = {
+  unavailable: 'Recorded',
+  waiting: 'Waiting on you',
+  approving: 'Waiting on you',
+  committed: '✓ Committed',
+  undoing: '✓ Committed',
+  undone: '↶ Undone',
+  expired: 'Expired',
+  error: "✗ Didn't go through",
+};
+
+/**
+ * The chip: the protocol state in a word, coloured by it. While loading it's neutral, since
+ * nothing live waits yet; the band around the slip still shows the recording's amber.
+ */
+const state = computed(() =>
+  phase.value === 'loading'
+    ? { tone: 'plain', text: live.value ? 'Starting again…' : 'Recorded' }
+    : { tone: phaseTone(phase.value), text: CHIP[phase.value] },
+);
 </script>
 
 <template>
