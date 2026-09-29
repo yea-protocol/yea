@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ..errors import YeaError, fix
 from ..grants import GrantContext, Verification, verify_grant
 from ..keys import verify_proof
+from .replies import request_grants
 
 if TYPE_CHECKING:
     from . import Service
@@ -35,7 +36,7 @@ async def authorize(
     """Verify grants and proof. ``principal``: only grants from this principal count (the
     one a proposal was made for). ``replay``: ``each``, ``total`` and risk were already checked by
     the original commit, so ``consent_required`` counts as authorized (§4.4)."""
-    grants = frame.get("grants") or []
+    grants = request_grants(frame)
     required = verb in ("COMMIT", "UNDO") or svc.require_grants
     if not grants:
         if required:
@@ -45,8 +46,6 @@ async def authorize(
                 fix=[fix("ask your principal to issue a grant (yea grant) and send it in `grants` with a `proof`")],
             )
         return None
-    if not isinstance(grants, list) or not all(isinstance(g, str) for g in grants):
-        raise YeaError("bad_frame", "`grants` must be a list of strings")
     now = svc.now()
     err = verify_proof(frame.get("proof"), svc.id, verb, target, now)
     if err:

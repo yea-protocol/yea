@@ -2,6 +2,8 @@
  * Authorization for a YEA service (SPEC §6.4, §6.5): verify a request's proof, then find a
  * grant that allows it, or the error that says why none does. Service holds one Authorizer.
  */
+
+import { grantsOf } from './authorize/request-grants.js';
 import { consentRequest } from './consent.js';
 import { fix, YeaError } from './errors.js';
 import { type CheckContext, checkGrant, type GrantCheck } from './grants.js';
@@ -13,6 +15,16 @@ import type { Intent, Proof, Proposal, Request, Verb } from './types.js';
 export type Authorized = GrantCheck & { ok: true };
 
 type Failed = GrantCheck & { ok: false };
+
+/**
+ * What authorize() found: the authorizing grant (null: anonymous), and the request proof it
+ * verified (null: none was checked). Reply fitting and the auto-INTENT replay key read the
+ * holder key from `proof` only, never from the request.
+ */
+export interface Authorization {
+  granted: Authorized | null;
+  proof: Proof | null;
+}
 
 /** What a request is being authorized for. */
 export interface AuthScope {
@@ -40,29 +52,41 @@ export class Authorizer {
   }
 
   /**
-   * Verify grants on a request; returns the authorizing check, or throws the right error.
-   * Null means anonymous, which only verbs that don't require a grant allow.
+   * Verify grants on a request; returns the authorizing check and the verified proof, or throws
+   * the right error. No grant means anonymous, which only verbs that don't require one allow.
    */
-  async authorize(req: Request, scope: AuthScope): Promise<Authorized | null> {
+  async authorize(req: Request, scope: AuthScope): Promise<Authorization> {
     const required =
       scope.verb === 'COMMIT' ||
       scope.verb === 'UNDO' ||
       this.opts.requireGrants;
 
     if (required) {
-      return this.authorizeRequired(req, scope);
+      const { granted, proof } = await this.checkRequired(req, scope);
+
+      return { granted, proof };
     }
 
     if (!grantsOf(req).length) {
-      return null;
+      return { granted: null, proof: null };
     }
 
     // ASK/INTENT don't need a grant here, so a grant that doesn't apply just means "anonymous".
-    return (await this.checkGrants(req, scope)).granted ?? null;
+    const { granted, proof } = await this.checkGrants(req, scope);
+
+    return { granted: granted ?? null, proof };
   }
 
   /** Like authorize(), for a request that must carry a grant: never anonymous. */
   async authorizeRequired(req: Request, scope: AuthScope): Promise<Authorized> {
+    return (await this.checkRequired(req, scope)).granted;
+  }
+
+  /** The authorizing grant of a request that must carry one, and the proof it was checked with. */
+  private async checkRequired(
+    req: Request,
+    scope: AuthScope,
+  ): Promise<{ granted: Authorized; proof: Proof }> {
     if (!grantsOf(req).length) {
       throw new YeaError(
         'unauthorized',
@@ -77,10 +101,10 @@ export class Authorizer {
       );
     }
 
-    const { granted, failed } = await this.checkGrants(req, scope);
+    const { granted, failed, proof } = await this.checkGrants(req, scope);
 
     if (granted) {
-      return granted;
+      return { granted, proof };
     }
 
     throw grantFailure(failed, scope.proposal, this.id);
@@ -90,7 +114,7 @@ export class Authorizer {
   private async checkGrants(
     req: Request,
     scope: AuthScope,
-  ): Promise<{ granted?: Authorized; failed: Failed[] }> {
+  ): Promise<{ granted?: Authorized; failed: Failed[]; proof: Proof }> {
     const proof = await this.verifyProof(req.proof, scope.verb, scope.target);
     const failed: Failed[] = [];
 
@@ -118,7 +142,7 @@ export class Authorizer {
       }
 
       if (c.ok) {
-        return { granted: c, failed };
+        return { granted: c, failed, proof };
       }
 
       // Replaying an already-executed commit must not be blocked by money/risk limits it already used up.
@@ -132,13 +156,14 @@ export class Authorizer {
             totals: [],
           },
           failed,
+          proof,
         };
       }
 
       failed.push(c);
     }
 
-    return { failed };
+    return { failed, proof };
   }
 
   /** Returns the request proof if it is validly signed over this verb and target; throws otherwise. */
@@ -230,24 +255,6 @@ export class Authorizer {
 
     return null;
   }
-}
-
-/**
- * A request's grants (SPEC §3). As in Python, a missing or empty value (null, false, 0, '', [] or
- * {}) is no grants; anything else must be a list of strings.
- */
-function grantsOf(req: Request): string[] {
-  const grants: unknown = req.grants;
-
-  if (!grants || (typeof grants === 'object' && !Object.keys(grants).length)) {
-    return [];
-  }
-
-  if (!Array.isArray(grants) || !grants.every((g) => typeof g === 'string')) {
-    throw new YeaError('bad_frame', '`grants` must be a list of strings');
-  }
-
-  return grants;
 }
 
 /** The most useful error when no grant authorized: consent, then forbidden, then the first failure. */

@@ -474,6 +474,37 @@ def test_auto_replay_returns_original_reply():
     run(go())
 
 
+def test_forged_proof_never_replays_an_auto_intent():
+    """Only a missing, null or empty ``grants`` is none; anything else that isn't a list of strings
+    is a bad_frame. A replayed auto INTENT whose proof was never verified must not get the original
+    receipt back (TS read a sparse ``grants`` as none but keyed the replay on its unverified proof)."""
+    async def go():
+        svc = _auto_shop()
+        frames = []
+
+        class Spy:
+            async def request(self, frame, on_event):
+                frames.append(frame)
+                return await local(svc).request(frame, on_event)
+
+            async def close(self):
+                pass
+
+        first = await Client(Spy(), key=AGENT, grants=[grant()]).intent("shop.order", {"sku": "a", "qty": 1}, auto=True)
+        assert first.kind == "RECEIPT"
+        forged = {"key": AGENT.public, "ts": int(time.time()), "sig": "A" * 86}
+        for grants in ({}, 0, "", False, [None], ["pg1.x", 1]):
+            r = await svc.handle({**frames[-1], "grants": grants, "proof": forged})
+            assert (r["kind"], r.get("code"), r.get("message")) == (
+                "ERROR", "bad_frame", "`grants` must be a list of strings"), grants
+        for grants in ([], None):
+            r = await svc.handle({**frames[-1], "grants": grants, "proof": forged})
+            assert r["kind"] == "PROPOSALS", grants
+        assert svc.orders == [1]
+
+    run(go())
+
+
 def test_tls_flow(tmp_path):
     import ssl
     import subprocess

@@ -3135,15 +3135,84 @@ describe('requests are read as Python reads them (#157)', () => {
     }
   });
 
-  it('an empty or falsy grants is no grants', async () => {
+  it('only a missing, null or empty grants is no grants', async () => {
     const svc = service();
 
-    for (const grants of [null, [], {}, '', 0, false]) {
+    for (const grants of [undefined, null, []]) {
       const r = await send(svc, 'ASK', { grants });
 
       expect(r.kind === 'ANSWER' && r.data, JSON.stringify(grants)).toEqual({
         principal: null,
       });
+    }
+
+    // Any other value, falsy or not, and a sparse array (whose holes `every` would skip).
+    for (const grants of [
+      {},
+      '',
+      0,
+      false,
+      new Array(1),
+      Object.assign(new Array(3), { 0: 'pg1.x', 2: 'pg1.y' }),
+    ]) {
+      for (const verb of ['ASK', 'INTENT'] as const) {
+        expect(
+          errorOf(await send(svc, verb, { grants })),
+          `${verb} ${String(grants)}`,
+        ).toEqual(['bad_frame', '`grants` must be a list of strings']);
+      }
+    }
+  });
+
+  // A sparse `grants` passed the empty-grants check as "no grants" (so its proof was never
+  // verified) while the replay key read `req.grants.length` and trusted `req.proof.key`. Anyone
+  // could get another agent's auto-INTENT receipt back by replaying its id with that agent's key
+  // in a forged proof. The replay key now comes only from the proof authorize() verified.
+  it('a forged proof never replays another agent’s auto INTENT', async () => {
+    const svc = service();
+    const grant = await P.issueGrant({ principal, to: agent.public });
+    const frames: P.Request[] = [];
+    const t = P.local(svc);
+    const spy: P.Transport = {
+      request: (f, e) => {
+        frames.push(f);
+
+        return t.request(f, e);
+      },
+      close() {},
+    };
+    const c = new P.Client(spy, { key: agent.seed, grants: [grant] });
+    const first = await c.intent('v.do', {}, { auto: true });
+
+    expect(first.kind).toBe('RECEIPT');
+
+    const victim = frames.find((f) => f.verb === 'INTENT');
+
+    if (!victim) {
+      throw new Error('no INTENT was sent');
+    }
+
+    const forged = {
+      key: agent.public,
+      ts: now(),
+      sig: P.b64u(new Uint8Array(64)),
+    };
+
+    const replay = (grants: unknown) =>
+      svc.handle(
+        structuredClone({ ...victim, grants, proof: forged }) as P.Request,
+      );
+
+    for (const grants of [new Array(1), {}, 0, '']) {
+      expect(errorOf(await replay(grants)), String(grants)).toEqual([
+        'bad_frame',
+        '`grants` must be a list of strings',
+      ]);
+    }
+
+    // With no grants the forged proof is never read: a plain, anonymous INTENT.
+    for (const grants of [[], undefined]) {
+      expect((await replay(grants)).kind, String(grants)).toBe('PROPOSALS');
     }
   });
 

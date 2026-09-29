@@ -6,7 +6,7 @@ import { randomId } from '../crypto.js';
 import { YeaError } from '../errors.js';
 import { replyFrame } from '../frames.js';
 import type { ServiceOptions } from '../plan.js';
-import type { ErrorReply, Event, FinalReply, Request } from '../types.js';
+import type { ErrorReply, Event, FinalReply } from '../types.js';
 
 /** The ERROR reply for `e`; anything but a YeaError is reported to `onError` and answered as `internal`. */
 export function errorReply(
@@ -49,10 +49,6 @@ export function paramsOf(req: { params?: unknown }): Record<string, unknown> {
 
   return params as Record<string, unknown>;
 }
-
-/** The holder key of a request whose proof has already been verified by authorize() (grants present ⇒ proof checked). */
-export const verifiedKey = (req: Request): string | null =>
-  req.grants?.length && req.proof ? req.proof.key : null;
 
 /**
  * A prior reply re-issued for a repeated request: a repeated COMMIT or UNDO, or an auto INTENT

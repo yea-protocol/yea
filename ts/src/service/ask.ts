@@ -4,7 +4,7 @@ import { replyFrame } from '../frames.js';
 import type { FinalReply, Request } from '../types.js';
 import { validateParams } from '../validate.js';
 import { unknownCapability } from './capabilities.js';
-import { paramsOf, verifiedKey } from './replies.js';
+import { paramsOf } from './replies.js';
 import type { ServiceState } from './state.js';
 
 export async function onAsk(
@@ -19,17 +19,17 @@ export async function onAsk(
 
   validateParams(def.params, params);
 
-  const auth = await state.authorizer.authorize(req, {
+  const { granted, proof } = await state.authorizer.authorize(req, {
     verb: 'ASK',
     capability: req.capability,
     target: req.capability,
   });
-  const data = await def.run({ params, principal: auth?.iss ?? null });
+  const data = await def.run({ params, principal: granted?.iss ?? null });
 
   return fit(
     replyFrame(req.id, 'ANSWER', { data: data ?? null }),
     budget,
     state.handles,
-    verifiedKey(req),
+    proof?.key ?? null,
   );
 }

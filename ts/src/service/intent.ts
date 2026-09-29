@@ -6,13 +6,13 @@ import { replyFrame } from '../frames.js';
 import type { IntentDef, Plan } from '../plan.js';
 import { autoTarget } from '../proof.js';
 import { resolveRisk } from '../risk.js';
-import type { Event, FinalReply, Intent, Proposal } from '../types.js';
+import type { Event, FinalReply, Intent, Proof, Proposal } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
 import { DAY } from '../util.js';
 import { validateParams } from '../validate.js';
 import { unknownCapability } from './capabilities.js';
 import type { Executor } from './execute.js';
-import { paramsOf, replayOf, verifiedKey } from './replies.js';
+import { paramsOf, replayOf } from './replies.js';
 import type { ServiceState, StoredProposal } from './state.js';
 import type { Sweeper } from './sweep.js';
 
@@ -23,6 +23,8 @@ interface IntentRun {
   budget: number;
   emit: (e: Event) => void;
   principal: string | null;
+  /** The holder key authorize() verified the proof of, or null: the only key a reply is for. */
+  requester: string | null;
 }
 
 export class IntentHandler {
@@ -55,14 +57,14 @@ export class IntentHandler {
 
     validateParams(def.params, params);
 
-    const auth = await this.state.authorizer.authorize(req, {
+    const { granted, proof } = await this.state.authorizer.authorize(req, {
       verb: 'INTENT',
       capability: req.capability,
       target: isAuto(req) ? autoTarget(req.capability, req.id) : req.capability,
     });
-    const principal = auth?.iss ?? null;
+    const principal = granted?.iss ?? null;
     // A replayed auto INTENT (same holder key + request id) gets the original reply, never a second commit.
-    const auto = autoReplayKey(req);
+    const auto = autoReplayKey(req, proof);
 
     if (auto) {
       const prior = this.state.autoSeen.get(auto.key);
@@ -79,6 +81,7 @@ export class IntentHandler {
       budget,
       emit,
       principal,
+      requester: proof?.key ?? null,
     });
 
     if (auto) {
@@ -137,7 +140,7 @@ export class IntentHandler {
         proposal,
         plan,
         principal,
-        requester: verifiedKey(req),
+        requester: run.requester,
         created: now,
       };
 
@@ -161,7 +164,7 @@ export class IntentHandler {
       }),
       budget,
       this.state.handles,
-      verifiedKey(req),
+      run.requester,
     );
   }
 
@@ -220,7 +223,7 @@ export class IntentHandler {
           { ...out, auto: true },
           run.budget,
           this.state.handles,
-          verifiedKey(run.req),
+          run.requester,
         )
       : out;
   }
@@ -229,13 +232,19 @@ export class IntentHandler {
 /** Whether an INTENT asks for auto-commit: `auto` must be `true` itself (SPEC §4.3.1), not merely truthy. */
 const isAuto = (req: Intent): boolean => req.auto === true;
 
-/** Replay key for an auto INTENT: the holder key (proof verified by authorize()) plus the request id. */
-function autoReplayKey(req: Intent): { key: string; proofTs: number } | null {
-  if (!isAuto(req) || !req.grants?.length || !req.proof) {
+/**
+ * Replay key for an auto INTENT: the holder key of the proof authorize() verified, plus the
+ * request id. Never the request's own proof: an unverified key would let anyone claim a replay.
+ */
+function autoReplayKey(
+  req: Intent,
+  proof: Proof | null,
+): { key: string; proofTs: number } | null {
+  if (!isAuto(req) || !proof) {
     return null;
   }
 
-  return { key: `${req.proof.key}:${req.id}`, proofTs: req.proof.ts };
+  return { key: `${proof.key}:${req.id}`, proofTs: proof.ts };
 }
 
 /** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */
