@@ -1,13 +1,28 @@
 /**
  * How the bridge builds its tools from HELLO (SPEC-bridge, "Tools"): names, suffixes, the
- * reserved prefix, schemas, annotations, refused params, unique service ids, and the generic
- * fallback past 25 capabilities.
+ * reserved prefix, schemas, annotations, refused params, caps on service text and tool counts,
+ * unique service ids, the generic fallback past 25 capabilities, the EXPAND cap, and the pending
+ * key and cache bound.
  */
-import { type Service, service, sha256 } from '@yea-protocol/sdk';
+import {
+  type Proposal,
+  type Request,
+  type Service,
+  service,
+  sha256,
+  type Transport,
+  unixNow,
+} from '@yea-protocol/sdk';
 import { calendar, shop } from '@yea-protocol/sdk/examples';
 import { afterEach, describe, expect, it } from 'vitest';
 import { sanitize } from '../src/bridge/names.js';
-import { sortedJson } from '../src/bridge/pending.js';
+import {
+  MAX_PENDING,
+  type Pending,
+  PendingProposals,
+  sortedJson,
+} from '../src/bridge/pending.js';
+import { MAX_TOOLS_PER_SERVICE } from '../src/bridge/tools.js';
 import { bridge } from '../src/bridge.js';
 import {
   agentClient,
@@ -236,6 +251,65 @@ describe('schemas and annotations', () => {
   });
 });
 
+describe('what the bridge serves', () => {
+  it("doesn't serve a tool whose param names some model APIs reject, at any depth", async () => {
+    const k = await keys();
+    const svc = service({
+      id: 'odd.example',
+      name: 'Odd',
+      summary: 's',
+      trust: [k.principal.public],
+    })
+      .ask('odd.space', {
+        summary: 'x',
+        params: { 'a b': 'string' },
+        run: () => 1,
+      })
+      .ask('odd.nested', {
+        summary: 'x',
+        params: { items: [{ 'q!': 'int' }] },
+        run: () => 1,
+      })
+      .ask('odd.fine', {
+        summary: 'x',
+        params: { 'a.b-c_d?': 'string' },
+        run: () => 1,
+      });
+    const factory = await bridge([await agentClient(k, recorded(svc).t)]);
+
+    expect(factory.tools).toEqual(['odd_fine']);
+  });
+
+  it('cuts service text to about 300 characters, and serves at most 200 tools a service', async () => {
+    const k = await keys();
+    let svc = service({
+      id: 'wide.example',
+      name: 'Wide',
+      summary: 'w'.repeat(1000),
+      trust: [k.principal.public],
+    });
+
+    for (let i = 0; i < MAX_TOOLS_PER_SERVICE + 5; i++) {
+      svc = svc.ask(`w.r${i}`, {
+        summary: 's'.repeat(1000),
+        params: { 'q?': `string — ${'d'.repeat(1000)}` },
+        run: () => i,
+      });
+    }
+
+    const factory = await bridge([await agentClient(k, recorded(svc).t)], {
+      tools: 'per-capability',
+    });
+    const conn = await connect('2026', factory);
+    const { tools } = await conn.client.listTools();
+
+    expect(factory.tools).toHaveLength(MAX_TOOLS_PER_SERVICE);
+    expect(tools[0].description?.length).toBeLessThan(400);
+    expect(JSON.stringify(tools[0].inputSchema).length).toBeLessThan(500);
+    expect(factory.instructions.length).toBeLessThan(3000);
+  });
+});
+
 describe('start-up', () => {
   it('EXPANDs elided capabilities, so every one gets a tool', async () => {
     const k = await keys();
@@ -420,5 +494,73 @@ describe('the pending key', () => {
     expect(
       sortedJson({ b: 1.5, a: { d: [2.25, { z: 1, y: 0.1 }], c: null } }),
     ).toBe('{"a":{"c":null,"d":[2.25,{"y":0.1,"z":1}]},"b":1.5}');
+  });
+});
+
+describe('the pending cache and EXPAND bounds', () => {
+  it('the pending cache keeps at most 256 entries, dropping the oldest', () => {
+    const cache = new PendingProposals();
+    const p = { id: 'p', expires: unixNow() + 600 } as Proposal;
+    const entry = (i: number): Pending => ({
+      key: `k${i}`,
+      tool: 't',
+      service: 's',
+      capability: 'c',
+      principal: null,
+      proposals: [p],
+      codes: [],
+      refused: new Set(),
+    });
+
+    for (let i = 0; i <= MAX_PENDING; i++) {
+      cache.set(entry(i));
+    }
+
+    expect(cache.size).toBe(MAX_PENDING);
+    expect(cache.get('k0', unixNow())).toBeUndefined();
+    expect(cache.get(`k${MAX_PENDING}`, unixNow())).toBeDefined();
+  });
+
+  it('stops after 64 EXPANDs of a capability list that never ends', async () => {
+    const k = await keys();
+    const sent: Request[] = [];
+    let n = 0;
+    const endless: Transport = {
+      async request(f) {
+        sent.push(f);
+
+        const more = [
+          { handle: `h_${n++}`, path: 'capabilities', remaining: 1, est: 1 },
+        ];
+
+        return f.verb === 'HELLO'
+          ? {
+              yea: 1,
+              id: 's',
+              re: f.id,
+              kind: 'BRIEF',
+              service: { id: 'endless', name: 'E', summary: '' },
+              capabilities: [],
+              more,
+            }
+          : {
+              yea: 1,
+              id: 's',
+              re: f.id,
+              kind: 'ANSWER',
+              data: { items: [] },
+              more,
+            };
+      },
+      close() {},
+    };
+    const factory = await bridge([
+      { client: await agentClient(k, endless), url: 'test:endless' },
+    ]);
+
+    expect(sent.filter((f) => f.verb === 'EXPAND')).toHaveLength(64);
+    expect(factory.instructions).toMatch(
+      /test:endless could not be reached: too many EXPANDs/,
+    );
   });
 });
