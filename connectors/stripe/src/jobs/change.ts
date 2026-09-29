@@ -5,7 +5,7 @@
  */
 import { PartialApplyError } from '@yea-protocol/mcp';
 import { create, type JobPlan, type Risk, update } from '@yea-protocol/sdk';
-import { cancelling, idOf, period, SCHEDULE_ID, type Stripe } from '../api.js';
+import { period, SCHEDULE_ID, type Stripe } from '../api.js';
 import {
   applying,
   type Ctx,
@@ -24,14 +24,9 @@ import {
   priceName,
   SUBSCRIPTION_FIELD,
 } from '../find.js';
-import {
-  changeAtRenewal,
-  getSchedule,
-  onlyCurrentPhase,
-  releaseSchedule,
-  uncopied,
-} from '../schedule.js';
+import { changeAtRenewal, releaseSchedule } from '../schedule.js';
 import { confirmPhrase, who } from '../text.js';
+import { refusePending, whatFits } from './change/fits.js';
 import { cheaperOrSame, findPrice, refuseUnsafe } from './change/prices.js';
 import { proration } from './change/proration.js';
 
@@ -69,9 +64,6 @@ interface Prorated {
   items: { id: string; price: string; quantity: number }[];
   date: number;
 }
-
-const discounted = (ch: Change) =>
-  ch.sub.discounts.length > 0 || ch.item.discounts.length > 0;
 
 const moving = (ctx: Ctx, ch: Change) =>
   `${tag(ctx)} Move ${who(ch.c)}'s subscription (${ch.sub.id}) from ${priceLabel(ch.item.price)} to ${priceLabel(ch.to)}`;
@@ -136,53 +128,6 @@ async function now(ctx: Ctx, ch: Change): Promise<JobPlan> {
   };
 }
 
-/**
- * Which plans a subscription can have. With a schedule: never "at renewal" (releasing would drop
- * phases we didn't make), and "now" only when nothing else is pending, since a later phase
- * would undo it.
- */
-async function whatFits(ctx: Ctx, ch: Change) {
-  if (!ch.sub.schedule) {
-    return {
-      renewal:
-        !cancelling(ch.sub) && !discounted(ch) && uncopied(ch.sub).length === 0,
-      now: true,
-    };
-  }
-
-  const s = await getSchedule(ctx, idOf(ch.sub.schedule));
-
-  if (!onlyCurrentPhase(s, period(ch.sub).end)) {
-    throw new Error(
-      `${ch.sub.id} has changes pending on subscription schedule ${s.id}; undo that change or edit the schedule in the Stripe dashboard first`,
-    );
-  }
-
-  return { renewal: false, now: true };
-}
-
-/**
- * A change already waiting on payment refuses both plans: another "now" would make a second
- * update and a second invoice, and "at renewal" would race the one pending.
- */
-function refusePending(sub: Stripe.Subscription) {
-  const pending = sub.pending_update;
-
-  if (pending === null) {
-    return;
-  }
-
-  const invoice =
-    sub.latest_invoice === null ? 'its open invoice' : idOf(sub.latest_invoice);
-  const until = pending.expires_at
-    ? `, by ${new Date(pending.expires_at * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`
-    : '';
-
-  throw new Error(
-    `${sub.id} already has a price change waiting on payment of ${invoice}. Stripe applies it once that invoice is paid, or discards it if it isn't${until}; nothing else can change the plan until then`,
-  );
-}
-
 /** The plan-change plans: at renewal when it fits, and now. */
 async function plan(ctx: Ctx, input: ChangeInput) {
   const found = await oneCustomerSubscription(ctx, input);
@@ -201,7 +146,7 @@ async function plan(ctx: Ctx, input: ChangeInput) {
   refuseUnsafe(item.price, to);
 
   const ch: Change = { c, sub, item, to, quantity: item.quantity ?? 1 };
-  const fits = await whatFits(ctx, ch);
+  const fits = await whatFits(ctx, sub, item);
   const plans = fits.renewal ? [atRenewal(ctx, ch)] : [];
 
   plans.push(await now(ctx, ch));
