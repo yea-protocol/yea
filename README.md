@@ -428,6 +428,15 @@ yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana   # interactive: inten
 
 
 <!-- #region openapi -->
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so the `npx` commands below fail for
+> now. Until it's published, run the CLI from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js openapi --preset github
+> ```
+
 You don't have to wait for services to adopt YEA.
 
 ```sh
@@ -483,6 +492,16 @@ claude mcp add my-api -- npx @yea-protocol/cli mcp yea://127.0.0.1:7447
 
 
 <!-- #region claude-code -->
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so the plugin below (which runs
+> `npx @yea-protocol/cli mcp`) and the `npx` commands fail for now. Until it's published, run the
+> CLI from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js install
+> ```
+
 The bridge exposes YEA services as an MCP server, so every MCP client can use them now.
 Each capability is its own tool (`calendar_reschedule`, `shop_order`, …), plus `yea_consent`,
 `yea_undo` and `yea_expand`. Tool results are Lens.

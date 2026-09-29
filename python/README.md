@@ -17,6 +17,12 @@ uv add yea-sdk               # or: pip install yea-sdk; imports as `yea`
 cd python && uv run pytest   # from a checkout: conformance + TS interop (node ≥ 22.18)
 ```
 
+> **Unreleased:** `yea-sdk` isn't on PyPI yet. Until it is, install it from the repo:
+>
+> ```sh
+> uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"
+> ```
+
 ## Quickstart
 
 ```python
@@ -62,6 +68,7 @@ API names mirror `ts/src` in snake_case (`issue_grant`, `verify_grant`, `consent
 example calendar on `yea://127.0.0.1:7457` and `http://127.0.0.1:8457/yea`.
 
 The CLI (`yea`), the MCP bridge for Claude Code, and the OpenAPI adapter ship with the
-TypeScript packages: `npx @yea-protocol/cli --help`. See the
+TypeScript packages: `npx @yea-protocol/cli --help` once it's on npm (until then,
+`node cli/bin/yea.js --help` from a built clone of the repo). See the
 [main README](https://github.com/yea-protocol/yea#readme) and the
 [docs](https://yea-protocol.github.io/yea/).

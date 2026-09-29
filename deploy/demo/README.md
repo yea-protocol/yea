@@ -10,6 +10,15 @@ npx @yea-protocol/cli grant --risk low --each spend=40.00USD --total spend=100.0
 claude mcp add yea-demo -- npx @yea-protocol/cli mcp https://yea-demo.<account>.workers.dev/calendar/yea https://yea-demo.<account>.workers.dev/shop/yea
 ```
 
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so these `npx` commands fail for now.
+> Until it's published, run the same commands from a clone, with `node cli/bin/yea.js` in place of
+> `npx @yea-protocol/cli`:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> ```
+
 The demo trusts **any** principal (its data is fake and per-agent), so bring your own keys.
 
 ```sh

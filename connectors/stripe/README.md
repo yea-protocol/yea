@@ -21,6 +21,15 @@ that can't show a form gets a consent code for `yea approve` instead. Every job 
 
 ## Install
 
+> **Unreleased:** `@yea-protocol/stripe` isn't on npm yet, so `npx -y @yea-protocol/stripe` fails
+> for now. Until it's published, build it from a clone and use
+> `node /path/to/yea/connectors/stripe/dist/cli.js` in its place, here and below:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> ```
+
 In your MCP client's config, with `yea-stripe` as the server's key:
 
 ```json
