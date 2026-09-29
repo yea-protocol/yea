@@ -22,7 +22,14 @@ test('the Send button keeps its 44px height in the fixed-height pane', () => {
 
 test('no rule after the select chevron resets it with the background shorthand', () => {
   const css = read('controls.css');
-  const after = css.slice(css.indexOf('background-image: linear-gradient'));
+  const at = css.indexOf('background-image: linear-gradient');
+
+  assert.ok(
+    at >= 0,
+    'the select chevron is drawn with background-image gradients',
+  );
+
+  const after = css.slice(at);
 
   assert.doesNotMatch(after, /(^|[\s;{])background:/);
 });
