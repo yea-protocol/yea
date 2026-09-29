@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .._json import js_keys
+from .._json import js_keys, js_number
 from .notation import scalar
 
 _EFFECT_SYM = {"create": "+", "update": "~", "delete": "-", "send": ">", "other": "*"}
@@ -75,4 +75,5 @@ def param_list(params: Any) -> str:
 
 
 def more_line(m: dict) -> str:
-    return f"… {m.get('remaining')} more at {m.get('path')} — EXPAND {m.get('handle')} (~{m.get('est')} tokens)"
+    """``remaining`` and ``est`` as JS writes numbers, so 3.0 (JSON can't tell it from 3) is ``3``."""
+    return f"… {js_number(m['remaining'])} more at {m['path']} — EXPAND {m['handle']} (~{js_number(m['est'])} tokens)"

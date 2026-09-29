@@ -3,6 +3,7 @@
  * `more` lines.
  */
 import type { More, Reply } from '../types.js';
+import { isObject } from '../util.js';
 import { lean } from './notation.js';
 import { proposalsLines } from './proposals.js';
 import {
@@ -12,6 +13,7 @@ import {
   eventLine,
   receiptLines,
 } from './replies.js';
+import { kindFits, moreFits } from './shape.js';
 
 function moreLines(more: More[] | undefined): string[] {
   return (more ?? []).map(
@@ -37,28 +39,36 @@ function bodyLines(r: Reply): string[] {
     case 'EVENT':
       return [eventLine(r)];
     default:
-      return unknownLines(r);
+      return unknownLines(r, true);
   }
 }
 
 /**
- * Members a frame of unknown kind doesn't show: the envelope, `more` (it has its own lines) and
- * a service-supplied `lens`, which Lens never shows.
+ * Members a frame of unknown kind doesn't show: the envelope, `more` (it has its own lines, when
+ * well-formed) and a service-supplied `lens`, which Lens never shows.
  */
-const HIDDEN = new Set(['yea', 'id', 're', 'more', 'lens']);
+const HIDDEN = new Set(['yea', 'id', 're', 'lens']);
 
-/** A frame of a kind Lens doesn't know (SPEC §9.2): its other members in lean notation. */
-function unknownLines(frame: object): string[] {
-  const shown = Object.entries(frame).filter(([k]) => !HIDDEN.has(k));
+/**
+ * A frame of a kind Lens doesn't know, or not well-formed (SPEC §9.2): its other members in lean
+ * notation. A malformed `more` is one of them.
+ */
+function unknownLines(frame: object, moreOk: boolean): string[] {
+  const shown = Object.entries(frame).filter(
+    ([k]) => !HIDDEN.has(k) && (k !== 'more' || !moreOk),
+  );
 
   return [lean(Object.fromEntries(shown))];
 }
 
-/** Render a reply frame as Lens (SPEC §9.2). */
+/** Render a reply frame as Lens (SPEC §9.2). An untrusted frame renders, never throws. */
 export function lens(r: Reply): string {
-  const out = bodyLines(r);
+  const frame = isObject(r) ? r : {};
+  const moreOk = moreFits(frame);
+  const out =
+    moreOk && kindFits(frame) ? bodyLines(r) : unknownLines(frame, moreOk);
 
-  if ('more' in r) {
+  if (moreOk && 'more' in r) {
     out.push(...moreLines(r.more));
   }
 

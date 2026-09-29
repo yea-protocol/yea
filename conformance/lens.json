@@ -1415,6 +1415,323 @@
     "lens": "3 proposals — undo: 1h · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: -\n[p_2] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: true\n[p_3] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  risk: \"very, high\""
   },
   {
+    "name": "not well-formed: receipt with no receipt",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "RECEIPT"
+    },
+    "lens": "kind: RECEIPT"
+  },
+  {
+    "name": "not well-formed: brief with no service",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "capabilities": []
+    },
+    "lens": "kind: BRIEF\ncapabilities: []"
+  },
+  {
+    "name": "not well-formed: clarify with no options",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "CLARIFY",
+      "question": "which?"
+    },
+    "lens": "kind: CLARIFY\nquestion: which?"
+  },
+  {
+    "name": "not well-formed: proposals with no proposals",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS"
+    },
+    "lens": "kind: PROPOSALS"
+  },
+  {
+    "name": "not well-formed: effects not an array",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "PROPOSALS",
+      "proposals": [
+        {
+          "id": "p_1",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": "none",
+          "risk": "low",
+          "undo": {
+            "window": 3600
+          },
+          "expires": 1790000600
+        }
+      ]
+    },
+    "lens": "kind: PROPOSALS\nproposals[1]:\n  - id: p_1\n    capability: calendar.reschedule\n    summary: \"Move \\\"1:1 with Ana\\\" to Thu 15:00\"\n    effects: none\n    risk: low\n    undo:\n      window: 3600\n    expires: 1790000600"
+  },
+  {
+    "name": "not well-formed: error with no code or message",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "ERROR"
+    },
+    "lens": "kind: ERROR"
+  },
+  {
+    "name": "not well-formed: event with no message",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "EVENT",
+      "progress": 0.5
+    },
+    "lens": "kind: EVENT\nprogress: 0.5"
+  },
+  {
+    "name": "not well-formed: an optional member of the wrong type",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S",
+        "summary": 5
+      },
+      "capabilities": []
+    },
+    "lens": "kind: BRIEF\nservice:\n  id: s\n  name: S\n  summary: 5\ncapabilities: []"
+  },
+  {
+    "name": "not well-formed: a param type that is a number",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S"
+      },
+      "capabilities": [
+        {
+          "kind": "ask",
+          "name": "s.q",
+          "params": {
+            "a": 5
+          }
+        }
+      ]
+    },
+    "lens": "kind: BRIEF\nservice:\n  id: s\n  name: S\ncapabilities[1]:\n  - kind: ask\n    name: s.q\n    params:\n      a: 5"
+  },
+  {
+    "name": "not well-formed: an empty param array",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S"
+      },
+      "capabilities": [
+        {
+          "kind": "ask",
+          "name": "s.q",
+          "params": {
+            "a": []
+          }
+        }
+      ]
+    },
+    "lens": "kind: BRIEF\nservice:\n  id: s\n  name: S\ncapabilities[1]:\n  - kind: ask\n    name: s.q\n    params:\n      a: []"
+  },
+  {
+    "name": "not well-formed: auto not a boolean",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "RECEIPT",
+      "receipt": {
+        "id": "r_1",
+        "summary": "done",
+        "effects": []
+      },
+      "auto": "yes"
+    },
+    "lens": "kind: RECEIPT\nreceipt:\n  id: r_1\n  summary: done\n  effects: []\nauto: yes"
+  },
+  {
+    "name": "not well-formed: fix params not an object",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "ERROR",
+      "code": "bad",
+      "message": "m",
+      "fix": [
+        {
+          "say": "retry",
+          "params": 3
+        }
+      ]
+    },
+    "lens": "kind: ERROR\ncode: bad\nmessage: m\nfix[1]{say,params}:\n  retry,3"
+  },
+  {
+    "name": "not well-formed: more not an array",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "ANSWER",
+      "data": 1,
+      "more": "x"
+    },
+    "lens": "kind: ANSWER\ndata: 1\nmore: x"
+  },
+  {
+    "name": "not well-formed: a fractional more count",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "ANSWER",
+      "data": 1,
+      "more": [
+        {
+          "remaining": 1.5,
+          "path": "p",
+          "handle": "h_1",
+          "est": 2
+        }
+      ]
+    },
+    "lens": "kind: ANSWER\ndata: 1\nmore[1]{remaining,path,handle,est}:\n  1.5,p,h_1,2"
+  },
+  {
+    "name": "not well-formed: more on an unknown kind",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "STATUS",
+      "text": "x",
+      "more": [
+        {
+          "path": "p"
+        }
+      ]
+    },
+    "lens": "kind: STATUS\ntext: x\nmore[1]{path}:\n  p"
+  },
+  {
+    "name": "not well-formed: a kind named constructor",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "constructor",
+      "text": "x"
+    },
+    "lens": "kind: constructor\ntext: x"
+  },
+  {
+    "name": "well-formed: null optional members",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S",
+        "summary": null
+      },
+      "capabilities": [
+        {
+          "kind": "ask",
+          "name": "s.q",
+          "summary": null,
+          "risk": null,
+          "params": null
+        }
+      ],
+      "more": null
+    },
+    "lens": "# S (s)\nask s.q()"
+  },
+  {
+    "name": "well-formed: nested param schema",
+    "type": "reply",
+    "input": {
+      "yea": 1,
+      "id": "s1",
+      "re": "c1",
+      "kind": "BRIEF",
+      "service": {
+        "id": "s",
+        "name": "S"
+      },
+      "capabilities": [
+        {
+          "kind": "ask",
+          "name": "s.q",
+          "params": {
+            "a": "string",
+            "b": [
+              {
+                "c": "int"
+              }
+            ],
+            "d": {
+              "e": "bool"
+            },
+            "f": [
+              "string"
+            ]
+          }
+        }
+      ]
+    },
+    "lens": "# S (s)\nask s.q(a: string, b: [{c: int}], d: {e: bool}, f: [string])"
+  },
+  {
     "name": "integer-like keys first",
     "type": "value",
     "json": "{\"b\":1,\"10\":2,\"2\":3,\"a\":4,\"01\":5,\"4294967295\":6,\"4294967294\":7,\"-1\":8,\"1.5\":9,\"0\":10}",

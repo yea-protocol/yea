@@ -3279,4 +3279,58 @@ describe('requests are read as Python reads them (#157)', () => {
       'PROPOSALS',
     );
   });
+
+describe('Lens never throws on a malformed frame (#188)', () => {
+  const kinds: Record<string, Record<string, unknown>> = {
+    BRIEF: {
+      service: { id: 's', name: 'S', summary: 'x' },
+      capabilities: [{ kind: 'ask', name: 's.q', params: { a: 'string' } }],
+    },
+    ANSWER: { data: { a: 1 } },
+    PROPOSALS: {
+      proposals: [
+        { id: 'p_1', summary: 's', effects: [{ op: 'create', target: 't' }] },
+      ],
+    },
+    CLARIFY: { question: 'q', options: [{ label: 'a' }] },
+    RECEIPT: {
+      receipt: {
+        id: 'r_1',
+        summary: 's',
+        effects: [{ op: 'send', target: 't' }],
+      },
+      auto: true,
+    },
+    ERROR: {
+      code: 'bad',
+      message: 'm',
+      fix: [{ say: 'x', params: {} }],
+      need: ['a'],
+      consent: { hash: 'h', summary: 's' },
+    },
+    EVENT: { message: 'm' },
+  };
+  const wrong: unknown[] = [undefined, null, 5, 'x', true, [], {}, [5], [{}]];
+
+  it('a service that sends any member as any type gets a rendering, not a TypeError', () => {
+    for (const [kind, members] of Object.entries(kinds)) {
+      for (const k of [...Object.keys(members), 'more']) {
+        for (const w of wrong) {
+          const frame = {
+            yea: 1,
+            id: 's1',
+            re: 'c1',
+            kind,
+            ...members,
+            [k]: w,
+          };
+
+          expect(
+            () => P.lens(frame as P.Reply),
+            `${kind}.${k} = ${JSON.stringify(w)}`,
+          ).not.toThrow();
+        }
+      }
+    }
+  });
 });
