@@ -6,7 +6,12 @@ import type { CallToolResult } from '@modelcontextprotocol/server';
 import { type Answer, type ErrorReply, printable } from '@yea-protocol/sdk';
 import { errorResult, textResult } from '../result.js';
 import type { Obj } from '../util.js';
-import { type ConsentStore, checkConsent, readConsent } from './consent.js';
+import {
+  type ConsentStore,
+  checkConsent,
+  consentId,
+  readConsent,
+} from './consent.js';
 import type { Service } from './greet.js';
 import { replyResult } from './lens.js';
 import type { Pending, PendingProposals } from './pending.js';
@@ -114,7 +119,7 @@ export async function consentCall(
     );
   }
 
-  if (entry.refused.has(token as string)) {
+  if (entry.refused.has(await consentId(token as string))) {
     return consentRefused(
       'this consent was refused by the service when it was used; ask the user to approve the code again',
     );
@@ -147,7 +152,7 @@ async function keepConsent(
   const blocking =
     kept !== null &&
     kept !== token &&
-    !o.entry.refused.has(kept) &&
+    !o.entry.refused.has(await consentId(kept)) &&
     (await checkConsent(kept, o)).ok;
 
   if (blocking) {

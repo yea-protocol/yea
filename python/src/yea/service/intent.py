@@ -24,12 +24,12 @@ from .replies import (
     verified_key,
 )
 from .state import _IntentDef, _StoredProposal
-from .util import Emit, _call, random_id
+from .sweep import sweep
+from .util import DAY, Emit, _call, random_id
 
 if TYPE_CHECKING:
     from . import Service
 
-DAY = 86400
 AUTO_MEMORY = 900  # seconds past max(arrival, proof.ts) a (key, frame id) auto INTENT is remembered (§4.3.1)
 
 
@@ -95,6 +95,7 @@ async def plan_intent(
             p["hash"] = proposal_hash(p)
             svc._proposals[p["id"]] = _StoredProposal(p, plan, principal, requester)
             proposals.append(p)
+        sweep(svc, now)
         if auto:
             commit_auth = auto_auth(svc, frame, proposals[0], principal)
             if commit_auth:

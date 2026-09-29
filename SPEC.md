@@ -338,7 +338,7 @@ A grant answers: **who** is this agent acting for, and **what exactly** may it d
 
 - Public key: `"ed25519:" + b64url(raw 32-byte key)`
 - Signature: `b64url(64-byte Ed25519 signature)`
-- `b64url` is base64url **without padding** (RFC 4648 §5).
+- `b64url` is base64url **without padding** (RFC 4648 §5). Values are **canonical**: no padding, only the characters `A–Z`, `a–z`, `0–9`, `-` and `_`, and the unused bits of the final character are zero; anything else is malformed, so a key, signature or token that isn't canonical never verifies.
 
 ### 6.2 Structure
 

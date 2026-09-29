@@ -8,6 +8,7 @@ import {
   checkGrant,
   consentCode,
   decodeGrant,
+  inspectGrant,
   type Proposal,
 } from '@yea-protocol/sdk';
 import { loadConsent, saveGrant } from '@yea-protocol/sdk/node';
@@ -26,6 +27,18 @@ export const homeConsents: ConsentStore = {
   get: (hash) => loadConsent(hash),
   put: (hash, token) => saveGrant(token, 'consents', hash),
 };
+
+/**
+ * What a consent is known by once refused: its grant id (the root block id), so the same grant
+ * written as another token is still the same consent. A token that doesn't decode is its own id.
+ */
+export async function consentId(token: string): Promise<string> {
+  try {
+    return (await inspectGrant(token)).id;
+  } catch {
+    return token;
+  }
+}
 
 /** What a well-formed consent grant says. */
 export interface ConsentFields {

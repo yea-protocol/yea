@@ -953,6 +953,38 @@ def test_after_the_connection_fails_a_new_request_fails_at_once():
         finally:
             srv.close()
 
+
+def test_old_proposals_receipts_and_replays_are_swept():
+    """Memory stays bounded: every 100th INTENT (or at 5000 proposals) forgets uncommitted
+    proposals an hour past expiry and receipts a day past their undo window, as TS's Sweeper."""
+    clock = [int(time.time())]  # proofs carry real time, so the commit happens before the clock moves
+
+    async def go():
+        svc = Service("s", "S", trust=[PRINCIPAL.public], now=lambda: clock[0])
+
+        @svc.intent("s.do")
+        def do(ctx):
+            return Plan("Do", [create("x")], apply=lambda c: None, revert=lambda c: None, undo_window=60)
+
+        c = Client(local(svc), key=AGENT.seed, grants=[grant({"svc": ["s"]})])
+        kept = (await c.intent("s.do")).proposals[0]
+        assert (await c.commit(kept)).kind == "RECEIPT"
+        anon = Client(local(svc))  # INTENT needs no grant here, so later calls don't need fresh proofs
+        stale = (await anon.intent("s.do")).proposals[0]
+        clock[0] += 2 * 3600  # both proposals expired over an hour ago; the receipt is kept until its until + a day
+        for _ in range(97):  # INTENTs 3-99
+            await anon.intent("s.do")
+        assert stale["id"] in svc._proposals  # no sweep before the 100th INTENT
+        await anon.intent("s.do")
+        assert stale["id"] not in svc._proposals  # uncommitted and an hour past expiry: forgotten
+        assert kept["id"] in svc._proposals and len(svc._receipts) == 1  # committed: kept with its receipt
+        clock[0] += 86400
+        svc._auto_seen["key:old"] = (None, clock[0] - 1)  # an auto-INTENT replay past its memory
+        for _ in range(100):
+            await anon.intent("s.do")
+        assert kept["id"] not in svc._proposals and svc._receipts == {} and kept["id"] not in svc._commits
+        assert len(svc._proposals) <= 100 and "key:old" not in svc._auto_seen
+
     run(go())
 
 

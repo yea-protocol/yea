@@ -130,18 +130,6 @@ describe('step 4: undo', () => {
     expect(undone.isError).toBe(true);
     expect(textOf(undone)).toMatch(/nothing was undone/);
   });
-
-  it('refuses a directory, which it could not put back', async () => {
-    const w = await world({ name: 'files' });
-    const f = files(w);
-    const conn = await connect('2026', f.factory);
-    const r = await conn.call({ path: join(f.root, 'docs') }, 'move_to_trash');
-
-    expect(r.isError).toBe(true);
-    expect(textOf(r)).toMatch(/is not a regular file; nothing was run/);
-    expect(conn.elicited).toHaveLength(0);
-    expect(existsSync(f.report)).toBe(true);
-  });
 });
 
 describe.each(['delete_file', 'move_to_trash'])(
@@ -177,9 +165,38 @@ describe.each(['delete_file', 'move_to_trash'])(
       const r = await conn.call({ path: link }, tool);
 
       expect(r.isError).toBe(true);
-      expect(textOf(r)).toMatch(/is outside/);
+      expect(textOf(r)).toMatch(/is a symlink/);
       expect(existsSync(outside)).toBe(true);
       expect(existsSync(link)).toBe(true);
+    });
+
+    it('refuses a symlink to a file inside it, so the plan names the file that changes', async () => {
+      const w = await world({ name: 'files' });
+      const f = files(w);
+      const link = join(f.root, 'notes.txt');
+
+      symlinkSync(f.report, link);
+
+      const conn = await connect('2026', f.factory);
+      const r = await conn.call({ path: link }, tool);
+
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(/is a symlink; nothing was run/);
+      expect(conn.elicited).toHaveLength(0);
+      expect(existsSync(f.report)).toBe(true);
+      expect(existsSync(link)).toBe(true);
+    });
+
+    it('refuses a directory, before anyone is asked', async () => {
+      const w = await world({ name: 'files' });
+      const f = files(w);
+      const conn = await connect('2026', f.factory);
+      const r = await conn.call({ path: join(f.root, 'docs') }, tool);
+
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(/is not a regular file; nothing was run/);
+      expect(conn.elicited).toHaveLength(0);
+      expect(existsSync(f.report)).toBe(true);
     });
   },
 );

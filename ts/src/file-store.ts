@@ -57,20 +57,32 @@ export class FileStore implements ApprovalStore {
   }
 
   async claimUndo(id: string): Promise<boolean> {
-    if (readOrNull(this.undoPath(id, 'done')) !== null) {
+    if (this.undone(id)) {
       return false;
     }
 
     const claim = this.undoPath(id, 'claim');
 
     // Each claim holds a fresh token, so a stale one is only ever broken by its own contents.
-    if (createOnce(claim, randomId('k'))) {
-      return true;
+    if (!createOnce(claim, randomId('k'))) {
+      // A revert that crashed mid-way can be tried again; one that was only slow may have
+      // finished (and dropped its claim) meanwhile, so look for `done` again before claiming.
+      breakIfStale(claim, STALE_CLAIM_MS);
+
+      if (this.undone(id) || !createOnce(claim, randomId('k'))) {
+        return false;
+      }
     }
 
-    breakIfStale(claim, STALE_CLAIM_MS);
+    // An undo can finish between the look for `done` and the claim: then the claim is not ours
+    // to use.
+    if (this.undone(id)) {
+      await this.releaseUndo(id);
 
-    return createOnce(claim, randomId('k'));
+      return false;
+    }
+
+    return true;
   }
 
   async releaseUndo(id: string): Promise<void> {
@@ -130,6 +142,10 @@ export class FileStore implements ApprovalStore {
 
   private receiptPath(id: string) {
     return join(this.root, 'receipts', `${safeName(id)}.json`);
+  }
+
+  private undone(id: string): boolean {
+    return readOrNull(this.undoPath(id, 'done')) !== null;
   }
 
   private undoPath(id: string, which: 'claim' | 'done') {

@@ -7,9 +7,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  b64u,
   type Caveat,
   consentGrant,
   decodeConsentCode,
+  decodeGrant,
   delegateGrant,
   issueGrant,
   keyPair,
@@ -475,5 +477,44 @@ describe('yea_consent refuses, and writes nothing', () => {
         'utf8',
       ).trim(),
     ).toBe(first);
+  });
+});
+
+describe('a refused consent stays refused', () => {
+  it('the same grant written as another token is still the refused consent', async () => {
+    const k = await keys();
+    // The service refuses any COMMIT that carries a consent on top of the agent's grant.
+    const rec = recorded(shop({ trust: [k.principal.public] }), (f, r) =>
+      f.verb === 'COMMIT' && (f.grants?.length ?? 0) > 1
+        ? {
+            yea: 1,
+            id: 's',
+            re: f.id,
+            kind: 'ERROR',
+            code: 'forbidden',
+            message: 'consent not accepted here',
+          }
+        : r,
+    );
+    const conn = await connect(
+      '2026',
+      await bridge([await agentClient(k, rec.t)]),
+    );
+    const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const token = await approveCode(k.principal, codes[0].code);
+
+    await conn.call({ token }, 'yea_consent');
+    expect((await conn.call(BIG_ORDER, 'shop_order')).isError).toBe(true);
+
+    // The same blocks, serialized with whitespace: another token string, the same grant.
+    const respelled = `pg1.${b64u(new TextEncoder().encode(JSON.stringify(decodeGrant(token), null, 1)))}`;
+
+    expect(respelled).not.toBe(token);
+
+    const again = await conn.call({ token: respelled }, 'yea_consent');
+
+    expect(again.isError).toBe(true);
+    expect(textOf(again)).toMatch(/refused by the service when it was used/);
+    expect(rec.verbs('COMMIT')).toHaveLength(1);
   });
 });

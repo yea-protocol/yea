@@ -45,7 +45,11 @@ describe('conformance vectors', () => {
   });
   it('keys', async () => {
     for (const k of load('keys')) {
-      expect((await P.keyPair(k.seed)).public).toBe(k.public);
+      if (k.valid === false) {
+        await expect(P.keyPair(k.seed), k.seed).rejects.toThrow();
+      } else {
+        expect((await P.keyPair(k.seed)).public).toBe(k.public);
+      }
     }
   });
   it('hash', async () => {
@@ -55,6 +59,14 @@ describe('conformance vectors', () => {
   });
   it('proof', async () => {
     for (const p of load('proof')) {
+      if (p.valid === false) {
+        expect(
+          await P.checkProof({ key: p.key, ts: p.ts, sig: p.sig }, p, p.ts),
+        ).not.toBeNull();
+
+        continue;
+      }
+
       const made = await P.makeProof(p.seed, p, p.ts);
 
       expect(made.sig).toBe(p.sig);

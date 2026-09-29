@@ -51,11 +51,19 @@ def test_hash(case):
 
 @pytest.mark.parametrize("case", cases("keys", "seed"))
 def test_keys(case):
+    if case.get("valid") is False:  # a seed that isn't canonical base64url (SPEC §6.1)
+        with pytest.raises(ValueError):
+            key_from_seed(case["seed"])
+        return
     assert key_from_seed(case["seed"]).public == case["public"]
 
 
 @pytest.mark.parametrize("case", cases("proof", "verb"))
 def test_proof(case):
+    if case.get("valid") is False:  # a non-canonical signature or key never verifies
+        proof = {"key": case["key"], "ts": case["ts"], "sig": case["sig"]}
+        assert verify_proof(proof, case["aud"], case["verb"], case["target"], case["ts"]) is not None
+        return
     k = key_from_seed(case["seed"])
     if "key" in case:
         assert k.public == case["key"]

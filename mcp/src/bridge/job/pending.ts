@@ -11,7 +11,7 @@ import {
   untrustedLens,
 } from '@yea-protocol/sdk';
 import { NOTHING_RAN, refused } from '../../result.js';
-import { checkConsent } from '../consent.js';
+import { checkConsent, consentId } from '../consent.js';
 import { replyResult } from '../lens.js';
 import { proposalsResult, receiptOutcome } from '../outcomes.js';
 import { approvable, type Pending } from '../pending.js';
@@ -102,7 +102,7 @@ async function usableConsent(
   const agent = call.svc.agent;
   const token = b.consents.get(o.p.hash);
 
-  if (!agent || !token || o.entry.refused.has(token)) {
+  if (!agent || !token || o.entry.refused.has(await consentId(token))) {
     return null;
   }
 
@@ -146,7 +146,7 @@ async function commitPending(
   }
 
   if (consent) {
-    entry.refused.add(consent);
+    entry.refused.add(await consentId(consent));
 
     return replyResult(r, undefined, [
       `The saved consent for [${printable(p.id)}] didn't commit it, so this call won't use it again; ${NOTHING_RAN}. The user can approve its code again, or you can call again later for fresh proposals.`,

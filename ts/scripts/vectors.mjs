@@ -8,6 +8,17 @@ const out = (name, v) =>
     `${JSON.stringify(v, null, 2)}\n`,
   );
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
+// Canonical base64url (SPEC §6.1): another spelling of the same bytes is malformed. Not every
+// length has one; keys, seeds and signatures do.
+const B64U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const nonCanonical = (s) => {
+  if (s.length % 4 < 2) {
+    throw new Error(`no non-canonical spelling of ${s}`);
+  }
+
+  return s.slice(0, -1) + B64U[B64U.indexOf(s.at(-1)) | 1];
+};
+const nonCanonicalKey = (key) => `ed25519:${nonCanonical(key.slice(8))}`;
 
 /** `{canonical}`, or `{error: true}` when canonical JSON refuses the value. */
 function canonicalOrError(input) {
@@ -48,6 +59,9 @@ const keys = [];
 for (const n of [0, 1, 7, 42, 255]) {
   keys.push({ seed: seed(n), public: (await P.keyPair(seed(n))).public });
 }
+
+// A seed that isn't canonical base64url derives no key.
+keys.push({ seed: nonCanonical(seed(1)), valid: false });
 
 out('keys', keys);
 
@@ -106,6 +120,12 @@ for (const [aud, verb, target, ts] of [
 
   proofs.push({ seed: seed(2), aud, verb, target, ts, key: p.key, sig: p.sig });
 }
+
+// A proof whose signature or key isn't canonical base64url is refused.
+proofs.push(
+  { ...proofs[0], sig: nonCanonical(proofs[0].sig), valid: false },
+  { ...proofs[0], key: nonCanonicalKey(proofs[0].key), valid: false },
+);
 
 out('proof', proofs);
 
@@ -238,6 +258,51 @@ const tampered = P.encodeGrant([
   { ...rootBlocks[0], p: { ...rootBlocks[0].p, caveats: [] } },
 ]);
 const rootSpendId = await P.sha256(rootBlocks[0].s);
+const withRootSig = (token, f) => {
+  const [first, ...rest] = P.decodeGrant(token);
+
+  return P.encodeGrant([{ ...first, s: f(first.s) }, ...rest]);
+};
+const stdAlphabet = (s) => {
+  if (!/[-_]/.test(s)) {
+    throw new Error(`nothing to swap in ${s}`);
+  }
+
+  return s.replace(/-/g, '+').replace(/_/g, '/');
+};
+/** A root grant signed by the principal, with `iss` and `sub` written as given. */
+const rootAs = async (iss, sub, nonce) => {
+  const p = { iss, sub, caveats: [], iat: now, nonce };
+
+  return P.encodeGrant([
+    { p, s: await P.sign(principal.seed, P.canonical(p)) },
+  ]);
+};
+const nonCanonicalSub = await P.delegateGrant(
+  await rootAs(principal.public, nonCanonicalKey(agent.public), 'n17'),
+  {
+    holder: { seed: agent.seed, public: nonCanonicalKey(agent.public) },
+    to: sub.public,
+    iat: now,
+  },
+);
+// A root token that has a non-canonical spelling (the nonce's length decides).
+let plainRoot = '';
+
+for (const nonce of ['n19', 'n19a', 'n19ab']) {
+  plainRoot = await rootAs(principal.public, agent.public, nonce);
+
+  if (plainRoot.length % 4 > 1) {
+    break;
+  }
+}
+
+const nonCanonicalToken = `pg1.${nonCanonical(plainRoot.slice(4))}`;
+const nonCanonicalIss = await rootAs(
+  nonCanonicalKey(principal.public),
+  agent.public,
+  'n18',
+);
 const T = [principal.public];
 const commit = (cents, risk = 'low', hash = 'HASH_X') => ({
   hash,
@@ -719,6 +784,89 @@ const cases = [
     'pg1.bm9wZQ',
     agent.public,
     { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'non-canonical signature encoding is refused',
+    withRootSig(root, nonCanonical),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'padded signature is refused',
+    withRootSig(root, (s) => `${s}==`),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'standard-alphabet signature is refused',
+    withRootSig(root, stdAlphabet),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'signature with a space inside is refused',
+    withRootSig(root, (s) => `${s.slice(0, 43)} ${s.slice(43)}`),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'signature with a newline inside is refused',
+    withRootSig(root, (s) => `${s.slice(0, 43)}\n${s.slice(43)}`),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    "signature with a '.' inside is refused",
+    withRootSig(root, (s) => `${s.slice(0, 43)}.${s.slice(43)}`),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    "signature with an '=' inside is refused",
+    withRootSig(root, (s) => `${s.slice(0, 43)}=${s.slice(43)}`),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'signature whose length leaves one character over is refused',
+    withRootSig(root, (s) => s.slice(0, -1)),
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'non-canonical token encoding is refused',
+    nonCanonicalToken,
+    agent.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'non-canonical key in a block is refused',
+    nonCanonicalSub,
+    sub.public,
+    { service: 'shop.example', verb: 'ASK', capability: 'shop.search', now },
+    { ok: false, code: 'unauthorized' },
+  ],
+  [
+    'non-canonical issuer key is refused',
+    nonCanonicalIss,
+    agent.public,
+    {
+      service: 'shop.example',
+      verb: 'ASK',
+      capability: 'shop.search',
+      now,
+      trusted: [nonCanonicalKey(principal.public)],
+    },
     { ok: false, code: 'unauthorized' },
   ],
 ];

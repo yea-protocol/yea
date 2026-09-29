@@ -1425,6 +1425,204 @@
         "ok": false,
         "code": "unauthorized"
       }
+    },
+    {
+      "name": "non-canonical signature encoding is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNCIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "padded signature is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkNBPT0ifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "standard-alphabet signature is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVStuNStQYkNBIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "signature with a space inside is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzkgYU5wVzVmUG40cWRKMWNtb1gyT3RvSVJxcFN4cjFZSE4yY1UtbjUtUGJDQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "signature with a newline inside is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlcbmFOcFc1ZlBuNHFkSjFjbW9YMk90b0lScXBTeHIxWUhOMmNVLW41LVBiQ0EifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "signature with a '.' inside is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzkuYU5wVzVmUG40cWRKMWNtb1gyT3RvSVJxcFN4cjFZSE4yY1UtbjUtUGJDQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "signature with an '=' inside is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzk9YU5wVzVmUG40cWRKMWNtb1gyT3RvSVJxcFN4cjFZSE4yY1UtbjUtUGJDQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "signature whose length leaves one character over is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsiY2FuIjpbInNob3AuKiJdfSx7ImV4cCI6MTc5MDAwMzYwMH0seyJ0b3RhbCI6eyJtYXgiOjUwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7ImVhY2giOnsibWF4IjozMDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJyaXNrIjoibWVkaXVtIn1dLCJpYXQiOjE3ODk5OTk5MDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjEiLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEifSwicyI6InVNaVp6dENySElnaFNFTWxXNGhPcTNlQ3pkVDU1dE1BaEg0NTJ0YjVvZzlhTnBXNWZQbjRxZEoxY21vWDJPdG9JUnFwU3hyMVlITjJjVS1uNS1QYkMifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "non-canonical token encoding is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6Im4xOSIsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USJ9LCJzIjoidFFPSEtuWWhSZzAxdTNBdTVqeG1WMld4Y29sSmJOT25fZFJqbXBGcWFCYVVHYmJ1bHNVT1liTUVXTHp5TEZCWWg4cmFLVm12djN3am96NDBLclUzRFEifV1",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "non-canonical key in a block is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6Im4xNyIsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1UiJ9LCJzIjoiRXFrOXQ3dUI2THBEb0JORWo2dnRSUmczNTZXN2ZFZmtzQnBIWUM2cVZnM08yenNtRXRBSk1ucTBIRVRyMjZsWlozT3JzT0xoZko3eWNpYTBrRHBuRHcifSx7InAiOnsiY2F2ZWF0cyI6W10sImlhdCI6MTc5MDAwMDAwMCwicHJldiI6Ijh0QkU2b3RXby1tSVY0M25qZWpSWWVXdUo0bm9feXhJMDRlblRMZ29hcEUiLCJzdWIiOiJlZDI1NTE5OjdVa294aWpSd3NicTZRTTRrRm1WWVNsWkp6cGNZX2syTnNGR0ZLeUhOOUUifSwicyI6IjlQLWU1ZXhqXzdfYVFBTjkyaFpDT19kSllITHNveVlMUTViTVVUX19kY2JaNzVXNHc1c1dSSlM1WmN2azFqWlZ3WW1nd0RJMi1McnRNeDRnQ2d6V0F3In1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9E",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "non-canonical issuer key is refused",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXgiLCJub25jZSI6Im4xOCIsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USJ9LCJzIjoiMXVteHk0N2thOGtrRlhSa0ItWEc3T0R5c3pnTnhrN2ZESjJyc3ozaXhqdXNUUDhKVngyRDBrbVhvUl8zb0xHb0pQRzgxRkdQcHFGeklUeXo2MVg2Q1EifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1x"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
     }
   ],
   "consentCode": {

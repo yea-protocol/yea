@@ -1,5 +1,5 @@
 /** The grant token (SPEC §6.1, §6.2): caveat and block shapes, the pg1. encoding, block ids and inspection. */
-import { b64u, fromUtf8, unb64u, utf8 } from '../b64.js';
+import { b64u, fromUtf8, isB64u, unb64u, utf8 } from '../b64.js';
 import { canonical } from '../canonical.js';
 import { sha256 } from '../crypto.js';
 import type { Risk, Verb } from '../types.js';
@@ -47,7 +47,7 @@ export function decodeGrant(token: string): Block[] {
 
   for (const b of blocks as Partial<Block>[]) {
     if (
-      typeof b?.s !== 'string' ||
+      !isB64u(b?.s, 64) ||
       typeof b?.p?.sub !== 'string' ||
       !Array.isArray(b?.p?.caveats)
     ) {
@@ -60,9 +60,9 @@ export function decodeGrant(token: string): Block[] {
 
 export const blockId = (b: Block) => sha256(b.s);
 
-/** An Ed25519 public key as YEA writes it (SPEC §6.1). */
+/** An Ed25519 public key as YEA writes it (SPEC §6.1): 32 bytes in canonical base64url. */
 export const isPublicKey = (v: unknown): v is string =>
-  typeof v === 'string' && /^ed25519:[A-Za-z0-9_-]{43}$/.test(v);
+  typeof v === 'string' && v.startsWith('ed25519:') && isB64u(v.slice(8), 32);
 
 export interface GrantInfo {
   id: string;

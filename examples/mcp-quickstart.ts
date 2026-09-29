@@ -37,11 +37,18 @@ import { pathToFileURL } from 'node:url';
 // #region root
 /**
  * `path` inside `root`, with symlinks resolved. Anything that leads outside is refused, so the
- * tools can't reach the server's own files (its key, its approval store) or yours.
+ * tools can't reach the server's own files (its key, its approval store) or yours; so is a
+ * symlink as the file itself, so the plan the person approves always names the file that changes.
  */
 async function inside(root: string, path: string): Promise<string> {
   const base = await realpath(root);
-  const full = await realpath(resolve(base, path));
+  const given = resolve(base, path);
+
+  if ((await lstat(given)).isSymbolicLink()) {
+    throw new Error(`${path} is a symlink`);
+  }
+
+  const full = await realpath(given);
   const rel = relative(base, full);
 
   if (
@@ -54,6 +61,17 @@ async function inside(root: string, path: string): Promise<string> {
   }
 
   return full;
+}
+
+/** `path` inside `root`, as `inside`, and a regular file: never a directory. */
+async function fileInside(root: string, path: string): Promise<string> {
+  const file = await inside(root, path);
+
+  if (!(await lstat(file)).isFile()) {
+    throw new Error(`${path} is not a regular file`);
+  }
+
+  return file;
 }
 
 /**
@@ -98,7 +116,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
       inputSchema: z.object({ path: z.string() }),
     },
     async ({ path }) => {
-      await rm(await inside(root, path));
+      await rm(await fileInside(root, path));
 
       return { content: [{ type: 'text', text: `deleted ${path}` }] };
     },
@@ -107,7 +125,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
   // One call: now it shows its plan and asks the person before it runs.
   approvals.guard(server, deleteFile, {
     describe: async (input) => {
-      await inside(root, String(input.path)); // refuse before anyone is asked
+      await fileInside(root, String(input.path)); // refuse before anyone is asked
 
       return {
         summary: `Delete ${String(input.path)}`,
@@ -127,13 +145,9 @@ function addMoveToTrash(server: McpServer, approvals: Approvals, root: string) {
     description: 'Move a file to the trash. It can be undone for a day.',
     inputSchema: z.object({ path: z.string() }),
     risk: 'low',
-    // plan() only reads. revert() can't put back a directory, so refuse one here.
+    // plan() only reads. revert() can't put back a directory, so fileInside refuses one.
     plan: async ({ path }) => {
-      const file = await inside(root, path);
-
-      if (!(await lstat(file)).isFile()) {
-        throw new Error(`${path} is not a regular file`);
-      }
+      const file = await fileInside(root, path);
 
       return [
         {

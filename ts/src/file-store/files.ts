@@ -14,7 +14,9 @@ import {
 import { dirname } from 'node:path';
 import { randomId } from '../crypto.js';
 
+/** Store directories and files are this user's alone, as Python's store makes them. */
 const PRIVATE = 0o700;
+const PRIVATE_FILE = 0o600;
 
 const mkdirFor = (path: string) =>
   mkdirSync(dirname(path), { recursive: true, mode: PRIVATE });
@@ -24,7 +26,7 @@ export function createOnce(path: string, text = ''): boolean {
   mkdirFor(path);
 
   try {
-    writeFileSync(path, text, { flag: 'wx' });
+    writeFileSync(path, text, { flag: 'wx', mode: PRIVATE_FILE });
 
     return true;
   } catch (e) {
@@ -42,7 +44,7 @@ export function writeAtomic(path: string, text: string) {
 
   const tmp = `${path}.${randomId('t')}.tmp`;
 
-  writeFileSync(tmp, text);
+  writeFileSync(tmp, text, { flag: 'wx', mode: PRIVATE_FILE });
   renameSync(tmp, path);
 }
 

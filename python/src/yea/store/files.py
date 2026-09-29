@@ -13,9 +13,23 @@ def default_store_dir() -> Path:
     return Path(home) / "store" if home else Path.home() / ".yea" / "store"
 
 
+def make_private_dirs(path: Path) -> None:
+    """Create ``path`` and any missing parents, each ``0700`` (``mkdir -p`` would give the parents
+    the umask's mode, e.g. group-writable under umask 002), as Node's recursive mkdir does."""
+    missing = []
+    while not path.exists():
+        missing.append(path)
+        path = path.parent
+    for d in reversed(missing):
+        try:
+            d.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+
+
 def _create_excl(path: Path, text: str = "") -> bool:
     """Create ``path`` only if it doesn't exist (O_EXCL). True if this call created it."""
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    make_private_dirs(path.parent)
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError:
@@ -28,7 +42,7 @@ def _create_excl(path: Path, text: str = "") -> bool:
 def _write_atomic(path: Path, text: str) -> None:
     """Write to a temp file beside ``path``, then rename. The temp name is unique, so two
     writers of the same file don't share one."""
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    make_private_dirs(path.parent)
     tmp = path.with_name(f"{path.name}.{secrets.token_hex(6)}.tmp")
     fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:

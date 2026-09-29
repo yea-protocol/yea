@@ -46,7 +46,8 @@ async def on_commit(svc: Service, frame: dict, budget: int, emit: Emit) -> dict:
         assert auth is not None
         check_requester(stored, frame)
         prior = await asyncio.shield(existing)
-        if prior["kind"] == "RECEIPT" and svc._receipts[prior["receipt"]["id"]].principal != auth.principal:
+        stored_receipt = svc._receipts.get(prior["receipt"]["id"]) if prior["kind"] == "RECEIPT" else None
+        if prior["kind"] == "RECEIPT" and (stored_receipt is None or stored_receipt.principal != auth.principal):
             raise YeaError("forbidden", "this proposal was committed by a different principal")
         return {**prior, "id": random_id("s"), "re": frame["id"], **({"replay": True} if prior["kind"] == "RECEIPT" else {})}
     auth = await authorize(svc, frame, "COMMIT", proposal["capability"], proposal["hash"], proposal,
