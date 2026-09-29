@@ -654,7 +654,7 @@ them in the proposal. For an undo receipt, the first line is
 - Objects: keys sorted by Unicode code point (keys SHOULD be ASCII), no whitespace.
 - Arrays: in order, no whitespace.
 - Strings: JSON-escaped with `\"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\u00XX` (lowercase hex) for other control characters below U+0020. All other characters are literal UTF-8.
-- A string or key that contains a lone surrogate (a UTF-16 code unit in U+D800–U+DFFF not paired with its partner, which JSON's `\uXXXX` escapes can carry) has no UTF-8 encoding, so it has no canonical form: `canonical` MUST refuse it with an error rather than replace or escape it. Anything that hashes or signs such a value fails.
+- A string or key that contains a lone surrogate (a UTF-16 code unit in U+D800–U+DFFF not paired with its partner, which JSON's `\uXXXX` escapes can carry) has no UTF-8 encoding, so it has no canonical form: `canonical` MUST refuse it with an error rather than replace or escape it. Anything that hashes or signs such a value fails, so a service MUST reject a request frame in which any string or key holds a lone surrogate with `ERROR` `bad_frame` before acting on it, rather than failing later as `internal`.
 - Numbers: only integers in [−2^53+1, 2^53−1] are allowed in signed or hashed payloads, written in minimal decimal form.
 - `true`, `false`, `null`.
 

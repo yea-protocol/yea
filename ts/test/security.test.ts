@@ -2202,4 +2202,50 @@ describe('lone surrogates have no canonical form (#160)', () => {
     expect(() => P.canonical({ '\udc00': 1 })).toThrow(/lone surrogate/);
     expect(P.canonical({ s: '🎉' })).toBe('{"s":"🎉"}');
   });
+
+  // An INTENT whose params held one reached the proposal hash, threw there and came back as
+  // `internal` with `retry: 5`, reported to onError: a client's mistake read as a service fault.
+  it('a request holding one is a bad_frame, not an internal error', async () => {
+    const errors: unknown[] = [];
+    const svc = P.service({
+      id: 'mail',
+      name: 'Mail',
+      summary: 'mail',
+      onError: (e) => errors.push(e),
+    }).intent('mail.send', {
+      summary: 'send',
+      // The params reach the summary, and so the proposal hash.
+      plan: ({ params }) => ({
+        summary: `send ${String(params.to)}`,
+        effects: [],
+        apply: () => null,
+      }),
+    });
+    const intent = (params: unknown) =>
+      svc.handle({
+        yea: 1,
+        id: 'c1',
+        verb: 'INTENT',
+        capability: 'mail.send',
+        params,
+      });
+
+    for (const params of [
+      { to: 'a\ud800' },
+      { '\udfff': 1 },
+      { list: [{ deep: ['ok', '\udc00'] }] },
+    ]) {
+      const r = await intent(params);
+
+      expect(r.kind === 'ERROR' && [r.code, r.message, r.retry]).toEqual([
+        'bad_frame',
+        'a string holds a lone surrogate',
+        undefined,
+      ]);
+    }
+
+    expect(errors).toEqual([]);
+    // A surrogate pair is well-formed, so the frame is planned as usual.
+    expect((await intent({ to: '🎉' })).kind).toBe('PROPOSALS');
+  });
 });

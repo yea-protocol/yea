@@ -63,6 +63,41 @@ function canonicalString(s: string): string {
   return quote(s);
 }
 
+/**
+ * Whether any string or key in `v` holds a lone surrogate, so `v` has no canonical form. It
+ * walks with its own stack, so a deeply nested frame can't overflow the call stack.
+ */
+export function hasLoneSurrogate(v: unknown): boolean {
+  const todo: unknown[] = [v];
+
+  while (todo.length > 0) {
+    const x = todo.pop();
+    const lone =
+      typeof x === 'string'
+        ? LONE_SURROGATE.test(x)
+        : typeof x === 'object' && x !== null && pushMembers(x, todo);
+
+    if (lone) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** Pushes `x`'s values onto `todo`; true when one of its keys holds a lone surrogate. */
+function pushMembers(x: object, todo: unknown[]): boolean {
+  for (const [k, y] of Object.entries(x)) {
+    if (!Array.isArray(x) && LONE_SURROGATE.test(k)) {
+      return true;
+    }
+
+    todo.push(y);
+  }
+
+  return false;
+}
+
 /** Orders strings by Unicode code point (SPEC §10), not by UTF-16 unit as `<` does. */
 export function byCodePoint(a: string, b: string): number {
   const A = codePoints(a);

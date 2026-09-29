@@ -7,6 +7,7 @@
  */
 import { Authorizer } from './authorize.js';
 import { fit, MemoryHandleStore } from './budget.js';
+import { hasLoneSurrogate } from './canonical.js';
 import { fix, YeaError } from './errors.js';
 import { frameId, replyFrame } from './frames.js';
 import type { AskDef, IntentDef, ServiceOptions } from './plan.js';
@@ -121,6 +122,12 @@ export class Service {
           'bad_frame',
           'frames need "yea": 1 and a string "id"',
         );
+      }
+
+      // A lone surrogate has no canonical form (SPEC §10): refuse the frame here, before a
+      // handler hashes it and fails as `internal`.
+      if (hasLoneSurrogate(frame)) {
+        throw new YeaError('bad_frame', 'a string holds a lone surrogate');
       }
 
       const req = frame;
