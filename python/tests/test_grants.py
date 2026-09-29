@@ -3,6 +3,7 @@ import pytest
 from yea import (
     GrantContext, consent_code, quantity, consent_grant, decode_consent_code, decode_grant, issue_grant, key_from_seed, sign_proof, verify_grant, verify_proof,
 )
+from yea._json import b64url_decode, b64url_encode
 from yea.keys import KeyPair
 from yea.uses import value
 
@@ -177,3 +178,30 @@ def test_consent_code_detail_and_approver_checks():
     ]:
         with pytest.raises(ValueError):
             check_consent(bad_consent, bad_p, svc)
+
+
+def _respell(token: str, old: str, new: str) -> str:
+    """``token`` with the first ``old`` in its JSON text written as ``new``."""
+    text = b64url_decode(token[4:]).decode()
+    assert old in text
+    return "pg1." + b64url_encode(text.replace(old, new, 1).encode())
+
+
+def test_grant_numbers_are_integers_in_minimal_form():
+    """SPEC §6.2: every number in a token is an integer in minimal form. Python refused ``1.0`` in
+    ``iat`` but accepted it in a caveat, and ``-0`` anywhere; TS accepted all three."""
+    token = issue_grant(ALICE, AGENT.public, [{"exp": NOW + 60}, {"nbf": 0}], iat=NOW).encode()
+    ask = ctx(verb="ASK", proposal=None)
+    assert verify_grant(token, [ALICE.public], AGENT.public, ask).ok
+    for old, new in [(f'"iat":{NOW}', f'"iat":{NOW}.0'), (f'"iat":{NOW}', f'"iat":{NOW}e0'),
+                     (f'"exp":{NOW + 60}', f'"exp":{NOW + 60}.00'), ('"nbf":0', '"nbf":-0'), ('"nbf":0', '"nbf":0E1')]:
+        bad = _respell(token, old, new)
+        with pytest.raises(ValueError, match="a number is not an integer in minimal form"):
+            decode_grant(bad)
+        assert verify_grant(bad, [ALICE.public], AGENT.public, ask).code == "unauthorized", new
+    # Strings may hold anything that looks like a number.
+    odd = issue_grant(ALICE, AGENT.public, [{"only": "-0.5"}, {"nbf": -1}], iat=NOW, nonce='1.0 -0 1e3 "\\" 2.5')
+    assert verify_grant(odd.encode(), [ALICE.public], AGENT.public, ask).ok
+    # NaN and Infinity aren't JSON at all.
+    with pytest.raises(ValueError, match="not valid b64url JSON"):
+        decode_grant(_respell(token, '"nbf":0', '"nbf":NaN'))

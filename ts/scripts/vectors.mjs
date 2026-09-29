@@ -317,6 +317,16 @@ const signedBlock = async (key, p) => {
 
   return { p, s: await P.sign(key.seed, canonical) };
 };
+/** `token` with its JSON text's first `from` written as `to`: the same value, spelled otherwise. */
+const respelled = async (token, from, to) => {
+  const text = Buffer.from((await token).slice(4), 'base64url').toString();
+
+  if (!text.includes(from)) {
+    throw new Error(`no ${from} in ${text}`);
+  }
+
+  return `pg1.${P.b64u(new TextEncoder().encode(text.replace(from, to)))}`;
+};
 /** A root grant from the principal to the agent, with `fields` changed (undefined drops one). */
 const rootWith = async (fields) =>
   rawToken([
@@ -395,6 +405,27 @@ const malformedCases = await Promise.all([
   malformed(
     'no canonical form: a lone surrogate in a caveat',
     rootWith({ caveats: [{ only: '\ud800' }] }),
+  ),
+  // JSON.parse reads these as integers; §6.2 wants integers written in minimal form (§10).
+  malformed(
+    'malformed root: iat written as 1.0',
+    respelled(rootWith({}), `"iat":${now}`, `"iat":${now}.0`),
+  ),
+  malformed(
+    'malformed root: iat written with an exponent',
+    respelled(rootWith({}), `"iat":${now}`, '"iat":1.79e9'),
+  ),
+  malformed(
+    'malformed caveat: exp written as 1.0',
+    respelled(
+      rootWith({ caveats: [{ exp: now + 3600 }] }),
+      `"exp":${now + 3600}`,
+      `"exp":${now + 3600}.0`,
+    ),
+  ),
+  malformed(
+    'malformed caveat: nbf written as -0',
+    respelled(rootWith({ caveats: [{ nbf: 0 }] }), '"nbf":0', '"nbf":-0'),
   ),
 ]);
 const T = [principal.public];

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .._json import b64url_decode, b64url_encode, canonical_bytes, is_b64url, loads, sha256_b64url
+from .._json import b64url_decode, b64url_encode, canonical_bytes, is_b64url, sha256_b64url
 from ..keys import KeyPair
 
 TOKEN_PREFIX = "pg1."
@@ -85,14 +86,48 @@ def _safe_int(v: Any) -> bool:
     return _is_int(v) and abs(v) <= 2**53 - 1
 
 
+class _NotMinimal(ValueError):
+    """A number in a token that isn't an integer in minimal form (SPEC §6.2, §10)."""
+
+
+def _not_minimal(_: str) -> Any:
+    raise _NotMinimal
+
+
+def _not_json(_: str) -> Any:
+    raise ValueError("NaN and Infinity are not JSON")
+
+
+def _minimal_int(s: str) -> int:
+    if s == "-0":
+        raise _NotMinimal
+    return int(s)
+
+
+def _parse_blocks(text: bytes) -> Any:
+    """The token's JSON. It is parsed plainly first, so a syntax error is reported before a number
+    is (as in TypeScript). Then every number must be an integer in minimal form (``1.0``, ``1e3`` and
+    ``-0`` are refused, as JavaScript would read them as integers), and ``NaN``/``Infinity`` aren't
+    JSON. Nesting too deep to parse is not valid JSON either, never an exception out of here."""
+    try:
+        source = text.decode("utf-8")
+        json.loads(source, parse_constant=_not_json)
+        return json.loads(source, parse_float=_not_minimal, parse_int=_minimal_int)
+    except _NotMinimal:
+        raise ValueError("a number is not an integer in minimal form") from None
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        raise ValueError("not valid b64url JSON") from None
+
+
 def decode_grant(token: str) -> Grant:
     """Decode and structurally validate a token. Does not check signatures. Raises ValueError."""
     if not isinstance(token, str) or not token.startswith(TOKEN_PREFIX):
         raise ValueError("not a pg1 grant")
     try:
-        blocks = loads(b64url_decode(token[len(TOKEN_PREFIX):]).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+        raw = b64url_decode(token[len(TOKEN_PREFIX):])
+    except ValueError:
         raise ValueError("not valid b64url JSON") from None
+    blocks = _parse_blocks(raw)
     if not isinstance(blocks, list) or not blocks:
         raise ValueError("grant has no blocks")
     for i, b in enumerate(blocks):

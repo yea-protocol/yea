@@ -1875,6 +1875,78 @@
         "ok": false,
         "code": "unauthorized"
       }
+    },
+    {
+      "name": "malformed root: iat written as 1.0",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLjAsIm5vbmNlIjoibjIwIn0sInMiOiIzSE1XZGJNVHFlSE1HWHQ3UFlaVVdPNGxrbEhSWk1RYXV0OHYzY0lSalg1bnVaMmFqUHk4UzQ4eXBWRTNHOUlvSmphZmJDYXJ3Vld0MU4xVV8xc3ZDdyJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed root: iat written with an exponent",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxLjc5ZTksIm5vbmNlIjoibjIwIn0sInMiOiIzSE1XZGJNVHFlSE1HWHQ3UFlaVVdPNGxrbEhSWk1RYXV0OHYzY0lSalg1bnVaMmFqUHk4UzQ4eXBWRTNHOUlvSmphZmJDYXJ3Vld0MU4xVV8xc3ZDdyJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed caveat: exp written as 1.0",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbeyJleHAiOjE3OTAwMDM2MDAuMH1dLCJpYXQiOjE3OTAwMDAwMDAsIm5vbmNlIjoibjIwIn0sInMiOiJHVFA1T25ENWF0NG1qMUNUMkF3LXpKWTBQNTBvUjQtTGljaEQtMk40SnNIOUZLeEhsd1ZjWTV6aHFhdEl6RTdLVEFqWWJKY2piMDFjLVh4ZVh5VElDUSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "malformed caveat: nbf written as -0",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbeyJuYmYiOi0wfV0sImlhdCI6MTc5MDAwMDAwMCwibm9uY2UiOiJuMjAifSwicyI6InVObzRIbE5LMjVxRFlrSXJIa3hvVnh3c1F4djBuZlpnblNDU1llc2tMbzczbFRua25PeG9JZnNUZkZhbTdVY3RqMlRuRktoYnpaX29KTnpzVVNMRUNnIn1d",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
     }
   ],
   "consentCode": {
