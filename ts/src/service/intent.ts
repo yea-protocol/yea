@@ -65,9 +65,7 @@ export class IntentHandler {
       const prior = this.state.autoSeen.get(auto.key);
 
       if (prior && prior.exp > this.state.now()) {
-        const r = await prior.reply;
-
-        return r.kind === 'RECEIPT' ? replayOf(r, req.id) : r;
+        return replayOf(await prior.reply, req.id);
       }
     }
 

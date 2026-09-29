@@ -203,6 +203,7 @@ Clients SHOULD use at least 64 random bits. A service
 MUST remember `(proof.key, frame id)` for auto requests until at least 900 seconds after
 the later of its arrival and `proof.ts` (outliving every proof that could carry it), and
 answer a repeat with the original reply (`"replay": true` on receipts), never committing twice.
+The repeat's reply is a new frame, so it carries a fresh `id` (§2.1), whatever its kind.
 
 ### 4.4 `COMMIT` — make it happen
 

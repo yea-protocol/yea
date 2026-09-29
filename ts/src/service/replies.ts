@@ -3,7 +3,7 @@ import { randomId } from '../crypto.js';
 import { YeaError } from '../errors.js';
 import { replyFrame } from '../frames.js';
 import type { ServiceOptions } from '../plan.js';
-import type { ErrorReply, Event, ReceiptReply, Request } from '../types.js';
+import type { ErrorReply, Event, FinalReply, Request } from '../types.js';
 
 /** The ERROR reply for `e`; anything but a YeaError is reported to `onError` and answered as `internal`. */
 export function errorReply(
@@ -36,14 +36,16 @@ export function errorReply(
 export const verifiedKey = (req: Request): string | null =>
   req.grants?.length && req.proof ? req.proof.key : null;
 
-/** A prior commit/undo outcome re-issued for a repeated request. */
-export const replayOf = (
-  prior: ReceiptReply | ErrorReply,
-  re: string,
-): ReceiptReply | ErrorReply =>
-  prior.kind === 'RECEIPT'
-    ? { ...prior, id: randomId('s', 6), re, replay: true }
-    : { ...prior, id: randomId('s', 6), re };
+/**
+ * A prior reply re-issued for a repeated request: a repeated COMMIT or UNDO, or an auto INTENT
+ * (§4.3.1). It is a new frame, so it gets a fresh id (§2.1); a receipt is marked `replay`.
+ */
+export const replayOf = <R extends FinalReply>(prior: R, re: string): R => ({
+  ...prior,
+  id: randomId('s', 6),
+  re,
+  ...(prior.kind === 'RECEIPT' ? { replay: true } : {}),
+});
 
 export const eventFrame = (
   re: string,
