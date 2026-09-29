@@ -333,7 +333,8 @@ The guarded callback does, in order (SPEC-approval §5 and §6):
     - **Anything after `apply()` succeeded** runs in its own `try`: a failure there (`settle`,
       `putReceipt`, a result that couldn't be serialized) never says "nothing was run". It
       says the action happened, and whether undo is available (the receipt was saved, and the
-      plan is undoable) or not.
+      plan is undoable) or not. For `guard`, the original's result, when it's usable (not a
+      failure and serializable), is kept with that line appended (as `mcp-py`).
 
 **Can the client ask?** This follows the SDK's own check (`_inputRequestCapabilityView`), so
 we never return an `inputRequired` the SDK would then refuse with a `-32021` error or a shim
@@ -456,7 +457,7 @@ can't elicit. For each:
 - the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
 - the start-up line, once, on stderr;
 - after `apply()`: a result that can't be serialized applies once and says so, and a store
-  failure says the action happened;
+  failure says the action happened (for `guard`, appended to the original's result);
 - a 2025 client that can't elicit, spoofing an envelope that says it can, gets consent codes;
 - a legacy stateless HTTP request takes the consent-code path;
 - the objective's shape: `serveStdio` (over an in-memory transport) with one `yea()` context,

@@ -192,6 +192,31 @@ describe('guard failures', () => {
     expect(r._meta?.['dev.yea/receipt']).toBeUndefined();
   });
 
+  // #150: the original's result used to be replaced by the line; now it's kept, as in mcp-py.
+  it('a guarded tool keeps its own result when its receipt can’t be saved, with the line appended', async () => {
+    const w = await world();
+    const c: Counter = { charged: [] };
+    const conn = await connect('2025', guarded(w, c));
+
+    w.store.putReceipt = () => Promise.reject(new Error('disk full'));
+    // Cache the tool list, so the client validates the kept result against the outputSchema.
+    await conn.client.listTools();
+    conn.answers.push({ action: 'accept', content: { confirm: 'approve' } });
+
+    const r = await conn.call({ amount: '5' }, 'charge');
+
+    expect(c.charged).toEqual(['5']);
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent).toEqual({ charged: '5' });
+    expect(r.content).toEqual([
+      { type: 'text', text: 'charged 5' },
+      {
+        type: 'text',
+        text: "✓ Charge 5 USD happened, but then disk full; its receipt wasn't saved, so it can't be undone.",
+      },
+    ]);
+  });
+
   it('a failed update leaves the tool disabled', () => {
     const server = new McpServer({ name: 'b', version: '1' });
     const tool = server.registerTool(
@@ -296,9 +321,18 @@ describe('guard refuses schemas it can’t carry preview on', () => {
 });
 
 describe('guard failure detection reads the value the original returned', () => {
-  /** A guarded tool that auto-runs under a policy with a total, and returns `result`. */
-  async function autoRun(result: Record<string, unknown>) {
+  /**
+   * A guarded tool (no outputSchema) that auto-runs under a policy with a total, and returns
+   * `result`; `before` can break the store first.
+   */
+  async function autoRun(
+    result: Record<string, unknown>,
+    before: (w: World) => void = () => undefined,
+  ) {
     const w = await world();
+
+    before(w);
+
     const token = await grantPolicy(w, [
       { can: ['charge'] },
       { risk: 'low' },
@@ -372,6 +406,27 @@ describe('guard failure detection reads the value the original returned', () => 
       exact(quantity(1)),
     );
   });
+
+  // #150: as in mcp-py, the original's result is kept with the line appended, whichever step fails.
+  it.each(['settle', 'putReceipt'] as const)(
+    'a %s failure after apply keeps the original result and appends the line',
+    async (step) => {
+      const ok = { content: [{ type: 'text', text: 'charged' }] };
+      const { r, calls } = await autoRun(ok, (w) => {
+        w.store[step] = () => Promise.reject(new Error('disk full'));
+      });
+
+      expect(calls()).toBe(1);
+      expect(r.isError).toBeFalsy();
+      expect(r.content).toEqual([
+        { type: 'text', text: 'charged' },
+        {
+          type: 'text',
+          text: "✓ Charge happened, but then disk full; its receipt wasn't saved, so it can't be undone.",
+        },
+      ]);
+    },
+  );
 });
 
 const filesIn = (root: string, dir: string) =>

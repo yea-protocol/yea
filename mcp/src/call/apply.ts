@@ -18,6 +18,14 @@ import { errorResult, textResult } from '../result.js';
 import { errorMessage, isObject } from '../util.js';
 import type { Call, JobDef, Result, Yea } from './context.js';
 
+/** What a failure after `apply()` can still report: the stored receipt, and a guarded tool's own result. */
+interface Saved {
+  /** Set once the receipt is stored, so a later failure can say undo is available. */
+  receipt: JobReceipt | null;
+  /** A guarded tool's own result, once it's known to be usable: kept, with the line appended. */
+  kept: CallToolResult | null;
+}
+
 /**
  * A guarded tool's own error, or a request for input, is a failed apply. This inspects the value
  * the original callback actually returned (a plain object, often a literal), structurally: no
@@ -132,12 +140,12 @@ async function finish(
   held: Reservation[],
   done: { result: unknown; auto: boolean },
 ): Promise<Result> {
-  const saved: { receipt: JobReceipt | null } = { receipt: null };
+  const saved: Saved = { receipt: null, kept: null };
 
   try {
     return await recorded(call, hp, held, { ...done, saved });
   } catch (e) {
-    return happened(call, hp, `then ${errorMessage(e)}`, saved.receipt);
+    return happened(call, hp, `then ${errorMessage(e)}`, saved);
   }
 }
 
@@ -149,8 +157,7 @@ async function recorded(
   done: {
     result: unknown;
     auto: boolean;
-    /** Set once the receipt is stored, so a later failure can say undo is available. */
-    saved: { receipt: JobReceipt | null };
+    saved: Saved;
   },
 ): Promise<Result> {
   const safe = jsonSafe(done.result);
@@ -167,12 +174,16 @@ async function recorded(
 
   const receipt = receiptFor(call, hp, safe.value);
 
+  if (call.job.guarded && !safe.note) {
+    done.saved.kept = safe.value as CallToolResult;
+  }
+
   await Promise.all(held.map((r) => call.y.store.settle(r)));
   await call.y.store.putReceipt(receipt);
   done.saved.receipt = receipt;
 
   if (safe.note) {
-    return happened(call, hp, safe.note, receipt);
+    return happened(call, hp, safe.note, { receipt, kept: null });
   }
 
   if (call.job.guarded) {
@@ -184,12 +195,15 @@ async function recorded(
   return receiptResult(receipt, done.auto);
 }
 
-/** The action happened, but something after it didn't: say so, and whether undo is available. */
+/**
+ * The action happened, but something after it didn't: say so, and whether undo is available. A
+ * guarded tool's own result, when it's usable, is kept with that line appended (as mcp-py).
+ */
 function happened(
   call: Call,
   hp: HashedPlan,
   what: string,
-  receipt: JobReceipt | null,
+  { receipt, kept }: Saved,
 ): Result {
   const undo = !receipt
     ? "its receipt wasn't saved, so it can't be undone"
@@ -197,9 +211,19 @@ function happened(
       ? `undo is available with receipt ${receipt.id}`
       : `receipt ${receipt.id}; it can't be undone`;
 
-  const lines = [
-    `✓ ${printable(hp.plan.summary)} happened, but ${printable(what)}; ${undo}.`,
-  ];
+  const line = `✓ ${printable(hp.plan.summary)} happened, but ${printable(what)}; ${undo}.`;
+
+  if (kept) {
+    return {
+      ...kept,
+      content: [
+        ...(Array.isArray(kept.content) ? kept.content : []),
+        { type: 'text', text: line },
+      ],
+    };
+  }
+
+  const lines = [line];
   const structured = { receipt, result: null };
 
   // A guarded tool's outputSchema only describes the original's own results.
