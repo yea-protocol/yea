@@ -86,7 +86,7 @@ an app, not a person. `yea_mcp.token_subject(ctx)` returns the verified token's 
 
 **No HTTP front end in `yea-mcp` (v0).** `mcp-ts` ships one (`@yea-protocol/mcp/http`: `httpGate`,
 `httpApp`, `subOf`, `httpAuthFrom`; `serveHttp` from `/http/node`), with a bearer token compared in
-constant time, a `Host` check on loopback against DNS rebinding (403), and a 1 MiB body cap. `yea-mcp`
+constant time, a `Host` check on loopback against DNS rebinding (421), and a 1 MiB body cap. `yea-mcp`
 has no counterpart; serve HTTP with the MCP SDK's own Streamable HTTP app (`streamable_http_app` or
 `run_streamable_http_async`) and put `token_subject` in `sub`:
 - On a loopback `host` the SDK checks `Host` and `Origin` itself (421 and 403). Off loopback, pass

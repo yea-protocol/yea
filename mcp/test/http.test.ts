@@ -174,7 +174,10 @@ describe('httpApp', () => {
       post({ host: 'evil.example', authorization: `Bearer ${TOKEN}` }),
     );
 
-    expect(r.status).toBe(403);
+    expect(r.status).toBe(421);
+    expect(await r.json()).toMatchObject({
+      error: { message: 'Invalid Host: evil.example' },
+    });
   });
 
   it('off loopback, leaves the Host alone', async () => {
@@ -188,7 +191,7 @@ describe('httpApp', () => {
       }),
     );
 
-    expect(r.status).not.toBe(403);
+    expect(r.status).not.toBe(421);
     expect(r.status).not.toBe(401);
   });
 
@@ -217,7 +220,8 @@ describe('httpGate', () => {
     expect(
       GATE(req({ host: 'evil.example', authorization: `Bearer ${TOKEN}` }))
         ?.status,
-    ).toBe(403);
+    ).toBe(421);
+    expect(GATE(req({ authorization: `Bearer ${TOKEN}` }))?.status).toBe(421);
   });
 });
 

@@ -10,10 +10,10 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   type AuthInfo,
   createMcpHandler,
-  hostHeaderValidationResponse,
   localhostAllowedHostnames,
   type McpServer,
   type ServerContext,
+  validateHostHeader,
 } from '@modelcontextprotocol/server';
 
 /** The largest request body served by default: 1 MiB, the same cap as a YEA frame. */
@@ -68,6 +68,28 @@ const digest = (s: string) => createHash('sha256').update(s).digest();
 const sameToken = (a: string, b: string) =>
   timingSafeEqual(digest(a), digest(b));
 
+/**
+ * A Host that isn't loopback: 421 Misdirected Request, as the Python MCP SDK answers it (the TS
+ * SDK's `hostHeaderValidationResponse` says 403). Undefined when the Host is fine.
+ */
+const misdirected = (req: Request) => {
+  const host = validateHostHeader(
+    req.headers.get('host'),
+    localhostAllowedHostnames(),
+  );
+
+  return host.ok
+    ? undefined
+    : Response.json(
+        {
+          jsonrpc: '2.0',
+          error: { code: -32000, message: host.message },
+          id: null,
+        },
+        { status: 421 },
+      );
+};
+
 const unauthorized = () =>
   new Response(JSON.stringify({ error: 'invalid_token' }), {
     status: 401,
@@ -78,7 +100,7 @@ const unauthorized = () =>
   });
 
 /**
- * The checks before anything else: on loopback the Host header (against DNS rebinding: 403),
+ * The checks before anything else: on loopback the Host header (against DNS rebinding: 421),
  * then the bearer token, compared in constant time (401). Undefined lets the request through.
  * `httpApp` runs it on every request; pass it to `serveHttp` too, so it runs before the body is
  * read.
@@ -87,9 +109,7 @@ export function httpGate(
   o: Pick<HttpAppOptions, 'token' | 'loopback'>,
 ): (req: Request) => Response | undefined {
   return (req) => {
-    const badHost = o.loopback
-      ? hostHeaderValidationResponse(req, localhostAllowedHostnames())
-      : undefined;
+    const badHost = o.loopback ? misdirected(req) : undefined;
 
     if (badHost) {
       return badHost;

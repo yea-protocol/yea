@@ -211,8 +211,9 @@ Stripe connector's `--http` runs on. `./http` is fetch-level (it needs only `nod
 Bun, Deno and Workers with `nodejs_compat` have); `./http/node` has the Node server.
 
 - `httpGate({ token, loopback })`: the checks, in one place. On loopback, the `Host` header
-  (DNS rebinding: 403); then `Authorization: Bearer <token>`, compared in constant time (401).
-  It returns the refusal, or undefined to let the request through.
+  (DNS rebinding: 421 Misdirected Request, as the Python MCP SDK answers it; `createMcpHandler`
+  doesn't check Host itself); then `Authorization: Bearer <token>`, compared in constant time
+  (401). It returns the refusal, or undefined to let the request through.
 - `httpApp(factory, { token, sub, loopback, clientId?, maxBody? })`: a fetch handler that runs
   `httpGate` on every request, then `createMcpHandler` with `authInfo`
   `{ clientId (default 'yea-http'), extra: { sub } }`. The MCP handler reads at most `maxBody`
@@ -463,7 +464,7 @@ can't elicit. For each:
 - the objective's shape: `serveStdio` (over an in-memory transport) with one `yea()` context,
   on both eras.
 - the HTTP front end (`mcp/test/http.test.ts`): no token, a wrong one or another scheme gets
-  401 and a foreign Host on loopback 403, before MCP; a call with the token runs as `sub`; a body
+  401 and a foreign Host on loopback 421, before MCP; a call with the token runs as `sub`; a body
   over the cap, declared or streamed, even past what's drained, gets a readable 413 and the app
   never runs; a request without the token is refused before its body is read (declared under the cap,
   so the test fails if the body is read first), and never gets `100 Continue`; a slow request is
