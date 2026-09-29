@@ -407,3 +407,16 @@ def test_budget_elides_ties_in_the_same_order_as_ts():
     data = json.loads('{"b":"' + "x " * 400 + '","1":"' + "y " * 400 + '"}')
     out = fit({"yea": 1, "id": "s1", "re": "c1", "kind": "ANSWER", "data": data}, 500, MemoryHandleStore())
     assert [m["path"] for m in out["more"]] == ["data.1", "data.b"]
+
+
+def test_invalid_params_lists_problems_in_the_same_order_as_ts():
+    """The model reads this message: schema and params are walked in Object.keys order, as in TS."""
+    from yea.errors import YeaError
+    from yea.validate import validate_params
+
+    with pytest.raises(YeaError) as e:
+        validate_params({"a": "string"}, json.loads('{"a":"x","b":1,"2":1,"1":1}'))
+    assert e.value.message == "unknown param `1`; unknown param `2`; unknown param `b`"
+    with pytest.raises(YeaError) as e:
+        validate_params(json.loads('{"b":"string","3":"int"}'), {})
+    assert e.value.message == "missing `3` (int); missing `b` (string)"
