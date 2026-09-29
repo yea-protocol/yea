@@ -257,16 +257,18 @@ are neutral (ink on paper, bone on ink). Containers are neutral: tips and info u
 and VitePress's `warning` containers (yellow by default) use the soft fill with a full 1px
 border in tertiary text; inline code in any container stays neutral. A warning is a caution to
 the reader, not a protocol state. `danger` containers are neutral too, with the strongest
-border (1px in primary text), because red means refused. Doc blockquotes are a 1px hairline box in
-secondary text, with no side stripe. A page's source note (the spec page) is one quiet line
+border (1px in primary text), because red means refused. Doc blockquotes are a box with a 1px
+divider border and secondary text, with no side stripe. A page's source note (the spec page) is one quiet line
 (`.page-source`), not a callout.
 
-**The Lens Block Rule.** Lens shown in the docs is coloured the same way everywhere: in plain-text
-code fences (`text`, `txt`, `lens` or none), each line gets its state class from the shared
+**The Lens Block Rule.** Lens shown in the docs is coloured the same way everywhere: in code
+fences marked `text`, `txt`, `lens` or nothing, each line gets its state class from the shared
 `components/lens-lines.ts` (through the Shiki transformer in `site/.vitepress/lens-fence.ts`):
 amber for proposals and consent requests, green for receipts, red for refusals, secondary text for
-effects, tertiary for wire lines (`→`) and handles. A block that asks for approval turns its `✗`
-lines amber, not red.
+effects, tertiary for wire lines (`→`) and handles. A `✗` line that asks for approval
+(`consent_required`, "approval needed") is amber, not red. To show output that looks like Lens
+but isn't, mark the fence `plaintext`, or add `no-lens` after the language (```` ```text no-lens ````),
+as the README's Petstore listing does.
 
 **The Consent Button Rule.** Every Approve that signs a proposal is amber: full amber fill with
 ink text (10.8:1 in both themes), hover a lighter amber. That is the playground's "Approve as

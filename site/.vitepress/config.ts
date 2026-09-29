@@ -5,7 +5,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
 import { appearanceMigration, fontPreloads, themeColor } from './head';
-import { lensLines } from './lens-fence';
+import { lensFence } from './lens-fence';
 import { headingOrder, taskLists } from './markdown-rules';
 import { paperLight } from './shiki-light';
 
@@ -94,7 +94,7 @@ export default defineConfig({
     // GitHub-style slugs, so anchors in the repo's markdown work here too.
     anchor: { slugify: githubSlug },
     // Lens lines in plain-text blocks, coloured by protocol state.
-    codeTransformers: [lensLines],
+    codeTransformers: [lensFence],
     config(md) {
       // Task lists with labelled checkboxes, and heading levels that never skip.
       taskLists(md);

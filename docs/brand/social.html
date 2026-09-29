@@ -24,9 +24,9 @@ p { font-size: 22px; line-height: 1.45; color: var(--text-2); margin: 0; max-wid
 .summary { font-size: 30px; font-weight: 700; letter-spacing: -0.015em; margin: 14px 0 10px; }
 .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .effects { font-size: 17px; line-height: 1.6; color: var(--text-2); }
-.facts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 18px 0 20px; padding: 14px 0; border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider); }
+.facts { display: grid; grid-template-columns: 1.5fr 0.8fr 1fr; margin: 18px 0 20px; padding: 14px 0; border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider); }
 .facts dt { font-size: 15px; color: var(--text-2); }
-.facts dd { margin: 2px 0 0; font-size: 20px; font-weight: 600; }
+.facts dd { margin: 2px 0 0; font-size: 20px; font-weight: 600; white-space: nowrap; }
 .approve { display: flex; align-items: center; gap: 18px; }
 .btn { background: var(--amber); color: var(--ink); font-weight: 700; font-size: 20px; border-radius: 10px; padding: 12px 30px; }
 .hash { font-size: 16px; color: var(--text-2); white-space: nowrap; }
@@ -42,7 +42,7 @@ p { font-size: 22px; line-height: 1.45; color: var(--text-2); margin: 0; max-wid
   <div class="summary">4 meals, 53.95 USD</div>
   <div class="effects mono">+ create order/o1001<br>+ create charge: 53.95 USD</div>
   <dl class="facts">
-    <div><dt>Uses</dt><dd>spend 53.95</dd></div>
+    <div><dt>Uses</dt><dd>spend 53.95 USD</dd></div>
     <div><dt>Risk</dt><dd>low</dd></div>
     <div><dt>Undo</dt><dd>within 2h</dd></div>
   </dl>

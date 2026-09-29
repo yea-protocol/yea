@@ -47,34 +47,58 @@ export function taskLists(md: MarkdownRenderer): void {
 
 /**
  * A heading is at most one level below the one before it, so screen-reader heading navigation
- * has no gaps. Only headings that skip a level change.
+ * has no gaps. When a heading skips a level, it and the rest of its run (everything nested
+ * under it, and its siblings) are lifted by the same amount, until a heading above the run's
+ * source level ends it. Headings that don't skip keep their level.
  */
 export function headingOrder(md: MarkdownRenderer): void {
-  md.core.ruler.push('heading-order', (state) => {
-    let previous = 0;
+  md.core.ruler.after('inline', 'heading-order', (state) => {
+    const level = headingLevels();
+    let current = 0;
 
     for (const tok of state.tokens) {
-      if (tok.type !== 'heading_open' && tok.type !== 'heading_close') {
-        continue;
-      }
-
-      const level = Number(tok.tag.slice(1));
-
       if (tok.type === 'heading_open') {
-        const fixed = previous && level > previous + 1 ? previous + 1 : level;
-
-        tok.tag = `h${fixed}`;
-        previous = fixed;
-      } else {
-        tok.tag = `h${previous}`;
+        current = level(Number(tok.tag.slice(1)));
+        tok.tag = `h${current}`;
+      } else if (tok.type === 'heading_close') {
+        tok.tag = `h${current}`;
       }
     }
   });
 }
 
+/** A skipped run: its first heading's source level, and how far the run is lifted. */
+interface Run {
+  from: number;
+  lift: number;
+}
+
+/** Maps each heading's source level, in document order, to the level it renders at. */
+export function headingLevels(): (source: number) => number {
+  const runs: Run[] = [];
+  let previous = 0;
+
+  return (source) => {
+    while (runs.length && source < (runs.at(-1)?.from ?? 0)) {
+      runs.pop();
+    }
+
+    let level = source - runs.reduce((n, r) => n + r.lift, 0);
+
+    if (previous && level > previous + 1) {
+      runs.push({ from: source, lift: level - previous - 1 });
+      level = previous + 1;
+    }
+
+    previous = level;
+
+    return level;
+  };
+}
+
 function plainText(children: Token[]): string {
   return children
-    .filter((t) => t.type === 'text' || t.type === 'code_inline')
+    .filter((t) => ['text', 'text_special', 'code_inline'].includes(t.type))
     .map((t) => t.content)
     .join('')
     .trim();
