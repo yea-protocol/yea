@@ -1007,3 +1007,81 @@ def test_a_request_with_a_lone_surrogate_is_a_bad_frame(caplog):
     assert not [rec for rec in caplog.records if rec.name == "yea"]
     # A surrogate pair is well-formed, so the frame is planned as usual.
     assert intent({"to": "🎉"})["kind"] == "PROPOSALS"
+
+
+def test_a_reply_keeps_only_the_most_recent_events_and_on_event_sees_them_all():
+    """A service can't grow the client's memory with EVENTs: the Reply keeps the most recent
+    KEEP_EVENTS and counts the rest; on_event still sees every one, on every transport (#175)."""
+    from yea.client.reply import KEEP_EVENTS
+
+    svc = Service("chatty.example", "Chatty", trust=[PRINCIPAL.public])
+
+    def apply(ctx):
+        for i in range(200):
+            ctx.progress(f"step {i}", i / 200)
+
+    @svc.intent("chatty.do")
+    def do(ctx):
+        return Plan("Do it", [create("thing")], apply=apply)
+
+    async def go():
+        tcp = await serve_tcp(svc, "127.0.0.1", 0)
+        http = await serve_http(svc, "127.0.0.1", 0)
+        try:
+            for how in ("local", "tcp", "http"):
+                g = grant({"svc": ["chatty.example"]}, {"can": ["chatty.*"]})
+                url = {"tcp": f"yea://127.0.0.1:{tcp.sockets[0].getsockname()[1]}",
+                       "http": f"http://127.0.0.1:{http.sockets[0].getsockname()[1]}/yea"}.get(how)
+                c = Client(local(svc), key=AGENT.seed, grants=[g]) if how == "local" else await connect(
+                    url, key=AGENT.seed, grants=[g])
+                async with c:
+                    props = await c.intent("chatty.do")
+                    seen = []
+                    rc = await asyncio.wait_for(c.commit(props.proposals[0], on_event=seen.append), 10)
+                assert rc.kind == "RECEIPT", how
+                assert len(seen) == 200 and len(rc.events) == KEEP_EVENTS, how
+                assert rc.events_dropped == 200 - KEEP_EVENTS and rc.events[-1].message == "step 199", how
+        finally:
+            tcp.close()
+            http.close()
+
+    run(go())
+
+
+def test_http_events_reach_on_event_before_the_final_reply():
+    """The HTTP client passes each EVENT on as it arrives, as TS does, not after the whole body."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from yea.client.transports import _HttpTransport
+
+    release, answered_after_event = threading.Event(), []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            fid = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["id"]
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(f'{{"yea":1,"id":"e","re":"{fid}","kind":"EVENT","message":"half"}}\n'.encode())
+            self.wfile.flush()
+            answered_after_event.append(release.wait(5))  # the final reply only once the client has seen the EVENT
+            self.wfile.write(f'{{"yea":1,"id":"s","re":"{fid}","kind":"ANSWER","data":1}}\n'.encode())
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        seen = []
+
+        def on_event(ev):
+            seen.append(ev.message)
+            release.set()
+
+        r = run(_HttpTransport(f"http://127.0.0.1:{server.server_address[1]}/yea").request(
+            {"yea": 1, "id": "c_1", "verb": "ASK", "capability": "x"}, on_event))
+        assert seen == ["half"] and r.kind == "ANSWER" and answered_after_event == [True]
+    finally:
+        release.set()
+        server.shutdown()
