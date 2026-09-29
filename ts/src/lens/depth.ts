@@ -4,7 +4,11 @@
  */
 import { isObject } from '../util.js';
 
-/** The levels of objects and arrays Lens renders below the value (or frame) it's given. */
+/**
+ * The levels of objects and arrays Lens renders below the value (or frame) it's given. It stays
+ * above a BRIEF param schema's reach (frame level 3 + MAX_PARAM_DEPTH in shape.ts), so a schema is
+ * judged by its own limit, never by the cut.
+ */
 export const MAX_DEPTH = 64;
 
 /** What an object or array nested past MAX_DEPTH becomes: a string, so it renders as one. */

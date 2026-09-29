@@ -592,9 +592,12 @@ A top-level object renders its entries at indent 0. A top-level array renders as
 
 **Depth.** Lens renders at most 64 levels of objects and arrays. Before rendering, every object or
 array nested 64 levels below the value given (for a reply, below the frame: its members are level
-1) is replaced by the string `…`, which then renders as any string does (`"…"`). This applies
-everywhere Lens renders a value, compact JSON included, so a deeply nested value can't overflow
-the stack, and conforming implementations still agree byte for byte.
+1) is replaced by the string `…` (U+2026), which then renders as any string does (`"…"`), so a cut
+looks the same as a service's own `"…"`. An empty object or array at level 64 is cut too. The cut
+comes first, so the §9.2 well-formed checks and the table form (above) see the cut value. Lean of
+64 nested objects renders all 64; with 65, the innermost renders as `"…"`. This applies everywhere
+Lens renders a value, compact JSON included, so a deeply nested value can't overflow the stack,
+and conforming implementations still agree byte for byte.
 
 ### 9.2 Reply renderings
 

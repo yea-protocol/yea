@@ -74,7 +74,10 @@ const MORE: Shape = [
   { remaining: 'integer', path: 'string', handle: 'string', est: 'integer' },
 ];
 
-/** How deep a param schema may nest, so checking and rendering one can't overflow the stack. */
+/**
+ * How deep a param schema may nest, so checking and rendering one can't overflow the stack. Keep it
+ * well under depth.ts's MAX_DEPTH, which a schema must never reach.
+ */
 const MAX_PARAM_DEPTH = 32;
 
 /**

@@ -9,6 +9,7 @@ import { clipDepth } from './depth.js';
 import { effectLine } from './format.js';
 import { lens } from './render.js';
 
+/** `v` with every string (and key) made one line by `printable`; `oneLine` clips it first. */
 function lineSafe(v: unknown): unknown {
   if (typeof v === 'string') {
     return printable(v);

@@ -1726,7 +1726,25 @@ const deepValues = [
   ['depth: 64 levels of objects render', nest(64, 1)],
   ['depth: the 65th level of objects is cut', nest(65, 1)],
   ['depth: arrays cut inside compact JSON', { x: [nestArr(66, 1)] }],
-  ['depth: a cut table row', { rows: [nest(70, 'z'), nest(70, 'z')] }],
+  ['depth: cut list items', { rows: [nest(70, 'z'), nest(70, 'z')] }],
+  // The rows' `k` sit at level 64, so they're cut to "…" first and the array renders as a table.
+  [
+    'depth: a table once its cells are cut',
+    nest(
+      61,
+      {
+        rows: [
+          { k: { x: 1 }, j: 2 },
+          { k: { x: 1 }, j: 3 },
+        ],
+      },
+      (v) => ({
+        w: v,
+      }),
+    ),
+  ],
+  ['depth: an empty object at the cut', nest(63, { e: {} })],
+  ['depth: an empty array at the cut', nest(63, { e: [] })],
 ];
 
 for (const [name, input] of deepValues) {

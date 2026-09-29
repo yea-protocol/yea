@@ -72,7 +72,7 @@ export function lens(r: Reply): string {
   const more = moreOf(frame);
   const out =
     more && kindFits(frame)
-      ? bodyLines(frame as unknown as Reply)
+      ? bodyLines(frame as unknown as Reply) // well-formed for its kind, per kindFits
       : unknownLines(frame, more !== null);
 
   if (more) {

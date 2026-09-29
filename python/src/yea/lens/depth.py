@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from typing import Any
 
-# The levels of objects and arrays Lens renders below the value (or frame) it's given.
+# The levels of objects and arrays Lens renders below the value (or frame) it's given. It stays above a
+# BRIEF param schema's reach (frame level 3 + the param depth limit in shape.py), so a schema is judged
+# by its own limit, never by the cut.
 MAX_DEPTH = 64
 
 # What an object or array nested past MAX_DEPTH becomes: a string, so it renders as one.

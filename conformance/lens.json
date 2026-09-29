@@ -2478,7 +2478,7 @@
     "lens": "x[1]:\n  - [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\"…\"]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
   },
   {
-    "name": "depth: a cut table row",
+    "name": "depth: cut list items",
     "type": "value",
     "input": {
       "rows": [
@@ -2767,6 +2767,417 @@
       ]
     },
     "lens": "rows[2]:\n  - a:\n      a:\n        a:\n          a:\n            a:\n              a:\n                a:\n                  a:\n                    a:\n                      a:\n                        a:\n                          a:\n                            a:\n                              a:\n                                a:\n                                  a:\n                                    a:\n                                      a:\n                                        a:\n                                          a:\n                                            a:\n                                              a:\n                                                a:\n                                                  a:\n                                                    a:\n                                                      a:\n                                                        a:\n                                                          a:\n                                                            a:\n                                                              a:\n                                                                a:\n                                                                  a:\n                                                                    a:\n                                                                      a:\n                                                                        a:\n                                                                          a:\n                                                                            a:\n                                                                              a:\n                                                                                a:\n                                                                                  a:\n                                                                                    a:\n                                                                                      a:\n                                                                                        a:\n                                                                                          a:\n                                                                                            a:\n                                                                                              a:\n                                                                                                a:\n                                                                                                  a:\n                                                                                                    a:\n                                                                                                      a:\n                                                                                                        a:\n                                                                                                          a:\n                                                                                                            a:\n                                                                                                              a:\n                                                                                                                a:\n                                                                                                                  a:\n                                                                                                                    a:\n                                                                                                                      a:\n                                                                                                                        a:\n                                                                                                                          a:\n                                                                                                                            a:\n                                                                                                                              a: \"…\"\n  - a:\n      a:\n        a:\n          a:\n            a:\n              a:\n                a:\n                  a:\n                    a:\n                      a:\n                        a:\n                          a:\n                            a:\n                              a:\n                                a:\n                                  a:\n                                    a:\n                                      a:\n                                        a:\n                                          a:\n                                            a:\n                                              a:\n                                                a:\n                                                  a:\n                                                    a:\n                                                      a:\n                                                        a:\n                                                          a:\n                                                            a:\n                                                              a:\n                                                                a:\n                                                                  a:\n                                                                    a:\n                                                                      a:\n                                                                        a:\n                                                                          a:\n                                                                            a:\n                                                                              a:\n                                                                                a:\n                                                                                  a:\n                                                                                    a:\n                                                                                      a:\n                                                                                        a:\n                                                                                          a:\n                                                                                            a:\n                                                                                              a:\n                                                                                                a:\n                                                                                                  a:\n                                                                                                    a:\n                                                                                                      a:\n                                                                                                        a:\n                                                                                                          a:\n                                                                                                            a:\n                                                                                                              a:\n                                                                                                                a:\n                                                                                                                  a:\n                                                                                                                    a:\n                                                                                                                      a:\n                                                                                                                        a:\n                                                                                                                          a:\n                                                                                                                            a:\n                                                                                                                              a: \"…\""
+  },
+  {
+    "name": "depth: a table once its cells are cut",
+    "type": "value",
+    "input": {
+      "w": {
+        "w": {
+          "w": {
+            "w": {
+              "w": {
+                "w": {
+                  "w": {
+                    "w": {
+                      "w": {
+                        "w": {
+                          "w": {
+                            "w": {
+                              "w": {
+                                "w": {
+                                  "w": {
+                                    "w": {
+                                      "w": {
+                                        "w": {
+                                          "w": {
+                                            "w": {
+                                              "w": {
+                                                "w": {
+                                                  "w": {
+                                                    "w": {
+                                                      "w": {
+                                                        "w": {
+                                                          "w": {
+                                                            "w": {
+                                                              "w": {
+                                                                "w": {
+                                                                  "w": {
+                                                                    "w": {
+                                                                      "w": {
+                                                                        "w": {
+                                                                          "w": {
+                                                                            "w": {
+                                                                              "w": {
+                                                                                "w": {
+                                                                                  "w": {
+                                                                                    "w": {
+                                                                                      "w": {
+                                                                                        "w": {
+                                                                                          "w": {
+                                                                                            "w": {
+                                                                                              "w": {
+                                                                                                "w": {
+                                                                                                  "w": {
+                                                                                                    "w": {
+                                                                                                      "w": {
+                                                                                                        "w": {
+                                                                                                          "w": {
+                                                                                                            "w": {
+                                                                                                              "w": {
+                                                                                                                "w": {
+                                                                                                                  "w": {
+                                                                                                                    "w": {
+                                                                                                                      "w": {
+                                                                                                                        "w": {
+                                                                                                                          "w": {
+                                                                                                                            "w": {
+                                                                                                                              "w": {
+                                                                                                                                "rows": [
+                                                                                                                                  {
+                                                                                                                                    "k": {
+                                                                                                                                      "x": 1
+                                                                                                                                    },
+                                                                                                                                    "j": 2
+                                                                                                                                  },
+                                                                                                                                  {
+                                                                                                                                    "k": {
+                                                                                                                                      "x": 1
+                                                                                                                                    },
+                                                                                                                                    "j": 3
+                                                                                                                                  }
+                                                                                                                                ]
+                                                                                                                              }
+                                                                                                                            }
+                                                                                                                          }
+                                                                                                                        }
+                                                                                                                      }
+                                                                                                                    }
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
+                                                                                                          }
+                                                                                                        }
+                                                                                                      }
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lens": "w:\n  w:\n    w:\n      w:\n        w:\n          w:\n            w:\n              w:\n                w:\n                  w:\n                    w:\n                      w:\n                        w:\n                          w:\n                            w:\n                              w:\n                                w:\n                                  w:\n                                    w:\n                                      w:\n                                        w:\n                                          w:\n                                            w:\n                                              w:\n                                                w:\n                                                  w:\n                                                    w:\n                                                      w:\n                                                        w:\n                                                          w:\n                                                            w:\n                                                              w:\n                                                                w:\n                                                                  w:\n                                                                    w:\n                                                                      w:\n                                                                        w:\n                                                                          w:\n                                                                            w:\n                                                                              w:\n                                                                                w:\n                                                                                  w:\n                                                                                    w:\n                                                                                      w:\n                                                                                        w:\n                                                                                          w:\n                                                                                            w:\n                                                                                              w:\n                                                                                                w:\n                                                                                                  w:\n                                                                                                    w:\n                                                                                                      w:\n                                                                                                        w:\n                                                                                                          w:\n                                                                                                            w:\n                                                                                                              w:\n                                                                                                                w:\n                                                                                                                  w:\n                                                                                                                    w:\n                                                                                                                      w:\n                                                                                                                        w:\n                                                                                                                          rows[2]{k,j}:\n                                                                                                                            \"…\",2\n                                                                                                                            \"…\",3"
+  },
+  {
+    "name": "depth: an empty object at the cut",
+    "type": "value",
+    "input": {
+      "a": {
+        "a": {
+          "a": {
+            "a": {
+              "a": {
+                "a": {
+                  "a": {
+                    "a": {
+                      "a": {
+                        "a": {
+                          "a": {
+                            "a": {
+                              "a": {
+                                "a": {
+                                  "a": {
+                                    "a": {
+                                      "a": {
+                                        "a": {
+                                          "a": {
+                                            "a": {
+                                              "a": {
+                                                "a": {
+                                                  "a": {
+                                                    "a": {
+                                                      "a": {
+                                                        "a": {
+                                                          "a": {
+                                                            "a": {
+                                                              "a": {
+                                                                "a": {
+                                                                  "a": {
+                                                                    "a": {
+                                                                      "a": {
+                                                                        "a": {
+                                                                          "a": {
+                                                                            "a": {
+                                                                              "a": {
+                                                                                "a": {
+                                                                                  "a": {
+                                                                                    "a": {
+                                                                                      "a": {
+                                                                                        "a": {
+                                                                                          "a": {
+                                                                                            "a": {
+                                                                                              "a": {
+                                                                                                "a": {
+                                                                                                  "a": {
+                                                                                                    "a": {
+                                                                                                      "a": {
+                                                                                                        "a": {
+                                                                                                          "a": {
+                                                                                                            "a": {
+                                                                                                              "a": {
+                                                                                                                "a": {
+                                                                                                                  "a": {
+                                                                                                                    "a": {
+                                                                                                                      "a": {
+                                                                                                                        "a": {
+                                                                                                                          "a": {
+                                                                                                                            "a": {
+                                                                                                                              "a": {
+                                                                                                                                "a": {
+                                                                                                                                  "a": {
+                                                                                                                                    "e": {}
+                                                                                                                                  }
+                                                                                                                                }
+                                                                                                                              }
+                                                                                                                            }
+                                                                                                                          }
+                                                                                                                        }
+                                                                                                                      }
+                                                                                                                    }
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
+                                                                                                          }
+                                                                                                        }
+                                                                                                      }
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lens": "a:\n  a:\n    a:\n      a:\n        a:\n          a:\n            a:\n              a:\n                a:\n                  a:\n                    a:\n                      a:\n                        a:\n                          a:\n                            a:\n                              a:\n                                a:\n                                  a:\n                                    a:\n                                      a:\n                                        a:\n                                          a:\n                                            a:\n                                              a:\n                                                a:\n                                                  a:\n                                                    a:\n                                                      a:\n                                                        a:\n                                                          a:\n                                                            a:\n                                                              a:\n                                                                a:\n                                                                  a:\n                                                                    a:\n                                                                      a:\n                                                                        a:\n                                                                          a:\n                                                                            a:\n                                                                              a:\n                                                                                a:\n                                                                                  a:\n                                                                                    a:\n                                                                                      a:\n                                                                                        a:\n                                                                                          a:\n                                                                                            a:\n                                                                                              a:\n                                                                                                a:\n                                                                                                  a:\n                                                                                                    a:\n                                                                                                      a:\n                                                                                                        a:\n                                                                                                          a:\n                                                                                                            a:\n                                                                                                              a:\n                                                                                                                a:\n                                                                                                                  a:\n                                                                                                                    a:\n                                                                                                                      a:\n                                                                                                                        a:\n                                                                                                                          a:\n                                                                                                                            a:\n                                                                                                                              e: \"…\""
+  },
+  {
+    "name": "depth: an empty array at the cut",
+    "type": "value",
+    "input": {
+      "a": {
+        "a": {
+          "a": {
+            "a": {
+              "a": {
+                "a": {
+                  "a": {
+                    "a": {
+                      "a": {
+                        "a": {
+                          "a": {
+                            "a": {
+                              "a": {
+                                "a": {
+                                  "a": {
+                                    "a": {
+                                      "a": {
+                                        "a": {
+                                          "a": {
+                                            "a": {
+                                              "a": {
+                                                "a": {
+                                                  "a": {
+                                                    "a": {
+                                                      "a": {
+                                                        "a": {
+                                                          "a": {
+                                                            "a": {
+                                                              "a": {
+                                                                "a": {
+                                                                  "a": {
+                                                                    "a": {
+                                                                      "a": {
+                                                                        "a": {
+                                                                          "a": {
+                                                                            "a": {
+                                                                              "a": {
+                                                                                "a": {
+                                                                                  "a": {
+                                                                                    "a": {
+                                                                                      "a": {
+                                                                                        "a": {
+                                                                                          "a": {
+                                                                                            "a": {
+                                                                                              "a": {
+                                                                                                "a": {
+                                                                                                  "a": {
+                                                                                                    "a": {
+                                                                                                      "a": {
+                                                                                                        "a": {
+                                                                                                          "a": {
+                                                                                                            "a": {
+                                                                                                              "a": {
+                                                                                                                "a": {
+                                                                                                                  "a": {
+                                                                                                                    "a": {
+                                                                                                                      "a": {
+                                                                                                                        "a": {
+                                                                                                                          "a": {
+                                                                                                                            "a": {
+                                                                                                                              "a": {
+                                                                                                                                "a": {
+                                                                                                                                  "a": {
+                                                                                                                                    "e": []
+                                                                                                                                  }
+                                                                                                                                }
+                                                                                                                              }
+                                                                                                                            }
+                                                                                                                          }
+                                                                                                                        }
+                                                                                                                      }
+                                                                                                                    }
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
+                                                                                                          }
+                                                                                                        }
+                                                                                                      }
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lens": "a:\n  a:\n    a:\n      a:\n        a:\n          a:\n            a:\n              a:\n                a:\n                  a:\n                    a:\n                      a:\n                        a:\n                          a:\n                            a:\n                              a:\n                                a:\n                                  a:\n                                    a:\n                                      a:\n                                        a:\n                                          a:\n                                            a:\n                                              a:\n                                                a:\n                                                  a:\n                                                    a:\n                                                      a:\n                                                        a:\n                                                          a:\n                                                            a:\n                                                              a:\n                                                                a:\n                                                                  a:\n                                                                    a:\n                                                                      a:\n                                                                        a:\n                                                                          a:\n                                                                            a:\n                                                                              a:\n                                                                                a:\n                                                                                  a:\n                                                                                    a:\n                                                                                      a:\n                                                                                        a:\n                                                                                          a:\n                                                                                            a:\n                                                                                              a:\n                                                                                                a:\n                                                                                                  a:\n                                                                                                    a:\n                                                                                                      a:\n                                                                                                        a:\n                                                                                                          a:\n                                                                                                            a:\n                                                                                                              a:\n                                                                                                                a:\n                                                                                                                  a:\n                                                                                                                    a:\n                                                                                                                      a:\n                                                                                                                        a:\n                                                                                                                          a:\n                                                                                                                            a:\n                                                                                                                              e: \"…\""
   },
   {
     "name": "depth: answer data, counted from the frame",

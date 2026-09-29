@@ -14,6 +14,8 @@ from __future__ import annotations
 import unicodedata
 from typing import Any
 
+from .lens.depth import clip_depth
+
 # Default_Ignorable_Code_Point (Unicode DerivedCoreProperties) that aren't already in Cc/Cf/Zl/Zp.
 # The standard library has no \p{…} classes, so the property is listed as ranges.
 _IGNORABLE = (
@@ -89,6 +91,4 @@ def _line_safe(v: Any) -> Any:
 def one_line(v: Any) -> Any:
     """``v`` with every string (and key) made one line by ``printable``, and clipped to Lens's
     ``MAX_DEPTH``, for showing a service's fields without letting a summary forge a line."""
-    from .lens.depth import clip_depth
-
     return _line_safe(clip_depth(v))
