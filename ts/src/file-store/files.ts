@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomId } from '../crypto.js';
-import { errno } from '../key-file.js';
+import { errno } from '../util.js';
 
 /** Store directories and files are this user's alone, as Python's store makes them. */
 const PRIVATE = 0o700;
