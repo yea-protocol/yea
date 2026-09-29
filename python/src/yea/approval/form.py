@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ..lens import fmt_duration, safe_effect_line
+from ..risk import at_least
 from ..text import printable
 from ..uses import check_uses, fmt_uses
-from .decision import at_least
 from .phrase import phrase_of
 from .plan import HashedPlan
 from .policy import Policy

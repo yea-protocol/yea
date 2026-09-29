@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..grants import Grant, GrantContext, verify_grant
-from ..risk import at_least as risk_at_least
+from ..risk import at_least
 from ..store import LedgerKey
 from ..uses import check_uses, limit_value, same_unit, value
 from .plan import HashedPlan
@@ -22,11 +22,6 @@ class Decision:
     why: str | None = None
     plan: HashedPlan | None = None
     reserve: tuple[tuple[LedgerKey, int, int], ...] = ()  # (key, amount, max) to reserve before apply
-
-
-def at_least(risk: str, level: str) -> bool:
-    """Whether ``risk`` is ``level`` or riskier; an unknown risk (or level) fails closed."""
-    return risk_at_least(risk, level)
 
 
 def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], int], now: int) -> Decision:

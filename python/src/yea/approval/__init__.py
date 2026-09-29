@@ -11,6 +11,7 @@ The entry of the ``yea.approval`` package: it re-exports the parts, each one job
 from __future__ import annotations
 
 from ..grants import RISK_ORDER  # re-exported: callers read the order from here
+from ..risk import at_least  # re-exported: yea.risk's, which the decision and judge use
 from .consent import (
     CONSENT_TTL,
     ConsentCheck,
@@ -18,7 +19,7 @@ from .consent import (
     consent_for,
     job_consent_code,
 )
-from .decision import Decision, at_least, decide, denied_reason, needs_approval
+from .decision import Decision, decide, denied_reason, needs_approval
 from .form import build_form, offered_plans
 from .judge import Verdict, judge_answer
 from .ledger import release_all, reserve_all, settle_all, spent
@@ -36,7 +37,7 @@ from .policy import (
     load_policy,
     read_tightening,
 )
-from .state import BAD_STATE, MAX_ROUNDS, STATE_TTL, check_state, new_state
+from .state import MAX_ROUNDS, STATE_TTL, check_state, new_state
 from .store_choice import choose_store
 from .undo import UndoResult, new_receipt_id, undo_receipt
 
@@ -67,7 +68,6 @@ __all__ = [
     "STATE_TTL",
     "MAX_ROUNDS",
     "new_state",
-    "BAD_STATE",
     "check_state",
     "Verdict",
     "judge_answer",

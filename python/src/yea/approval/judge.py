@@ -6,7 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .decision import at_least, denied_reason
+from ..risk import at_least
+from .decision import denied_reason
 from .phrase import phrase_matches, phrase_of
 from .plan import HashedPlan
 from .policy import Policy
