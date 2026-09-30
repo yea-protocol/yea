@@ -234,6 +234,7 @@ function sidebar() {
       text: 'Concepts',
       items: [
         { text: 'Intents and proposals', link: '/guide/intents' },
+        { text: 'How the policy works', link: '/guide/policy' },
         { text: 'Grants and consent', link: '/guide/grants' },
         { text: 'Budgets and EXPAND', link: '/guide/budgets' },
         { text: 'Lens', link: '/guide/lens' },

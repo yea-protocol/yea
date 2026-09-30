@@ -53,7 +53,7 @@ Checks your node version, the agent key, **whether the principal key is readable
 
 ## Identity and policy
 
-`yea grant` signs a grant from the principal to the agent with these caveats:
+`yea grant` signs a grant from the principal to the agent, the person's [policy](/guide/policy), with these caveats:
 
 | Flag | Caveat | Example |
 |---|---|---|

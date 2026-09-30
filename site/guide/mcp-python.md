@@ -140,7 +140,7 @@ The plan refuses anything that isn't a regular file, such as a directory, since 
 
 ## 5. Let safe things run on their own
 
-So far everything asks. A **signed policy** lets undoable plans run without asking: for example, *`move_to_trash`, at low risk, for the next seven days*.
+So far everything asks. A **signed policy** lets undoable plans run without asking: for example, *`move_to_trash`, at low risk, for the next seven days*. [How the policy works](/guide/policy) covers what one can limit and what happens past it.
 
 The policy is only as strong as the place where your **private** principal key lives: whoever can use that key can sign any policy. So there are two setups.
 
