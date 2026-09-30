@@ -364,6 +364,7 @@ const heroState = (scene) =>
       phase: 'loading',
       live: true,
       progress: null,
+      view: 0,
       slip: null,
       receipt: null,
       undone: null,
@@ -389,8 +390,10 @@ test('runScene: a run a newer one replaced writes nothing; a failed run says why
   const state = heroState('dinner');
   const first = runScene(state, live);
 
-  // Busy from the first moment: nothing from before can show or be pressed.
+  // Busy from the first moment: nothing from before can show or be pressed, and the
+  // lead-up is back on the outcome.
   assert.equal(state.phase.value, 'checking');
+  assert.equal(state.view.value, 3);
 
   // The visitor picks another example while the first run is still starting.
   state.scene.value = 'move';

@@ -2,8 +2,8 @@
 /**
  * The hero's proposal slip: the proposal the chosen example's service made. The top half is
  * what it proposes; the tear-off stub below is the consent the visitor signs, then the
- * receipt, then the undo. It arrives once the service has proposed, and its colour follows
- * the protocol state.
+ * receipt, then the undo. It shows the lead-up's stop the visitor is looking at: hidden before
+ * the service has proposed, then as proposed, then its outcome. Its colour follows the state.
  */
 import { computed, useId } from 'vue';
 import SlipStub from './SlipStub.vue';
@@ -35,7 +35,7 @@ const CHIP: Record<Exclude<Phase, 'loading'>, string> = {
  * neutral, since nothing live waits yet; the band around the slip still shows its amber.
  */
 const state = computed(() => {
-  const p = props.s.phase;
+  const p = props.s.shown;
 
   if (p === 'loading') {
     return { tone: 'plain', text: 'Recorded' };
@@ -51,7 +51,15 @@ const state = computed(() => {
 
 /** Why it's waiting on the visitor, or why it didn't; the line is kept while the policy checks. */
 const why = computed(() => {
-  const { phase, slip, progress } = props.s;
+  const { shown, slip, progress } = props.s;
+
+  if (shown === 'proposed' || shown === 'checking') {
+    return {
+      label: 'Your policy',
+      text: 'Decides whether this needs you, when the agent commits.',
+      machine: false,
+    };
+  }
 
   if (progress.outcome === 'within') {
     return {
@@ -61,20 +69,12 @@ const why = computed(() => {
     };
   }
 
-  if (phase === 'proposed' || phase === 'checking') {
-    return {
-      label: 'Your policy',
-      text: 'Decides whether this needs you, when the agent commits.',
-      machine: false,
-    };
-  }
-
   return { label: "Why it's asking", text: slip.reason, machine: true };
 });
 </script>
 
 <template>
-  <article :class="['slip', state.tone, { pending: s.phase === 'asking' }]" :aria-labelledby="titleId" :aria-hidden="s.phase === 'asking' || undefined">
+  <article :class="['slip', state.tone, { pending: s.shown === 'asking' }]" :aria-labelledby="titleId" :aria-hidden="s.shown === 'asking' || undefined">
     <header class="head">
       <p class="kind">Proposal <span class="mono">{{ s.slip.id }}</span> from {{ s.slip.service }}</p>
       <p v-if="state.text" class="chip">{{ state.text }}</p>

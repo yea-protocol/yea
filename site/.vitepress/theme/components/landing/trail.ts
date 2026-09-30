@@ -2,7 +2,8 @@
  * The lead-up the hero shows above the slip: the four stops from the person's request to the
  * outcome. The agent asks, the service proposes, the policy checks the commit, and then either
  * the person decides or it goes ahead. Each stop has a sentence and the wire line behind it,
- * built from the real frames of the run.
+ * built from the real frames of the run. The visitor steps through them; the slip and the band
+ * show each stop as it was.
  *
  * No runtime imports, so Node can load it in tests.
  */
@@ -22,6 +23,9 @@ export interface Progress {
   /** The service's reason for asking, or the receipt's id when it went through. */
   answer: string;
 }
+
+/** The index of the last stop, the outcome, which the lead-up shows at rest. */
+export const LAST_STOP = 3;
 
 export interface Stop {
   label: string;

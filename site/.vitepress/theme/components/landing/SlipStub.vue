@@ -2,7 +2,7 @@
 /**
  * The slip's tear-off stub: the consent the visitor signs (the proposal's hash and one
  * Approve button), then the receipt with Undo, then the undo; its words come from the chosen
- * example. Once the core is live, Start again is always there. When a button is replaced by
+ * example. It shows the stop the visitor is looking at, so its buttons work only at the last. Once the core is live, Start again is always there. When a button is replaced by
  * the next one, focus moves to it, and one live line says what happened.
  */
 import { withBase } from 'vitepress';
@@ -25,7 +25,7 @@ function press(what: 'approve' | 'undo' | 'again') {
 
 /** The line under the Approve button, before anything is approved. */
 const fine = computed(() => {
-  switch (props.s.phase) {
+  switch (props.s.shown) {
     case 'loading':
       return 'Starting the protocol core in your browser…';
     case 'asking':
@@ -77,7 +77,7 @@ watch(
 
 <template>
   <div ref="stub" class="stub">
-    <template v-if="s.phase === 'committed' || s.phase === 'undoing'">
+    <template v-if="s.shown === 'committed' || s.shown === 'undoing'">
       <p class="line">
         {{ scene.done }}
         <template v-if="s.receipt?.undoUntil">You can undo it until <template v-for="(part, i) in keepDates(s.receipt.undoUntil)" :key="i"><span v-if="part.date" class="nowrap">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>.</template>
@@ -86,13 +86,13 @@ watch(
       <p class="receipt">Receipt <span class="mono">{{ s.receipt?.id }}</span></p>
       <pre class="result">{{ s.receipt?.result.join('\n') }}</pre>
       <div class="row">
-        <button class="btn" type="button" :disabled="s.phase === 'undoing'" @click="press('undo')">{{ s.phase === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
-        <button class="btn quiet" type="button" :disabled="s.phase === 'undoing'" @click="press('again')">Start again</button>
+        <button class="btn" type="button" :disabled="s.shown === 'undoing'" @click="press('undo')">{{ s.shown === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
+        <button class="btn quiet" type="button" :disabled="s.shown === 'undoing'" @click="press('again')">Start again</button>
       </div>
       <p class="fine">Undo asks {{ s.slip.service }} to reverse it; it issues a new receipt.</p>
     </template>
 
-    <template v-else-if="s.phase === 'undone'">
+    <template v-else-if="s.shown === 'undone'">
       <p class="line">{{ scene.undone }}</p>
       <p class="receipt">Receipt <span class="mono">{{ s.undone?.id }}</span> reverses <span class="mono">{{ s.undone?.undoes }}</span>.</p>
       <div class="row">
@@ -101,21 +101,21 @@ watch(
       </div>
     </template>
 
-    <template v-else-if="s.phase === 'expired' || s.phase === 'error'">
-      <p :class="['line', { err: s.phase === 'error' }]">{{ s.error }}</p>
+    <template v-else-if="s.shown === 'expired' || s.shown === 'error'">
+      <p :class="['line', { err: s.shown === 'error' }]">{{ s.error }}</p>
       <div class="row">
         <button class="btn" type="button" @click="press('again')">Start again</button>
       </div>
     </template>
 
     <template v-else>
-      <p class="line">{{ LEADING.includes(s.phase) ? 'If your policy needs you, you approve this hash' : 'You approve this hash' }}</p>
+      <p class="line">{{ LEADING.includes(s.shown) ? 'If your policy needs you, you approve this hash' : 'You approve this hash' }}</p>
       <p class="hash">{{ s.slip.hash }}</p>
       <div class="row">
-        <button :class="['btn', 'consent', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
-        <button v-if="s.live && s.phase === 'waiting'" class="btn quiet" type="button" @click="press('again')">Start again</button>
+        <button :class="['btn', 'consent', { off: s.shown === 'unavailable' }]" type="button" :disabled="s.shown !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.shown === 'approving' ? 'Approving…' : 'Approve' }}</button>
+        <button v-if="s.live && s.shown === 'waiting'" class="btn quiet" type="button" @click="press('again')">Start again</button>
       </div>
-      <p v-if="s.phase === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
+      <p v-if="s.shown === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
       <p v-else class="fine">{{ fine }}</p>
     </template>
 
