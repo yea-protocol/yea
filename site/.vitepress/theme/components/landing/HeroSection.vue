@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The hero: why the protocol matters in one line, then a real exchange the visitor watches and takes
- * part in, on the core running in the page. They pick an example (an order over the policy's
+ * The hero: why the protocol matters in one sentence, then a real exchange the visitor watches and
+ * takes part in, on the core running in the page. They pick an example (an order over the policy's
  * limit, a meeting cancellation over its risk ceiling, or a meeting move inside it); its
  * thread plays message by message (use-reveal.ts), then the slip arrives to approve, undo or
  * start again.
@@ -108,9 +108,9 @@ const passed = computed(() =>
         </div>
         <div class="pitch">
           <p class="lede">
-            YEA (Your Explicit Approval) is an open protocol for AI agents acting on behalf of people. Services answer with
-            proposals that list their effects before anything happens. Instead of a raw credential, the agent carries a policy
-            the person signed: it lets routine proposals through, and anything past it waits for their yes.
+            YEA (Your Explicit Approval) is an open protocol for AI agents acting on behalf of people. Services answer an
+            agent with proposals that list their effects first. Instead of an unrestricted credential, the agent carries a
+            policy the person signed; anything past its limits waits for their yes.
           </p>
           <div class="actions">
             <a class="btn primary" :href="withBase('/playground')">Try it in the playground</a>

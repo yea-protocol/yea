@@ -131,11 +131,11 @@ the framework as the first of two paths after the hero: "I have an MCP server", 
 unreleased (install from the repo), next to "I'm building an agent or service". The hero is a
 proposal slip the visitor approves, then undoes, on the real core, per James's decision of
 2026-09-28 (#117). Its headline ("Let your agent act without handing it the keys.", written for
-developers, #249) is James's decision of 2026-09-30; its two buttons ("Try it in the
-playground", then "Add it to your MCP server", marked unreleased) date from 2026-09-29. The
-benchmark numbers are hand-typed constants in one module, `landing/numbers.ts`. A check compares the payload figures with
-`bench/RESULTS.md`, and the live-agent figures with `bench/agent-eval/RESULTS*.md`, and fails
-on drift.
+developers, #249) is James's decision of 2026-09-30, and its two buttons ("Try it in the
+playground", then "Add it to your MCP server", marked unreleased) are James's decision of
+2026-09-29. The benchmark numbers are hand-typed constants in one module, `landing/numbers.ts`.
+A check compares the payload figures with `bench/RESULTS.md`, and the live-agent figures with
+`bench/agent-eval/RESULTS*.md`, and fails on drift.
 
 ### 4. "From REST to YEA" (updated)
 

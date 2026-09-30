@@ -377,7 +377,7 @@ descent 21.31%, measured against Public Sans at 400) holds the same line lengths
 the swap barely moves the page.
 
 ### Landing hierarchy (one family)
-- **Display** (650, clamp 2.25–3.125rem, 1.06, -0.026em, one sentence per line): the landing headline only, a step below the slip so it doesn't compete with it.
+- **Display** (650, clamp 2.25–3.125rem, 1.06, -0.026em, two lines, broken where the markup breaks them): the landing headline only, a step below the slip so it doesn't compete with it.
 - **Headline** (700, clamp 1.75–2.5rem, 1.1, -0.022em): section headings; the paths use
   clamp 1.5–1.9rem, and the pull quote 600 at clamp 1.5–2.25rem.
 - **Title** (650, 1.375rem, 1.25): the protocol-state step titles; the slip's summary is 700 at
