@@ -57,7 +57,7 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
           <h3>{{ s.title }}</h3>
           <p class="prose">
             {{ s.body }}
-            <a v-if="s.key === 'policy'" :href="withBase('/guide/policy')">How the policy works</a>
+            <a v-if="s.link" :href="withBase(s.link.href)">{{ s.link.text }}</a>
           </p>
         </div>
         <div class="out">

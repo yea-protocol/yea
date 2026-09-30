@@ -153,6 +153,11 @@ const pages = [
     'INTENT, PROPOSALS, COMMIT, UNDO, and policy-gated auto-commit',
   ],
   [
+    'How the policy works',
+    '/guide/policy',
+    'What a signed policy limits, and what happens past it',
+  ],
+  [
     'Grants and consent',
     '/guide/grants',
     'Signed delegation chains, caveats, proofs, and one-shot consent bound to a proposal hash',
@@ -242,7 +247,7 @@ out(
     `## Quickstart\n\n${region(readme, 'quickstart')}`,
     `## Use it from Claude Code and other MCP clients\n\n${region(readme, 'claude-code')}`,
     `## CLI reference\n\n\`\`\`\n${help}\n\`\`\``,
-    ...['intents', 'grants', 'budgets', 'lens', 'security'].map((p) =>
+    ...['intents', 'policy', 'grants', 'budgets', 'lens', 'security'].map((p) =>
       page(`site/guide/${p}.md`).replace(/^# /, '## '),
     ),
     `## Wrap any REST API\n\n${region(readme, 'openapi')}`,

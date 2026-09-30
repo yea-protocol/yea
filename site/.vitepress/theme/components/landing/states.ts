@@ -12,6 +12,8 @@ export interface StateStep {
   tone: Tone;
   title: string;
   body: string;
+  /** A guide page that says more, linked after the body. */
+  link?: { text: string; href: string };
 }
 
 export const STATES: readonly StateStep[] = [
@@ -32,12 +34,13 @@ export const STATES: readonly StateStep[] = [
     tone: 'plain',
     title: "The person's policy decides",
     body: 'The person signs it once, as a grant the agent presents with each request. Inside it, a commit goes through in one round trip. Grants are Ed25519 capability chains with limits, expiry, scopes and risk ceilings, verified offline and narrowed for sub-agents.',
+    link: { text: 'How the policy works', href: '/guide/policy' },
   },
   {
     key: 'consent',
     tone: 'amber',
     title: 'Past the policy, the person says yes',
-    body: "Anything over a limit or irreversible stops, and the service asks. The person approves that exact proposal by signing its hash, as the slip above does. The agent can't sign it for them.",
+    body: "Anything over a limit stops, and the service asks. The person approves that exact proposal by signing its hash, as the slip above does. The agent can't sign it for them.",
   },
   {
     key: 'receipt',
