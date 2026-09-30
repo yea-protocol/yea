@@ -67,7 +67,7 @@ test('phaseTone: the hero band waits in amber, commits in green, and goes plain 
     'amber',
     'amber',
   ]);
-  // While a run leads up to its outcome, nothing waits on the person yet.
+  // At the lead-up's earlier stops, and while a run is on its way, nothing waits yet.
   assert.deepEqual(tones(['asking', 'proposed', 'checking']), [
     'plain',
     'plain',
@@ -364,6 +364,7 @@ const heroState = (scene) =>
       phase: 'loading',
       live: true,
       progress: null,
+      view: 0,
       slip: null,
       receipt: null,
       undone: null,
@@ -386,11 +387,21 @@ test('runScene: a run a newer one replaced writes nothing; a failed run says why
     waiting: null,
     run: 0,
   };
+  // The first, automatic run leaves the lead-up where the visitor stepped to.
+  const early = heroState('dinner');
+
+  early.view.value = 1;
+  await runScene(early, { ...live, run: 0 }, { keepView: true });
+  assert.equal(early.view.value, 1);
+  assert.equal(early.phase.value, 'waiting');
+
   const state = heroState('dinner');
   const first = runScene(state, live);
 
-  // Busy from the first moment: nothing from before can show or be pressed.
+  // Busy from the first moment: nothing from before can show or be pressed, and a run the
+  // visitor started puts the lead-up back on the outcome.
   assert.equal(state.phase.value, 'checking');
+  assert.equal(state.view.value, 3);
 
   // The visitor picks another example while the first run is still starting.
   state.scene.value = 'move';
@@ -421,6 +432,26 @@ test('runScene: a run a newer one replaced writes nothing; a failed run says why
   assert.equal(failed.phase.value, 'error');
   assert.equal(failed.error.value, 'the shop is down');
   assert.match(failed.status.value, /Start again/);
+});
+
+test('shownPhase: earlier stops show as they were; only the last shows the real phase', {
+  skip,
+}, async () => {
+  const { clampStop, LAST_STOP, shownPhase } = await import(
+    `${LANDING}/trail.ts`
+  );
+
+  for (const phase of ['waiting', 'committed', 'expired', 'error']) {
+    assert.deepEqual(
+      [0, 1, 2].map((v) => shownPhase(v, phase)),
+      ['asking', 'proposed', 'checking'],
+      phase,
+    );
+    // Only here can the slip's buttons work: nothing earlier ever shows as waiting.
+    assert.equal(shownPhase(LAST_STOP, phase), phase);
+  }
+
+  assert.deepEqual([clampStop(-1), clampStop(9), clampStop(2)], [0, 3, 2]);
 });
 
 test('stops: the lead-up says each stop from the frames, and the outcome once known', {

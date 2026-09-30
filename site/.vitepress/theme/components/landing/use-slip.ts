@@ -6,6 +6,7 @@
  * the proposal, the undo window or the example policy has run out instead of failing.
  */
 import {
+  computed,
   onMounted,
   type Ref,
   ref,
@@ -26,12 +27,12 @@ import {
   type UndoneView,
   undoneView,
 } from './slip-view';
-import type { Progress } from './trail';
+import { clampStop, LAST_STOP, type Progress, shownPhase } from './trail';
 
 /**
- * `loading` until the core is live; `unavailable` if it couldn't start at all; `asking`,
- * `proposed` and `checking` while a run leads up to its outcome; `expired` when something ran
- * out; `error` when a step failed.
+ * `loading` until the core is live; `unavailable` if it couldn't start at all; `checking`
+ * while a run is on its way to its outcome; `expired` when something ran out; `error` when a
+ * step failed. `asking` and `proposed` are only ever shown, for the lead-up's earlier stops.
  */
 export type Phase =
   | 'loading'
@@ -53,8 +54,10 @@ export interface SlipState {
   phase: Ref<Phase>;
   /** Whether the core is running; false while the recording is on show. */
   live: Ref<boolean>;
-  /** How far the run has got, for the lead-up above the slip. */
+  /** What the run produced, for the lead-up above the slip. */
   progress: ShallowRef<Progress>;
+  /** The lead-up's stop the visitor is looking at; the last one is the outcome. */
+  view: Ref<number>;
   slip: ShallowRef<SlipView>;
   receipt: ShallowRef<ReceiptView | null>;
   undone: ShallowRef<UndoneView | null>;
@@ -150,7 +153,8 @@ async function start(state: SlipState, attach: (l: Live) => void) {
 
     attach(live);
     state.live.value = true;
-    await runScene(state, live);
+    // The first run leaves the lead-up where the visitor may already have stepped to.
+    await runScene(state, live, { keepView: true });
   } catch (e) {
     state.error.value = message(e);
     state.phase.value = 'unavailable';
@@ -222,6 +226,7 @@ export function useSlip() {
     phase: ref<Phase>('loading'),
     live: ref(false),
     progress: shallowRef<Progress>(RECORDED_PROGRESS),
+    view: ref(LAST_STOP),
     slip: shallowRef<SlipView>(RECORDED.slip),
     receipt: shallowRef<ReceiptView | null>(null),
     undone: shallowRef<UndoneView | null>(null),
@@ -242,8 +247,18 @@ export function useSlip() {
     }),
   );
 
+  /** What the slip and the band show: the phase, or an earlier stop the visitor stepped back to. */
+  const shown = computed<Phase>(() =>
+    shownPhase(state.view.value, state.phase.value),
+  );
+
   return {
     ...state,
+    shown,
+    /** Look at one of the lead-up's stops. */
+    see(stop: number) {
+      state.view.value = clampStop(stop);
+    },
     approve: withLive(approve),
     undo: withLive(undo),
     again: withLive(runScene),

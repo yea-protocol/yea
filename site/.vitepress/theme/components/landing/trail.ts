@@ -2,7 +2,8 @@
  * The lead-up the hero shows above the slip: the four stops from the person's request to the
  * outcome. The agent asks, the service proposes, the policy checks the commit, and then either
  * the person decides or it goes ahead. Each stop has a sentence and the wire line behind it,
- * built from the real frames of the run.
+ * built from the real frames of the run. The visitor steps through them; the slip and the band
+ * show each stop as it was.
  *
  * No runtime imports, so Node can load it in tests.
  */
@@ -22,6 +23,25 @@ export interface Progress {
   /** The service's reason for asking, or the receipt's id when it went through. */
   answer: string;
 }
+
+/** The index of the last stop, the outcome, which the lead-up shows at rest. */
+export const LAST_STOP = 3;
+
+/** The phase each earlier stop shows as: before the proposal, as proposed, while checked. */
+export const LEADING = ['asking', 'proposed', 'checking'] as const;
+
+/**
+ * What the slip and band show at stop `view`: an earlier stop as it was, whatever the run's
+ * real phase; the last stop, the phase itself. The slip's buttons work only at the last.
+ */
+export const shownPhase = <P extends string>(
+  view: number,
+  phase: P,
+): P | (typeof LEADING)[number] => (view < LAST_STOP ? LEADING[view] : phase);
+
+/** A stop the visitor asked for, kept within the lead-up. */
+export const clampStop = (stop: number) =>
+  Math.max(0, Math.min(LAST_STOP, stop));
 
 export interface Stop {
   label: string;

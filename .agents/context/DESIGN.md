@@ -450,12 +450,15 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
   - "Cancel a meeting": the calendar rates cancelling as medium risk, over the low-risk
     ceiling, so it asks;
   - "Move a meeting": low risk and undoable, so it goes ahead without asking.
-- **Lead-up** (`LeadUp.vue`, `trail.ts`): above the slip, a track of four stops (Agent asks,
-  Service proposes, Policy checks, then You decide or Goes ahead), with the current stop's
+- **Lead-up** (`LeadUp.vue`, `trail.ts`): above the slip, a tablist of four stops (Agent asks,
+  Service proposes, Policy checks, then You decide or Goes ahead), with the chosen stop's
   sentence and the real wire line behind it (`→ INTENT …`, `← [p_…] …`, `→ COMMIT …`,
-  `✗ consent_required: …` or `✓ receipt …`). Each run plays it: the band is plain while it
-  leads up, the slip arrives when the service proposes, and the band floods amber when it lands
-  on the visitor, or green when it goes ahead. At rest it shows the last stop, which says why.
+  `✗ consent_required: …` or `✓ receipt …`). A run goes straight to its outcome and the
+  lead-up rests on the last stop, which says why. The visitor steps back through the stops
+  (the tabs, the arrow keys, or Next and "Walk through how it got here"), and the slip and band
+  show each stop as it was: no slip while the agent asks, the slip as proposed with a plain
+  band, then the outcome, where the band floods amber or green. Its buttons work only at the
+  last stop.
 - **Top half:** what the service proposes. The proposal id and service, a state chip, the
   summary, the effects in mono, three facts (uses, risk, undo window) and why it's asking (the
   service's reason, in mono) or why it didn't (in words).
@@ -463,7 +466,8 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
   person signs: the proposal's hash, one Approve button and a line saying exactly what is signed.
 - **States.** The border and chip follow protocol state:
   - neutral "Recorded" until the core is live;
-  - neutral "Proposed" and "Checking your policy…" while the run leads up;
+  - neutral "Proposed" and "Checking your policy…" at the lead-up's earlier stops, and
+    while a run is on its way;
   - amber "Waiting on you";
   - green "✓ Committed" (or "✓ Went ahead", inside the policy), where the stub shows the
     receipt, its undo window and Undo;
@@ -477,12 +481,13 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
 - **Recording and live core.** The page paints the dinner example from a recording
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser
-  is idle, then plays the chosen example from the start.
-- **Motion.** Each stop holds for about a second (1.1s, 1.3s, 1.0s): the frames are real and
-  arrive as fast as the core answers, and only the pauses are added. Under reduced motion there
-  is no lead-up: the slip goes straight to the outcome.
+  is idle, then runs the chosen example.
+- **Motion.** Nothing moves on its own: the lead-up changes only when the visitor steps
+  through it. A stop's text crossfades in 220ms, the slip arrives over 450ms, and the band's
+  colour spreads from the stop or button clicked (from the band's centre for a
+  keyboard change).
 - **Keyboard.** Focus moves to the next button after each step, and one live line announces
-  the outcome, not each stop.
+  the outcome of each run.
 
 ### Playground (signature component)
 A two-pane tool: the agent's request on the left (service and verb segmented controls, capability

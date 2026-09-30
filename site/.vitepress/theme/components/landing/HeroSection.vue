@@ -2,10 +2,10 @@
 /**
  * The hero: the protocol in two sentences, and a real exchange the visitor watches and takes
  * part in, on the core running in the page. They pick an example (an order over the policy's
- * limit, a meeting cancellation over its risk ceiling, or a meeting move inside it), watch it
- * lead up from the agent's intent to the outcome, then approve, undo or start again.
+ * limit, a meeting cancellation over its risk ceiling, or a meeting move inside it), can step
+ * through how it got from the agent's intent to the outcome, then approve, undo or start again.
  *
- * The whole band takes the slip's state colour (tone.ts): plain while the run leads up, amber
+ * The whole band takes the slip's state colour (tone.ts): plain at the lead-up's early stops, amber
  * once it waits on the visitor, green once committed, and the new colour spreads from the
  * button they pressed (use-flood.ts).
  */
@@ -18,12 +18,12 @@ import ProposalSlip from './ProposalSlip.vue';
 import { SCENE_KEYS, SCENES, type SceneKey } from './scenes';
 import { phaseTone } from './tone';
 import { useFlood } from './use-flood';
-import { type Phase, useSlip } from './use-slip';
+import { useSlip } from './use-slip';
 
 const REPO = 'https://github.com/yea-protocol/yea';
 
 const s = reactive(useSlip());
-const tone = computed(() => phaseTone(s.phase));
+const tone = computed(() => phaseTone(s.shown));
 const { base, flood, press, ended } = useFlood(
   tone,
   useTemplateRef<HTMLElement>('band'),
@@ -34,14 +34,6 @@ const scene = computed<SceneKey>({
   get: () => s.scene,
   set: (k) => s.choose(k),
 });
-
-/** The lead-up's stop for each phase; every phase after the commit is the last stop. */
-const STOP: Partial<Record<Phase, number>> = {
-  asking: 0,
-  proposed: 1,
-  checking: 2,
-};
-const at = computed(() => STOP[s.phase] ?? 3);
 </script>
 
 <template>
@@ -77,9 +69,11 @@ const at = computed(() => STOP[s.phase] ?? 3);
 
       <div class="demo">
         <SegmentedRadio v-model="scene" class="scenes on-band" label="Example" :options="OPTIONS" />
-        <LeadUp class="on-band" :progress="s.progress" :at="at" />
+        <LeadUp class="on-band" :progress="s.progress" :at="s.view" @see="s.see" />
         <noscript><p class="note on-band">Running an example needs JavaScript: the protocol core runs in your browser. This is the dinner example, recorded.</p></noscript>
         <ProposalSlip :s="s" />
+        <!-- Outside the slip, which is hidden at the lead-up's first stop. -->
+        <p class="visually-hidden" role="status">{{ s.status }}</p>
         <p class="note on-band">
           Real proposals from example services, made by the protocol core running in this page with a key your browser
           just made; nothing is sent anywhere. The policy it signed as you: {{ RECORDED.policy.sentence }}
