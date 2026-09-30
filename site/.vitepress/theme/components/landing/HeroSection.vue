@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The hero: the protocol in two sentences, then a real exchange the visitor watches and takes
- * part in, on the core running in the page. They pick an example (an order over the policy's
+ * The hero: why the protocol matters in one sentence, then a real exchange the visitor watches and
+ * takes part in, on the core running in the page. They pick an example (an order over the policy's
  * limit, a meeting cancellation over its risk ceiling, or a meeting move inside it); its
  * thread plays message by message (use-reveal.ts), then the slip arrives to approve, undo or
  * start again.
@@ -99,7 +99,7 @@ const passed = computed(() =>
     <div class="hero">
       <div class="intro">
         <div class="claim">
-          <h1 id="hero-title"><span class="sentence">Your agent proposes.</span> <span class="sentence">You decide what goes ahead.</span></h1>
+          <h1 id="hero-title"><span class="line">Let your agent act</span> <span class="line">without handing&nbsp;it the&nbsp;keys.</span></h1>
           <p class="aside">
             Unreleased: the MCP server framework installs from the repo. Guides for
             <a :href="withBase('/guide/mcp-typescript')">TypeScript</a> and <a :href="withBase('/guide/mcp-python')">Python</a>;
@@ -108,9 +108,9 @@ const passed = computed(() =>
         </div>
         <div class="pitch">
           <p class="lede">
-            YEA (Your Explicit Approval) is an open protocol for AI agents acting on behalf of people. A service answers an
-            agent with proposals that list their effects before anything happens. A policy the person signs decides what goes
-            ahead on its own; anything past it waits for their yes.
+            YEA (Your Explicit Approval) is an open protocol for AI agents acting on behalf of people. Services answer an
+            agent with proposals that list their effects first. Instead of an unrestricted credential, the agent carries a
+            policy the person signed; anything past its limits waits for their yes.
           </p>
           <div class="actions">
             <a class="btn primary" :href="withBase('/playground')">Try it in the playground</a>
@@ -172,10 +172,10 @@ const passed = computed(() =>
 /* The claim, then the pitch beside it. */
 .intro { display: grid; grid-template-columns: minmax(0, 13fr) minmax(0, 10fr); gap: 20px clamp(40px, 6vw, 88px); align-items: start; }
 h1 { font-size: clamp(2.25rem, 1.75rem + 1.6vw, 3.125rem); font-weight: 650; line-height: 1.06; letter-spacing: -0.026em; }
-h1 .sentence { display: block; }
-/* Wide enough for each sentence on its own line, as intended. */
+h1 .line { display: block; }
+/* Wide enough for each half on its own line, as intended. */
 @media (min-width: 1240px) {
-  h1 .sentence { white-space: nowrap; }
+  h1 .line { white-space: nowrap; }
 }
 .claim { display: grid; gap: 16px; align-content: start; }
 .pitch { display: grid; gap: 16px; padding-top: 6px; }
