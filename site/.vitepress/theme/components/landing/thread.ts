@@ -41,6 +41,19 @@ export interface Message {
 /** The messages before the slip: after the fourth, the slip arrives. */
 export const LEAD = 4;
 
+/**
+ * How the policy answered, once its message (the fourth) is on show among the first `lit`:
+ * over a limit (amber) or within it (green). Null before then, and while a run is on its way.
+ */
+export function policyAnswer(
+  messages: Message[],
+  lit: number,
+): 'amber' | 'green' | null {
+  const said = messages[LEAD - 1]?.tone;
+
+  return lit >= LEAD && (said === 'amber' || said === 'green') ? said : null;
+}
+
 /** What the visitor did after the slip arrived, from the slip's views. */
 export interface After {
   /** The receipt's id and undo deadline, once committed through the visitor's approval. */

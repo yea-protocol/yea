@@ -23,7 +23,7 @@ import { landingCaveats } from './policy';
 import { policyTerms } from './policy-terms';
 import { SCENE_KEYS, SCENES, type SceneKey } from './scenes';
 import Thread from './Thread.vue';
-import { LEAD, thread } from './thread';
+import { policyAnswer, thread } from './thread';
 import { phaseTone, type Tone } from './tone';
 import { useFlood } from './use-flood';
 import { useReveal } from './use-reveal';
@@ -91,13 +91,11 @@ const scene = computed<SceneKey>({
 });
 /** The example policy's terms: the same caveats the page signs, said shortly. */
 const TERMS = policyTerms(landingCaveats(0), 0);
-/** The policy's answer, once its message has arrived: over a limit (amber) or within (green). */
-const answer = computed(() => {
-  const lit = playing.value ? reveal.value : messages.value.length;
-  const tone = messages.value[LEAD - 1]?.tone;
-
-  return lit >= LEAD && (tone === 'amber' || tone === 'green') ? tone : null;
-});
+/** How many messages are on show: those arrived while playing, else all of them. */
+const lit = computed(() =>
+  playing.value ? reveal.value : messages.value.length,
+);
+const answer = computed(() => policyAnswer(messages.value, lit.value));
 /** How many proposals the agent passed over, for the background's branches. */
 const passed = computed(() =>
   Math.max(0, (s.progress.proposals?.count ?? 1) - 1),
@@ -106,7 +104,7 @@ const passed = computed(() =>
 
 <template>
   <section ref="band" class="hero-band l-bleed" :data-tone="tone" :data-base="base" :data-ready="ready || undefined" aria-labelledby="hero-title" @click.capture="press">
-    <JunctionPaths :lit="playing ? reveal : messages.length" :passed="passed" :tone="tone" :landed="landed" />
+    <JunctionPaths :lit="lit" :passed="passed" :tone="tone" :landed="landed" />
     <div class="hero">
       <div class="intro">
         <div class="claim">
@@ -144,7 +142,7 @@ const passed = computed(() =>
           />
         </div>
         <div class="side" data-thread>
-          <PolicyTerms :terms="TERMS" :decides="SCENES[scene].decides" :answer="answer" />
+          <PolicyTerms :terms="TERMS" :decides="s.progress.scene.decides" :answer="answer" />
           <SegmentedRadio v-model="scene" class="scenes" label="Example" :options="OPTIONS" />
           <Thread :messages="messages" :reveal="reveal" :playing="playing" :ready="ready" @replay="replay" @skip="skip" />
         </div>

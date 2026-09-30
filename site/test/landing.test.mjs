@@ -52,6 +52,26 @@ test("policyTerms lists the example policy shortly, in the page's order", {
   );
 });
 
+test("policyAnswer: the mark waits for the policy's message, and a run in flight", {
+  skip,
+}, async () => {
+  const { LEAD, policyAnswer } = await import(`${LANDING}/thread.ts`);
+  const msgs = (tone) =>
+    Array.from({ length: 6 }, (_, i) => ({
+      from: '',
+      text: '',
+      wire: '',
+      tone: i === LEAD - 1 ? tone : 'plain',
+    }));
+
+  assert.equal(policyAnswer(msgs('amber'), LEAD - 1), null, 'not arrived yet');
+  assert.equal(policyAnswer(msgs('amber'), LEAD), 'amber');
+  assert.equal(policyAnswer(msgs('green'), 6), 'green');
+  assert.equal(policyAnswer(msgs('plain'), 6), null, 'a run on its way');
+  assert.equal(policyAnswer(msgs('amber'), 0), null, 'a replay starts over');
+  assert.equal(policyAnswer([], 6), null, 'no thread');
+});
+
 test('policySentence: partial, unknown and non-spend caveats', {
   skip,
 }, async () => {
