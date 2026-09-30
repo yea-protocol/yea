@@ -1,9 +1,10 @@
 /**
- * One run of the landing's example on the real core: the person signs a policy for their
- * agent, the agent asks the example shop for an order that goes over it, and the person can
- * approve that exact proposal, then undo it.
+ * One run of a landing example on the real core: the person signs a policy for their agent,
+ * the agent sends an intent to an example service and commits the first proposal, and the
+ * commit either goes through inside the policy or waits on the person, who can approve that
+ * exact proposal. Either way it can then be undone.
  *
- * The SDK and the shop come in as arguments (loaded lazily in the page, from the build in
+ * The SDK and the service come in as arguments (loaded lazily in the page, from the build in
  * the recording script), so this file has no runtime imports.
  */
 import type {
@@ -27,18 +28,21 @@ export type SessionSdk = Pick<
   | 'proposalHash'
 >;
 
-/** Makes the example shop, trusting the given principal keys. */
-export type ShopFactory = (opts: { trust: string[] }) => Service;
+/** Makes an example service, trusting the given principal keys. */
+export type ServiceFactory = (opts: { trust: string[] }) => Service;
 
-/** The order the agent places: four meals, over a $40 limit. */
-export const ORDER_ITEMS = [
-  { sku: 'm047', qty: 2 },
-  { sku: 'm055', qty: 2 },
-];
+/** The service's answer to an intent: its proposals, and the first, which the agent picks. */
+export interface Proposed {
+  params: Record<string, unknown>;
+  proposalsLens: string;
+  count: number;
+  proposal: Proposal;
+  hash: string;
+}
 
 /** A proposal the service won't commit without the person's consent. */
 export interface Waiting {
-  params: { items: typeof ORDER_ITEMS; deliver: string };
+  params: Record<string, unknown>;
   proposalsLens: string;
   proposal: Proposal;
   consent: ConsentRequest;
@@ -52,10 +56,17 @@ export interface Done {
   lens: string;
 }
 
+/** How a commit was answered: it waits on the person, or it went through inside the policy. */
+export type Answer =
+  | { outcome: 'asks'; waiting: Waiting }
+  | { outcome: 'within'; done: Done };
+
 /** A reply that isn't the one the example expects, as a sentence a person can read. */
 function failure(what: string, r: { kind: string; message?: string }) {
   const why =
-    r.kind === 'ERROR' && r.message ? r.message : `the shop replied ${r.kind}`;
+    r.kind === 'ERROR' && r.message
+      ? r.message
+      : `the service replied ${r.kind}`;
 
   return new Error(`${what}: ${why}.`);
 }
@@ -91,8 +102,8 @@ export class Session {
     this.grantExpires = parts.grantExpires;
   }
 
-  /** Sign the policy and start the shop, with fresh keys. */
-  static async start(sdk: SessionSdk, shop: ShopFactory, caveats: Caveat[]) {
+  /** Sign the policy and start the service, with fresh keys. */
+  static async start(sdk: SessionSdk, make: ServiceFactory, caveats: Caveat[]) {
     const [principal, agent] = await Promise.all([
       sdk.keyPair(),
       sdk.keyPair(),
@@ -103,7 +114,7 @@ export class Session {
       caveats,
     });
     const client = new sdk.Client(
-      sdk.local(shop({ trust: [principal.public] })),
+      sdk.local(make({ trust: [principal.public] })),
       {
         key: agent.seed,
         grants: [grant],
@@ -120,34 +131,55 @@ export class Session {
     });
   }
 
-  /** The agent's INTENT and first COMMIT: a proposal over the policy, waiting on the person. */
-  async propose(deliver: string): Promise<Waiting> {
-    const params = { items: ORDER_ITEMS, deliver };
-    const r = await this.client.intent('shop.order', params);
+  /** The agent's INTENT: the service's proposals, and the first, which the agent picks. */
+  async propose(
+    capability: string,
+    params: Record<string, unknown>,
+  ): Promise<Proposed> {
+    const r = await this.client.intent(capability, params);
 
     if (r.kind !== 'PROPOSALS') {
-      throw failure("The shop didn't propose an order", r);
+      throw failure("The service didn't propose anything", r);
     }
 
     const proposal = r.proposals[0];
-    const c = await this.client.commit(proposal);
-
-    if (c.kind !== 'ERROR' || c.code !== 'consent_required' || !c.consent) {
-      throw failure("The shop didn't ask for consent", c);
-    }
-
-    // What the person signs must be the proposal the page shows.
-    if ((await this.sdk.proposalHash(proposal)) !== c.consent.hash) {
-      throw new Error('the consent request does not match the proposal');
-    }
 
     return {
       params,
       proposalsLens: r.lens,
+      count: r.proposals.length,
       proposal,
-      consent: c.consent,
-      reason: c.message,
-      consentLens: c.lens,
+      hash: await this.sdk.proposalHash(proposal),
+    };
+  }
+
+  /** The agent's COMMIT: it goes through inside the policy, or the service asks the person. */
+  async commit(p: Proposed): Promise<Answer> {
+    const c = await this.client.commit(p.proposal);
+
+    if (c.kind === 'RECEIPT') {
+      return { outcome: 'within', done: { receipt: c.receipt, lens: c.lens } };
+    }
+
+    if (c.kind !== 'ERROR' || c.code !== 'consent_required' || !c.consent) {
+      throw failure("The commit didn't go through", c);
+    }
+
+    // What the person signs must be the proposal the page shows.
+    if (p.hash !== c.consent.hash) {
+      throw new Error('the consent request does not match the proposal');
+    }
+
+    return {
+      outcome: 'asks',
+      waiting: {
+        params: p.params,
+        proposalsLens: p.proposalsLens,
+        proposal: p.proposal,
+        consent: c.consent,
+        reason: c.message,
+        consentLens: c.lens,
+      },
     };
   }
 
@@ -156,7 +188,7 @@ export class Session {
     // A consent for an expired proposal can't be accepted; say so rather than ask again.
     if (Date.now() / 1000 >= w.proposal.expires) {
       throw new Error(
-        "The order didn't go through: the proposal expired before it was approved.",
+        "It didn't go through: the proposal expired before it was approved.",
       );
     }
 
@@ -168,7 +200,7 @@ export class Session {
     const r = await this.client.commit(w.proposal, { grants: [consentGrant] });
 
     if (r.kind !== 'RECEIPT') {
-      throw failure("The order didn't go through", r);
+      throw failure("It didn't go through", r);
     }
 
     return { receipt: r.receipt, lens: r.lens, consentGrant };
@@ -184,7 +216,3 @@ export class Session {
     return { receipt: r.receipt, lens: r.lens };
   }
 }
-
-/** Tomorrow's date in UTC, as the shop's `deliver` param. */
-export const tomorrow = (now = Date.now()) =>
-  new Date(now + 864e5).toISOString().slice(0, 10);

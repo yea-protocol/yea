@@ -46,7 +46,7 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
   <section class="band" aria-labelledby="states-title">
     <div class="band-intro">
       <h2 id="states-title">From intent to undo</h2>
-      <p class="prose">Every exchange moves through the same states. Here is one like the slip above, recorded from the core; its ids and dates are its own.</p>
+      <p class="prose">Every exchange moves through the same states. Here is the dinner order from above, recorded from the core; its ids and dates are its own.</p>
     </div>
 
     <ol class="steps">

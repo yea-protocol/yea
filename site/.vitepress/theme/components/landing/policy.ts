@@ -1,7 +1,7 @@
 /**
  * The landing's example policy: the caveats of the grant the person signs for their agent
- * (the shop only, $40 per action, $100 in total, low risk, eight hours), and the plain
- * sentence the page shows for any such grant.
+ * (the example shop and calendar only, $40 per action, $100 in total, low risk, eight
+ * hours), and the plain sentence the page shows for any such grant.
  *
  * No runtime imports, so the recording script and the tests can load it under Node.
  */
@@ -20,7 +20,7 @@ const usd = (cents: number): Limit => ({
 
 /** The example policy's caveats, expiring POLICY_HOURS after `now` (unix seconds). */
 export const landingCaveats = (now: number): Caveat[] => [
-  { svc: ['shop.example'] },
+  { svc: ['shop.example', 'calendar.example'] },
   { risk: 'low' },
   { each: usd(4000) },
   { total: usd(10000) },

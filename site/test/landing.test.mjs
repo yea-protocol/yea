@@ -25,7 +25,7 @@ test('policySentence reads the example policy', { skip }, async () => {
 
   assert.equal(
     policySentence(landingCaveats(now), now),
-    'For the next 8 hours, your agent may take low-risk actions at shop.example that spend up to $40 each and $100 in total.',
+    'For the next 8 hours, your agent may take low-risk actions at shop.example or calendar.example that spend up to $40 each and $100 in total.',
   );
 });
 
@@ -66,6 +66,12 @@ test('phaseTone: the hero band waits in amber, commits in green, and goes plain 
     'amber',
     'amber',
     'amber',
+  ]);
+  // While a run leads up to its outcome, nothing waits on the person yet.
+  assert.deepEqual(tones(['asking', 'proposed', 'checking']), [
+    'plain',
+    'plain',
+    'plain',
   ]);
   assert.deepEqual(tones(['committed', 'undoing']), ['green', 'green']);
   // If the core can't start, nothing waits on anyone.
@@ -209,12 +215,11 @@ test('slip views: undo windows, uses, results and whole dates', {
     expires: 60,
     effects: [],
   };
-  const consent = { hash: 'h', service: 's.example' };
-  const v = slipView(sdk, p, consent, 'why');
+  const v = slipView(sdk, p, { service: 's.example', hash: 'h', reason: '' });
 
   assert.deepEqual(
-    [v.undo, v.uses, v.expires],
-    ["can't be undone", 'nothing', 60],
+    [v.undo, v.uses, v.expires, v.service, v.hash, v.reason],
+    ["can't be undone", 'nothing', 60, 's.example', 'h', ''],
   );
   assert.equal(utcClock(0), '00:00 UTC');
   assert.equal(
@@ -269,29 +274,205 @@ test('the session says in words when a proposal, an undo window or the policy ra
   const sdk = await import('../../ts/dist/index.js');
   const { shop } = await import('../../ts/dist/examples/shop.js');
   const { landingCaveats } = await import(`${LANDING}/policy.ts`);
-  const { Session, tomorrow } = await import(`${LANDING}/session.ts`);
+  const { Session } = await import(`${LANDING}/session.ts`);
+  const { SCENES, tomorrow } = await import(`${LANDING}/scenes.ts`);
+  const dinner = SCENES.dinner;
   const now = Math.floor(Date.now() / 1000);
   const s = await Session.start(sdk, shop, landingCaveats(now));
+  const ask = async () => {
+    const a = await s.commit(
+      await s.propose(dinner.capability, dinner.params(tomorrow())),
+    );
+
+    assert.equal(a.outcome, 'asks');
+
+    return a.waiting;
+  };
 
   assert.equal(s.grantExpires, now + 8 * 3600);
 
-  const w = await s.propose(tomorrow());
+  const w = await ask();
 
   await assert.rejects(
     later(w.proposal.expires - now + 1, () => s.approve(w)),
-    /^Error: The order didn't go through: .*expired/,
+    /^Error: It didn't go through: .*expired/,
   );
 
-  const done = await s.approve(await s.propose(tomorrow()));
+  const done = await s.approve(await ask());
 
   await assert.rejects(
     later(7201, () => s.undo(done.receipt.id)),
     /^Error: The undo didn't go through: the undo window closed/,
   );
+
+  const p = await s.propose(dinner.capability, dinner.params(tomorrow()));
+
   await assert.rejects(
-    later(8 * 3600 + 1, () => s.propose(tomorrow())),
-    /^Error: The shop didn't ask for consent: grant has expired/,
+    later(8 * 3600 + 1, () => s.commit(p)),
+    /^Error: The commit didn't go through: grant has expired/,
   );
+});
+
+test('each example lands where the page says under the one policy it signs', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { calendar } = await import('../../ts/dist/examples/calendar.js');
+  const { landingCaveats } = await import(`${LANDING}/policy.ts`);
+  const { Session } = await import(`${LANDING}/session.ts`);
+  const { SCENE_KEYS, SCENES, tomorrow } = await import(`${LANDING}/scenes.ts`);
+  const services = { shop, calendar };
+  const expected = { dinner: 'asks', cancel: 'asks', move: 'within' };
+  const reasons = {
+    dinner: /spend over the per-commit limit of 40\.00 USD/,
+    cancel: /risk medium exceeds ceiling low/,
+  };
+
+  assert.deepEqual([...SCENE_KEYS], Object.keys(expected));
+
+  for (const key of SCENE_KEYS) {
+    const scene = SCENES[key];
+    const s = await Session.start(
+      sdk,
+      services[scene.service],
+      landingCaveats(Math.floor(Date.now() / 1000)),
+    );
+    const p = await s.propose(scene.capability, scene.params(tomorrow()));
+    const a = await s.commit(p);
+
+    assert.equal(a.outcome, expected[key], key);
+    assert.equal(p.proposal.id.startsWith('p_'), true);
+
+    if (a.outcome === 'asks') {
+      assert.match(a.waiting.reason, reasons[key]);
+    }
+
+    const { receipt } =
+      a.outcome === 'asks' ? await s.approve(a.waiting) : a.done;
+
+    // Whatever the path, the result can be undone.
+    assert.equal((await s.undo(receipt.id)).receipt.undoes, receipt.id, key);
+  }
+});
+
+/** A hero state with plain `{ value }` refs, as runScene reads and writes it. */
+const heroState = (scene) =>
+  Object.fromEntries(
+    Object.entries({
+      scene,
+      phase: 'loading',
+      live: true,
+      progress: null,
+      slip: null,
+      receipt: null,
+      undone: null,
+      status: '',
+      error: '',
+    }).map(([k, value]) => [k, { value }]),
+  );
+
+test('runScene: a run a newer one replaced writes nothing; a failed run says why', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { calendar } = await import('../../ts/dist/examples/calendar.js');
+  const { runScene } = await import(`${LANDING}/run-scene.ts`);
+  const live = {
+    sdk,
+    services: { shop, calendar },
+    session: null,
+    waiting: null,
+    run: 0,
+  };
+  const state = heroState('dinner');
+  const first = runScene(state, live);
+
+  // Busy from the first moment: nothing from before can show or be pressed.
+  assert.equal(state.phase.value, 'checking');
+
+  // The visitor picks another example while the first run is still starting.
+  state.scene.value = 'move';
+  await Promise.all([first, runScene(state, live)]);
+
+  assert.equal(state.progress.value.scene.key, 'move');
+  assert.equal(state.phase.value, 'committed');
+  assert.equal(live.waiting, null);
+
+  // The session is the second run's: its receipt can be undone through it.
+  const r = state.receipt.value.id;
+
+  assert.equal((await live.session.undo(r)).receipt.undoes, r);
+
+  const broken = {
+    ...live,
+    services: {
+      shop: () => {
+        throw new Error('the shop is down');
+      },
+      calendar,
+    },
+    run: 0,
+  };
+  const failed = heroState('dinner');
+
+  await runScene(failed, broken);
+  assert.equal(failed.phase.value, 'error');
+  assert.equal(failed.error.value, 'the shop is down');
+  assert.match(failed.status.value, /Start again/);
+});
+
+test('stops: the lead-up says each stop from the frames, and the outcome once known', {
+  skip,
+}, async () => {
+  const { stops } = await import(`${LANDING}/trail.ts`);
+  const { SCENES } = await import(`${LANDING}/scenes.ts`);
+  const base = {
+    scene: SCENES.cancel,
+    params: { event: 'Design review' },
+    proposals: null,
+    outcome: null,
+    answer: '',
+  };
+  const start = stops(base);
+
+  assert.deepEqual(
+    start.map((s) => s.label),
+    ['Agent asks', 'Service proposes', 'Policy checks', 'You decide'],
+  );
+  assert.equal(
+    start[0].wire,
+    '→ INTENT calendar.cancel {"event":"Design review"}',
+  );
+  // Stops the run hasn't reached say nothing yet.
+  assert.deepEqual([start[1].text, start[3].wire], ['', '']);
+
+  const proposals = { count: 1, id: 'p_1', summary: 'Cancel it' };
+  const asked = stops({
+    ...base,
+    proposals,
+    outcome: 'asks',
+    answer: 'risk medium exceeds ceiling low',
+  });
+
+  assert.match(asked[1].text, /answers with a proposal, .* picks it\./);
+  assert.equal(asked[2].wire, '→ COMMIT p_1');
+  assert.match(asked[3].text, /^The calendar rates cancelling as medium risk/);
+  assert.equal(
+    asked[3].wire,
+    '✗ consent_required: risk medium exceeds ceiling low',
+  );
+
+  const within = stops({
+    ...base,
+    proposals,
+    outcome: 'within',
+    answer: 'r_1',
+  });
+
+  assert.equal(within[3].label, 'Goes ahead');
+  assert.equal(within[3].wire, '✓ receipt r_1');
 });
 
 /** The recorded exchange with everything that changes per run replaced by a placeholder. */
