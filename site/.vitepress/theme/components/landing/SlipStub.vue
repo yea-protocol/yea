@@ -2,13 +2,15 @@
 /**
  * The slip's tear-off stub: the consent the visitor signs (the proposal's hash and one
  * Approve button), then the receipt with Undo, then the undo; its words come from the chosen
- * example. It shows the stop the visitor is looking at, so its buttons work only at the last. Once the core is live, Start again is always there. When a button is replaced by
- * the next one, focus moves to it, and one live line says what happened.
+ * example. It shows the lead-up's stop the visitor is looking at, so its buttons work only at
+ * the last. Once the core is live, Start again is there whenever nothing is in flight. When a
+ * button is replaced by the next one, focus moves to it.
  */
 import { withBase } from 'vitepress';
 import { computed, nextTick, useTemplateRef, watch } from 'vue';
 import { SCENES } from './scenes';
 import { keepDates } from './slip-view';
+import { LEADING } from './trail';
 import type { SlipModel } from './use-slip';
 
 const props = defineProps<{ s: SlipModel }>();
@@ -37,9 +39,8 @@ const fine = computed(() => {
   }
 });
 
-/** The phases while a run leads up to its outcome. */
-const LEADING = ['asking', 'proposed', 'checking'];
-const BUSY = ['loading', ...LEADING, 'approving', 'undoing'];
+/** The phases in which a step is in flight, so there's no next button to focus yet. */
+const BUSY = ['loading', 'checking', 'approving', 'undoing'];
 
 /**
  * A held Enter repeats. After Start again, focus lands on Approve once the new proposal
@@ -109,7 +110,7 @@ watch(
     </template>
 
     <template v-else>
-      <p class="line">{{ LEADING.includes(s.shown) ? 'If your policy needs you, you approve this hash' : 'You approve this hash' }}</p>
+      <p class="line">{{ (LEADING as readonly string[]).includes(s.shown) ? 'If your policy needs you, you approve this hash' : 'You approve this hash' }}</p>
       <p class="hash">{{ s.slip.hash }}</p>
       <div class="row">
         <button :class="['btn', 'consent', { off: s.shown === 'unavailable' }]" type="button" :disabled="s.shown !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.shown === 'approving' ? 'Approving…' : 'Approve' }}</button>
@@ -118,8 +119,6 @@ watch(
       <p v-if="s.shown === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
       <p v-else class="fine">{{ fine }}</p>
     </template>
-
-    <p class="visually-hidden" role="status">{{ s.status }}</p>
   </div>
 </template>
 

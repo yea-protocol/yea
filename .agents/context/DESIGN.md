@@ -481,10 +481,11 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
 - **Recording and live core.** The page paints the dinner example from a recording
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser
-  is idle, then plays the chosen example from the start.
+  is idle, then runs the chosen example.
 - **Motion.** Nothing moves on its own: the lead-up changes only when the visitor steps
   through it. A stop's text crossfades in 220ms, the slip arrives over 450ms, and the band's
-  colour spreads from the pressed stop.
+  colour spreads from the stop or button clicked (from the band's centre for a
+  keyboard change).
 - **Keyboard.** Focus moves to the next button after each step, and one live line announces
   the outcome of each run.
 

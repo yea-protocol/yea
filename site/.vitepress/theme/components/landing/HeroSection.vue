@@ -72,6 +72,8 @@ const scene = computed<SceneKey>({
         <LeadUp class="on-band" :progress="s.progress" :at="s.view" @see="s.see" />
         <noscript><p class="note on-band">Running an example needs JavaScript: the protocol core runs in your browser. This is the dinner example, recorded.</p></noscript>
         <ProposalSlip :s="s" />
+        <!-- Outside the slip, which is hidden at the lead-up's first stop. -->
+        <p class="visually-hidden" role="status">{{ s.status }}</p>
         <p class="note on-band">
           Real proposals from example services, made by the protocol core running in this page with a key your browser
           just made; nothing is sent anywhere. The policy it signed as you: {{ RECORDED.policy.sentence }}

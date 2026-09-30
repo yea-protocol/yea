@@ -27,7 +27,7 @@ import {
   type UndoneView,
   undoneView,
 } from './slip-view';
-import { LAST_STOP, type Progress } from './trail';
+import { clampStop, LAST_STOP, type Progress, shownPhase } from './trail';
 
 /**
  * `loading` until the core is live; `unavailable` if it couldn't start at all; `checking`
@@ -79,9 +79,6 @@ export interface Live {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-/** The phase each of the lead-up's earlier stops shows as. */
-const LEADING: readonly Phase[] = ['asking', 'proposed', 'checking'];
 
 /** The recorded dinner example, as the lead-up shows it before the core runs. */
 const RECORDED_PROGRESS: Progress = {
@@ -156,7 +153,8 @@ async function start(state: SlipState, attach: (l: Live) => void) {
 
     attach(live);
     state.live.value = true;
-    await runScene(state, live);
+    // The first run leaves the lead-up where the visitor may already have stepped to.
+    await runScene(state, live, { keepView: true });
   } catch (e) {
     state.error.value = message(e);
     state.phase.value = 'unavailable';
@@ -251,9 +249,7 @@ export function useSlip() {
 
   /** What the slip and the band show: the phase, or an earlier stop the visitor stepped back to. */
   const shown = computed<Phase>(() =>
-    state.view.value < LAST_STOP
-      ? LEADING[state.view.value]
-      : state.phase.value,
+    shownPhase(state.view.value, state.phase.value),
   );
 
   return {
@@ -261,7 +257,7 @@ export function useSlip() {
     shown,
     /** Look at one of the lead-up's stops. */
     see(stop: number) {
-      state.view.value = Math.max(0, Math.min(LAST_STOP, stop));
+      state.view.value = clampStop(stop);
     },
     approve: withLive(approve),
     undo: withLive(undo),

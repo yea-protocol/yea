@@ -40,7 +40,7 @@ function onKey(e: KeyboardEvent, i: number) {
 
 <template>
   <div class="lead">
-    <div class="track" role="tablist" aria-label="How it got here" :style="{ '--at': at }">
+    <div class="track" role="tablist" aria-label="How it got here" :style="{ '--at': at, '--last': LAST_STOP }">
       <button
         v-for="(s, i) in list"
         :id="`${id}-stop-${i}`"
@@ -76,7 +76,7 @@ function onKey(e: KeyboardEvent, i: number) {
 /* The track: a rule through four dots; its filled part grows to the current stop. */
 .track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: relative; }
 .track::before, .track::after { content: ""; position: absolute; top: 7px; left: 12.5%; right: 12.5%; height: 2px; background: var(--vp-c-border); }
-.track::after { background: var(--vp-c-text-1); transform-origin: left center; transform: scaleX(calc(var(--at) / 3)); transition: transform 700ms var(--l-ease-out); }
+.track::after { background: var(--vp-c-text-1); transform-origin: left center; transform: scaleX(calc(var(--at) / var(--last))); transition: transform 700ms var(--l-ease-out); }
 .track button { position: relative; z-index: 1; display: grid; justify-items: center; align-content: start; gap: 8px; min-height: 44px; padding: 0 4px; border: 0; background: none; font: inherit; color: inherit; text-align: center; cursor: pointer; }
 .track button:hover .label { text-decoration: underline; text-underline-offset: 0.2em; }
 .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--vp-c-border); background: var(--vp-c-bg); transition: background-color 300ms var(--l-ease-out), border-color 300ms var(--l-ease-out); }

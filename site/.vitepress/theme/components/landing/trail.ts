@@ -27,6 +27,22 @@ export interface Progress {
 /** The index of the last stop, the outcome, which the lead-up shows at rest. */
 export const LAST_STOP = 3;
 
+/** The phase each earlier stop shows as: before the proposal, as proposed, while checked. */
+export const LEADING = ['asking', 'proposed', 'checking'] as const;
+
+/**
+ * What the slip and band show at stop `view`: an earlier stop as it was, whatever the run's
+ * real phase; the last stop, the phase itself. The slip's buttons work only at the last.
+ */
+export const shownPhase = <P extends string>(
+  view: number,
+  phase: P,
+): P | (typeof LEADING)[number] => (view < LAST_STOP ? LEADING[view] : phase);
+
+/** A stop the visitor asked for, kept within the lead-up. */
+export const clampStop = (stop: number) =>
+  Math.max(0, Math.min(LAST_STOP, stop));
+
 export interface Stop {
   label: string;
   text: string;

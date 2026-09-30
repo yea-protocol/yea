@@ -42,12 +42,21 @@ function land(state: SlipState, live: Live, answer: Answer) {
 /**
  * Run the chosen example from the start, with a freshly signed policy and a fresh service, so
  * a meeting cancelled by the last run is back. A run that a newer one replaced stops quietly,
- * and writes nothing; a run that fails says why and offers Start again.
+ * and writes nothing; a run that fails says why and offers Start again. A run the visitor
+ * started puts the lead-up back on the outcome; the first, automatic one leaves it be.
  */
-export async function runScene(state: SlipState, live: Live) {
+export async function runScene(
+  state: SlipState,
+  live: Live,
+  opts: { keepView?: boolean } = {},
+) {
   live.run += 1;
 
   const run = live.run;
+
+  if (!opts.keepView) {
+    state.view.value = LAST_STOP;
+  }
 
   try {
     await lead(state, live, run);
@@ -71,14 +80,12 @@ async function lead(state: SlipState, live: Live, run: number) {
     answer: '',
   };
 
-  // Busy from the first moment, so nothing from the last run shows or can be pressed, and
-  // the lead-up shows the outcome again.
+  // Busy from the first moment, so nothing from the last run shows or can be pressed.
   live.waiting = null;
   state.receipt.value = null;
   state.undone.value = null;
   state.error.value = '';
   state.progress.value = blank;
-  state.view.value = LAST_STOP;
   state.phase.value = 'checking';
 
   const session = await Session.start(
