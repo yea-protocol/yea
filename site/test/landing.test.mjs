@@ -29,6 +29,49 @@ test('policySentence reads the example policy', { skip }, async () => {
   );
 });
 
+test("policyTerms lists the example policy shortly, in the page's order", {
+  skip,
+}, async () => {
+  const { landingCaveats } = await import(`${LANDING}/policy.ts`);
+  const { policyTerms } = await import(`${LANDING}/policy-terms.ts`);
+
+  assert.deepEqual(policyTerms(landingCaveats(1000), 1000), [
+    { key: 'svc', text: 'shop.example and calendar.example' },
+    { key: 'risk', text: 'low risk only' },
+    { key: 'each', text: '$40 each' },
+    { key: 'total', text: '$100 in total' },
+    { key: 'exp', text: '8 hours' },
+  ]);
+  // Caveats the list doesn't say are left out; the order is the page's, not the grant's.
+  assert.deepEqual(
+    policyTerms([{ exp: 60 }, { can: ['x'] }, { risk: 'medium' }], 0),
+    [
+      { key: 'risk', text: 'up to medium risk' },
+      { key: 'exp', text: '1 minute' },
+    ],
+  );
+});
+
+test("policyAnswer: the mark waits for the policy's message, and a run in flight", {
+  skip,
+}, async () => {
+  const { LEAD, policyAnswer } = await import(`${LANDING}/thread.ts`);
+  const msgs = (tone) =>
+    Array.from({ length: 6 }, (_, i) => ({
+      from: '',
+      text: '',
+      wire: '',
+      tone: i === LEAD - 1 ? tone : 'plain',
+    }));
+
+  assert.equal(policyAnswer(msgs('amber'), LEAD - 1), null, 'not arrived yet');
+  assert.equal(policyAnswer(msgs('amber'), LEAD), 'amber');
+  assert.equal(policyAnswer(msgs('green'), 6), 'green');
+  assert.equal(policyAnswer(msgs('plain'), 6), null, 'a run on its way');
+  assert.equal(policyAnswer(msgs('amber'), 0), null, 'a replay starts over');
+  assert.equal(policyAnswer([], 6), null, 'no thread');
+});
+
 test('policySentence: partial, unknown and non-spend caveats', {
   skip,
 }, async () => {
@@ -334,9 +377,10 @@ test('each example lands where the page says under the one policy it signs', {
   const { SCENE_KEYS, SCENES, tomorrow } = await import(`${LANDING}/scenes.ts`);
   const services = { shop, calendar };
   const expected = { dinner: 'asks', cancel: 'asks', move: 'within' };
+  // The service's reason names the term the page marks (scene.decides).
   const reasons = {
-    dinner: /spend over the per-commit limit of 40\.00 USD/,
-    cancel: /risk medium exceeds ceiling low/,
+    each: /spend over the per-commit limit of 40\.00 USD/,
+    risk: /risk medium exceeds ceiling low/,
   };
 
   assert.deepEqual([...SCENE_KEYS], Object.keys(expected));
@@ -355,7 +399,11 @@ test('each example lands where the page says under the one policy it signs', {
     assert.equal(p.proposal.id.startsWith('p_'), true);
 
     if (a.outcome === 'asks') {
-      assert.match(a.waiting.reason, reasons[key]);
+      assert.match(a.waiting.reason, reasons[scene.decides], key);
+    } else {
+      // Within: the term it's marked for is the risk ceiling it stays under.
+      assert.equal(scene.decides, 'risk', key);
+      assert.equal(p.proposal.risk, 'low', key);
     }
 
     const { receipt } =

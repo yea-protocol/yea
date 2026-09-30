@@ -466,6 +466,14 @@ against an example service, told as a thread that ends in a permission slip.
   - "Cancel a meeting": the calendar rates cancelling as medium risk, over the low-risk
     ceiling, so it asks;
   - "Move a meeting": low risk and undoable, so it goes ahead without asking.
+- **Policy** (`PolicyTerms.vue`, `policy-terms.ts`): above the examples, so it's read before
+  the thread plays. The label's line says where and for how long ("Your policy: at …, for 8
+  hours"); the limits follow as short terms ("low risk only", "$40 each", "$100 in total"),
+  spaced, never dotted. When the policy's answer arrives, the deciding limit of the example the
+  thread shows (its scene's `decides`) takes that answer's colour, with the thread's glyph after
+  it: ✗ in amber for the limit it went over, ✓ in green for the one it stayed within. No
+  underline: on the landing that means a link. Every limit keeps the glyph's room, so nothing
+  moves; the head mark holds the mark back like the thread.
 - **Thread** (`Thread.vue`, `thread.ts`): the messages that pass, each with who says it to whom,
   the real wire line (wrapping, never cut off) and a sentence on what it means. Your request to
   your agent; the agent's `→ INTENT`; the service's proposals (`← [p_…]`); the policy's answer
