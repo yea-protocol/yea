@@ -4,7 +4,12 @@
  */
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
-import { appearanceMigration, fontPreloads, themeColor } from './head';
+import {
+  appearanceMigration,
+  fontPreloads,
+  jsMarker,
+  themeColor,
+} from './head';
 import { lensFence } from './lens-fence';
 import { headingOrder, taskLists } from './markdown-rules';
 import { paperLight } from './shiki-light';
@@ -33,6 +38,7 @@ export default defineConfig({
   head: [
     // First, so it runs before VitePress's check-dark-mode script reads the stored appearance.
     appearanceMigration,
+    jsMarker,
     [
       'link',
       { rel: 'icon', type: 'image/svg+xml', href: '/yea/brand/mark.svg' },

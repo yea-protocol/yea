@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 
 const LANDING = '../.vitepress/theme/components/landing';
 const built = existsSync(new URL('../../ts/dist/index.js', import.meta.url));
@@ -67,12 +67,8 @@ test('phaseTone: the hero band waits in amber, commits in green, and goes plain 
     'amber',
     'amber',
   ]);
-  // At the lead-up's earlier stops, and while a run is on its way, nothing waits yet.
-  assert.deepEqual(tones(['asking', 'proposed', 'checking']), [
-    'plain',
-    'plain',
-    'plain',
-  ]);
+  // While a run is on its way, nothing waits on the person yet.
+  assert.equal(phaseTone('checking'), 'plain');
   assert.deepEqual(tones(['committed', 'undoing']), ['green', 'green']);
   // If the core can't start, nothing waits on anyone.
   assert.deepEqual(tones(['unavailable', 'undone', 'expired', 'error']), [
@@ -98,13 +94,13 @@ test('useFlood: a spread cut short by the next one never settles it early', {
 
   const first = flood.value.key;
 
-  // With nothing pressed, it spreads from the centre to the farthest corner.
+  // With nothing pressed and no anchor, it spreads from the centre to the farthest corner.
   assert.deepEqual(
     { x: flood.value.x, y: flood.value.y, r: flood.value.r },
     { x: 200, y: 150, r: 250 },
   );
 
-  tone.value = 'plain';
+  tone.value = 'red';
   await nextTick();
 
   // The new spread goes over the colour the cut-short one had nearly covered.
@@ -112,12 +108,26 @@ test('useFlood: a spread cut short by the next one never settles it early', {
 
   // The replaced spread's element reports its cancellation; the new spread carries on.
   settle(first);
-  assert.equal(flood.value?.to, 'plain');
+  assert.equal(flood.value?.to, 'red');
   assert.equal(base.value, 'green');
 
   settle(flood.value.key);
   assert.equal(flood.value, null);
+  assert.equal(base.value, 'red');
+
+  // A return to plain nobody pressed for (a run starting on its own) settles at once.
+  tone.value = 'plain';
+  await nextTick();
+  assert.equal(flood.value, null);
   assert.equal(base.value, 'plain');
+
+  // A change nobody pressed for spreads from the anchor it's given (the approval point).
+  const t2 = ref('plain');
+  const a2 = useFlood(t2, band, () => ({ x: 10, y: 20 }));
+
+  t2.value = 'amber';
+  await nextTick();
+  assert.deepEqual([a2.flood.value.x, a2.flood.value.y], [10, 20]);
 });
 
 test('each protocol state step takes the tone of the state it shows', {
@@ -364,7 +374,6 @@ const heroState = (scene) =>
       phase: 'loading',
       live: true,
       progress: null,
-      view: 0,
       slip: null,
       receipt: null,
       undone: null,
@@ -372,6 +381,231 @@ const heroState = (scene) =>
       error: '',
     }).map(([k, value]) => [k, { value }]),
   );
+
+test('thread: four messages from the frames, the answer coloured by where it lands', {
+  skip,
+}, async () => {
+  const { thread } = await import(`${LANDING}/thread.ts`);
+  const { SCENES } = await import(`${LANDING}/scenes.ts`);
+  const base = {
+    scene: SCENES.cancel,
+    params: { event: 'Design review' },
+    proposals: { count: 1, id: 'p_1', summary: 'Cancel it' },
+    outcome: 'asks',
+    answer: 'risk medium exceeds ceiling low',
+  };
+  const asked = thread(base);
+
+  assert.deepEqual(
+    asked.map((m) => m.from),
+    [
+      'You → your agent',
+      'Your agent → calendar.example',
+      'calendar.example → your agent',
+      'Your policy, at calendar.example',
+    ],
+  );
+  assert.equal(asked[0].text, "“Cancel tomorrow's design review.”");
+  assert.equal(asked[0].wire, '');
+  assert.equal(
+    asked[1].wire,
+    '→ INTENT calendar.cancel {"event":"Design review"}',
+  );
+  assert.equal(
+    asked[2].text,
+    'One proposal, with its effects up front. The agent picks it and commits.',
+  );
+  assert.equal(asked[2].wire, '← [p_1] Cancel it');
+  assert.match(asked[3].text, /^The calendar rates cancelling as medium risk/);
+  assert.equal(
+    asked[3].wire,
+    '✗ consent_required: risk medium exceeds ceiling low',
+  );
+  assert.equal(asked[3].tone, 'amber');
+
+  const within = thread({ ...base, outcome: 'within', answer: 'r_1' });
+
+  assert.equal(within[3].wire, '✓ receipt r_1');
+  // Inside the policy, the service simply answers with the receipt.
+  assert.equal(within[3].from, 'calendar.example → your agent');
+  assert.equal(within[3].tone, 'green');
+
+  // Before the service answers, it has said nothing, and nobody has committed.
+  const early = thread({ ...base, proposals: null, outcome: null });
+
+  assert.deepEqual([early[2].text, early[2].wire], ['', '']);
+
+  // Before the commit is answered, the policy has said nothing.
+  assert.deepEqual(
+    [
+      thread({ ...base, outcome: null }).at(-1).text,
+      thread({ ...base, outcome: null }).at(-1).tone,
+    ],
+    ['', 'plain'],
+  );
+});
+
+test('thread: the visitor approval, the receipt and the undo follow the policy answer', {
+  skip,
+}, async () => {
+  const { thread } = await import(`${LANDING}/thread.ts`);
+  const { SCENES } = await import(`${LANDING}/scenes.ts`);
+  const p = {
+    scene: SCENES.dinner,
+    params: {},
+    proposals: { count: 2, id: 'p_1', summary: '4 meals' },
+    outcome: 'asks',
+    answer: 'over the limit',
+  };
+  const approved = { id: 'r_1', undoUntil: '2026-09-30 14:00 UTC' };
+  const all = thread(p, { approved, undone: { id: 'r_2', undoes: 'r_1' } });
+
+  assert.equal(all.length, 7);
+  assert.deepEqual(
+    all.slice(4).map((m) => m.wire),
+    [
+      '→ COMMIT p_1 + your consent grant',
+      '✓ receipt r_1',
+      '↶ undid r_1 (receipt r_2)',
+    ],
+  );
+  assert.equal(
+    all[5].text,
+    'Order placed. It can be undone until 2026-09-30 14:00 UTC.',
+  );
+  // Inside the policy there's nothing to approve: the receipt is the policy's answer.
+  assert.equal(
+    thread(
+      { ...p, outcome: 'within', answer: 'r_1' },
+      { approved, undone: null },
+    ).length,
+    4,
+  );
+});
+
+test('playhead: messages arrive in turn, the slip after the fourth; Replay keeps it', {
+  skip,
+}, async () => {
+  const { FIRST_MS, NEXT_MS, playhead, SLIP_MS } = await import(
+    `${LANDING}/playhead.ts`
+  );
+
+  mock.timers.enable({ apis: ['setTimeout'] });
+
+  // The mock clock fires only timers set before a tick; each beat sets the next, so step.
+  const advance = (ms) => {
+    for (let t = 0; t < ms; t += 50) {
+      mock.timers.tick(50);
+    }
+  };
+
+  try {
+    let count = 4;
+    const p = playhead({
+      count: () => count,
+      autoplay: () => true,
+      replayable: () => true,
+    });
+
+    p.clear();
+    assert.deepEqual(
+      [p.reveal.value, p.playing.value, p.landed.value],
+      [0, true, false],
+    );
+
+    p.play();
+    advance(FIRST_MS + 3 * NEXT_MS);
+    assert.deepEqual([p.reveal.value, p.landed.value], [4, false]);
+
+    // The slip arrives a beat after the fourth message, and the play ends.
+    advance(SLIP_MS);
+    assert.deepEqual([p.landed.value, p.playing.value], [true, false]);
+
+    // Replay plays the messages again and never sends the slip away; messages the visitor
+    // adds meanwhile (an approval) play too.
+    p.play(true);
+    assert.deepEqual([p.reveal.value, p.landed.value], [0, true]);
+    count = 6;
+    advance(FIRST_MS + 5 * NEXT_MS);
+    assert.deepEqual(
+      [p.reveal.value, p.playing.value, p.landed.value],
+      [6, false, true],
+    );
+
+    // Skip mid-play shows it all and stops the clock.
+    p.play(true);
+    advance(FIRST_MS);
+    p.show();
+    advance(10 * NEXT_MS);
+    assert.deepEqual([p.reveal.value, p.playing.value], [1, false]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('playhead: out of view, or without autoplay, a landing run just shows', {
+  skip,
+}, async () => {
+  const { playhead } = await import(`${LANDING}/playhead.ts`);
+  let auto = true;
+  const p = playhead({
+    count: () => 4,
+    autoplay: () => auto,
+    replayable: () => true,
+  });
+
+  p.clear();
+  p.seen(false);
+  p.play();
+  assert.deepEqual([p.playing.value, p.landed.value], [false, true]);
+
+  // Asked for, Replay plays even out of view: the press proves it is seen.
+  p.play(true);
+  assert.equal(p.playing.value, true);
+  p.stop();
+
+  // Without autoplay (one column, or reduced motion), a run never clears the thread.
+  auto = false;
+  p.show();
+  p.clear();
+  assert.deepEqual([p.playing.value, p.landed.value], [false, true]);
+});
+
+test('onPhase: a run starting clears the thread, landing plays it, failing shows it', {
+  skip,
+}, async () => {
+  const { onPhase } = await import(`${LANDING}/thread.ts`);
+
+  assert.equal(onPhase('waiting', 'checking'), 'clear');
+  assert.equal(onPhase('checking', 'waiting'), 'play');
+  assert.equal(onPhase('checking', 'committed'), 'play');
+  assert.equal(onPhase('checking', 'error'), 'show');
+  assert.equal(onPhase('loading', 'unavailable'), 'show');
+  // The visitor's own steps don't replay anything.
+  assert.equal(onPhase('waiting', 'approving'), null);
+  assert.equal(onPhase('approving', 'committed'), null);
+  assert.equal(onPhase('undoing', 'undone'), null);
+});
+
+test('junction: lines arrive level; the proposals not picked branch off and stop', {
+  skip,
+}, async () => {
+  const { branches, converge } = await import(`${LANDING}/junction.ts`);
+
+  assert.equal(
+    converge({ x: 0, y: 10 }, { x: 200, y: 50 }),
+    'M0 10 C110 10 90 50 200 50',
+  );
+  assert.deepEqual(
+    branches({ x: 0, y: 100 }, 3, 80).map((b) => b.end),
+    [
+      { x: 80, y: 70 },
+      { x: 80, y: 130 },
+      { x: 80, y: 40 },
+    ],
+  );
+  assert.deepEqual(branches({ x: 0, y: 0 }, 0, 80), []);
+});
 
 test('runScene: a run a newer one replaced writes nothing; a failed run says why', {
   skip: needsCore,
@@ -387,21 +621,11 @@ test('runScene: a run a newer one replaced writes nothing; a failed run says why
     waiting: null,
     run: 0,
   };
-  // The first, automatic run leaves the lead-up where the visitor stepped to.
-  const early = heroState('dinner');
-
-  early.view.value = 1;
-  await runScene(early, { ...live, run: 0 }, { keepView: true });
-  assert.equal(early.view.value, 1);
-  assert.equal(early.phase.value, 'waiting');
-
   const state = heroState('dinner');
   const first = runScene(state, live);
 
-  // Busy from the first moment: nothing from before can show or be pressed, and a run the
-  // visitor started puts the lead-up back on the outcome.
+  // Busy from the first moment: nothing from before can show or be pressed.
   assert.equal(state.phase.value, 'checking');
-  assert.equal(state.view.value, 3);
 
   // The visitor picks another example while the first run is still starting.
   state.scene.value = 'move';
@@ -432,78 +656,6 @@ test('runScene: a run a newer one replaced writes nothing; a failed run says why
   assert.equal(failed.phase.value, 'error');
   assert.equal(failed.error.value, 'the shop is down');
   assert.match(failed.status.value, /Start again/);
-});
-
-test('shownPhase: earlier stops show as they were; only the last shows the real phase', {
-  skip,
-}, async () => {
-  const { clampStop, LAST_STOP, shownPhase } = await import(
-    `${LANDING}/trail.ts`
-  );
-
-  for (const phase of ['waiting', 'committed', 'expired', 'error']) {
-    assert.deepEqual(
-      [0, 1, 2].map((v) => shownPhase(v, phase)),
-      ['asking', 'proposed', 'checking'],
-      phase,
-    );
-    // Only here can the slip's buttons work: nothing earlier ever shows as waiting.
-    assert.equal(shownPhase(LAST_STOP, phase), phase);
-  }
-
-  assert.deepEqual([clampStop(-1), clampStop(9), clampStop(2)], [0, 3, 2]);
-});
-
-test('stops: the lead-up says each stop from the frames, and the outcome once known', {
-  skip,
-}, async () => {
-  const { stops } = await import(`${LANDING}/trail.ts`);
-  const { SCENES } = await import(`${LANDING}/scenes.ts`);
-  const base = {
-    scene: SCENES.cancel,
-    params: { event: 'Design review' },
-    proposals: null,
-    outcome: null,
-    answer: '',
-  };
-  const start = stops(base);
-
-  assert.deepEqual(
-    start.map((s) => s.label),
-    ['Agent asks', 'Service proposes', 'Policy checks', 'You decide'],
-  );
-  assert.equal(
-    start[0].wire,
-    '→ INTENT calendar.cancel {"event":"Design review"}',
-  );
-  // Stops the run hasn't reached say nothing yet.
-  assert.deepEqual([start[1].text, start[3].wire], ['', '']);
-
-  const proposals = { count: 1, id: 'p_1', summary: 'Cancel it' };
-  const asked = stops({
-    ...base,
-    proposals,
-    outcome: 'asks',
-    answer: 'risk medium exceeds ceiling low',
-  });
-
-  assert.match(asked[1].text, /answers with a proposal, .* picks it\./);
-  assert.equal(asked[2].wire, '→ COMMIT p_1');
-  assert.match(asked[3].text, /^The calendar rates cancelling as medium risk/);
-  assert.equal(
-    asked[3].wire,
-    '✗ consent_required: risk medium exceeds ceiling low',
-  );
-
-  const within = stops({
-    ...base,
-    proposals,
-    outcome: 'within',
-    answer: 'r_1',
-  });
-
-  assert.equal(within[3].label, 'Goes ahead');
-  assert.equal(within[3].wire, '✓ receipt r_1');
 });
 
 /** The recorded exchange with everything that changes per run replaced by a placeholder. */

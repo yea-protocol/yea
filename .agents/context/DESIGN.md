@@ -127,6 +127,7 @@ rounded:
   lg: "12px"
   xl: "14px"
   pill: "999px"
+  bar: "4px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -225,18 +226,23 @@ one evidence chart, a quote, the comparison table and a closing band.
 Layout is a centred column: 1180px on the landing, 1360px on the playground, VitePress's doc
 width (688px content) on guide pages. Landing bands are separated by 1px hairline rules, with
 fluid padding (`clamp(64px, 8vw, 112px)`) that varies by section. Three run edge to edge: the
-hero band in the slip's state colour, the protocol steps' tinted rows, and the closing band, which
-inverts the theme (ink in light, paper in dark).
+hero band with its state wash and junction paths, the protocol steps' tinted rows, and the
+closing band, which inverts the theme (ink in light, paper in dark). The hero is a claim row
+(headline and status note; lede and calls to action) over the exchange (the thread, a gutter
+the junction paths cross, and the slip), sized so Approve sits in the first screen at 1280×800.
 
-Motion: only state changes move. On the landing, the slip's border changes colour over 300ms and
-buttons change over 150ms, both `cubic-bezier(0.25, 1, 0.5, 1)`. When the slip's state changes, the
-hero band's new colour spreads as a circle from the button the visitor pressed (a `clip-path`,
-900ms, ease-out expo, `cubic-bezier(0.16, 1, 0.3, 1)`), and the band's text follows over 600ms.
-Where the browser has scroll-driven animations, a protocol step's row tints with its state as it
-crosses the middle of the viewport; elsewhere the tint stays put. There is no entrance
-choreography and no replay. VitePress's own chrome changes over 250ms.
-`prefers-reduced-motion` cuts every CSS animation and transition to 0.01ms in `style.css`, so
-the band changes at once, and the steps' tints stay put.
+Motion: state changes move, and the hero's exchange plays once. On the landing, the slip's
+border changes colour over 300ms and buttons change over 150ms, both `cubic-bezier(0.25, 1, 0.5,
+1)`. The hero's thread plays when a run lands with the exchange in view: its messages fade in
+(opacity only) about 1.25s apart and stay, the slip arrives a second after the fourth, and each
+message's junction line draws in (900ms). When the slip's state changes, the band's new wash
+spreads as a circle from the button pressed, or from the approval point when nobody pressed
+(a `clip-path`, 900ms, ease-out expo, `cubic-bezier(0.16, 1, 0.3, 1)`); a quiet return to plain
+just settles. The approval point pulses once when it takes a state, and the onward line draws
+in green on commit. Where the browser has scroll-driven animations, a protocol step's row tints
+with its state as it crosses the middle of the viewport; elsewhere the tint stays put.
+VitePress's own chrome changes over 250ms. `prefers-reduced-motion` cuts every CSS animation and
+transition to 0.01ms in `style.css`, and the hero shows its finished exchange at once.
 
 **Decided direction (James, 2026-09-28), all built in #117:**
 - **Type:** Public Sans (variable, via `@fontsource`) is the one family for all human-facing
@@ -301,14 +307,23 @@ interaction colour.
 - **Graphite** (paper-text-2) and **Pewter** (paper-text-3): light secondary and tertiary text.
 
 ### Named Rules
-**The State Drench Rule.** On the landing a state's colour may fill a whole surface, but only
-where that surface is in that state: the hero band is amber while its proposal waits on the
-visitor, green once they approve, red if a step fails, and the page's own colour once undone or
-expired, or when the core can't start (`landing/tone.ts`). The protocol steps fill their number with their state's colour and
-tint their row with it (28% over paper, 14% over ink). Text on a full-strength band is ink in both
-themes (secondary text is ink at 78%, 6.9:1 on amber and green and 4.8:1 on red); text on a tint
-keeps the theme's colours. A band with no state never takes a state colour: the closing band
-inverts the theme instead.
+**The State Wash Rule.** On the landing a state's colour may wash a whole surface, but only
+where that surface is in that state, and only faintly: once the slip is here, the field behind
+the hero's exchange (not the headline, which stays on paper; it fades in over 72px above the
+exchange) takes 12% amber while its proposal waits on the visitor, 12% green once committed, 10% red if a
+step fails, and the page's own colour once undone or expired, while the thread plays, or when
+the core can't start (`landing/tone.ts`). In dark there is no wash (it turns ink brown). Full
+strength is kept for the slip's border and chip, its Approve, and the approval point. Text on a
+wash keeps the theme's colours (5:1 and up for every text colour, measured). The protocol steps
+fill their number with their state's colour and tint their row with it (28% over paper, 14%
+over ink). A band with no state never takes a state colour: the closing band inverts the theme.
+
+**The Junction Rule.** The hero's background is the logo's idea drawn from the exchange itself
+(`JunctionPaths.vue`, `junction.ts`): a hairline leaves each message of the thread along its
+label row (the only thing on that row), runs level to the gutter and converges on the approval
+point at the slip's perforation; the proposals the agent didn't pick branch off
+and stop at an open end; one line continues past the slip, green once committed. Every line
+means something, none crosses text (they keep to the gutter), and on one column there are none.
 
 **The State Colour Rule.** Amber is proposed and waiting on a person, green is committed, red is
 refused. Nothing else gets those colours (stated in the header of `style.css`). Primary buttons
@@ -421,6 +436,7 @@ and a shadow on the same surface.
 ### Cards / Containers
 - **Corner Style:** 12px for tables, command blocks and the consent card; 14px for the hero
   exchange and playground panes.
+- **Chart bars:** the evidence chart's bars and legend keys round their far end by 4px (bar).
 - **Background:** code ink / paper code for the exchange; raised ink / white for playground
   panes.
 - **Shadow Strategy:** none (see Elevation).
@@ -439,39 +455,45 @@ and a shadow on the same surface.
   Sidebar groups: Start, Concepts, Build, Reference. Mobile collapses to a hamburger and a
   "Menu / On this page" bar.
 
-### Proposal Slip (signature component)
-The landing hero's right column (`landing/ProposalSlip.vue`, `SlipStub.vue`, `LeadUp.vue`,
-`use-slip.ts`, `run-scene.ts`): a real exchange with an example service, ending in a permission
-slip. It sits on the hero band, which takes the slip's state colour (the State Drench Rule; the
-spread is `use-flood.ts`), and the stub's notches are painted in the band's colour.
-- **Examples** (`landing/scenes.ts`), picked with a segmented radiogroup, all under the one
-  example policy the page signs (the shop and the calendar, low risk, $40 per action):
+### Proposal Slip and thread (signature component)
+The landing hero's exchange (`landing/HeroSection.vue`, `Thread.vue`, `thread.ts`,
+`use-reveal.ts`, `ProposalSlip.vue`, `SlipStub.vue`, `use-slip.ts`, `run-scene.ts`): a real run
+against an example service, told as a thread that ends in a permission slip.
+- **Examples** (`landing/scenes.ts`), picked with a segmented radiogroup (the chosen one filled
+  in the text colour, 3:1 and up on every wash), all under the one example policy the page
+  signs (the shop and the calendar, low risk, $40 per action):
   - "Order dinner": over the $40 limit, so the shop asks;
   - "Cancel a meeting": the calendar rates cancelling as medium risk, over the low-risk
     ceiling, so it asks;
   - "Move a meeting": low risk and undoable, so it goes ahead without asking.
-- **Lead-up** (`LeadUp.vue`, `trail.ts`): above the slip, a tablist of four stops (Agent asks,
-  Service proposes, Policy checks, then You decide or Goes ahead), with the chosen stop's
-  sentence and the real wire line behind it (`→ INTENT …`, `← [p_…] …`, `→ COMMIT …`,
-  `✗ consent_required: …` or `✓ receipt …`). A run goes straight to its outcome and the
-  lead-up rests on the last stop, which says why. The visitor steps back through the stops
-  (the tabs, the arrow keys, or Next and "Walk through how it got here"), and the slip and band
-  show each stop as it was: no slip while the agent asks, the slip as proposed with a plain
-  band, then the outcome, where the band floods amber or green. Its buttons work only at the
-  last stop.
+- **Thread** (`Thread.vue`, `thread.ts`): the messages that pass, each with who says it to whom,
+  the real wire line (wrapping, never cut off) and a sentence on what it means. Your request to
+  your agent; the agent's `→ INTENT`; the service's proposals (`← [p_…]`); the policy's answer
+  (`✗ consent_required: …` in amber, or `✓ receipt …` in green). Then, as the visitor acts:
+  their approval (`→ COMMIT … + your consent grant`), the receipt, and the undo.
+- **Playback** (`use-reveal.ts`): when a run lands with the exchange in view and the thread and
+  slip side by side (on one column the thread sits above the slip, off screen, so it just
+  shows; Replay still plays it), the thread plays
+  (see Motion); whoever speaks next has a pulsing dot, and every message holds its final size
+  from the start, so nothing shifts. The slip arrives after the fourth message. Replay plays the
+  messages again and leaves the slip, its state and the band alone; Skip shows it all. Out of
+  view, without motion, or on a failure, everything shows at once. Before the page starts, a
+  head mark (`yea-js`) holds the thread, slip and wash back where they will play (side by side,
+  with motion allowed), so they play rather than flash; CSS shows them after 5s if the page never
+  starts, and then that run leaves them on show, as does Skip pressed before a run lands. The visitor's own messages (approval, receipt, undo) arrive in turn as they happen.
 - **Top half:** what the service proposes. The proposal id and service, a state chip, the
-  summary, the effects in mono, three facts (uses, risk, undo window) and why it's asking (the
-  service's reason, in mono) or why it didn't (in words).
-- **Tear-off stub:** below a dashed perforation with a notch cut into each edge. It holds what the
-  person signs: the proposal's hash, one Approve button and a line saying exactly what is signed.
+  summary, the effects in mono, and three facts (uses, risk, undo window). Why it asks is the
+  thread's last message, so the slip doesn't repeat it.
+- **Tear-off stub:** below a dashed perforation with a notch cut into each edge; the left notch
+  is the approval point. It holds what the person signs: the proposal's hash, one Approve button
+  and a line saying exactly what is signed.
 - **States.** The border and chip follow protocol state:
   - neutral "Recorded" until the core is live;
-  - neutral "Proposed" and "Checking your policy…" at the lead-up's earlier stops, and
-    while a run is on its way;
+  - neutral "Checking your policy…" while a run is on its way;
   - amber "Waiting on you";
   - green "✓ Committed" (or "✓ Went ahead", inside the policy), where the stub shows the
     receipt, its undo window and Undo;
-  - neutral "↶ Undone";
+  - neutral "Undone";
   - neutral "Expired" when the proposal, undo window or example policy runs out;
   - red for a failed step.
 
@@ -482,12 +504,10 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser
   is idle, then runs the chosen example.
-- **Motion.** Nothing moves on its own: the lead-up changes only when the visitor steps
-  through it. A stop's text crossfades in 220ms, the slip arrives over 450ms, and the band's
-  colour spreads from the stop or button clicked (from the band's centre for a
-  keyboard change).
-- **Keyboard.** Focus moves to the next button after each step, and one live line announces
-  the outcome of each run.
+- **Keyboard and assistive tech.** A run the visitor starts parks focus on Skip while the slip
+  is away (without scrolling the page), and focus moves to the next button once it's back. Skip and Replay are one
+  button that keeps focus. The live line speaks only once the slip is here. Unplayed messages
+  are hidden by opacity alone, so assistive tech can always read the exchange.
 
 ### Playground (signature component)
 A two-pane tool: the agent's request on the left (service and verb segmented controls, capability
