@@ -15,6 +15,10 @@
   /* A state's colour as a row tint, for text that stays in the theme's colours. */
   --l-tint-amber: color-mix(in srgb, var(--amber) 28%, var(--vp-c-bg));
   --l-tint-green: color-mix(in srgb, var(--green) 28%, var(--vp-c-bg));
+  /* A state's colour as a wash across the hero band: enough to feel, not to shout. */
+  --l-wash-amber: color-mix(in srgb, var(--amber) 12%, var(--vp-c-bg));
+  --l-wash-green: color-mix(in srgb, var(--green) 12%, var(--vp-c-bg));
+  --l-wash-red: color-mix(in srgb, var(--red) 10%, var(--vp-c-bg));
   --l-gap: clamp(20px, 3vw, 40px);
   font-family: var(--l-text);
   font-size: 1.0625rem;
@@ -25,6 +29,13 @@
 .dark .landing {
   --l-tint-amber: color-mix(in srgb, var(--amber) 14%, var(--vp-c-bg));
   --l-tint-green: color-mix(in srgb, var(--green) 14%, var(--vp-c-bg));
+  /* In dark a wash turns ink brown: the slip, its Approve and the approval point carry state. */
+  --l-wash-amber: var(--vp-c-bg);
+  --l-wash-green: var(--vp-c-bg);
+  --l-wash-red: var(--vp-c-bg);
+
+
+
 }
 .landing :where(h1, h2, h3) {
   font-family: var(--l-text);
@@ -78,3 +89,13 @@
   .landing { --l-gutter: 16px; font-size: 1rem; }
   .landing .lens { padding: 14px 14px; font-size: 0.75rem; }
 }
+
+/* JavaScript runs (head.ts marks it) but the hero hasn't started yet: hold its thread, slip and
+   wash back, so they play instead of flashing finished; and show them anyway if it never starts. */
+@media (prefers-reduced-motion: no-preference) {
+  .yea-js .landing .hero-band:not([data-ready]) :is(.msg, .slip, .field) { opacity: 0; animation: yea-late 0s 5s forwards; }
+}
+@keyframes yea-late { to { opacity: 1; transform: none; } }
+
+/* Buttons on the landing take the brand's focus ring, not the browser's (VitePress sets one). */
+.landing button:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }

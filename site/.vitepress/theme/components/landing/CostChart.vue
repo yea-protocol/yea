@@ -44,7 +44,7 @@ const rows = costRows(LIVE.tasks);
 <style scoped>
 .chart { margin: 0; display: grid; gap: 16px; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 0.9375rem; color: var(--vp-c-text-2); }
-.key::before { content: ""; display: inline-block; width: 14px; height: 10px; border-radius: 0 3px 3px 0; margin-right: 8px; vertical-align: 0; }
+.key::before { content: ""; display: inline-block; width: 14px; height: 10px; border-radius: 0 4px 4px 0; margin-right: 8px; vertical-align: 0; }
 .key.rest::before { background: var(--vp-c-text-3); }
 .key.yea::before { background: var(--vp-c-text-1); }
 

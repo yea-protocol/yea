@@ -98,7 +98,7 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
 }
 .text { display: grid; gap: 10px; }
 .out { display: grid; gap: 14px; min-width: 0; }
-.sentence { font-size: clamp(1.2rem, 1rem + 0.7vw, 1.45rem); font-weight: 650; line-height: 1.35; letter-spacing: -0.01em; }
+.sentence { font-size: clamp(1.25rem, 1.05rem + 0.6vw, 1.375rem); font-weight: 650; line-height: 1.35; letter-spacing: -0.01em; }
 .models { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px clamp(20px, 3vw, 40px); margin: clamp(56px, 7vw, 88px) 0 0; padding-top: 32px; border-top: 1px solid var(--vp-c-divider); }
 .models dt { font-weight: 700; }
 .models dd { margin: 6px 0 0; color: var(--vp-c-text-2); }

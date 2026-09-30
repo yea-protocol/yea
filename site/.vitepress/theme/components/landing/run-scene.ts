@@ -1,7 +1,7 @@
 /**
  * One run of an example, straight to its outcome: the agent asks, the service proposes, the
- * agent commits, and the slip either waits on the person or shows the receipt. Nothing is
- * paced; the lead-up above the slip lets the visitor step back through the stops themselves.
+ * agent commits, and the slip either waits on the person or shows the receipt. Nothing here is
+ * paced: the hero plays the thread once the run has landed (use-reveal.ts).
  *
  * Its runtime imports name their `.ts` files, so the tests can run it under Node.
  */
@@ -9,7 +9,7 @@ import { landingCaveats } from './policy.ts';
 import { SCENES, tomorrow } from './scenes.ts';
 import { type Answer, Session } from './session.ts';
 import { receiptView, slipView } from './slip-view.ts';
-import { LAST_STOP, type Progress } from './trail.ts';
+import type { Progress } from './thread.ts';
 import type { Live, SlipState } from './use-slip';
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -42,21 +42,12 @@ function land(state: SlipState, live: Live, answer: Answer) {
 /**
  * Run the chosen example from the start, with a freshly signed policy and a fresh service, so
  * a meeting cancelled by the last run is back. A run that a newer one replaced stops quietly,
- * and writes nothing; a run that fails says why and offers Start again. A run the visitor
- * started puts the lead-up back on the outcome; the first, automatic one leaves it be.
+ * and writes nothing; a run that fails says why and offers Start again.
  */
-export async function runScene(
-  state: SlipState,
-  live: Live,
-  opts: { keepView?: boolean } = {},
-) {
+export async function runScene(state: SlipState, live: Live) {
   live.run += 1;
 
   const run = live.run;
-
-  if (!opts.keepView) {
-    state.view.value = LAST_STOP;
-  }
 
   try {
     await lead(state, live, run);

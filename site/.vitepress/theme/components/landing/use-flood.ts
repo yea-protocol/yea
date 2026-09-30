@@ -1,8 +1,9 @@
 /**
  * The hero band's change of colour. When the tone changes, the new colour spreads as a
- * circle from the button the visitor just pressed (or the band's centre, for a change nobody
- * pressed for, such as an expiry) until it covers the band, then becomes the band's own
- * colour. Under reduced motion the spread takes no time, so the band just changes.
+ * circle from the button the visitor just pressed (or, for a change nobody pressed for, such
+ * as the slip arriving, from an anchor like the approval point) until it covers the band, then
+ * becomes the band's own colour. A return to plain nobody pressed for just settles. Under
+ * reduced motion the spread takes no time, so the band just changes.
  */
 import { type Ref, ref, watch } from 'vue';
 import type { Tone } from './tone';
@@ -31,7 +32,12 @@ const PRESS_MS = 2000;
 const reach = (w: number, h: number, x: number, y: number) =>
   Math.hypot(Math.max(x, w - x), Math.max(y, h - y));
 
-export function useFlood(tone: Ref<Tone>, band: Ref<HTMLElement | null>) {
+export function useFlood(
+  tone: Ref<Tone>,
+  band: Ref<HTMLElement | null>,
+  /** Where a change nobody pressed for spreads from, in the band; the centre if null. */
+  anchor: () => { x: number; y: number } | null = () => null,
+) {
   /** The band's settled colour; `tone` is where it's heading. */
   const base = ref<Tone>(tone.value);
   const flood = ref<Flood | null>(null);
@@ -85,7 +91,9 @@ export function useFlood(tone: Ref<Tone>, band: Ref<HTMLElement | null>) {
 
       pressed = null;
 
-      if (!box) {
+      // Nothing to spread over, or a quiet return to plain nobody pressed for (a run starting
+      // on its own): the band just settles.
+      if (!box || (!from && to === 'plain')) {
         base.value = to;
         flood.value = null;
 
@@ -97,8 +105,8 @@ export function useFlood(tone: Ref<Tone>, band: Ref<HTMLElement | null>) {
         base.value = flood.value.to;
       }
 
-      const x = from ? from.x : box.width / 2;
-      const y = from ? from.y : box.height / 2;
+      const at = from ?? anchor() ?? { x: box.width / 2, y: box.height / 2 };
+      const { x, y } = at;
 
       key += 1;
       flood.value = { key, to, x, y, r: reach(box.width, box.height, x, y) };

@@ -1,7 +1,7 @@
 /**
- * Head tags that depend on the theme: a one-time reset of the appearance the old dark-only site
- * stored, the theme-color meta (the theme keeps it in step with the toggle), and preloads for the
- * fonts the first paint needs.
+ * Head tags that depend on the theme or the first paint: a one-time reset of the appearance the
+ * old dark-only site stored, a mark that JavaScript runs, the theme-color meta (the theme keeps
+ * it in step with the toggle), and preloads for the fonts the first paint needs.
  */
 import type { HeadConfig } from 'vitepress';
 
@@ -22,6 +22,17 @@ export const appearanceMigration: HeadConfig = [
       localStorage.removeItem('vitepress-theme-appearance')
     localStorage.setItem('yea-theme-v2', '1')
   } catch {} })()`,
+];
+
+/**
+ * Marks the page as running JavaScript before first paint, so the landing's thread can start
+ * empty and play instead of flashing its finished recording first. Without JavaScript (or if
+ * the app never starts; the landing's CSS times the mark out) the finished recording shows.
+ */
+export const jsMarker: HeadConfig = [
+  'script',
+  { id: 'yea-js' },
+  "document.documentElement.classList.add('yea-js')",
 ];
 
 /** One theme-color meta, light until the theme syncs it with the current appearance. */
