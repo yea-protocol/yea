@@ -62,4 +62,7 @@ const now = computed(() => list.value[props.at]);
   .label { font-size: 0.75rem; }
   .text { min-height: calc(4 * 1.45em); }
 }
+@media (max-width: 380px) {
+  .text { min-height: calc(6 * 1.45em); }
+}
 </style>

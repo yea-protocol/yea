@@ -2,8 +2,8 @@
  * The hero's examples: what the person asks their agent for, which example service it goes
  * to, and what to call the outcome. The page signs one policy for all of them (policy.ts),
  * and each lands somewhere different under it: dinner costs more than $40, so the shop asks;
- * cancelling a meeting emails two people, a medium risk over the policy's low-risk ceiling,
- * so the calendar asks; moving a meeting is low risk and undoable, so it goes ahead.
+ * the calendar rates cancelling a meeting as medium risk, over the policy's low-risk ceiling,
+ * so it asks; moving a meeting is low risk and undoable, so it goes ahead.
  *
  * No runtime imports, so the recording script and the tests can load it under Node.
  */
@@ -59,7 +59,7 @@ export const SCENES: Record<SceneKey, Scene> = {
     host: 'calendar.example',
     capability: 'calendar.cancel',
     params: () => ({ event: 'Design review' }),
-    why: 'Cancelling emails two people, which is medium risk, and your policy allows low risk only.',
+    why: 'The calendar rates cancelling as medium risk (it deletes the event and emails both attendees), and your policy allows low risk only.',
     done: 'Meeting cancelled.',
     undone: 'Meeting restored.',
   },

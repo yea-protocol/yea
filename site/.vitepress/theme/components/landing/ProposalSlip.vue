@@ -31,17 +31,14 @@ const CHIP: Record<Exclude<Phase, 'loading'>, string> = {
 };
 
 /**
- * The chip: the protocol state in a word, coloured by it. While loading it's neutral, since
- * nothing live waits yet; the band around the slip still shows the recording's amber.
+ * The chip: the protocol state in a word, coloured by it. While the recording shows it's
+ * neutral, since nothing live waits yet; the band around the slip still shows its amber.
  */
 const state = computed(() => {
   const p = props.s.phase;
 
   if (p === 'loading') {
-    return {
-      tone: 'plain',
-      text: props.s.live ? 'Starting again…' : 'Recorded',
-    };
+    return { tone: 'plain', text: 'Recorded' };
   }
 
   const within = props.s.progress.outcome === 'within';

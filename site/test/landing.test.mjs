@@ -356,6 +356,73 @@ test('each example lands where the page says under the one policy it signs', {
   }
 });
 
+/** A hero state with plain `{ value }` refs, as runScene reads and writes it. */
+const heroState = (scene) =>
+  Object.fromEntries(
+    Object.entries({
+      scene,
+      phase: 'loading',
+      live: true,
+      progress: null,
+      slip: null,
+      receipt: null,
+      undone: null,
+      status: '',
+      error: '',
+    }).map(([k, value]) => [k, { value }]),
+  );
+
+test('runScene: a run a newer one replaced writes nothing; a failed run says why', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { calendar } = await import('../../ts/dist/examples/calendar.js');
+  const { runScene } = await import(`${LANDING}/run-scene.ts`);
+  const live = {
+    sdk,
+    services: { shop, calendar },
+    session: null,
+    waiting: null,
+    run: 0,
+  };
+  const state = heroState('dinner');
+  const first = runScene(state, live);
+
+  // Busy from the first moment: nothing from before can show or be pressed.
+  assert.equal(state.phase.value, 'checking');
+
+  // The visitor picks another example while the first run is still starting.
+  state.scene.value = 'move';
+  await Promise.all([first, runScene(state, live)]);
+
+  assert.equal(state.progress.value.scene.key, 'move');
+  assert.equal(state.phase.value, 'committed');
+  assert.equal(live.waiting, null);
+
+  // The session is the second run's: its receipt can be undone through it.
+  const r = state.receipt.value.id;
+
+  assert.equal((await live.session.undo(r)).receipt.undoes, r);
+
+  const broken = {
+    ...live,
+    services: {
+      shop: () => {
+        throw new Error('the shop is down');
+      },
+      calendar,
+    },
+    run: 0,
+  };
+  const failed = heroState('dinner');
+
+  await runScene(failed, broken);
+  assert.equal(failed.phase.value, 'error');
+  assert.equal(failed.error.value, 'the shop is down');
+  assert.match(failed.status.value, /Start again/);
+});
+
 test('stops: the lead-up says each stop from the frames, and the outcome once known', {
   skip,
 }, async () => {
@@ -391,7 +458,7 @@ test('stops: the lead-up says each stop from the frames, and the outcome once kn
 
   assert.match(asked[1].text, /answers with a proposal, .* picks it\./);
   assert.equal(asked[2].wire, '→ COMMIT p_1');
-  assert.match(asked[3].text, /^Cancelling emails two people/);
+  assert.match(asked[3].text, /^The calendar rates cancelling as medium risk/);
   assert.equal(
     asked[3].wire,
     '✗ consent_required: risk medium exceeds ceiling low',

@@ -100,20 +100,19 @@ function whenIdle(fn: () => void) {
 }
 
 /**
- * Run a step; on failure keep the slip, say what went wrong and offer Start again. A step
- * that a newer run replaced (the visitor picked another example meanwhile) changes nothing.
+ * Run the visitor's step (approve or undo); on failure keep the slip, say what went wrong
+ * and offer Start again. A step that a newer run replaced (the visitor picked another example
+ * meanwhile) changes nothing.
  */
 async function step(
   state: SlipState,
   live: Live,
-  from: Phase | null,
+  from: Phase,
   run: () => Promise<void>,
 ) {
   const mine = live.run;
 
-  if (from) {
-    state.phase.value = from;
-  }
+  state.phase.value = from;
 
   try {
     await run();
@@ -126,7 +125,11 @@ async function step(
   }
 }
 
-/** Load the SDK and the example services, then run the chosen example. */
+/**
+ * Load the SDK and the example services, check the browser can make the keys the examples
+ * sign with, then run the chosen example. If any of that fails the core is unavailable, and
+ * the recording stays on show.
+ */
 async function start(state: SlipState, attach: (l: Live) => void) {
   try {
     const [sdk, shop, calendar] = await Promise.all([
@@ -134,6 +137,9 @@ async function start(state: SlipState, attach: (l: Live) => void) {
       import('@examples/shop.ts'),
       import('@examples/calendar.ts'),
     ]);
+
+    await sdk.keyPair();
+
     const live: Live = {
       sdk,
       services: { shop: shop.shop, calendar: calendar.calendar },
@@ -144,7 +150,7 @@ async function start(state: SlipState, attach: (l: Live) => void) {
 
     attach(live);
     state.live.value = true;
-    await step(state, live, null, () => runScene(state, live));
+    await runScene(state, live);
   } catch (e) {
     state.error.value = message(e);
     state.phase.value = 'unavailable';
@@ -226,9 +232,6 @@ export function useSlip() {
   /** Run an action once the core is live; before that there is nothing to act on. */
   const withLive = (fn: (s: SlipState, l: Live) => Promise<void>) => () =>
     live ? fn(state, live) : Promise.resolve();
-  /** Run the chosen example again from the start. */
-  const rerun = (s: SlipState, l: Live) =>
-    step(s, l, null, () => runScene(s, l));
 
   watchDeadlines(state, () => live);
   onMounted(() =>
@@ -243,12 +246,12 @@ export function useSlip() {
     ...state,
     approve: withLive(approve),
     undo: withLive(undo),
-    again: withLive(rerun),
+    again: withLive(runScene),
     /** Pick an example; once the core is live it runs from the start. */
     choose(key: SceneKey) {
       if (key !== state.scene.value) {
         state.scene.value = key;
-        void withLive(rerun)();
+        void withLive(runScene)();
       }
     },
   };

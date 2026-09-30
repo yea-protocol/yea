@@ -447,8 +447,8 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
 - **Examples** (`landing/scenes.ts`), picked with a segmented radiogroup, all under the one
   example policy the page signs (the shop and the calendar, low risk, $40 per action):
   - "Order dinner": over the $40 limit, so the shop asks;
-  - "Cancel a meeting": emails two people, a medium risk over the low-risk ceiling, so the
-    calendar asks;
+  - "Cancel a meeting": the calendar rates cancelling as medium risk, over the low-risk
+    ceiling, so it asks;
   - "Move a meeting": low risk and undoable, so it goes ahead without asking.
 - **Lead-up** (`LeadUp.vue`, `trail.ts`): above the slip, a track of four stops (Agent asks,
   Service proposes, Policy checks, then You decide or Goes ahead), with the current stop's
@@ -471,8 +471,9 @@ spread is `use-flood.ts`), and the stub's notches are painted in the band's colo
   - neutral "Expired" when the proposal, undo window or example policy runs out;
   - red for a failed step.
 
-  Once live, Start again is always offered, and every run starts from a fresh service and a
-  freshly signed policy.
+  Once live, Start again is offered whenever nothing is in flight, and every run starts from a
+  fresh service and a freshly signed policy. Approve ignores a held Enter's repeats, so only a
+  fresh press signs.
 - **Recording and live core.** The page paints the dinner example from a recording
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser

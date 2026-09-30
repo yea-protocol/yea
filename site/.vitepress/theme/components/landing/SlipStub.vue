@@ -27,9 +27,7 @@ function press(what: 'approve' | 'undo' | 'again') {
 const fine = computed(() => {
   switch (props.s.phase) {
     case 'loading':
-      return props.s.live
-        ? 'Starting again…'
-        : 'Starting the protocol core in your browser…';
+      return 'Starting the protocol core in your browser…';
     case 'asking':
     case 'proposed':
     case 'checking':
@@ -39,14 +37,19 @@ const fine = computed(() => {
   }
 });
 
-const BUSY = [
-  'loading',
-  'asking',
-  'proposed',
-  'checking',
-  'approving',
-  'undoing',
-];
+/** The phases while a run leads up to its outcome. */
+const LEADING = ['asking', 'proposed', 'checking'];
+const BUSY = ['loading', ...LEADING, 'approving', 'undoing'];
+
+/**
+ * A held Enter repeats. After Start again, focus lands on Approve once the new proposal
+ * waits; a repeat from the key still held down must not approve it. Only a fresh press does.
+ */
+function noRepeat(e: KeyboardEvent) {
+  if (e.repeat) {
+    e.preventDefault();
+  }
+}
 
 /** When a step ends, its button has been replaced: focus the next one, if focus was here. */
 watch(
@@ -106,10 +109,10 @@ watch(
     </template>
 
     <template v-else>
-      <p class="line">You approve this hash</p>
+      <p class="line">{{ LEADING.includes(s.phase) ? 'If your policy needs you, you approve this hash' : 'You approve this hash' }}</p>
       <p class="hash">{{ s.slip.hash }}</p>
       <div class="row">
-        <button :class="['btn', 'consent', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @click="press('approve')">{{ s.phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
+        <button :class="['btn', 'consent', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
         <button v-if="s.live && s.phase === 'waiting'" class="btn quiet" type="button" @click="press('again')">Start again</button>
       </div>
       <p v-if="s.phase === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
