@@ -9,6 +9,7 @@
  * absent without JavaScript.
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { approvalPoint, layoutBox } from './anchors';
 import { branches, converge, type Point } from './junction';
 import type { Tone } from './tone';
 
@@ -27,8 +28,6 @@ const props = defineProps<{
 const SIDE_BY_SIDE = '(min-width: 960px)';
 /** The proposals message, whose line the branches leave from. */
 const PROPOSALS = 2;
-/** The slip's arrival (ProposalSlip.vue), after which it sits where it will stay. */
-const ARRIVAL_MS = 480;
 
 const svg = ref<SVGSVGElement | null>(null);
 const size = ref({ w: 0, h: 0 });
@@ -37,31 +36,13 @@ const exit = ref<Point | null>(null);
 const said = ref<string[]>([]);
 const forks = ref<{ d: string; end: Point }[]>([]);
 let observer: ResizeObserver | undefined;
-let settle: ReturnType<typeof setTimeout> | undefined;
-
-/** Where an element is in the band, ignoring transforms (the slip arrives sliding up). */
-function layoutBox(el: HTMLElement, band: HTMLElement) {
-  let x = 0;
-  let y = 0;
-
-  for (
-    let n: Element | null = el;
-    n instanceof HTMLElement && n !== band;
-    n = n.offsetParent
-  ) {
-    x += n.offsetLeft;
-    y += n.offsetTop;
-  }
-
-  return { x, y, w: el.offsetWidth, h: el.offsetHeight };
-}
 
 /**
  * Where a message's line starts: just past the end of its label (who says it to whom). The label
  * row has nothing else on it, so the line runs level from there to the gutter without crossing
  * text, then turns into the approval point.
  */
-function labelEnd(dot: HTMLElement, band: HTMLElement, gutter: number) {
+function labelEnd(dot: HTMLElement, left: number, gutter: number) {
   const label = dot.parentElement;
   const walk = label && document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
   const range = document.createRange();
@@ -76,31 +57,29 @@ function labelEnd(dot: HTMLElement, band: HTMLElement, gutter: number) {
     }
   }
 
-  const x = right - band.getBoundingClientRect().left + 12;
+  const x = right - left + 12;
 
   return right ? Math.min(gutter, x) : gutter;
 }
 
 function measure() {
   const band = svg.value?.parentElement;
-  const side = band?.querySelector<HTMLElement>('.side');
-  const slip = band?.querySelector<HTMLElement>('.slip');
-  const stub = slip?.querySelector<HTMLElement>('.stub');
+  const side = band?.querySelector<HTMLElement>('[data-thread]');
+  const slip = band?.querySelector<HTMLElement>('[data-slip]');
+  const at = band && approvalPoint(band);
 
-  if (!band || !side || !slip || !stub) {
+  if (!band || !side || !slip || !at) {
     return;
   }
 
-  const s = layoutBox(slip, band);
-  const y = layoutBox(stub, band).y;
-  const at = { x: s.x, y };
   const s0 = layoutBox(side, band);
   // The gutter's near edge, just past the thread; on one column there's no gutter.
   const x0 = s0.x + s0.w + 12;
   const wide = matchMedia(SIDE_BY_SIDE).matches && at.x - x0 > 40;
+  const left = band.getBoundingClientRect().left;
   const starts = wide
     ? [...band.querySelectorAll<HTMLElement>('[data-junction]')].map((d) => ({
-        lead: labelEnd(d, band, x0),
+        lead: labelEnd(d, left, x0),
         x: x0,
         y: layoutBox(d, band).y + d.offsetHeight / 2,
       }))
@@ -108,7 +87,7 @@ function measure() {
 
   size.value = { w: band.offsetWidth, h: band.offsetHeight };
   point.value = wide ? at : null;
-  exit.value = wide ? { x: s.x + s.w, y } : null;
+  exit.value = wide ? { x: at.x + slip.offsetWidth, y: at.y } : null;
   // A level leader from the label to the gutter, then the curve into the point.
   said.value = starts.map(
     (p) =>
@@ -126,28 +105,26 @@ onMounted(() => {
 
   const band = svg.value?.parentElement;
 
-  if (band) {
-    observer.observe(band);
+  // The thread or the slip can change size without the band doing so.
+  for (const el of [
+    band,
+    band?.querySelector('[data-thread]'),
+    band?.querySelector('[data-slip]'),
+  ]) {
+    if (el) {
+      observer.observe(el);
+    }
   }
 
-  // The fonts arriving can move the thread's dots without resizing the band.
+  // The fonts arriving can move the thread's dots without resizing anything.
   void document.fonts?.ready.then(measure);
 });
 
-onBeforeUnmount(() => {
-  observer?.disconnect();
-  clearTimeout(settle);
-});
+onBeforeUnmount(() => observer?.disconnect());
 
-watch(
-  () => [props.lit, props.passed, props.landed],
-  () => {
-    measure();
-    clearTimeout(settle);
-    settle = setTimeout(measure, ARRIVAL_MS);
-  },
-  { flush: 'post' },
-);
+watch(() => [props.lit, props.passed, props.landed], measure, {
+  flush: 'post',
+});
 </script>
 
 <template>

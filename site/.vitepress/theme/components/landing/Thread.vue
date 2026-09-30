@@ -5,7 +5,10 @@
  * visitor's own approval, receipt and undo. The wire line leads; a sentence under it says what
  * it means. Whoever speaks next has a pulsing dot. Every message keeps its final size from the
  * start, so nothing moves as they arrive. Each dot (data-junction) starts a background path.
+ * Skip and Replay ignore a held Enter's repeats, like Approve.
  */
+
+import { noRepeat } from './keys';
 import type { Message } from './thread';
 
 defineProps<{
@@ -22,11 +25,12 @@ const emit = defineEmits<{ replay: []; skip: [] }>();
 
 <template>
   <div class="thread">
-    <ol class="messages" tabindex="-1" aria-label="The exchange">
+    <ol class="messages" aria-label="The exchange">
       <li
         v-for="(m, i) in messages"
         :key="i"
-        :class="['msg', m.tone, { shown: !playing || i < reveal, next: playing && i === reveal }]"
+        :class="['msg', m.tone, { shown: !playing || i < reveal, next: playing && i === reveal, reply: m.reply && !playing }]"
+        data-message
       >
         <p class="from"><span class="dot" data-junction aria-hidden="true" />{{ m.from }}</p>
         <div class="body">
@@ -36,7 +40,7 @@ const emit = defineEmits<{ replay: []; skip: [] }>();
       </li>
     </ol>
     <!-- Its row is kept before the page starts (and without JavaScript), so nothing moves. -->
-    <button type="button" :class="['control', { idle: !ready }]" :tabindex="ready ? undefined : -1" :aria-hidden="ready ? undefined : 'true'" @click="playing ? emit('skip') : emit('replay')">
+    <button type="button" :class="['control', { idle: !ready }]" :tabindex="ready ? undefined : -1" :aria-hidden="ready ? undefined : 'true'" data-playback @keydown.enter="noRepeat" @click="playing ? emit('skip') : emit('replay')">
       {{ playing ? 'Skip to the end' : 'Replay the exchange' }} <span aria-hidden="true">{{ playing ? '→' : '↺' }}</span>
     </button>
   </div>
@@ -45,7 +49,6 @@ const emit = defineEmits<{ replay: []; skip: [] }>();
 <style scoped>
 .thread { display: grid; gap: 12px; }
 .messages { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
-.messages:focus { outline: none; }
 
 /* Every message holds its place and size before it arrives, so nothing below it moves. */
 .msg { display: grid; gap: 6px; opacity: 0; transition: opacity 420ms var(--l-ease-out); }
@@ -82,5 +85,5 @@ const emit = defineEmits<{ replay: []; skip: [] }>();
 @starting-style {
   .msg.shown { opacity: 0; }
 }
-.msg:nth-child(6) { transition-delay: 600ms; }
+.msg.reply { transition-delay: 600ms; }
 </style>

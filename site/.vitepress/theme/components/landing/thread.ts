@@ -34,6 +34,8 @@ export interface Message {
   wire: string;
   /** The policy's answer takes the colour of the state it lands in. */
   tone: Tone;
+  /** It answers the message before it, a beat later (the receipt after the approval). */
+  reply?: boolean;
 }
 
 /** The messages before the slip: after the fourth, the slip arrives. */
@@ -72,8 +74,9 @@ function lead(p: Progress): Message[] {
     },
     {
       from: `${scene.host} → your agent`,
-      text:
-        n === 1
+      text: !proposals
+        ? ''
+        : n === 1
           ? 'One proposal, with its effects up front. The agent picks it and commits.'
           : `${n} proposals, each with its effects up front. The agent picks the first and commits.`,
       wire: proposals ? `← [${proposals.id}] ${proposals.summary}` : '',
@@ -123,6 +126,7 @@ function acted(p: Progress, after: After): Message[] {
         text: `${scene.done}${r.undoUntil ? ` It can be undone until ${r.undoUntil}.` : ''}`,
         wire: `✓ receipt ${r.id}`,
         tone: 'green',
+        reply: true,
       },
     );
   }

@@ -478,9 +478,9 @@ against an example service, told as a thread that ends in a permission slip.
   from the start, so nothing shifts. The slip arrives after the fourth message. Replay plays the
   messages again and leaves the slip, its state and the band alone; Skip shows it all. Out of
   view, without motion, or on a failure, everything shows at once. Before the page starts, a
-  head mark (`yea-js`) holds the thread, slip and wash back so they play rather than flash, and
-  CSS shows them after 5s if the page never starts; if it did, the first run leaves them on
-  show. The visitor's own messages (approval, receipt, undo) arrive in turn as they happen.
+  head mark (`yea-js`) holds the thread, slip and wash back where they will play (side by side,
+  with motion allowed), so they play rather than flash; CSS shows them after 5s if the page never
+  starts, and then that run leaves them on show, as does Skip pressed before a run lands. The visitor's own messages (approval, receipt, undo) arrive in turn as they happen.
 - **Top half:** what the service proposes. The proposal id and service, a state chip, the
   summary, the effects in mono, and three facts (uses, risk, undo window). Why it asks is the
   thread's last message, so the slip doesn't repeat it.

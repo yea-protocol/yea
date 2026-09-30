@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 
 const LANDING = '../.vitepress/theme/components/landing';
 const built = existsSync(new URL('../../ts/dist/index.js', import.meta.url));
@@ -429,6 +429,12 @@ test('thread: four messages from the frames, the answer coloured by where it lan
   // Inside the policy, the service simply answers with the receipt.
   assert.equal(within[3].from, 'calendar.example → your agent');
   assert.equal(within[3].tone, 'green');
+
+  // Before the service answers, it has said nothing, and nobody has committed.
+  const early = thread({ ...base, proposals: null, outcome: null });
+
+  assert.deepEqual([early[2].text, early[2].wire], ['', '']);
+
   // Before the commit is answered, the policy has said nothing.
   assert.deepEqual(
     [
@@ -475,6 +481,94 @@ test('thread: the visitor approval, the receipt and the undo follow the policy a
     ).length,
     4,
   );
+});
+
+test('playhead: messages arrive in turn, the slip after the fourth; Replay keeps it', {
+  skip,
+}, async () => {
+  const { FIRST_MS, NEXT_MS, playhead, SLIP_MS } = await import(
+    `${LANDING}/playhead.ts`
+  );
+
+  mock.timers.enable({ apis: ['setTimeout'] });
+
+  // The mock clock fires only timers set before a tick; each beat sets the next, so step.
+  const advance = (ms) => {
+    for (let t = 0; t < ms; t += 50) {
+      mock.timers.tick(50);
+    }
+  };
+
+  try {
+    let count = 4;
+    const p = playhead({
+      count: () => count,
+      autoplay: () => true,
+      replayable: () => true,
+    });
+
+    p.clear();
+    assert.deepEqual(
+      [p.reveal.value, p.playing.value, p.landed.value],
+      [0, true, false],
+    );
+
+    p.play();
+    advance(FIRST_MS + 3 * NEXT_MS);
+    assert.deepEqual([p.reveal.value, p.landed.value], [4, false]);
+
+    // The slip arrives a beat after the fourth message, and the play ends.
+    advance(SLIP_MS);
+    assert.deepEqual([p.landed.value, p.playing.value], [true, false]);
+
+    // Replay plays the messages again and never sends the slip away; messages the visitor
+    // adds meanwhile (an approval) play too.
+    p.play(true);
+    assert.deepEqual([p.reveal.value, p.landed.value], [0, true]);
+    count = 6;
+    advance(FIRST_MS + 5 * NEXT_MS);
+    assert.deepEqual(
+      [p.reveal.value, p.playing.value, p.landed.value],
+      [6, false, true],
+    );
+
+    // Skip mid-play shows it all and stops the clock.
+    p.play(true);
+    advance(FIRST_MS);
+    p.show();
+    advance(10 * NEXT_MS);
+    assert.deepEqual([p.reveal.value, p.playing.value], [1, false]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('playhead: out of view, or without autoplay, a landing run just shows', {
+  skip,
+}, async () => {
+  const { playhead } = await import(`${LANDING}/playhead.ts`);
+  let auto = true;
+  const p = playhead({
+    count: () => 4,
+    autoplay: () => auto,
+    replayable: () => true,
+  });
+
+  p.clear();
+  p.seen(false);
+  p.play();
+  assert.deepEqual([p.playing.value, p.landed.value], [false, true]);
+
+  // Asked for, Replay plays even out of view: the press proves it is seen.
+  p.play(true);
+  assert.equal(p.playing.value, true);
+  p.stop();
+
+  // Without autoplay (one column, or reduced motion), a run never clears the thread.
+  auto = false;
+  p.show();
+  p.clear();
+  assert.deepEqual([p.playing.value, p.landed.value], [false, true]);
 });
 
 test('onPhase: a run starting clears the thread, landing plays it, failing shows it', {

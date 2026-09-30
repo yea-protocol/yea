@@ -52,7 +52,7 @@ const state = computed(() => {
 </script>
 
 <template>
-  <article :class="['slip', state.tone, { pending: away }]" :aria-labelledby="titleId" :aria-hidden="away || undefined" :inert="away || undefined">
+  <article data-slip :class="['slip', state.tone, { pending: away }]" :aria-labelledby="titleId" :aria-hidden="away || undefined" :inert="away || undefined">
     <header class="head">
       <p class="kind">Proposal <span class="mono">{{ s.slip.id }}</span> from {{ s.slip.service }}</p>
       <p v-if="state.text" class="chip">{{ state.text }}</p>

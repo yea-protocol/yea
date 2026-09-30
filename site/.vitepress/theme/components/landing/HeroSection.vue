@@ -13,15 +13,16 @@
  * Approve and the approval point.
  */
 import { withBase } from 'vitepress';
-import { computed, nextTick, reactive, useTemplateRef, watch } from 'vue';
+import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
 import SegmentedRadio from '../playground/SegmentedRadio.vue';
+import { approvalPoint, layoutBox } from './anchors';
 import { RECORDED } from './exchange';
 import JunctionPaths from './JunctionPaths.vue';
 import ProposalSlip from './ProposalSlip.vue';
 import { SCENE_KEYS, SCENES, type SceneKey } from './scenes';
 import Thread from './Thread.vue';
 import { thread } from './thread';
-import { phaseTone } from './tone';
+import { phaseTone, type Tone } from './tone';
 import { useFlood } from './use-flood';
 import { useReveal } from './use-reveal';
 import { useSlip } from './use-slip';
@@ -44,44 +45,39 @@ const { reveal, playing, landed, ready, replay, skip } = useReveal(
   () => messages.value.length,
 );
 /** The last settled state, kept while a run is on its way with the slip still here. */
-let held = phaseTone(s.phase);
-const tone = computed(() => {
-  if (!landed.value) {
-    return 'plain';
-  }
+const held = ref(phaseTone(s.phase));
 
-  if (s.phase !== 'checking') {
-    held = phaseTone(s.phase);
-  }
+watch(
+  () => s.phase,
+  (p) => {
+    if (p !== 'checking') {
+      held.value = phaseTone(p);
+    }
+  },
+);
 
-  return held;
-});
+const tone = computed<Tone>(() => (landed.value ? held.value : 'plain'));
 const field = useTemplateRef<HTMLElement>('field');
 
-/** The approval point, at the slip's left notch: where a change nobody pressed for spreads from. */
-function approvalPoint() {
-  const b = field.value?.getBoundingClientRect();
-  const slip = band.value?.querySelector('.slip')?.getBoundingClientRect();
-  const stub = band.value
-    ?.querySelector('.slip .stub')
-    ?.getBoundingClientRect();
+/** The approval point in the field: where a change nobody pressed for spreads from. */
+function anchor() {
+  const at = band.value && approvalPoint(band.value);
+  const f = band.value && field.value && layoutBox(field.value, band.value);
 
-  return b && slip && stub
-    ? { x: slip.left - b.left, y: stub.top - b.top }
-    : null;
+  return at && f ? { x: at.x - f.x, y: at.y - f.y } : null;
 }
 
-const { base, flood, press, ended } = useFlood(tone, field, approvalPoint);
+const { base, flood, press, ended } = useFlood(tone, field, anchor);
 
 /**
  * A run the visitor started sends the slip away: keep their focus in the exchange meanwhile, on
  * Skip (visible, and pressing it brings the slip back), without scrolling the page.
  */
 watch(landed, async (here) => {
-  if (!here && document.activeElement?.closest('.slip')) {
+  if (!here && document.activeElement?.closest('[data-slip]')) {
     await nextTick();
     band.value
-      ?.querySelector<HTMLElement>('.thread .control')
+      ?.querySelector<HTMLElement>('[data-playback]')
       ?.focus({ preventScroll: true });
   }
 });
@@ -136,7 +132,7 @@ const passed = computed(() =>
             @animationcancel="ended"
           />
         </div>
-        <div class="side">
+        <div class="side" data-thread>
           <SegmentedRadio v-model="scene" class="scenes" label="Example" :options="OPTIONS" />
           <Thread :messages="messages" :reveal="reveal" :playing="playing" :ready="ready" @replay="replay" @skip="skip" />
         </div>

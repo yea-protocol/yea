@@ -7,6 +7,7 @@
  */
 import { withBase } from 'vitepress';
 import { computed, nextTick, useTemplateRef, watch } from 'vue';
+import { noRepeat } from './keys';
 import { SCENES } from './scenes';
 import { keepDates } from './slip-view';
 import type { SlipModel } from './use-slip';
@@ -43,18 +44,8 @@ const fine = computed(() => {
 const BUSY = ['loading', 'checking', 'approving', 'undoing'];
 
 /**
- * A held Enter repeats. After Start again, focus lands on Approve once the new proposal
- * waits; a repeat from the key still held down must not approve it. Only a fresh press does.
- */
-function noRepeat(e: KeyboardEvent) {
-  if (e.repeat) {
-    e.preventDefault();
-  }
-}
-
-/**
  * When a step ends and the slip is here, its button has been replaced: focus the next one, if
- * focus was in the exchange (a run the visitor started parks it on the thread meanwhile).
+ * focus was in the exchange (a run the visitor started parks it on Skip meanwhile).
  */
 watch(
   () => [props.s.phase, props.away] as const,
@@ -82,7 +73,7 @@ watch(
 </script>
 
 <template>
-  <div ref="stub" class="stub">
+  <div ref="stub" class="stub" data-approval>
     <template v-if="s.phase === 'committed' || s.phase === 'undoing'">
       <p class="line">
         {{ scene.done }}

@@ -33,9 +33,6 @@
   --l-wash-amber: var(--vp-c-bg);
   --l-wash-green: var(--vp-c-bg);
   --l-wash-red: var(--vp-c-bg);
-
-
-
 }
 .landing :where(h1, h2, h3) {
   font-family: var(--l-text);
@@ -92,7 +89,8 @@
 
 /* JavaScript runs (head.ts marks it) but the hero hasn't started yet: hold its thread, slip and
    wash back, so they play instead of flashing finished; and show them anyway if it never starts. */
-@media (prefers-reduced-motion: no-preference) {
+/* Only where it plays: side by side, with motion allowed. */
+@media (prefers-reduced-motion: no-preference) and (min-width: 960px) {
   .yea-js .landing .hero-band:not([data-ready]) :is(.msg, .slip, .field) { opacity: 0; animation: yea-late 0s 5s forwards; }
 }
 @keyframes yea-late { to { opacity: 1; transform: none; } }
