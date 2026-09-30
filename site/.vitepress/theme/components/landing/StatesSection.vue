@@ -5,6 +5,7 @@
  * number takes its state's colour, and its row tints with it as it crosses the middle of the
  * screen, where the browser has scroll-driven animations; elsewhere the tint stays put.
  */
+import { withBase } from 'vitepress';
 import { RECORDED } from './exchange';
 import LensBlock from './LensBlock.vue';
 import { FOR_MODELS, STATES, type StateKey } from './states';
@@ -54,7 +55,10 @@ const token = `${policy.grant.slice(0, 40)}…${policy.grant.slice(-12)}`;
         <span class="n" aria-hidden="true">{{ i + 1 }}</span>
         <div class="text">
           <h3>{{ s.title }}</h3>
-          <p class="prose">{{ s.body }}</p>
+          <p class="prose">
+            {{ s.body }}
+            <a v-if="s.key === 'policy'" :href="withBase('/guide/policy')">How the policy works</a>
+          </p>
         </div>
         <div class="out">
           <template v-if="s.key === 'policy'">

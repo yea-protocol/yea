@@ -1,6 +1,6 @@
 # Grants and consent
 
-A grant answers two questions: who is this agent acting for, and what exactly may it do?
+A grant answers two questions: who is this agent acting for, and what exactly may it do? The grant a person signs for their agent is their **policy**; [How the policy works](/guide/policy) explains it without the wire format. This page is the detail.
 
 ## A grant is a signed chain
 
