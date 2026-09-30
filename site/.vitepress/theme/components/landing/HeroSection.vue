@@ -16,12 +16,14 @@ import { withBase } from 'vitepress';
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
 import SegmentedRadio from '../playground/SegmentedRadio.vue';
 import { approvalPoint, layoutBox } from './anchors';
-import { RECORDED } from './exchange';
 import JunctionPaths from './JunctionPaths.vue';
+import PolicyTerms from './PolicyTerms.vue';
 import ProposalSlip from './ProposalSlip.vue';
+import { landingCaveats } from './policy';
+import { policyTerms } from './policy-terms';
 import { SCENE_KEYS, SCENES, type SceneKey } from './scenes';
 import Thread from './Thread.vue';
-import { thread } from './thread';
+import { LEAD, thread } from './thread';
 import { phaseTone, type Tone } from './tone';
 import { useFlood } from './use-flood';
 import { useReveal } from './use-reveal';
@@ -87,6 +89,15 @@ const scene = computed<SceneKey>({
   get: () => s.scene,
   set: (k) => s.choose(k),
 });
+/** The example policy's terms: the same caveats the page signs, said shortly. */
+const TERMS = policyTerms(landingCaveats(0), 0);
+/** The policy's answer, once its message has arrived: over a limit (amber) or within (green). */
+const answer = computed(() => {
+  const lit = playing.value ? reveal.value : messages.value.length;
+  const tone = messages.value[LEAD - 1]?.tone;
+
+  return lit >= LEAD && (tone === 'amber' || tone === 'green') ? tone : null;
+});
 /** How many proposals the agent passed over, for the background's branches. */
 const passed = computed(() =>
   Math.max(0, (s.progress.proposals?.count ?? 1) - 1),
@@ -133,6 +144,7 @@ const passed = computed(() =>
           />
         </div>
         <div class="side" data-thread>
+          <PolicyTerms :terms="TERMS" :decides="SCENES[scene].decides" :answer="answer" />
           <SegmentedRadio v-model="scene" class="scenes" label="Example" :options="OPTIONS" />
           <Thread :messages="messages" :reveal="reveal" :playing="playing" :ready="ready" @replay="replay" @skip="skip" />
         </div>
@@ -143,7 +155,7 @@ const passed = computed(() =>
           <p class="visually-hidden" role="status">{{ landed ? s.status : '' }}</p>
           <p class="note">
             Real proposals from example services, made by the protocol core running in this page with a key your browser
-            just made; nothing is sent anywhere. The policy it signed as you says: “{{ RECORDED.policy.sentence }}”
+            just made; nothing is sent anywhere.
           </p>
         </div>
       </div>

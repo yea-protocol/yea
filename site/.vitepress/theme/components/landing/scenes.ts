@@ -7,6 +7,7 @@
  *
  * No runtime imports, so the recording script and the tests can load it under Node.
  */
+import type { TermKey } from './policy-terms';
 
 export type SceneKey = 'dinner' | 'cancel' | 'move';
 
@@ -27,6 +28,8 @@ export interface Scene {
   params: (day: string) => Record<string, unknown>;
   /** Why the policy lets it through or stops it, in words. */
   why: string;
+  /** The policy term that decides it: the one it goes over, or the one it stays within. */
+  decides: TermKey;
   /** What the person reads once it's committed, and once it's undone. */
   done: string;
   undone: string;
@@ -48,6 +51,7 @@ export const SCENES: Record<SceneKey, Scene> = {
     capability: 'shop.order',
     params: (day) => ({ items: ORDER_ITEMS, deliver: day }),
     why: 'It costs more than the $40 your policy allows per action.',
+    decides: 'each',
     done: 'Order placed.',
     undone: 'Order cancelled.',
   },
@@ -60,6 +64,7 @@ export const SCENES: Record<SceneKey, Scene> = {
     capability: 'calendar.cancel',
     params: () => ({ event: 'Design review' }),
     why: 'The calendar rates cancelling as medium risk (it deletes the event and emails both attendees), and your policy allows low risk only.',
+    decides: 'risk',
     done: 'Meeting cancelled.',
     undone: 'Meeting restored.',
   },
@@ -72,6 +77,7 @@ export const SCENES: Record<SceneKey, Scene> = {
     capability: 'calendar.reschedule',
     params: () => ({ event: '1:1 with Ana' }),
     why: "It's low risk and can be undone, which your policy allows.",
+    decides: 'risk',
     done: 'Meeting moved.',
     undone: 'Meeting moved back.',
   },

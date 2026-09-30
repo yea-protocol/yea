@@ -92,8 +92,13 @@
 /* Only where it plays: side by side, with motion allowed. */
 @media (prefers-reduced-motion: no-preference) and (min-width: 960px) {
   .yea-js .landing .hero-band:not([data-ready]) :is(.msg, .slip, .field) { opacity: 0; animation: yea-late 0s 5s forwards; }
+  /* The policy's terms stay, unmarked until the answer arrives again (PolicyTerms.vue). */
+  .yea-js .landing .hero-band:not([data-ready]) :is(.term.amber, .term.green, .term.amber .text, .term.green .text) { animation: yea-unmarked 5s; }
+  .yea-js .landing .hero-band:not([data-ready]) .term .mark { animation: yea-no-mark 5s; }
 }
 @keyframes yea-late { to { opacity: 1; transform: none; } }
+@keyframes yea-unmarked { from, to { color: var(--vp-c-text-1); text-decoration-color: transparent; } }
+@keyframes yea-no-mark { from, to { visibility: hidden; } }
 
 /* Buttons on the landing take the brand's focus ring, not the browser's (VitePress sets one). */
 .landing button:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }
