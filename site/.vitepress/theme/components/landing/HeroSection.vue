@@ -1,33 +1,47 @@
 <script setup lang="ts">
 /**
- * The hero: the protocol in two sentences, and a real proposal the visitor approves, then
- * undoes, on the core running in the page. The ask above the slip is worked out from the
- * recorded proposal and the example policy, so it can't disagree with them.
+ * The hero: the protocol in two sentences, and a real exchange the visitor watches and takes
+ * part in, on the core running in the page. They pick an example (an order over the policy's
+ * limit, a meeting cancellation over its risk ceiling, or a meeting move inside it), watch it
+ * lead up from the agent's intent to the outcome, then approve, undo or start again.
  *
- * The whole band takes the slip's state colour (tone.ts): amber while the proposal waits on
- * the visitor, green once they approve, and the new colour spreads from the button they
- * pressed (use-flood.ts).
+ * The whole band takes the slip's state colour (tone.ts): plain while the run leads up, amber
+ * once it waits on the visitor, green once committed, and the new colour spreads from the
+ * button they pressed (use-flood.ts).
  */
 import { withBase } from 'vitepress';
-import { computed, ref, useTemplateRef } from 'vue';
+import { computed, reactive, useTemplateRef } from 'vue';
+import SegmentedRadio from '../playground/SegmentedRadio.vue';
 import { RECORDED } from './exchange';
+import LeadUp from './LeadUp.vue';
 import ProposalSlip from './ProposalSlip.vue';
-import { amount, landingCaveats } from './policy';
+import { SCENE_KEYS, SCENES, type SceneKey } from './scenes';
 import { phaseTone } from './tone';
 import { useFlood } from './use-flood';
-import type { Phase } from './use-slip';
+import { type Phase, useSlip } from './use-slip';
 
 const REPO = 'https://github.com/yea-protocol/yea';
 
-const each = landingCaveats(0).find((c) => 'each' in c);
-const limit = each && 'each' in each ? amount(each.each) : '';
-
-const phase = ref<Phase>('loading');
-const tone = computed(() => phaseTone(phase.value));
+const s = reactive(useSlip());
+const tone = computed(() => phaseTone(s.phase));
 const { base, flood, press, ended } = useFlood(
   tone,
   useTemplateRef<HTMLElement>('band'),
 );
+
+const OPTIONS = SCENE_KEYS.map((k) => ({ value: k, text: SCENES[k].label }));
+const scene = computed<SceneKey>({
+  get: () => s.scene,
+  set: (k) => s.choose(k),
+});
+
+/** The lead-up's stop for each phase; every phase after the commit is the last stop. */
+const STOP: Partial<Record<Phase, number>> = {
+  asking: 0,
+  proposed: 1,
+  checking: 2,
+};
+const at = computed(() => STOP[s.phase] ?? 3);
 </script>
 
 <template>
@@ -62,12 +76,13 @@ const { base, flood, press, ended } = useFlood(
       </div>
 
       <div class="demo">
-        <p class="ask on-band">Your agent wants to spend ${{ RECORDED.spend.toFixed(2) }}. Your policy allows {{ limit }} per action, so the shop asks you.</p>
-        <noscript><p class="note on-band">Approving runs the protocol core in your browser, which needs JavaScript. The exchange below is the same one, recorded.</p></noscript>
-        <ProposalSlip @phase="phase = $event" />
+        <SegmentedRadio v-model="scene" class="scenes on-band" label="Example" :options="OPTIONS" />
+        <LeadUp class="on-band" :progress="s.progress" :at="at" />
+        <noscript><p class="note on-band">Running an example needs JavaScript: the protocol core runs in your browser. This is the dinner example, recorded.</p></noscript>
+        <ProposalSlip :s="s" />
         <p class="note on-band">
-          A real proposal from the example shop, made by the protocol core running in this page. The page signed an example
-          policy as you, with a key your browser just made, and nothing is sent anywhere.
+          Real proposals from example services, made by the protocol core running in this page with a key your browser
+          just made; nothing is sent anywhere. The policy it signed as you: {{ RECORDED.policy.sentence }}
         </p>
       </div>
     </div>
@@ -94,15 +109,18 @@ const { base, flood, press, ended } = useFlood(
 .on-band { color: var(--vp-c-text-1); }
 .on-band, .on-band :where(h1, p, a, .btn) { transition: color 480ms var(--l-ease-out) 120ms, background-color 480ms var(--l-ease-out) 120ms, border-color 480ms var(--l-ease-out) 120ms; }
 
-.hero { max-width: var(--l-wide); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 12fr); gap: clamp(40px, 6vw, 88px); align-items: center; padding: clamp(48px, 7vw, 104px) 0 clamp(64px, 8vw, 112px); }
-.copy { display: grid; gap: 28px; align-content: center; }
+.hero { max-width: var(--l-wide); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 12fr); gap: clamp(40px, 6vw, 88px); align-items: start; padding: clamp(48px, 7vw, 104px) 0 clamp(64px, 8vw, 112px); }
+.copy { display: grid; gap: 28px; align-content: start; padding-top: clamp(0px, 4vw, 56px); }
 /* Big, but a step below the slip's weight: two or three lines at 1440, not four heavy ones. */
 h1 { font-size: clamp(2.25rem, 1.75rem + 1.6vw, 3.125rem); font-weight: 650; line-height: 1.06; letter-spacing: -0.026em; }
 h1 .sentence { display: block; }
 .aside { font-size: 0.9375rem; color: var(--vp-c-text-2); margin-top: -12px; max-width: 46ch; }
 .lede { font-size: 1.1875rem; line-height: 1.55; color: var(--vp-c-text-2); max-width: 44ch; }
-.demo { display: grid; gap: 14px; }
-.ask { font-size: 1.0625rem; font-weight: 650; line-height: 1.4; max-width: 40ch; }
+.demo { display: grid; gap: 18px; }
+/* The examples on the band: a hairline track, the chosen one raised on the slip's paper. */
+.scenes { --vp-c-bg-soft: transparent; border: 1px solid var(--vp-c-border); }
+/* On a coloured band the chosen example is ink, with the band's colour for its text. */
+.hero-band:not([data-tone="plain"]) .scenes :deep([aria-checked="true"]) { background: var(--ink); color: var(--l-next); box-shadow: none; }
 .note { font-size: 0.9375rem; color: var(--vp-c-text-2); max-width: 60ch; }
 
 @media (max-width: 960px) {

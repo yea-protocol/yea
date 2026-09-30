@@ -440,29 +440,48 @@ and a shadow on the same surface.
   "Menu / On this page" bar.
 
 ### Proposal Slip (signature component)
-The landing hero's right column (`landing/ProposalSlip.vue`, `SlipStub.vue`, `use-slip.ts`): a
-real proposal from the example shop, over the example policy's $40 limit, as a permission slip.
-It sits on the hero band, which takes the slip's state colour (the State Drench Rule; the spread
-is `use-flood.ts`), and the stub's notches are painted in the band's colour.
+The landing hero's right column (`landing/ProposalSlip.vue`, `SlipStub.vue`, `LeadUp.vue`,
+`use-slip.ts`, `run-scene.ts`): a real exchange with an example service, ending in a permission
+slip. It sits on the hero band, which takes the slip's state colour (the State Drench Rule; the
+spread is `use-flood.ts`), and the stub's notches are painted in the band's colour.
+- **Examples** (`landing/scenes.ts`), picked with a segmented radiogroup, all under the one
+  example policy the page signs (the shop and the calendar, low risk, $40 per action):
+  - "Order dinner": over the $40 limit, so the shop asks;
+  - "Cancel a meeting": emails two people, a medium risk over the low-risk ceiling, so the
+    calendar asks;
+  - "Move a meeting": low risk and undoable, so it goes ahead without asking.
+- **Lead-up** (`LeadUp.vue`, `trail.ts`): above the slip, a track of four stops (Agent asks,
+  Service proposes, Policy checks, then You decide or Goes ahead), with the current stop's
+  sentence and the real wire line behind it (`→ INTENT …`, `← [p_…] …`, `→ COMMIT …`,
+  `✗ consent_required: …` or `✓ receipt …`). Each run plays it: the band is plain while it
+  leads up, the slip arrives when the service proposes, and the band floods amber when it lands
+  on the visitor, or green when it goes ahead. At rest it shows the last stop, which says why.
 - **Top half:** what the service proposes. The proposal id and service, a state chip, the
-  summary, the effects in mono, three facts (uses, risk, undo window) and the service's reason
-  for asking.
+  summary, the effects in mono, three facts (uses, risk, undo window) and why it's asking (the
+  service's reason, in mono) or why it didn't (in words).
 - **Tear-off stub:** below a dashed perforation with a notch cut into each edge. It holds what the
   person signs: the proposal's hash, one Approve button and a line saying exactly what is signed.
 - **States.** The border and chip follow protocol state:
   - neutral "Recorded" until the core is live;
+  - neutral "Proposed" and "Checking your policy…" while the run leads up;
   - amber "Waiting on you";
-  - green "✓ Committed", where the stub shows the receipt, its undo window and Undo;
+  - green "✓ Committed" (or "✓ Went ahead", inside the policy), where the stub shows the
+    receipt, its undo window and Undo;
   - neutral "↶ Undone";
   - neutral "Expired" when the proposal, undo window or example policy runs out;
   - red for a failed step.
 
-  Once live, Start again is always offered.
-- **Recording and live core.** The page paints from a recording of the same exchange
-  (`landing/exchange.ts`, generated from the core), so it needs no JavaScript to render; a
-  `<noscript>` line says approving needs it. The core loads when the browser is idle.
+  Once live, Start again is always offered, and every run starts from a fresh service and a
+  freshly signed policy.
+- **Recording and live core.** The page paints the dinner example from a recording
+  (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
+  render; a `<noscript>` line says running an example needs it. The core loads when the browser
+  is idle, then plays the chosen example from the start.
+- **Motion.** Each stop holds for about a second (1.1s, 1.3s, 1.0s): the frames are real and
+  arrive as fast as the core answers, and only the pauses are added. Under reduced motion there
+  is no lead-up: the slip goes straight to the outcome.
 - **Keyboard.** Focus moves to the next button after each step, and one live line announces
-  what happened.
+  the outcome, not each stop.
 
 ### Playground (signature component)
 A two-pane tool: the agent's request on the left (service and verb segmented controls, capability

@@ -1,16 +1,16 @@
 /**
- * What the proposal slip shows, from real frames: a proposal waiting on consent, its receipt
- * once approved, and the undo. Pure: the SDK's formatters come in as a kit.
+ * What the proposal slip shows, from real frames: a proposal, its receipt once committed, and
+ * the undo. Pure: the SDK's formatters come in as a kit.
  *
  * Its only runtime import names its `.ts` file, so the recording script and the tests can
  * load it under Node.
  */
-import type { ConsentRequest, Proposal, Receipt } from '@yea-protocol/sdk';
+import type { Proposal, Receipt } from '@yea-protocol/sdk';
 import { type FactsKit, proposalFacts } from '../proposal-facts.ts';
 
 export type SlipKit = FactsKit;
 
-/** A proposal as the slip shows it, waiting on the person. */
+/** A proposal as the slip shows it. */
 export interface SlipView {
   id: string;
   service: string;
@@ -20,7 +20,7 @@ export interface SlipView {
   risk: string;
   undo: string;
   hash: string;
-  /** The service's reason for asking. */
+  /** The service's reason for asking; empty if it didn't ask. */
   reason: string;
   /** When the proposal expires, in unix seconds. */
   expires: number;
@@ -49,24 +49,28 @@ export const utcMinute = (unix: number) =>
 /** A unix time as `14:00 UTC`. */
 export const utcClock = (unix: number) => utcMinute(unix).slice(11);
 
-export function slipView(
-  kit: SlipKit,
-  p: Proposal,
-  consent: ConsentRequest,
-  reason: string,
-): SlipView {
+/** Where a proposal comes from and, once known, why it waits on the person. */
+export interface SlipSource {
+  service: string;
+  /** The proposal's hash, which the person signs if asked. */
+  hash: string;
+  /** The service's reason for asking; empty until it asks, and if it never does. */
+  reason: string;
+}
+
+export function slipView(kit: SlipKit, p: Proposal, src: SlipSource): SlipView {
   const f = proposalFacts(kit, p);
 
   return {
     id: p.id,
-    service: consent.service,
+    service: src.service,
     summary: p.summary,
     effects: f.effects,
     uses: f.uses ?? 'nothing',
     risk: f.risk,
     undo: f.undo,
-    hash: consent.hash,
-    reason,
+    hash: src.hash,
+    reason: src.reason,
     expires: p.expires,
   };
 }

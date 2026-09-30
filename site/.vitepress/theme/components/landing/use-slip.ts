@@ -1,7 +1,8 @@
 /**
- * The hero slip's state: it starts from the recorded exchange (so the page paints without
- * JavaScript), loads the real core when the browser is idle, and swaps in a live proposal
- * the visitor can approve, then undo. Once live it can always start again, and it says when
+ * The hero's state: which example is chosen, where its run has got to, and the slip. The page
+ * paints the recorded dinner example (so it needs no JavaScript), loads the real core when the
+ * browser is idle, then runs the chosen example live from the start (run-scene.ts). Once live
+ * the visitor can approve, undo, start again or pick another example, and the slip says when
  * the proposal, the undo window or the example policy has run out instead of failing.
  */
 import {
@@ -10,30 +11,34 @@ import {
   ref,
   type ShallowRef,
   shallowRef,
-  watch,
+  type UnwrapNestedRefs,
 } from 'vue';
+import { stopIfLapsed, watchDeadlines } from './deadlines';
 import { RECORDED } from './exchange';
-import { type Lapse, lapsed, lapseText } from './expiry';
-import { landingCaveats } from './policy';
-import { Session, tomorrow, type Waiting } from './session';
+import { runScene } from './run-scene';
+import { SCENES, type SceneKey, type ServiceKey } from './scenes';
+import type { ServiceFactory, Session, SessionSdk, Waiting } from './session';
 import {
   type ReceiptView,
   receiptView,
   type SlipKit,
   type SlipView,
-  slipView,
   type UndoneView,
   undoneView,
-  utcClock,
 } from './slip-view';
+import type { Progress } from './trail';
 
 /**
- * `loading` until the core is live (or while a new proposal is fetched); `unavailable` if the
- * core couldn't start at all; `expired` when something ran out; `error` when a step failed.
+ * `loading` until the core is live; `unavailable` if it couldn't start at all; `asking`,
+ * `proposed` and `checking` while a run leads up to its outcome; `expired` when something ran
+ * out; `error` when a step failed.
  */
 export type Phase =
   | 'loading'
   | 'unavailable'
+  | 'asking'
+  | 'proposed'
+  | 'checking'
   | 'waiting'
   | 'approving'
   | 'committed'
@@ -42,31 +47,48 @@ export type Phase =
   | 'expired'
   | 'error';
 
-/** What the slip shows. */
-interface SlipState {
+/** What the hero shows. */
+export interface SlipState {
+  scene: Ref<SceneKey>;
   phase: Ref<Phase>;
   /** Whether the core is running; false while the recording is on show. */
   live: Ref<boolean>;
+  /** How far the run has got, for the lead-up above the slip. */
+  progress: ShallowRef<Progress>;
   slip: ShallowRef<SlipView>;
   receipt: ShallowRef<ReceiptView | null>;
   undone: ShallowRef<UndoneView | null>;
-  /** The live region's one line: empty until the visitor acts. */
+  /** The live region's one line: empty until something happens. */
   status: Ref<string>;
   /** Why the slip stopped: a lapse, a failed step, or the core not starting. */
   error: Ref<string>;
 }
 
 /** The running core. */
-interface Live {
-  session: Session;
-  kit: SlipKit;
-  /** A new session with a freshly signed policy, for when the old one expires. */
-  restart: () => Promise<Session>;
+export interface Live {
+  sdk: SessionSdk & SlipKit;
+  services: Record<ServiceKey, ServiceFactory>;
+  /** The current run's session, and its proposal while it waits on the person. */
+  session: Session | null;
   waiting: Waiting | null;
+  /** Counts runs, so a run that a newer one replaced can tell and stop. */
+  run: number;
 }
 
-const nowSec = () => Math.floor(Date.now() / 1000);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** The recorded dinner example, as the lead-up shows it before the core runs. */
+const RECORDED_PROGRESS: Progress = {
+  scene: SCENES.dinner,
+  params: RECORDED.params,
+  proposals: {
+    count: RECORDED.count,
+    id: RECORDED.slip.id,
+    summary: RECORDED.slip.summary,
+  },
+  outcome: 'asks',
+  answer: RECORDED.slip.reason,
+};
 
 /** Run `fn` once the browser is idle, so the core never competes with first paint. */
 function whenIdle(fn: () => void) {
@@ -77,91 +99,52 @@ function whenIdle(fn: () => void) {
   }
 }
 
-/** The deadline that matters in the current phase, and what runs out at it. */
-function deadline(state: SlipState, live: Live): [Lapse, number] | null {
-  if (state.phase.value === 'waiting' && live.waiting) {
-    return ['proposal', live.waiting.proposal.expires];
+/**
+ * Run a step; on failure keep the slip, say what went wrong and offer Start again. A step
+ * that a newer run replaced (the visitor picked another example meanwhile) changes nothing.
+ */
+async function step(
+  state: SlipState,
+  live: Live,
+  from: Phase | null,
+  run: () => Promise<void>,
+) {
+  const mine = live.run;
+
+  if (from) {
+    state.phase.value = from;
   }
-
-  const until = state.receipt.value?.until;
-
-  return state.phase.value === 'committed' && until != null
-    ? ['undo', until]
-    : null;
-}
-
-/** If the policy or the phase's deadline has run out, say so and stop; true if it had. */
-function stopIfLapsed(state: SlipState, live: Live): boolean {
-  const d = deadline(state, live);
-  const l = lapsed(nowSec(), {
-    grant: live.session.grantExpires,
-    proposal: d?.[0] === 'proposal' ? d[1] : null,
-    undo: d?.[0] === 'undo' ? d[1] : null,
-  });
-
-  if (!l) {
-    return false;
-  }
-
-  const at = l === 'policy' ? live.session.grantExpires : (d?.[1] ?? nowSec());
-
-  state.error.value = lapseText(l, utcClock(at));
-  state.status.value = state.error.value;
-  state.phase.value = 'expired';
-
-  return true;
-}
-
-/** Ask for a fresh proposal, re-signing the policy first if it has expired. */
-async function propose(state: SlipState, live: Live) {
-  if (nowSec() >= live.session.grantExpires) {
-    live.session = await live.restart();
-  }
-
-  const w = await live.session.propose(tomorrow());
-
-  live.waiting = w;
-  state.slip.value = slipView(live.kit, w.proposal, w.consent, w.reason);
-  state.receipt.value = null;
-  state.undone.value = null;
-  state.phase.value = 'waiting';
-}
-
-/** Run a step; on failure keep the slip, say what went wrong and offer Start again. */
-async function step(state: SlipState, from: Phase, run: () => Promise<void>) {
-  state.phase.value = from;
 
   try {
     await run();
   } catch (e) {
-    state.error.value = message(e);
-    state.status.value = `${state.error.value} Start again for a new proposal.`;
-    state.phase.value = 'error';
+    if (live.run === mine) {
+      state.error.value = message(e);
+      state.status.value = `${state.error.value} Start again for a new proposal.`;
+      state.phase.value = 'error';
+    }
   }
 }
 
-/**
- * Load the SDK and the example shop, sign the example policy and get the first proposal.
- * `attach` gets the running core before the first proposal, so its deadline is watched.
- */
+/** Load the SDK and the example services, then run the chosen example. */
 async function start(state: SlipState, attach: (l: Live) => void) {
   try {
-    const [sdk, examples] = await Promise.all([
+    const [sdk, shop, calendar] = await Promise.all([
       import('@yea-protocol/sdk'),
       import('@examples/shop.ts'),
+      import('@examples/calendar.ts'),
     ]);
-    const restart = () =>
-      Session.start(sdk, examples.shop, landingCaveats(nowSec()));
     const live: Live = {
-      session: await restart(),
-      kit: sdk,
-      restart,
+      sdk,
+      services: { shop: shop.shop, calendar: calendar.calendar },
+      session: null,
       waiting: null,
+      run: 0,
     };
 
     attach(live);
     state.live.value = true;
-    await step(state, 'loading', () => propose(state, live));
+    await step(state, live, null, () => runScene(state, live));
   } catch (e) {
     state.error.value = message(e);
     state.phase.value = 'unavailable';
@@ -171,67 +154,68 @@ async function start(state: SlipState, attach: (l: Live) => void) {
 /** The visitor approves: sign the consent, commit, and show the receipt. */
 async function approve(state: SlipState, live: Live) {
   const w = live.waiting;
+  const s = live.session;
 
-  if (!w || state.phase.value !== 'waiting' || stopIfLapsed(state, live)) {
+  if (
+    !w ||
+    !s ||
+    state.phase.value !== 'waiting' ||
+    stopIfLapsed(state, live)
+  ) {
     return;
   }
 
-  await step(state, 'approving', async () => {
-    const done = await live.session.approve(w);
+  const run = live.run;
+
+  await step(state, live, 'approving', async () => {
+    const done = await s.approve(w);
     const r = receiptView(done.receipt);
+    const scene = SCENES[state.scene.value];
+
+    if (live.run !== run) {
+      return;
+    }
 
     state.receipt.value = r;
     state.phase.value = 'committed';
-    state.status.value = `Approved. Receipt ${r.id}: the order is placed. ${r.undoUntil ? `You can undo it until ${r.undoUntil}.` : "It can't be undone."}`;
+    state.status.value = `Approved. Receipt ${r.id}: ${scene.done} ${r.undoUntil ? `You can undo it until ${r.undoUntil}.` : "It can't be undone."}`;
   });
 }
 
 async function undo(state: SlipState, live: Live) {
   const r = state.receipt.value;
+  const s = live.session;
 
-  if (!r || state.phase.value !== 'committed' || stopIfLapsed(state, live)) {
+  if (
+    !r ||
+    !s ||
+    state.phase.value !== 'committed' ||
+    stopIfLapsed(state, live)
+  ) {
     return;
   }
 
-  await step(state, 'undoing', async () => {
-    const done = await live.session.undo(r.id);
+  const run = live.run;
+
+  await step(state, live, 'undoing', async () => {
+    const done = await s.undo(r.id);
+
+    if (live.run !== run) {
+      return;
+    }
 
     state.undone.value = undoneView(done.receipt);
     state.phase.value = 'undone';
-    state.status.value = `Undone. Receipt ${done.receipt.id} reverses ${r.id}.`;
-  });
-}
-
-async function again(state: SlipState, live: Live) {
-  await step(state, 'loading', async () => {
-    await propose(state, live);
-    state.status.value = `New proposal ${state.slip.value.id}, waiting on you.`;
-  });
-}
-
-/** While a proposal waits or an undo window is open, stop the slip when it runs out. */
-function watchDeadlines(state: SlipState, current: () => Live | null) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  watch(state.phase, () => {
-    clearTimeout(timer);
-
-    const live = current();
-    const d = live && deadline(state, live);
-
-    if (live && d) {
-      timer = setTimeout(
-        () => stopIfLapsed(state, live),
-        (d[1] - nowSec()) * 1000 + 500,
-      );
-    }
+    state.status.value = `Undone: ${SCENES[state.scene.value].undone} Receipt ${done.receipt.id} reverses ${r.id}.`;
   });
 }
 
 export function useSlip() {
   const state: SlipState = {
+    scene: ref<SceneKey>('dinner'),
     phase: ref<Phase>('loading'),
     live: ref(false),
+    progress: shallowRef<Progress>(RECORDED_PROGRESS),
     slip: shallowRef<SlipView>(RECORDED.slip),
     receipt: shallowRef<ReceiptView | null>(null),
     undone: shallowRef<UndoneView | null>(null),
@@ -242,6 +226,9 @@ export function useSlip() {
   /** Run an action once the core is live; before that there is nothing to act on. */
   const withLive = (fn: (s: SlipState, l: Live) => Promise<void>) => () =>
     live ? fn(state, live) : Promise.resolve();
+  /** Run the chosen example again from the start. */
+  const rerun = (s: SlipState, l: Live) =>
+    step(s, l, null, () => runScene(s, l));
 
   watchDeadlines(state, () => live);
   onMounted(() =>
@@ -256,6 +243,16 @@ export function useSlip() {
     ...state,
     approve: withLive(approve),
     undo: withLive(undo),
-    again: withLive(again),
+    again: withLive(rerun),
+    /** Pick an example; once the core is live it runs from the start. */
+    choose(key: SceneKey) {
+      if (key !== state.scene.value) {
+        state.scene.value = key;
+        void withLive(rerun)();
+      }
+    },
   };
 }
+
+/** The hero's state as its components read it: `reactive(useSlip())`. */
+export type SlipModel = UnwrapNestedRefs<ReturnType<typeof useSlip>>;

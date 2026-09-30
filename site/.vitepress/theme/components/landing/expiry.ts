@@ -1,6 +1,6 @@
 /**
  * What has run out on the slip: the example policy (8 hours), the proposal (it expires a few
- * minutes after it's made) or the undo window (2 hours). Checked before each step, and on a
+ * minutes after it's made) or the undo window (hours to a day). Checked before each step, and on a
  * timer, so the slip says so instead of failing.
  *
  * No runtime imports, so Node can load it in tests.
@@ -38,6 +38,6 @@ export function lapseText(l: Lapse, at: string): string {
     case 'proposal':
       return `This proposal expired at ${at} before anyone approved it, so it can't be committed. Start again for a new one.`;
     case 'undo':
-      return `The undo window closed at ${at}, so the order stands. Start again for a new proposal.`;
+      return `The undo window closed at ${at}, so it stands. Start again for a new proposal.`;
   }
 }
