@@ -29,7 +29,7 @@ Specification = "https://github.com/yea-protocol/yea/blob/main/SPEC.md"
 Issues = "https://github.com/yea-protocol/yea/issues"
 
 [build-system]
-requires = ["uv_build>=0.9.5,<0.10.0"]
+requires = ["uv_build>=0.9.5,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
