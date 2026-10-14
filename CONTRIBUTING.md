@@ -18,7 +18,11 @@ Every change starts as a GitHub issue, and every issue ends in a pull request or
    then moves it to `ready-for-agent` (or `ready-for-human` if only a person can do it). A task is ready when its *Done when* list can be checked by running something.
 3. **Claim it** by assigning yourself, switching to `in-progress`, and commenting that you've started.
 4. **Open a pull request** from a branch named `<issue>-<slug>` (for example `42-rename-cli`), with
-   `Closes #42` in the description. `main` only changes through pull requests, and CI must pass.
+   `Closes #42` (or `Part of #42`, when the issue spans several PRs) in the description. Fill in the
+   template's **Summary** (the smallest view of the change), **Evidence** (before and after) and
+   **Merge danger** (a one-way or two-way door, and the blast radius); the `pr-body` check
+   (`scripts/check-pr-body.mjs`) fails a description without them. `main` only changes through
+   pull requests, and CI must pass.
    PRs are squash-merged, so the PR title becomes the commit message: write it in the repo's style
    (`area: what changed`).
 5. **Blocked?** Use `needs-info` and say on what. Anything only a maintainer can do (a decision,

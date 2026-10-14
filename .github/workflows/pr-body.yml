@@ -1,0 +1,21 @@
+name: pr-body
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+permissions: { contents: read }
+jobs:
+  format:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # The body goes through env, never into the script, so it can't run as shell.
+      - name: the description links its issue and fills in the template
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-pr-body.mjs
