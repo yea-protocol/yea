@@ -46,7 +46,7 @@ describe('the Stripe client', () => {
       'POST',
       'DELETE',
     ]);
-    expect(STRIPE_VERSION).toBe('2026-08-26.dahlia');
+    expect(STRIPE_VERSION).toBe('2026-09-30.endive');
 
     for (const c of f.calls) {
       expect(c.version).toBe(STRIPE_VERSION);
@@ -138,6 +138,24 @@ describe('the Stripe client', () => {
       /^the Stripe call failed \(boom with sk_test_…\), so the write may have happened/,
     );
     expect(write.unknown).toBe(true);
+  });
+
+  it('a write whose answer is cut off partway may have happened, and says so', async () => {
+    const { f, api } = client();
+
+    f.fail({ path: '/refunds', cut: true, times: 3 });
+
+    const e = (await api
+      .write((s, o) => s.refunds.create(refund, o))
+      .catch((x: unknown) => x)) as StripeError;
+
+    expect(f.state.refunds).toHaveLength(1);
+    expect(e).toBeInstanceOf(StripeError);
+    expect(e.unknown).toBe(true);
+    expect(e.status).toBe(0);
+    expect(e.message).toMatch(
+      /^no answer from Stripe \(.+\), so the write may have happened/,
+    );
   });
 
   it('a read with no answer is just a failure', async () => {

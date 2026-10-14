@@ -177,7 +177,7 @@ What the server does enforce, whoever calls it:
   direction-changing characters escaped, so a customer can't forge what you approve;
 - Stripe is called through Stripe's official Node SDK
   ([`stripe`](https://www.npmjs.com/package/stripe)), with the API version pinned
-  (`2026-08-26.dahlia`) and the SDK's telemetry off. Even so, when the environment names an AI
+  (`2026-09-30.endive`) and the SDK's telemetry off. Even so, when the environment names an AI
   coding tool (Claude Code, Codex, Cursor, Gemini CLI and others), the SDK names it in its
   User-Agent; when `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` is set, it also prints a hint
   line to stderr; and it turns Stripe's notices into process warnings.

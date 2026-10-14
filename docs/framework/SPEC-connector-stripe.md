@@ -91,8 +91,8 @@ wants a real API rather than a demo.
 - **Refused in v0, with a clear reason:** subscriptions with more than one item, and price
   changes that alter the billing interval (Stripe then resets the billing date and charges
   regardless).
-- **API version.** Every request sends `Stripe-Version: 2026-08-26.dahlia`, the version the
-  connector is tested against and the one `stripe` 22.6 pins. The connector passes it to the SDK
+- **API version.** Every request sends `Stripe-Version: 2026-09-30.endive`, the version the
+  connector is tested against and the one `stripe` 23.0 pins. The connector passes it to the SDK
   as `apiVersion`, typed as the SDK's `LatestApiVersion`, so an SDK update that moves to another
   version fails the build instead of changing what's sent. Subscription periods are read from
   `items.data[].current_period_end`, where Stripe has kept them since `2025-03-31.basil`.
@@ -476,6 +476,16 @@ After the switch to Stripe's SDK (#80):
   SDK's `stripe-node-retry-…`. The tests stub the SDK's retry delays (two undocumented
   methods) to 0, and fail if they're gone; its retry logic still runs. The example's test
   moved to `connectors/stripe/test/`, so `ts/` doesn't resolve `stripe`.
+
+After `stripe` 23 (#264):
+
+- **Version.** `stripe` 23.0 pins `2026-09-30.endive`. None of endive's breaking changes touch
+  a call the connector makes: `billing_cycle_anchor` became an object, but the connector never
+  sends it, and the new `failed_tax_calculation` code on subscription updates is reported like
+  any other Stripe error.
+- **A cut-off answer** (a response that breaks off partway through its body) is now a
+  `StripeConnectionError`, not a `StripeAPIError`. It's retried with the same idempotency key,
+  then reported as "no answer"; on a write it still may have happened, as before.
 
 ## Decisions
 

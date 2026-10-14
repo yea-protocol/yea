@@ -73,7 +73,7 @@ describe("Stripe-backed billing (the guide's full example)", () => {
     );
     // A fresh random key per write, never one derived from the plan.
     expect(call.key).toMatch(/^[0-9a-f-]{36}$/);
-    expect(call.version).toBe('2026-08-26.dahlia');
+    expect(call.version).toBe('2026-09-30.endive');
     expect(stripe.charges[0].amount_refunded).toBeGreaterThan(0);
   });
 

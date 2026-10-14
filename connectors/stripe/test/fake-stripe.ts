@@ -123,6 +123,8 @@ export interface Failure {
   network?: boolean;
   /** Apply the request first, then lose the response (a write whose result is unknown). */
   after?: boolean;
+  /** Apply the request first, then cut its response off partway through the body. */
+  cut?: boolean;
   /** The lost connection's code, such as `ECONNRESET`, which the SDK retries even with retries off. */
   code?: string;
   times?: number;
@@ -295,6 +297,21 @@ function json(x: unknown, status = 200): Response {
   syncText.set(r, text);
 
   return r;
+}
+
+/** `r` with its headers, but a body that breaks off after the first half. */
+async function cutOff(r: Response): Promise<Response> {
+  const text = await r.text();
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(new TextEncoder().encode(text.slice(0, text.length >> 1)));
+      c.error(
+        Object.assign(new TypeError('terminated'), { code: 'ECONNRESET' }),
+      );
+    },
+  });
+
+  return new Response(body, { status: r.status, headers: r.headers });
 }
 
 const stripeError = (status: number, message: string, code?: string) =>
@@ -866,6 +883,10 @@ export function fakeStripe(
 
     if (f) {
       f.times = (f.times ?? 1) - 1;
+
+      if (f.cut) {
+        return cutOff(await respond(u, method, body, key));
+      }
 
       if (f.after) {
         await respond(u, method, body, key);
