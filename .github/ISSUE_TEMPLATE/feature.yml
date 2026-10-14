@@ -1,7 +1,7 @@
 name: Feature
 description: Propose something new for the framework, CLI, MCP bridge or connectors
 type: Feature
-labels: [status/triage]
+labels: [needs-triage]
 body:
   - type: textarea
     id: problem

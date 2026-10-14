@@ -1,7 +1,7 @@
 name: Spec feedback
 description: An ambiguity, gap, or proposed change in SPEC.md
 type: Feature
-labels: [area/spec, status/triage]
+labels: [area/spec, needs-triage]
 body:
   - type: input
     id: section

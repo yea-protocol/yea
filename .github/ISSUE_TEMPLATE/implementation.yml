@@ -1,6 +1,6 @@
 name: New implementation or service
 description: Tell us about an implementation (Go, Rust, …) or a service you built
-labels: [ecosystem, status/triage]
+labels: [ecosystem, needs-triage]
 body:
   - type: input
     id: link

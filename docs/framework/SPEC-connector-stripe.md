@@ -302,7 +302,7 @@ The point of the connector is to show, with numbers, what YEA changes, fairly.
   and the key-in-reach threat model.
 - **Cost:** live model runs cost money. The estimate comes from counting the tokens of each
   task's prompts, tools and expected results, with no paid model calls. It goes on the issue
-  as `status/needs-james`, and nothing runs until James says go.
+  as `ready-for-human`, and nothing runs until James says go.
 
 ## Testing
 

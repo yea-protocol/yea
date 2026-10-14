@@ -380,7 +380,7 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
 
    So the default is consent codes approved where the key is, and signing here takes an
    explicit flag the person sets. Whether to offer the flag at all is on the issue as
-   `status/needs-james`.
+   `ready-for-human`.
 5. **The model can still commit within the grant.** A job tool takes an optional `proposal`,
    which commits a pending proposal with the agent's grants only. The service then decides,
    as with the old `yea_commit`. Irreversible actions the person's grant allows don't need

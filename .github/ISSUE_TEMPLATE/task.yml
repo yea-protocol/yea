@@ -1,7 +1,7 @@
 name: Task
 description: Planned work with a clear outcome (maintainers and agents use this for tracked work)
 type: Task
-labels: [status/triage]
+labels: [needs-triage]
 body:
   - type: textarea
     id: goal
