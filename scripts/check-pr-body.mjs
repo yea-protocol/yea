@@ -30,12 +30,23 @@ const MERGE_DANGER = [
 /** An issue link on its own line, as GitHub reads it. */
 const LINK = /^(closes|fixes|resolves|part of) #\d+/im;
 
-/** An HTML comment, as the template's hints are written. */
-const COMMENT = /<!--[\s\S]*?-->/g;
+/** An HTML comment; an unclosed one runs to the end, as GitHub renders it. */
+const COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
 
-/** `body` without its HTML comments, so the template's hints never count. */
+/**
+ * `body` without its HTML comments, so the template's hints never count.
+ * Strips until nothing changes, since removing one can join a new `<!--`.
+ */
 function visible(body) {
-  return (body ?? '').replace(COMMENT, '');
+  let text = body ?? '';
+  let before;
+
+  do {
+    before = text;
+    text = text.replace(COMMENT, '');
+  } while (text !== before);
+
+  return text;
 }
 
 /** The text under the level-2 `heading`, or undefined when it's missing. */

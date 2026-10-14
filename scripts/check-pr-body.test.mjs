@@ -60,6 +60,20 @@ test('link: one inside an HTML comment does not count', () => {
   assert.deepEqual(rules(`<!--\nCloses #9\n-->\n\n${FILLED}`), ['link']);
 });
 
+test('comments: an unclosed one hides the rest, as GitHub renders it', () => {
+  assert.deepEqual(rules(`Closes #1\n\n<!-- a hint\n${FILLED}`), [
+    'summary',
+    'evidence',
+    'merge-danger',
+  ]);
+});
+
+test('comments: stripping one never leaves another behind', () => {
+  const nested = `<!<!---->--\nCloses #1\n-->\n\n${FILLED}`;
+
+  assert.deepEqual(rules(nested), ['link']);
+});
+
 test('sections: each heading is there, with something under it', () => {
   assert.deepEqual(rules(`Closes #1\n\n${without('Summary')}`), ['summary']);
   assert.deepEqual(rules(`Closes #1\n\n${without('Evidence')}`), ['evidence']);
