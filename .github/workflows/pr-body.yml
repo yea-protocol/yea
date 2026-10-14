@@ -4,7 +4,7 @@ on:
     types: [opened, edited, reopened, synchronize]
 permissions: { contents: read }
 jobs:
-  format:
+  description:
     if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:

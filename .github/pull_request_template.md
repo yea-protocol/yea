@@ -11,10 +11,10 @@ Closes #   <!-- or "Part of #n" when the issue spans several PRs -->
 ## Merge danger
 **Door:** <!-- one-way or two-way -->
 
-**Blast radius:**
+**Blast radius:** <!-- who or what breaks if this is wrong: CI, the site, SDK users... -->
+
 <!-- One-way if it changes bytes on the wire or Lens output, a published package's API,
-     or anything outside the repo (labels, secrets, deploys, the demo worker).
-     Blast radius: who or what breaks if this is wrong. -->
+     or anything outside the repo (labels, secrets, deploys, the demo worker). -->
 
 ## Checklist
 <!-- Delete lines that don't apply. CI already runs lint, tests and the vector drift check. -->
