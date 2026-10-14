@@ -68,6 +68,26 @@ test('comments: an unclosed one hides the rest, as GitHub renders it', () => {
   ]);
 });
 
+test('code: a <!-- in inline code or a fence is text, not a comment', () => {
+  const inline = FILLED.replace(
+    'every PR.',
+    'every PR, even one naming `<!--`.',
+  );
+  const fenced = FILLED.replace(
+    'every PR.',
+    'every PR.\n\n```html\n<!-- a hint\n```\n',
+  );
+
+  assert.deepEqual(rules(`Closes #1\n\n${inline}`), []);
+  assert.deepEqual(rules(`Closes #1\n\n${fenced}`), []);
+});
+
+test('code: a heading or link inside a fence does not count', () => {
+  const fence = '```md\nCloses #1\n## Summary\nA sketch.\n```\n\n';
+
+  assert.deepEqual(rules(`${fence}${without('Summary')}`), ['link', 'summary']);
+});
+
 test('comments: stripping one never leaves another behind', () => {
   const nested = `<!<!---->--\nCloses #1\n-->\n\n${FILLED}`;
 

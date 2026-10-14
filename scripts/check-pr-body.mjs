@@ -30,15 +30,24 @@ const MERGE_DANGER = [
 /** An issue link on its own line, as GitHub reads it. */
 const LINK = /^(closes|fixes|resolves|part of) #\d+/im;
 
+/** A fenced code block; an unclosed one runs to the end, as GitHub renders it. */
+const FENCE =
+  /^ {0,3}(`{3,}|~{3,}).*$[\s\S]*?(?:^ {0,3}\1[ \t]*$|(?![\s\S]))/gm;
+
+/** An inline code span on one line. */
+const CODE = /`[^`\n]*`/g;
+
 /** An HTML comment; an unclosed one runs to the end, as GitHub renders it. */
 const COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
 
 /**
- * `body` without its HTML comments, so the template's hints never count.
- * Strips until nothing changes, since removing one can join a new `<!--`.
+ * `body` as GitHub shows it in prose: without code, so a heading or `<!--`
+ * in an example never counts, and without HTML comments, so the template's
+ * hints never count. Strips comments until nothing changes, since removing
+ * one can join a new `<!--`.
  */
-function visible(body) {
-  let text = body ?? '';
+function prose(body) {
+  let text = (body ?? '').replace(FENCE, '').replace(CODE, '');
   let before;
 
   do {
@@ -95,7 +104,7 @@ function mergeDangerProblems(text) {
 
 /** The problems with a PR `body`, each a `{ rule, message }`; none means it passes. */
 export function checkPrBody(body) {
-  const text = visible(body);
+  const text = prose(body);
   const link = LINK.test(text)
     ? []
     : [
