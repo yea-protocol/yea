@@ -12,7 +12,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.1.0",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@yea-protocol/mcp": "0.1.0",
     "@yea-protocol/sdk": "0.1.0"
   },
