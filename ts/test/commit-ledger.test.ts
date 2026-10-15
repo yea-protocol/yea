@@ -1,10 +1,12 @@
 // The commit ledger (service/commit-ledger.ts) at its interface: replays, limits, expiry, sweep,
-// undo and auto-commit, with no keys, proofs or sleeps. Its security cases ([H2], [U5], [U5b])
-// are in security.test.ts.
+// undo and auto-commit, with no keys, proofs or sleeps; and the COMMIT and UNDO handlers that fit
+// its receipts to the budget. Its security cases ([H2], [U5], [U5b]) are in security.test.ts.
 import { describe, expect, it } from 'vitest';
 import { replyFrame } from '../src/frames.js';
 import * as P from '../src/index.js';
-import type { FinalReply } from '../src/types.js';
+import { onCommit } from '../src/service/commit.js';
+import { onUndo } from '../src/service/undo.js';
+import type { FinalReply, More } from '../src/types.js';
 import {
   codeOf,
   commitOf,
@@ -321,5 +323,79 @@ describe('auto INTENT replays (§4.3.1)', () => {
     advance(900);
     await ledger.answerOnce(replay, 'f1c', answer);
     expect(answers).toBe(2);
+  });
+});
+
+// #279: a replay used to skip `fit`, so it carried the whole receipt whatever budget the repeat
+// asked for. SPEC §8: a service SHOULD fit every reply to its request's budget.
+describe('replies fit the budget (§8)', () => {
+  const lines = Array.from({ length: 200 }, (_, i) => `ledger line ${i}`);
+  const moreOf = (r: FinalReply) => ('more' in r ? (r.more as More[]) : []);
+
+  /** A receipted payment whose result is long, and its COMMIT and UNDO handlers with a budget. */
+  async function receipted() {
+    const { ledger, propose } = ledgerFixture();
+    const handles = new P.MemoryHandleStore();
+    const state = { ledger, handles };
+    const p = propose(10, { apply: () => ({ lines }), revert: () => null });
+    const admit = totalGrant(100).admit;
+    const commit = (budget: number) =>
+      onCommit(
+        state,
+        { ...commitOf(p, admit), verb: 'COMMIT', budget, holder: 'agent' },
+        noEvents,
+      );
+    const first = await commit(100_000);
+    const stored = ledger.receipt(
+      first.kind === 'RECEIPT' ? first.receipt.id : '',
+    );
+
+    if (!stored) {
+      throw new Error('no receipt');
+    }
+
+    const undo = (budget: number) =>
+      onUndo(
+        state,
+        {
+          verb: 'UNDO',
+          id: 'u1',
+          budget,
+          stored,
+          holder: 'agent',
+          principal: 'alice',
+        },
+        noEvents,
+      );
+
+    return { first, commit, undo, handles };
+  }
+
+  it('fits a COMMIT replay to the repeat’s budget, parking the rest for the holder', async () => {
+    const { first, commit, handles } = await receipted();
+    const replay = await commit(60);
+
+    expect(first.kind === 'RECEIPT' && first.receipt.result).toEqual({ lines });
+    expect(moreOf(first)).toEqual([]);
+    expect(replay.kind === 'RECEIPT' && replay.replay).toBe(true);
+    expect(replay.kind === 'RECEIPT' && replay.receipt.result).not.toEqual({
+      lines,
+    });
+
+    const [more] = moreOf(replay);
+
+    expect(handles.get(more?.handle ?? '')?.owner).toBe('agent');
+  });
+
+  it('fits an UNDO replay too; a reversal has no result to cut, so it stays whole', async () => {
+    const { undo } = await receipted();
+    const reversal = await undo(100_000);
+    const replay = await undo(1);
+
+    expect(replay.kind === 'RECEIPT' && replay.replay).toBe(true);
+    expect(
+      replay.kind === 'RECEIPT' &&
+        reversal.kind === 'RECEIPT' && [replay.receipt, moreOf(replay)],
+    ).toEqual([reversal.kind === 'RECEIPT' && reversal.receipt, []]);
   });
 });

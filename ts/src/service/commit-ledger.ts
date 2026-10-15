@@ -23,7 +23,7 @@ import {
   type Used,
 } from './commit-ledger/records.js';
 import { sweep } from './commit-ledger/sweep.js';
-import { checkUndoable, revert } from './commit-ledger/undo.js';
+import { undoOnce } from './commit-ledger/undo.js';
 import { UsageLedger } from './commit-ledger/usage.js';
 import { errorReply, eventFrame, replayOf } from './replies.js';
 
@@ -90,6 +90,10 @@ export class CommitLedger {
    * principal only, with no limit re-evaluated. Otherwise the grant's limits are evaluated, and
    * the reservation follows with no await in between, so concurrent commits can't overshoot a
    * `total`. Throws the error to reply with when the proposal expired or no grant admits it.
+   *
+   * The reservation re-checks each `total` against the usage ledger as it is then. When a commit
+   * that ran meanwhile has filled it, this one gets `consent_required`, even if a later grant
+   * would still admit it: it fails closed rather than evaluating the grants again.
    */
   async commit(req: Commit, emit: (e: Event) => void): Promise<Outcome> {
     const { proposal } = req.stored;
@@ -158,36 +162,8 @@ export class CommitLedger {
   }
 
   /** Revert a receipt's plan once, inside its undo window (SPEC §4.5); a repeat gets the original outcome. */
-  async undo(req: Undo, emit: (e: Event) => void): Promise<Outcome> {
-    const { stored } = req;
-    const { receipt } = stored;
-    const prior = this.records.undos.get(receipt.id);
-
-    if (prior !== undefined) {
-      return replayOf(await prior, req.id);
-    }
-
-    checkUndoable(stored, this.svc.now());
-
-    // Stored before revert starts, so a synchronous throw from `plan.revert` can clear it (#187).
-    const run = Promise.resolve()
-      .then(() =>
-        revert(stored, {
-          re: req.id,
-          principal: req.principal,
-          at: this.svc.now,
-          emit,
-        }),
-      )
-      .catch((e: unknown) => {
-        this.records.undos.delete(receipt.id); // a failed undo may be retried
-
-        return errorReply(this.svc.opts, req.id, e);
-      });
-
-    this.records.undos.set(receipt.id, run);
-
-    return run;
+  undo(req: Undo, emit: (e: Event) => void): Promise<Outcome> {
+    return undoOnce(this.records.undos, req, emit, this.svc);
   }
 
   /** Answer an auto INTENT once per replay key (SPEC §4.3.1): a repeat gets the original reply. */

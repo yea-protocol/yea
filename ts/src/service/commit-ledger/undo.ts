@@ -1,21 +1,73 @@
-/** Reverting a receipt's plan (SPEC §4.5): inside its undo window, run `revert`, then issue the undo receipt with its effects inverted. */
+/**
+ * Undoing a receipt (SPEC §4.5): at most once, inside its undo window, run the plan's `revert`
+ * and issue the undo receipt with its effects inverted. A repeat gets the original outcome.
+ */
 import { randomId } from '../../crypto.js';
 import { YeaError } from '../../errors.js';
 import { replyFrame } from '../../frames.js';
-import type { Effect, Event, Receipt, ReceiptReply } from '../../types.js';
-import { eventFrame } from '../replies.js';
-import type { StoredReceipt } from './records.js';
+import type {
+  Effect,
+  ErrorReply,
+  Event,
+  Receipt,
+  ReceiptReply,
+} from '../../types.js';
+import { errorReply, eventFrame, replayOf } from '../replies.js';
+import type { LedgerOptions, StoredReceipt, Undo } from './records.js';
+
+type Outcome = ReceiptReply | ErrorReply;
 
 /** What a revert runs for: the frame it answers, the principal undoing, and where EVENTs go. */
-export interface RevertCtx {
+interface RevertCtx {
   re: string;
   principal: string;
   at: () => number;
   emit: (e: Event) => void;
 }
 
+/**
+ * Undo `req.stored` once, keeping its run in `undos` by receipt id. Throws when the plan can't be
+ * reverted or the window has closed.
+ */
+export async function undoOnce(
+  undos: Map<string, Promise<Outcome>>,
+  req: Undo,
+  emit: (e: Event) => void,
+  svc: LedgerOptions,
+): Promise<Outcome> {
+  const { stored } = req;
+  const { receipt } = stored;
+  const prior = undos.get(receipt.id);
+
+  if (prior !== undefined) {
+    return replayOf(await prior, req.id);
+  }
+
+  checkUndoable(stored, svc.now());
+
+  // Stored before revert starts, so a synchronous throw from `plan.revert` can clear it (#187).
+  const run = Promise.resolve()
+    .then(() =>
+      revert(stored, {
+        re: req.id,
+        principal: req.principal,
+        at: svc.now,
+        emit,
+      }),
+    )
+    .catch((e: unknown) => {
+      undos.delete(receipt.id); // a failed undo may be retried
+
+      return errorReply(svc.opts, req.id, e);
+    });
+
+  undos.set(receipt.id, run);
+
+  return run;
+}
+
 /** Throws unless the receipt's plan can be reverted, and its undo window is still open at `now`. */
-export function checkUndoable({ receipt, plan }: StoredReceipt, now: number) {
+function checkUndoable({ receipt, plan }: StoredReceipt, now: number) {
   if (!receipt.undo || !plan.revert) {
     throw new YeaError('forbidden', 'this action is irreversible');
   }
@@ -29,7 +81,7 @@ export function checkUndoable({ receipt, plan }: StoredReceipt, now: number) {
 }
 
 /** Reverse a receipt's effects and issue the undo receipt; throws what `revert` throws. */
-export async function revert(
+async function revert(
   stored: StoredReceipt,
   ctx: RevertCtx,
 ): Promise<ReceiptReply> {
