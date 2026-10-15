@@ -238,6 +238,8 @@ proof was on the `INTENT` that produced it, and only with a grant from the same
 principal, if that `INTENT` was authorized by one. A proposal from an `INTENT` that carried
 no grants and proof can be viewed but never committed. This stops one party from
 preparing a proposal, with effects of its choosing, for someone else's agent to commit.
+A service checks who may commit before the proposal's `each`, `total` and `risk` (§6.6), so a
+`COMMIT` these rules refuse gets `forbidden`, never `consent_required`.
 
 Reply: `RECEIPT`, optionally preceded by `EVENT`s.
 

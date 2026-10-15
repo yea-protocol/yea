@@ -428,6 +428,33 @@ describe('security regressions', () => {
     expect((await thief.commit(mine)).kind === 'ERROR').toBe(true);
   });
 
+  // #278: who may commit is checked before the limits, so another agent never gets a consent
+  // request for a proposal it could not commit even with the consent.
+  it('[M4b] a non-requester whose grant would need consent gets forbidden, not consent_required', async () => {
+    const svc = payService();
+    const each: P.Caveat[] = [
+      { each: { of: 'spend', max: 10, scale: 2, unit: 'USD' } },
+    ];
+    const mine = await intent(await client(svc, agent, principal), {
+      to: 'shop',
+      amt: 50,
+    });
+
+    // The same limit asks the requester for consent: the grant would need it.
+    const own = await (await client(svc, agent, principal, each)).commit(mine);
+
+    expect(own.kind === 'ERROR' && own.code).toBe('consent_required');
+
+    const thief = await client(svc, otherAgent, principal, each);
+    const r = await thief.commit(mine);
+
+    expect(r.kind === 'ERROR' && [r.code, r.message, r.consent]).toEqual([
+      'forbidden',
+      'only the agent that requested this proposal can commit it',
+      undefined,
+    ]);
+  });
+
   it("[M5] conflict doesn't leak the hash; another principal can't read a receipt via replay", async () => {
     const svc = payService();
     const c = await client(svc, agent, principal);

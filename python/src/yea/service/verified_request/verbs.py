@@ -110,7 +110,11 @@ def verify_intent(state: ServiceState, req: dict, budget: int) -> VerifiedIntent
 
 def _auto_commit(state: ServiceState, req: dict, who: Identity) -> AutoCommit:
     """The auto-commit check of an INTENT whose identity was verified against the auto target. Only
-    that proof's key is ever a replay key: an unverified one would let anyone claim a replay."""
+    that proof's key is ever a replay key: an unverified one would let anyone claim a replay.
+
+    The proof is checked once, when the request arrives (#278). ``grant`` doesn't check it again
+    after the plan runs, so a plan that outlasts the proof's 300s window still auto-commits. The
+    grants are checked again at commit time, so ``exp`` and the other caveats still hold then."""
 
     def grant(proposal: dict) -> Verification | None:
         if not proposal["undo"] or who.holder is None:

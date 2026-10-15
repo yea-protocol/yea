@@ -606,3 +606,23 @@ def test_the_verified_request_names_the_holder_only_from_a_proof_it_verified():
     anon = verify_request(svc.state, {**frame, "grants": [], "proof": forged}, 2000)
     assert isinstance(anon, VerifiedIntent) and anon.auto is not None
     assert (anon.holder, anon.principal, anon.auto.replay) == (None, None, None)
+
+
+def test_m4b_a_non_requester_whose_grant_would_need_consent_gets_forbidden():
+    """[M4b] Who may commit is checked before the limits (#278), so another agent never gets a consent
+    request for a proposal it could not commit even with the consent."""
+    other = key_from_seed(bytes([3]) * 32)
+    each = {"each": {"of": "spend", "max": 10, "scale": 2, "unit": "USD"}}
+
+    async def go():
+        svc = pay_service()
+        mine = await proposal(client(svc), "shop", 50)
+        # The same limit asks the requester for consent: the grant would need it.
+        own = await client(svc, each).commit(mine)
+        assert (own.kind, own.code) == ("ERROR", "consent_required")
+        thief = Client(local(svc), key=other, grants=[issue_grant(PRINCIPAL, other.public, [each]).encode()])
+        r = await thief.commit(mine)
+        assert (r.kind, r.code, r.message, r.get("consent")) == (
+            "ERROR", "forbidden", "only the agent that requested this proposal can commit it", None)
+
+    run(go())
