@@ -120,9 +120,8 @@ This section covers files and folders; [Code style](#code-style) covers what goe
   still has one interface ([ADR-0001](docs/adr/0001-deep-modules-are-folders-with-private-files.md)).
   Judge a module by the size of its interface, not its line count: splitting a file is never a
   reason to export its parts.
-  A folder is a module's when it has an entry file: `x.ts` beside it (`Landing.vue` fronts
-  `landing/`) or `x/index.ts` inside it. A folder with neither only groups files, and any file
-  may import from it.
+  A folder is a module's when it has an entry file `x.ts` beside it (`Landing.vue` fronts
+  `landing/`). A folder without one only groups files, and any file may import from it.
 - In Python the entry is the package's `__init__.py`, which wires the parts and re-exports; the
   parts are sibling modules in the package.
 - A package's public API is only what its `index` re-exports. Modules may export to their

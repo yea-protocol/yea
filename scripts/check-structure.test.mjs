@@ -220,7 +220,7 @@ test('private: a module folder is closed to files outside it', () => {
       'src/a/y/part.ts': HEADER,
     }),
     [
-      'src/a/x/part.ts: private (imports src/a/y/part.js from inside src/a/y/; import src/a/y.ts instead)',
+      'src/a/x/part.ts: private (imports src/a/y/part.ts from inside src/a/y/; import src/a/y.ts instead)',
     ],
   );
 });
@@ -246,20 +246,23 @@ test('private: an entry file may not reach into a nested module', () => {
       'src/x/inner/deep.ts': HEADER,
     }),
     [
-      'src/x.ts: private (imports src/x/inner/deep.js from inside src/x/inner/; import src/x/inner.ts instead)',
+      'src/x.ts: private (imports src/x/inner/deep.ts from inside src/x/inner/; import src/x/inner.ts instead)',
     ],
   );
 });
 
-test('private: an index file inside a folder is its entry', () => {
+test('private: an index file inside a folder is not its entry', () => {
   assert.deepEqual(
     privateFound('private-index', {
-      'src/run.ts': importing('./x/index.js', './x', './x/part.js'),
+      'src/run.ts': importing('./x/part.js', './y/part.js'),
       'src/x/index.ts': importing('./part.js'),
       'src/x/part.ts': HEADER,
+      'src/y.ts': HEADER,
+      'src/y/index.ts': HEADER,
+      'src/y/part.ts': HEADER,
     }),
     [
-      'src/run.ts: private (imports src/x/part.js from inside src/x/; import src/x/index.ts instead)',
+      'src/run.ts: private (imports src/y/part.ts from inside src/y/; import src/y.ts instead)',
     ],
   );
 });
@@ -323,6 +326,49 @@ test('private: every import form is read, bare package names are not', () => {
   assert.deepEqual(
     found.map((line) => /imports (\S+)/.exec(line)?.[1]),
     ['a.js', 'b.js', 'c.js', 'd.css', 'e.js', 'f.cjs'].map((f) => `src/x/${f}`),
+  );
+});
+
+test('private: imports in comments are not read', () => {
+  const text = [
+    HEADER,
+    "// import a from './x/a.js';",
+    "/* import b from './x/b.js'; */",
+    '/**',
+    " * Use `import { c } from './x/c.js'` for c.",
+    ' */',
+    "const url = 'https://example.com/*'; import d from './x/d.js';",
+    "const re = /['\"]\\/\\//; import e from './x/e.js'; // f",
+  ].join('\n');
+  const found = privateFound('private-comments', {
+    'src/run.ts': text,
+    'src/x.ts': HEADER,
+  });
+
+  assert.deepEqual(
+    found.map((line) => /imports (\S+)/.exec(line)?.[1]),
+    ['src/x/d.js', 'src/x/e.js'],
+  );
+});
+
+test('private: a Vue file is read only inside <script>', () => {
+  const vue = [
+    '<template>',
+    "  <p>Don't import from './x/a.vue'</p>",
+    '</template>',
+    '<script setup lang="ts">',
+    HEADER,
+    "import B from './x/b.vue';",
+    '</script>',
+  ].join('\n');
+  const found = privateFound('private-vue-template', {
+    'src/Run.vue': vue,
+    'src/x.ts': HEADER,
+  });
+
+  assert.deepEqual(
+    found.map((line) => /imports (\S+)/.exec(line)?.[1]),
+    ['src/x/b.vue'],
   );
 });
 

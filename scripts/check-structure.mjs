@@ -47,10 +47,7 @@ export const RATCHET = {
   'mcp/src/guard.ts': ['private'],
   'mcp/src/index.ts': ['private'],
   'mcp/src/undo.ts': ['private'],
-  'site/.vitepress/lens-fence.ts': ['private'],
   'site/.vitepress/theme/components/landing/HeroSection.vue': ['private'],
-  'ts/src/cli/launch.ts': ['private'],
-  'ts/src/test-drive.ts': ['private'],
 };
 
 /** Run-together names, since renamed to kebab-case (#108); they may not come back. */

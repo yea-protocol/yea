@@ -1,13 +1,15 @@
 /**
  * The private-folder rule (ADR-0001): the files in a module's folder `x/` may
- * be imported only by its entry file and by the other files in `x/`. A folder
- * is a module's when it has an entry file: `x.ts` beside it (any script or Vue
- * extension, any case, so `Landing.vue` fronts `landing/`) or `x/index.ts`
- * inside it. Other folders only group files, and anyone may import from them.
- * The rule reads relative imports in TS, JS and Vue files; imports that leave
- * the source root (another package, build output) aren't checked.
+ * be imported only by its entry file `x.ts` beside it and by the other files
+ * in `x/`. A folder is a module's when it has that entry file (any script or
+ * Vue extension, any case, so `Landing.vue` fronts `landing/`); other folders
+ * only group files, and any file may import from them. The rule reads the
+ * relative imports in the code of TS, JS and Vue files, not in comments, and
+ * leaves alone imports that leave the source root (another package, build
+ * output). Test files aren't walked, so they never act as an entry.
  */
 import { posix } from 'node:path';
+import { codeOf } from './code.mjs';
 
 const SCRIPT = /\.(ts|mts|cts|js|mjs|cjs|vue)$/;
 
@@ -15,31 +17,28 @@ const SCRIPT = /\.(ts|mts|cts|js|mjs|cjs|vue)$/;
 const RELATIVE =
   /(?:\bfrom|\bimport|\brequire)\s*\(?\s*(['"])(\.\.?\/[^'"\n]*)\1/g;
 
-/** The relative specifiers `text` imports, in order. */
-function relativeImports(text) {
-  return [...text.matchAll(RELATIVE)].map((m) => m[2]);
+/** The source a compiled specifier names: `x.js` may be `x.ts`. */
+const SOURCES = { '.js': ['.ts'], '.mjs': ['.mts'], '.cjs': ['.cts'] };
+
+/** The relative specifiers the code of the file at `path` imports, in order. */
+function relativeImports(path, text) {
+  return [...codeOf(path, text).matchAll(RELATIVE)].map((m) => m[2]);
 }
 
-/** A file's name without its extensions, lowercased: `Landing.vue` is `landing`. */
+/** A file's name without its last extension, lowercased: `Landing.vue` is `landing`. */
 function stem(path) {
-  return posix.basename(path).replace(/\..*$/, '').toLowerCase();
+  return posix
+    .basename(path)
+    .replace(/\.[^.]*$/, '')
+    .toLowerCase();
 }
 
 /** True when `path` is the entry file beside folder `dir`. */
-function besideEntry(path, dir) {
+function isEntry(path, dir) {
   return (
+    SCRIPT.test(path) &&
     posix.dirname(path) === posix.dirname(dir) &&
     stem(path) === posix.basename(dir).toLowerCase()
-  );
-}
-
-/** Folder `dir`'s entry file among `paths`, or undefined for a plain folder. */
-function entryOf(dir, paths) {
-  const inside = (p) => posix.dirname(p) === dir && stem(p) === 'index';
-  const scripts = paths.filter((p) => SCRIPT.test(p));
-
-  return (
-    scripts.find((p) => besideEntry(p, dir)) ?? scripts.find((p) => inside(p))
   );
 }
 
@@ -56,22 +55,15 @@ function entered(from, to) {
   return b.slice(shared).map((_, i) => b.slice(0, shared + i + 1).join('/'));
 }
 
-/** The folder an import of `target` reaches into: an `index` file stands for its folder. */
-function reached(target) {
-  const dir = posix.dirname(target);
-
-  return stem(target) === 'index' ? posix.dirname(dir) : dir;
-}
-
 /**
  * The module folder that `path` may not import `target` from, with its entry
  * file, or undefined when the import is allowed.
  */
 function breach(path, target, paths) {
-  for (const dir of entered(posix.dirname(path), reached(target))) {
-    const entry = entryOf(dir, paths);
+  for (const dir of entered(posix.dirname(path), posix.dirname(target))) {
+    const entry = paths.find((p) => isEntry(p, dir));
 
-    if (entry !== undefined && !besideEntry(path, dir)) {
+    if (entry !== undefined && !isEntry(path, dir)) {
       return { dir, entry };
     }
   }
@@ -79,12 +71,24 @@ function breach(path, target, paths) {
   return undefined;
 }
 
-/** One file's breaches as `{ path, rule, detail }`, one per imported target. */
+/** The file `target` names among `paths`: itself, or its source for a `.js` name. */
+function resolve(target, paths) {
+  const ext = posix.extname(target);
+  const base = target.slice(0, target.length - ext.length);
+  const found = (SOURCES[ext] ?? [])
+    .map((source) => `${base}${source}`)
+    .find((p) => paths.includes(p));
+
+  return found ?? target;
+}
+
+/** One file's breaches as `{ path, rule, detail }`, one per imported file. */
 function fileBreaches(root, path, text, paths) {
   const targets = new Set(
-    relativeImports(text)
+    relativeImports(path, text)
       .map((spec) => posix.normalize(posix.join(posix.dirname(path), spec)))
-      .filter((target) => target.startsWith(`${root}/`)),
+      .filter((target) => target.startsWith(`${root}/`))
+      .map((target) => resolve(target, paths)),
   );
 
   return [...targets].flatMap((target) => {
