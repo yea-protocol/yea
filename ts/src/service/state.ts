@@ -1,5 +1,4 @@
 /** The state one Service shares with its verb handlers: registered capabilities, proposals, receipts and the `total` ledger. */
-import type { Authorizer } from '../authorize.js';
 import type { HandleStore } from '../budget.js';
 import type { AskDef, IntentDef, Plan, ServiceOptions } from '../plan.js';
 import type {
@@ -41,5 +40,4 @@ export interface ServiceState {
   readonly autoSeen: Map<string, { reply: Promise<FinalReply>; exp: number }>;
   readonly handles: HandleStore;
   readonly now: () => number;
-  readonly authorizer: Authorizer;
 }

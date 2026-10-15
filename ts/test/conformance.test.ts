@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
+import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
 
@@ -412,6 +413,25 @@ describe('conformance vectors', () => {
   it('printable', () => {
     for (const c of load('printable')) {
       expect(P.printable(c.text)).toBe(c.printable);
+    }
+  });
+  it('requests', () => {
+    for (const c of load('requests')) {
+      const got = (() => {
+        try {
+          return { parsed: parseRequest(c.frame) };
+        } catch (e) {
+          if (!(e instanceof P.YeaError)) {
+            throw e;
+          }
+
+          return { error: { code: e.code, message: e.message } };
+        }
+      })();
+
+      expect(got, c.name).toEqual(
+        c.error ? { error: c.error } : { parsed: c.parsed },
+      );
     }
   });
   it('estimate', () => {

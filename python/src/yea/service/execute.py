@@ -8,9 +8,8 @@ from typing import Any
 from ..errors import YeaError
 from ..grants import Verification
 from ..uses import limit_value, same_unit, value
-from .authorize import consent_request
 from .plan import CommitCtx
-from .replies import error_reply, reply_frame
+from .replies import consent_request, error_reply, reply_frame
 from .state import ServiceState, _StoredReceipt
 from .util import Emit, _call, random_id
 
@@ -25,7 +24,7 @@ async def execute(state: ServiceState, pid: str, auth: Verification, re: str, em
         return error_reply(re, YeaError(
             "consent_required",
             f"{over} would pass a total limit (other commits are in flight); your principal must approve this exact proposal",
-            consent=consent_request(state, proposal, auth.principal),
+            consent=consent_request(state.id, proposal, auth.principal),
         ))
 
     def progress(message: str, pct: float | None, data: Any) -> None:

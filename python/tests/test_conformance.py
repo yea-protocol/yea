@@ -7,6 +7,8 @@ from conftest import CONFORMANCE, load_vectors
 
 from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
 from yea._json import CanonicalError
+from yea.errors import YeaError
+from yea.service.verified_request import parse_request
 from yea.keys import verify_proof
 from yea.text import printable
 from yea.uses import is_uses
@@ -51,6 +53,16 @@ def test_estimate(case):
 def test_printable(case):
     """A consent screen escapes the same code points on both sides (security.test.ts [A8])."""
     assert printable(case["text"]) == case["printable"]
+
+
+@pytest.mark.parametrize("case", cases("requests"))
+def test_requests(case):
+    """A request frame read for its verb, before any lookup or check (ts parseRequest)."""
+    try:
+        got = {"parsed": parse_request(case["frame"])}
+    except YeaError as e:
+        got = {"error": {"code": e.code, "message": e.message}}
+    assert got == ({"error": case["error"]} if "error" in case else {"parsed": case["parsed"]})
 
 
 @pytest.mark.parametrize("case", cases("hash"))

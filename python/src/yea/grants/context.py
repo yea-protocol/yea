@@ -20,6 +20,9 @@ class GrantContext:
     proposal: Mapping[str, Any] | None = None  # {hash, uses?, risk}; COMMIT only
     # (block id, measure name) -> value committed or reserved, as an integer at scale 18
     used: Mapping[tuple[str, str], int] = field(default_factory=dict)
+    # False checks who may act only (ADR-0002): ``each``, ``total`` and ``risk`` are still checked
+    # for shape, but never ask for consent.
+    limits: bool = True
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> GrantContext:

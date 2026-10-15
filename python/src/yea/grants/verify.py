@@ -82,6 +82,8 @@ def verify_grant(
                             reason="proof key is not the grant holder")
 
     denials = [(c, d) for b in g.blocks for c in b["p"]["caveats"] if (d := caveat_denial(c, block_id(b), ctx))]
+    if not ctx.limits:  # only the limits deny softly: who may act is decided by the hard denials
+        denials = [(c, d) for c, d in denials if d.hard]
     if not denials:
         return Verification(True, grant=g)
     hard = [(c, d) for c, d in denials if d.hard]

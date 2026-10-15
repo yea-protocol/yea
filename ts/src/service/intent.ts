@@ -4,88 +4,45 @@ import { proposalHash, randomId } from '../crypto.js';
 import { fix, YeaError } from '../errors.js';
 import { replyFrame } from '../frames.js';
 import type { IntentDef, Plan } from '../plan.js';
-import { autoTarget } from '../proof.js';
 import { resolveRisk } from '../risk.js';
-import type { Event, FinalReply, Intent, Proof, Proposal } from '../types.js';
+import type { Event, FinalReply, Proposal } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
 import { DAY } from '../util.js';
-import { validateParams } from '../validate.js';
-import { unknownCapability } from './capabilities.js';
 import type { Executor } from './execute.js';
-import { paramsOf, replayOf } from './replies.js';
+import { replayOf } from './replies.js';
 import type { ServiceState, StoredProposal } from './state.js';
 import type { Sweeper } from './sweep.js';
-
-interface IntentRun {
-  def: IntentDef;
-  req: Intent;
-  params: Record<string, unknown>;
-  budget: number;
-  emit: (e: Event) => void;
-  principal: string | null;
-  /** The holder key authorize() verified the proof of, or null: the only key a reply is for. */
-  requester: string | null;
-}
+import type { AutoCommit, VerifiedIntent } from './verified-request.js';
 
 export class IntentHandler {
   constructor(
     private readonly state: Pick<
       ServiceState,
-      | 'opts'
-      | 'asks'
-      | 'intents'
-      | 'proposals'
-      | 'autoSeen'
-      | 'authorizer'
-      | 'handles'
-      | 'now'
+      'opts' | 'proposals' | 'autoSeen' | 'handles' | 'now'
     >,
     private readonly executor: Executor,
     private readonly sweeper: Sweeper,
   ) {}
 
   async onIntent(
-    req: Intent,
-    budget: number,
+    req: VerifiedIntent,
     emit: (e: Event) => void,
   ): Promise<FinalReply> {
-    const def =
-      this.state.intents.get(req.capability) ??
-      unknownCapability(this.state, req.capability, 'intent');
-
-    const params = paramsOf(req);
-
-    validateParams(def.params, params);
-
-    const { granted, proof } = await this.state.authorizer.authorize(req, {
-      verb: 'INTENT',
-      capability: req.capability,
-      target: isAuto(req) ? autoTarget(req.capability, req.id) : req.capability,
-    });
-    const principal = granted?.iss ?? null;
     // A replayed auto INTENT (same holder key + request id) gets the original reply, never a second commit.
-    const auto = autoReplayKey(req, proof);
+    const replay = req.auto?.replay;
 
-    if (auto) {
-      const prior = this.state.autoSeen.get(auto.key);
+    if (replay) {
+      const prior = this.state.autoSeen.get(replay.key);
 
       if (prior && prior.exp > this.state.now()) {
         return replayOf(await prior.reply, req.id);
       }
     }
 
-    const reply = this.planIntent({
-      def,
-      req,
-      params,
-      budget,
-      emit,
-      principal,
-      requester: proof?.key ?? null,
-    });
+    const reply = this.planIntent(req, emit);
 
-    if (auto) {
-      this.rememberAuto(auto.key, reply, auto.proofTs);
+    if (replay) {
+      this.rememberAuto(replay.key, reply, replay.proofTs);
     }
 
     return reply;
@@ -111,11 +68,14 @@ export class IntentHandler {
     }
   }
 
-  private async planIntent(run: IntentRun): Promise<FinalReply> {
-    const { def, req, params, budget, principal } = run;
+  private async planIntent(
+    req: VerifiedIntent,
+    emit: (e: Event) => void,
+  ): Promise<FinalReply> {
+    const { def, principal } = req;
     const out = await def.plan({
-      params,
-      goal: req.goal,
+      params: req.params,
+      goal: req.goal ?? undefined,
       principal,
     });
 
@@ -140,7 +100,8 @@ export class IntentHandler {
         proposal,
         plan,
         principal,
-        requester: run.requester,
+        // Only the holder key of a verified proof may commit it, and replies are for it alone.
+        requester: req.holder,
         created: now,
       };
 
@@ -150,8 +111,8 @@ export class IntentHandler {
 
     this.sweeper.sweep(now);
 
-    const committed = isAuto(req)
-      ? await this.autoCommit(stored[0], run)
+    const committed = req.auto
+      ? await this.autoCommit(stored[0], req, req.auto, emit)
       : null;
 
     if (committed) {
@@ -162,9 +123,9 @@ export class IntentHandler {
       replyFrame(req.id, 'PROPOSALS', {
         proposals: stored.map((s) => s.proposal),
       }),
-      budget,
+      req.budget,
       this.state.handles,
-      run.requester,
+      req.holder,
     );
   }
 
@@ -200,51 +161,26 @@ export class IntentHandler {
    */
   private async autoCommit(
     stored: StoredProposal,
-    run: IntentRun,
+    req: VerifiedIntent,
+    auto: AutoCommit,
+    emit: (e: Event) => void,
   ): Promise<FinalReply | null> {
     if ((stored.proposal.undo?.window ?? 0) <= 0) {
       return null;
     }
 
-    const ok = await this.state.authorizer.autoAuth(
-      run.req,
-      stored.proposal,
-      stored.principal,
-    );
+    const ok = await auto.grant(stored.proposal);
 
     if (!ok) {
       return null;
     }
 
-    const out = await this.executor.execute(stored, ok, run.req.id, run.emit);
+    const out = await this.executor.execute(stored, ok, req.id, emit);
 
     return out.kind === 'RECEIPT'
-      ? fit(
-          { ...out, auto: true },
-          run.budget,
-          this.state.handles,
-          run.requester,
-        )
+      ? fit({ ...out, auto: true }, req.budget, this.state.handles, req.holder)
       : out;
   }
-}
-
-/** Whether an INTENT asks for auto-commit: `auto` must be `true` itself (SPEC §4.3.1), not merely truthy. */
-const isAuto = (req: Intent): boolean => req.auto === true;
-
-/**
- * Replay key for an auto INTENT: the holder key of the proof authorize() verified, plus the
- * request id. Never the request's own proof: an unverified key would let anyone claim a replay.
- */
-function autoReplayKey(
-  req: Intent,
-  proof: Proof | null,
-): { key: string; proofTs: number } | null {
-  if (!isAuto(req) || !proof) {
-    return null;
-  }
-
-  return { key: `${proof.key}:${req.id}`, proofTs: proof.ts };
 }
 
 /** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */

@@ -1,0 +1,1592 @@
+[
+  {
+    "name": "not an object: a list",
+    "frame": [
+      {
+        "yea": 1,
+        "id": "f1",
+        "verb": "HELLO"
+      }
+    ],
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "not an object: a string",
+    "frame": "HELLO",
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "not an object: null",
+    "frame": null,
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "no yea",
+    "frame": {
+      "id": "f1",
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "yea 2",
+    "frame": {
+      "yea": 2,
+      "id": "f1",
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "yea as a string",
+    "frame": {
+      "yea": "1",
+      "id": "f1",
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "yea true",
+    "frame": {
+      "yea": true,
+      "id": "f1",
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "no id",
+    "frame": {
+      "yea": 1,
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "a number id",
+    "frame": {
+      "yea": 1,
+      "id": 1,
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "a null id",
+    "frame": {
+      "yea": 1,
+      "id": null,
+      "verb": "HELLO"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "frames need \"yea\": 1 and a string \"id\""
+    }
+  },
+  {
+    "name": "no verb",
+    "frame": {
+      "yea": 1,
+      "id": "f1"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "unknown verb null"
+    }
+  },
+  {
+    "name": "a lowercase verb",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "hello"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "unknown verb \"hello\""
+    }
+  },
+  {
+    "name": "an unknown verb",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "PING"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "unknown verb \"PING\""
+    }
+  },
+  {
+    "name": "a number verb",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": 5
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "unknown verb 5"
+    }
+  },
+  {
+    "name": "a lone surrogate in params",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": {
+        "q": "a\ud800b"
+      }
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "a string holds a lone surrogate"
+    }
+  },
+  {
+    "name": "a lone surrogate in an unknown field",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "note": "\udfff"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "a string holds a lone surrogate"
+    }
+  },
+  {
+    "name": "a lone surrogate in a key",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "\ud800": 1
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "a string holds a lone surrogate"
+    }
+  },
+  {
+    "name": "ASK with grants \"pg1.x\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": "pg1.x"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants {}",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": {}
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants 0",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": 0
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants \"\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": ""
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants false",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": false
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": true
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants [123]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        123
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "ASK with grants [\"pg1.x\",null]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        "pg1.x",
+        null
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants \"pg1.x\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": "pg1.x"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants {}",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": {}
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants 0",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": 0
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants \"\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": ""
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants false",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": false
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": true
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants [123]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        123
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "INTENT with grants [\"pg1.x\",null]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        "pg1.x",
+        null
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants \"pg1.x\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": "pg1.x"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants {}",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": {}
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants 0",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": 0
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants \"\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": ""
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants false",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": false
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": true
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants [123]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        123
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "COMMIT with grants [\"pg1.x\",null]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        "pg1.x",
+        null
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants \"pg1.x\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": "pg1.x"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants {}",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": {}
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants 0",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": 0
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants \"\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": ""
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants false",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": false
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": true
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants [123]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        123
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "UNDO with grants [\"pg1.x\",null]",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "capability": "c",
+      "proposal": "p_1",
+      "hash": "h",
+      "receipt": "r_1",
+      "grants": [
+        "pg1.x",
+        null
+      ]
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "bad grants beat bad params",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": [],
+      "grants": "pg1.x"
+    },
+    "error": {
+      "code": "bad_frame",
+      "message": "`grants` must be a list of strings"
+    }
+  },
+  {
+    "name": "HELLO ignores grants",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "grants": "pg1.x"
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "EXPAND ignores grants",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "EXPAND",
+      "handle": "h_1",
+      "grants": 5
+    },
+    "parsed": {
+      "verb": "EXPAND",
+      "id": "f1",
+      "budget": null,
+      "handle": "h_1",
+      "proof": null
+    }
+  },
+  {
+    "name": "ASK with params []",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": []
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "INTENT with params []",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "params": []
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "ASK with params \"x\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": "x"
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "INTENT with params \"x\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "params": "x"
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "ASK with params 5",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": 5
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "INTENT with params 5",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "params": 5
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "ASK with params true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": true
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "INTENT with params true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "params": true
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "params of an unknown capability",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "no.such",
+      "params": [
+        1
+      ]
+    },
+    "error": {
+      "code": "invalid_params",
+      "message": "`params` must be an object"
+    }
+  },
+  {
+    "name": "ASK with params null",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": null
+    },
+    "parsed": {
+      "verb": "ASK",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "ASK with no params",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c"
+    },
+    "parsed": {
+      "verb": "ASK",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "ASK with params",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "params": {
+        "q": "x",
+        "n": [
+          1,
+          {
+            "a": null
+          }
+        ]
+      }
+    },
+    "parsed": {
+      "verb": "ASK",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {
+        "q": "x",
+        "n": [
+          1,
+          {
+            "a": null
+          }
+        ]
+      },
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "ASK with no capability",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK"
+    },
+    "parsed": {
+      "verb": "ASK",
+      "id": "f1",
+      "budget": null,
+      "capability": null,
+      "params": {},
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "ASK with a number capability",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": 5
+    },
+    "parsed": {
+      "verb": "ASK",
+      "id": "f1",
+      "budget": null,
+      "capability": null,
+      "params": {},
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "COMMIT with no proposal or hash",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT"
+    },
+    "parsed": {
+      "verb": "COMMIT",
+      "id": "f1",
+      "budget": null,
+      "proposal": null,
+      "hash": null,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "COMMIT with a number hash",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "proposal": "p_1",
+      "hash": 5
+    },
+    "parsed": {
+      "verb": "COMMIT",
+      "id": "f1",
+      "budget": null,
+      "proposal": "p_1",
+      "hash": null,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "UNDO with a list receipt",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "receipt": [
+        "r_1"
+      ]
+    },
+    "parsed": {
+      "verb": "UNDO",
+      "id": "f1",
+      "budget": null,
+      "receipt": null,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "EXPAND with no handle",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "EXPAND"
+    },
+    "parsed": {
+      "verb": "EXPAND",
+      "id": "f1",
+      "budget": null,
+      "handle": null,
+      "proof": null
+    }
+  },
+  {
+    "name": "budget 800",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": 800
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": 800
+    }
+  },
+  {
+    "name": "budget 1000",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": 1000
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": 1000
+    }
+  },
+  {
+    "name": "budget 0",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": 0
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "budget -5",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": -5
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "budget 1.5",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": 1.5
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "budget \"800\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": "800"
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "budget true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": true
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "budget null",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "budget": null
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  },
+  {
+    "name": "INTENT with a goal",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "goal": "move my 1:1"
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": "move my 1:1",
+      "auto": false,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "INTENT with a number goal",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "goal": 5
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": null,
+      "auto": false,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "INTENT with auto true",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "auto": true
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": null,
+      "auto": true,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "INTENT with auto \"true\"",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "auto": "true"
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": null,
+      "auto": false,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "INTENT with auto 1",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "auto": 1
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": null,
+      "auto": false,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "INTENT with auto false",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "auto": false
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": null,
+      "auto": false,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "INTENT with auto null",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "INTENT",
+      "capability": "c",
+      "auto": null
+    },
+    "parsed": {
+      "verb": "INTENT",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "goal": null,
+      "auto": false,
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "ASK with grants and a proof",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "ASK",
+      "capability": "c",
+      "grants": [
+        "pg1.x"
+      ],
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "parsed": {
+      "verb": "ASK",
+      "id": "f1",
+      "budget": null,
+      "capability": "c",
+      "params": {},
+      "grants": [
+        "pg1.x"
+      ],
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  },
+  {
+    "name": "a proof with extra fields",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "COMMIT",
+      "proposal": "p_1",
+      "hash": "h",
+      "grants": [
+        "pg1.x"
+      ],
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "more": 1
+      }
+    },
+    "parsed": {
+      "verb": "COMMIT",
+      "id": "f1",
+      "budget": null,
+      "proposal": "p_1",
+      "hash": "h",
+      "grants": [
+        "pg1.x"
+      ],
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  },
+  {
+    "name": "a proof with a string ts",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "receipt": "r_1",
+      "grants": [],
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": "1790000000",
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "parsed": {
+      "verb": "UNDO",
+      "id": "f1",
+      "budget": null,
+      "receipt": "r_1",
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "a proof with a fractional ts",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "receipt": "r_1",
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1.5,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "parsed": {
+      "verb": "UNDO",
+      "id": "f1",
+      "budget": null,
+      "receipt": "r_1",
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "a proof with an unsafe ts",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "receipt": "r_1",
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 9007199254740992,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "parsed": {
+      "verb": "UNDO",
+      "id": "f1",
+      "budget": null,
+      "receipt": "r_1",
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "a proof with no key",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "UNDO",
+      "receipt": "r_1",
+      "proof": {
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "parsed": {
+      "verb": "UNDO",
+      "id": "f1",
+      "budget": null,
+      "receipt": "r_1",
+      "grants": [],
+      "proof": null
+    }
+  },
+  {
+    "name": "a proof that is a string",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "EXPAND",
+      "handle": "h_1",
+      "proof": "x"
+    },
+    "parsed": {
+      "verb": "EXPAND",
+      "id": "f1",
+      "budget": null,
+      "handle": "h_1",
+      "proof": null
+    }
+  },
+  {
+    "name": "EXPAND with a proof",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "EXPAND",
+      "handle": "h_1",
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "parsed": {
+      "verb": "EXPAND",
+      "id": "f1",
+      "budget": null,
+      "handle": "h_1",
+      "proof": {
+        "key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1790000000,
+        "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  },
+  {
+    "name": "HELLO with agent and unknown fields",
+    "frame": {
+      "yea": 1,
+      "id": "f1",
+      "verb": "HELLO",
+      "agent": {
+        "name": "a"
+      },
+      "extra": [
+        1
+      ]
+    },
+    "parsed": {
+      "verb": "HELLO",
+      "id": "f1",
+      "budget": null
+    }
+  }
+]

@@ -1,5 +1,4 @@
 /** The UNDO verb: revert a receipt's plan inside its undo window, once, and issue the undo receipt. */
-import type { Authorized } from '../authorize.js';
 import { fit } from '../budget.js';
 import { randomId } from '../crypto.js';
 import { YeaError } from '../errors.js';
@@ -11,45 +10,22 @@ import type {
   FinalReply,
   Receipt,
   ReceiptReply,
-  Request,
 } from '../types.js';
 import { errorReply, eventFrame, replayOf } from './replies.js';
-import type { ServiceState, StoredReceipt } from './state.js';
+import type { ServiceState } from './state.js';
+import type { VerifiedUndo } from './verified-request.js';
 
 export class UndoHandler {
   constructor(
-    private readonly state: Pick<
-      ServiceState,
-      'opts' | 'receipts' | 'authorizer' | 'handles' | 'now'
-    >,
+    private readonly state: Pick<ServiceState, 'opts' | 'handles' | 'now'>,
   ) {}
 
+  /** `req` names an undoable receipt, under a grant from the principal who committed it. */
   async onUndo(
-    req: Request & { verb: 'UNDO' },
-    budget: number,
+    req: VerifiedUndo,
     emit: (e: Event) => void,
   ): Promise<FinalReply> {
-    const stored = this.state.receipts.get(req.receipt);
-
-    if (!stored || stored.receipt.undoes) {
-      throw new YeaError(
-        'not_found',
-        `no undoable receipt ${JSON.stringify(req.receipt ?? null)}`,
-      );
-    }
-
-    const auth = await this.state.authorizer.authorizeRequired(req, {
-      verb: 'UNDO',
-      capability: stored.receipt.capability,
-      target: req.receipt,
-    });
-
-    if (auth.iss !== stored.principal) {
-      throw new YeaError(
-        'forbidden',
-        'only the principal who committed this can undo it',
-      );
-    }
+    const { stored } = req;
 
     if (stored.undone !== undefined) {
       return replayOf(await stored.undone, req.id);
@@ -69,30 +45,27 @@ export class UndoHandler {
     }
 
     // Stored before revert starts, so a synchronous throw from `plan.revert` can clear it (#187).
-    stored.undone = Promise.resolve().then(() =>
-      this.revert(stored, auth, req.id, emit),
-    );
+    stored.undone = Promise.resolve().then(() => this.revert(req, emit));
 
     const out = await stored.undone;
 
     return out.kind === 'RECEIPT'
-      ? fit(out, budget, this.state.handles, auth.holder)
+      ? fit(out, req.budget, this.state.handles, req.holder)
       : out;
   }
 
   /** Reverse a receipt's effects and issue the undo receipt; a failure allows another attempt. */
   private async revert(
-    stored: StoredReceipt,
-    auth: Authorized,
-    reqId: string,
+    req: VerifiedUndo,
     emit: (e: Event) => void,
   ): Promise<ReceiptReply | ErrorReply> {
+    const { stored, id: reqId } = req;
     const { receipt, plan } = stored;
 
     try {
       // onUndo only gets here for plans that have `revert`.
       await plan.revert?.({
-        principal: auth.iss,
+        principal: req.principal,
         result: stored.result,
         progress: (message, progress) =>
           emit(eventFrame(reqId, message, progress)),

@@ -5,10 +5,7 @@
  * A verb that needs collaborators or private helpers is a `<Verb>Handler` class holding a
  * `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`.
  */
-import { Authorizer } from './authorize.js';
 import { fit, MemoryHandleStore } from './budget.js';
-import { hasLoneSurrogate } from './canonical.js';
-import { fix, YeaError } from './errors.js';
 import { frameId, replyFrame } from './frames.js';
 import type { AskDef, IntentDef, ServiceOptions } from './plan.js';
 import { onAsk } from './service/ask.js';
@@ -21,14 +18,9 @@ import { errorReply } from './service/replies.js';
 import type { ServiceState } from './service/state.js';
 import { Sweeper } from './service/sweep.js';
 import { UndoHandler } from './service/undo.js';
-import type {
-  Brief,
-  CapabilityInfo,
-  Event,
-  FinalReply,
-  Request,
-} from './types.js';
-import { positiveInt, unixNow } from './util.js';
+import { verifyRequest } from './service/verified-request.js';
+import type { Brief, CapabilityInfo, Event, FinalReply } from './types.js';
+import { unixNow } from './util.js';
 
 export class Service {
   readonly id: string;
@@ -40,9 +32,6 @@ export class Service {
   constructor(opts: ServiceOptions) {
     this.id = opts.id;
 
-    const now = opts.now ?? unixNow;
-    const used = new Map<string, bigint>();
-
     this.state = {
       id: opts.id,
       opts,
@@ -51,11 +40,10 @@ export class Service {
       proposals: new Map(),
       commits: new Map(),
       receipts: new Map(),
-      used,
+      used: new Map(),
       autoSeen: new Map(),
       handles: opts.handles ?? new MemoryHandleStore(),
-      now,
-      authorizer: new Authorizer(opts, now, used),
+      now: opts.now ?? unixNow,
     };
 
     const executor = new Executor(this.state);
@@ -104,8 +92,9 @@ export class Service {
   }
 
   /**
-   * Handle one request frame. EVENTs go to `emit`; the final reply is returned. An `emit` that
-   * throws (an EVENT a transport can't serialize) never fails the request: see `neverThrows`.
+   * Handle one request frame: verify it, then run its verb's handler. EVENTs go to `emit`; the
+   * final reply is returned. An `emit` that throws (an EVENT a transport can't serialize) never
+   * fails the request: see `neverThrows`.
    */
   async handle(
     frame: unknown,
@@ -117,38 +106,21 @@ export class Service {
     const send = neverThrows(emit, this.state.opts.onError);
 
     try {
-      if (!isRequestFrame(frame)) {
-        throw new YeaError(
-          'bad_frame',
-          'frames need "yea": 1 and a string "id"',
-        );
-      }
-
-      // A lone surrogate has no canonical form (SPEC §10): refuse the frame here, before a
-      // handler hashes it and fails as `internal`.
-      if (hasLoneSurrogate(frame)) {
-        throw new YeaError('bad_frame', 'a string holds a lone surrogate');
-      }
-
-      const req = frame;
-      const budget =
-        positiveInt(req.budget) ?? this.state.opts.defaultBudget ?? 2000;
+      const req = await verifyRequest(this.state, frame);
 
       switch (req.verb) {
         case 'HELLO':
-          return this.brief(budget, re);
+          return this.brief(req.budget, re);
         case 'ASK':
-          return await onAsk(this.state, req, budget);
+          return await onAsk(this.state, req);
         case 'INTENT':
-          return await this.intentHandler.onIntent(req, budget, send);
+          return await this.intentHandler.onIntent(req, send);
         case 'COMMIT':
-          return await this.commitHandler.onCommit(req, budget, send);
+          return await this.commitHandler.onCommit(req, send);
         case 'UNDO':
-          return await this.undoHandler.onUndo(req, budget, send);
+          return await this.undoHandler.onUndo(req, send);
         case 'EXPAND':
-          return await onExpand(this.state, req, budget);
-        default:
-          throw unknownVerb(req);
+          return onExpand(this.state, req);
       }
     } catch (e) {
       return errorReply(this.state.opts, re, e);
@@ -182,24 +154,3 @@ function neverThrows(
     }
   };
 }
-
-/** The envelope every request needs; verb-specific fields are checked where they are used. */
-function isRequestFrame(frame: unknown): frame is Request {
-  return (
-    typeof frame === 'object' &&
-    frame !== null &&
-    'yea' in frame &&
-    frame.yea === 1 &&
-    'id' in frame &&
-    typeof frame.id === 'string'
-  );
-}
-
-const unknownVerb = (req: { verb?: unknown }) =>
-  new YeaError(
-    'bad_frame',
-    `unknown verb ${JSON.stringify(req.verb ?? null)}`,
-    {
-      fix: [fix('use one of HELLO, ASK, INTENT, COMMIT, UNDO, EXPAND')],
-    },
-  );

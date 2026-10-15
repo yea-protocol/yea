@@ -1880,5 +1880,157 @@ out(
   ].map((text) => ({ text, printable: P.printable(text) })),
   { ascii: true },
 );
+
+// requests: a request frame read for its verb (SPEC §2.1, §3, §4), before anything is looked up or
+// verified: `bad_frame` or `invalid_params` from the frame alone, or what the handlers will read.
+const { parseRequest } = await import('../dist/service/verified-request.js');
+const PROOF = {
+  key: `ed25519:${'A'.repeat(43)}`,
+  ts: 1790000000,
+  sig: 'A'.repeat(86),
+};
+const req = (verb, fields = {}) => ({ yea: 1, id: 'f1', verb, ...fields });
+const badGrants = ['pg1.x', {}, 0, '', false, true, [123], ['pg1.x', null]];
+
+/** `{parsed}`, or `{error: {code, message}}` for a frame the parse refuses. */
+function parseOrError(frame) {
+  try {
+    return { parsed: parseRequest(frame) };
+  } catch (e) {
+    if (!(e instanceof P.YeaError)) {
+      throw e;
+    }
+
+    return { error: { code: e.code, message: e.message } };
+  }
+}
+
+const requests = [
+  // The envelope (SPEC §2.1).
+  ['not an object: a list', [{ yea: 1, id: 'f1', verb: 'HELLO' }]],
+  ['not an object: a string', 'HELLO'],
+  ['not an object: null', null],
+  ['no yea', { id: 'f1', verb: 'HELLO' }],
+  ['yea 2', { yea: 2, id: 'f1', verb: 'HELLO' }],
+  ['yea as a string', { yea: '1', id: 'f1', verb: 'HELLO' }],
+  ['yea true', { yea: true, id: 'f1', verb: 'HELLO' }],
+  ['no id', { yea: 1, verb: 'HELLO' }],
+  ['a number id', { yea: 1, id: 1, verb: 'HELLO' }],
+  ['a null id', { yea: 1, id: null, verb: 'HELLO' }],
+  // An unknown verb is a bad_frame (SPEC §2.1); verbs are case-sensitive.
+  ['no verb', { yea: 1, id: 'f1' }],
+  ['a lowercase verb', req('hello')],
+  ['an unknown verb', req('PING')],
+  ['a number verb', req(5)],
+  // A lone surrogate has no canonical form (SPEC §10), wherever it is, even in a field no verb reads.
+  [
+    'a lone surrogate in params',
+    req('ASK', { capability: 'c', params: { q: 'a\ud800b' } }),
+  ],
+  ['a lone surrogate in an unknown field', req('HELLO', { note: '\udfff' })],
+  ['a lone surrogate in a key', req('HELLO', { '\ud800': 1 })],
+  // grants (SPEC §3): only missing, null or [] is no grants; anything else must be a list of strings.
+  ...['ASK', 'INTENT', 'COMMIT', 'UNDO'].flatMap((verb) =>
+    badGrants.map((grants) => [
+      `${verb} with grants ${JSON.stringify(grants)}`,
+      req(verb, {
+        capability: 'c',
+        proposal: 'p_1',
+        hash: 'h',
+        receipt: 'r_1',
+        grants,
+      }),
+    ]),
+  ),
+  [
+    'bad grants beat bad params',
+    req('ASK', { capability: 'c', params: [], grants: 'pg1.x' }),
+  ],
+  // HELLO and EXPAND read no grants.
+  ['HELLO ignores grants', req('HELLO', { grants: 'pg1.x' })],
+  ['EXPAND ignores grants', req('EXPAND', { handle: 'h_1', grants: 5 })],
+  // params (SPEC §4.2, §4.3): an object; missing or null is {}. Read before any capability is looked up.
+  ...[[], 'x', 5, true].flatMap((params) =>
+    ['ASK', 'INTENT'].map((verb) => [
+      `${verb} with params ${JSON.stringify(params)}`,
+      req(verb, { capability: 'c', params }),
+    ]),
+  ),
+  [
+    'params of an unknown capability',
+    req('ASK', { capability: 'no.such', params: [1] }),
+  ],
+  ['ASK with params null', req('ASK', { capability: 'c', params: null })],
+  ['ASK with no params', req('ASK', { capability: 'c' })],
+  [
+    'ASK with params',
+    req('ASK', { capability: 'c', params: { q: 'x', n: [1, { a: null }] } }),
+  ],
+  // Names a verb looks up are null when missing or not strings: the lookup then fails as for an unknown name.
+  ['ASK with no capability', req('ASK')],
+  ['ASK with a number capability', req('ASK', { capability: 5 })],
+  ['COMMIT with no proposal or hash', req('COMMIT')],
+  ['COMMIT with a number hash', req('COMMIT', { proposal: 'p_1', hash: 5 })],
+  ['UNDO with a list receipt', req('UNDO', { receipt: ['r_1'] })],
+  ['EXPAND with no handle', req('EXPAND')],
+  // budget (SPEC §3): a whole number above 0; anything else is no budget (the service's default).
+  ...[800, 1e3, 0, -5, 1.5, '800', true, null].map((budget) => [
+    `budget ${JSON.stringify(budget)}`,
+    req('HELLO', { budget }),
+  ]),
+  // INTENT: `goal` is a string or nothing; `auto` is `true` itself, not merely truthy (SPEC §4.3.1).
+  [
+    'INTENT with a goal',
+    req('INTENT', { capability: 'c', goal: 'move my 1:1' }),
+  ],
+  ['INTENT with a number goal', req('INTENT', { capability: 'c', goal: 5 })],
+  ...[true, 'true', 1, false, null].map((auto) => [
+    `INTENT with auto ${JSON.stringify(auto)}`,
+    req('INTENT', { capability: 'c', auto }),
+  ]),
+  // proof (SPEC §6.5): kept when shaped {key, ts, sig}, else null; it is verified later, with the grants.
+  [
+    'ASK with grants and a proof',
+    req('ASK', { capability: 'c', grants: ['pg1.x'], proof: PROOF }),
+  ],
+  [
+    'a proof with extra fields',
+    req('COMMIT', {
+      proposal: 'p_1',
+      hash: 'h',
+      grants: ['pg1.x'],
+      proof: { ...PROOF, more: 1 },
+    }),
+  ],
+  [
+    'a proof with a string ts',
+    req('UNDO', {
+      receipt: 'r_1',
+      grants: [],
+      proof: { ...PROOF, ts: '1790000000' },
+    }),
+  ],
+  [
+    'a proof with a fractional ts',
+    req('UNDO', { receipt: 'r_1', proof: { ...PROOF, ts: 1.5 } }),
+  ],
+  [
+    'a proof with an unsafe ts',
+    req('UNDO', { receipt: 'r_1', proof: { ...PROOF, ts: 2 ** 53 } }),
+  ],
+  [
+    'a proof with no key',
+    req('UNDO', { receipt: 'r_1', proof: { ts: PROOF.ts, sig: PROOF.sig } }),
+  ],
+  ['a proof that is a string', req('EXPAND', { handle: 'h_1', proof: 'x' })],
+  ['EXPAND with a proof', req('EXPAND', { handle: 'h_1', proof: PROOF })],
+  // Unknown fields are ignored (SPEC §2.1).
+  [
+    'HELLO with agent and unknown fields',
+    req('HELLO', { agent: { name: 'a' }, extra: [1] }),
+  ],
+].map(([name, frame]) => ({ name, frame, ...parseOrError(frame) }));
+
+out('requests', requests);
 out('approval', (await import('./approval-vectors.mjs')).approval);
 console.log('vectors written');

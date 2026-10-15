@@ -46,6 +46,10 @@ function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
     return;
   }
 
+  if (env.ctx.limits === false && CONSENTABLE.has(k)) {
+    return;
+  }
+
   const why = caveatDenial(c, k, v, env);
 
   if (why) {

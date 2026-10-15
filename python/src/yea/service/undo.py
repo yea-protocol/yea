@@ -7,11 +7,11 @@ from typing import Any
 
 from ..budget import fit
 from ..errors import YeaError
-from .authorize import authorize
 from .plan import CommitCtx
 from .replies import error_reply, reply_frame
 from .state import ServiceState
-from .util import Emit, _call, _iso, _json_str, random_id
+from .util import Emit, _call, _iso, random_id
+from .verified_request import VerifiedUndo
 
 _INVERSE = {"create": "delete", "delete": "create"}
 
@@ -30,32 +30,26 @@ def _inverse(e: dict) -> dict:
     return {**e, "op": _INVERSE.get(op, "other")}
 
 
-async def on_undo(state: ServiceState, frame: dict, budget: int, emit: Emit) -> dict:
-    rid = frame.get("receipt")
-    stored = state.receipts.get(rid) if isinstance(rid, str) else None
-    if stored is None or stored.receipt.get("undoes"):
-        raise YeaError("not_found", f"no undoable receipt {_json_str(rid)}")
-    auth = await authorize(state, frame, "UNDO", stored.receipt["capability"], rid)
-    assert auth is not None
-    if auth.principal != stored.principal:
-        raise YeaError("forbidden", "only the principal who committed this can undo it")
+async def on_undo(state: ServiceState, req: VerifiedUndo, emit: Emit) -> dict:
+    """``req`` names an undoable receipt, under a grant from the principal who committed it."""
+    stored = req.stored
     if stored.undone is not None:
         prior = await asyncio.shield(stored.undone)
         # Every waiter gets its own `re`, whether the shared attempt succeeded or failed.
-        return {**prior, "id": random_id("s"), "re": frame["id"], **({"replay": True} if prior["kind"] == "RECEIPT" else {})}
+        return {**prior, "id": random_id("s"), "re": req.id, **({"replay": True} if prior["kind"] == "RECEIPT" else {})}
     receipt, plan = stored.receipt, stored.plan
     if not receipt["undo"] or plan.revert is None:
         raise YeaError("forbidden", "this action is irreversible")
     if state.now() > receipt["undo"]["until"]:
         raise YeaError("expired", f"the undo window closed at {_iso(receipt['undo']['until'])}")
-    re = frame["id"]
+    re = req.id
 
     def progress(message: str, pct: float | None, _data: Any) -> None:
         emit(reply_frame(re, "EVENT", {"message": message, **({"progress": pct} if pct is not None else {})}))
 
     async def run() -> dict:
         try:
-            await _call(plan.revert, CommitCtx(auth.principal, progress, stored.result))
+            await _call(plan.revert, CommitCtx(req.principal, progress, stored.result))
             undo = {
                 "id": random_id("r"), "proposal": receipt["proposal"], "capability": receipt["capability"],
                 "summary": receipt["summary"], "at": state.now(), "effects": [_inverse(e) for e in receipt["effects"]],
@@ -68,4 +62,4 @@ async def on_undo(state: ServiceState, frame: dict, budget: int, emit: Emit) -> 
 
     stored.undone = asyncio.ensure_future(run())
     out = await asyncio.shield(stored.undone)
-    return fit(out, budget, state.handles, frame["proof"]["key"]) if out["kind"] == "RECEIPT" else out
+    return fit(out, req.budget, state.handles, req.holder) if out["kind"] == "RECEIPT" else out

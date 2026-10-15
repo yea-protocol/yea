@@ -11,9 +11,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from .._json import has_lone_surrogate
 from ..budget import HandleStore, MemoryHandleStore, fit
-from ..errors import YeaError, fix
 from ..grants import Trusted
 from .ask import on_ask
 from .capabilities import list_capabilities
@@ -34,9 +32,16 @@ from .plan import (
 from .replies import error_reply, reply_frame
 from .state import ServiceState, _AskDef, _IntentDef
 from .undo import on_undo
-from .util import Emit, _json_str, random_id
-
-VERBS = ("HELLO", "ASK", "INTENT", "COMMIT", "UNDO", "EXPAND")
+from .util import Emit, random_id
+from .verified_request import (
+    VerifiedAsk,
+    VerifiedCommit,
+    VerifiedExpand,
+    VerifiedHello,
+    VerifiedIntent,
+    VerifiedUndo,
+    verify_request,
+)
 
 
 class Service:
@@ -120,41 +125,26 @@ class Service:
         return fit(r, budget or self.default_budget, self.handles)
 
     async def handle(self, frame: Any, emit: Emit | None = None) -> dict:
-        """Handle one request frame; EVENTs go to ``emit`` (a plain callable). Returns the final reply."""
+        """Handle one request frame: verify it, then run its verb's handler. EVENTs go to ``emit`` (a
+        plain callable). Returns the final reply."""
         emit = emit or (lambda _e: None)
         re = frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
         try:
-            if not isinstance(frame, dict) or frame.get("yea") != 1 or not isinstance(frame.get("id"), str):
-                raise YeaError("bad_frame", 'frames need "yea": 1 and a string "id"')
-            # A lone surrogate has no canonical form (SPEC §10): refuse the frame here, before a
-            # handler hashes it and fails as `internal`.
-            if has_lone_surrogate(frame):
-                raise YeaError("bad_frame", "a string holds a lone surrogate")
-            budget = _positive_int(frame.get("budget")) or self.default_budget
-            verb = frame.get("verb")
-            if verb == "HELLO":
-                return self.brief(budget, re)
-            if verb == "ASK":
-                return await on_ask(self.state, frame, budget)
-            if verb == "INTENT":
-                return await on_intent(self.state, frame, budget, emit)
-            if verb == "COMMIT":
-                return await on_commit(self.state, frame, budget, emit)
-            if verb == "UNDO":
-                return await on_undo(self.state, frame, budget, emit)
-            if verb == "EXPAND":
-                return on_expand(self.state, frame, budget)
-            raise YeaError("bad_frame", f"unknown verb {_json_str(verb)}", fix=[fix("use one of " + ", ".join(VERBS))])
+            req = verify_request(self.state, frame, self.default_budget)
+            if isinstance(req, VerifiedHello):
+                return self.brief(req.budget, re)
+            if isinstance(req, VerifiedAsk):
+                return await on_ask(self.state, req)
+            if isinstance(req, VerifiedIntent):
+                return await on_intent(self.state, req, emit)
+            if isinstance(req, VerifiedCommit):
+                return await on_commit(self.state, req, emit)
+            if isinstance(req, VerifiedUndo):
+                return await on_undo(self.state, req, emit)
+            assert isinstance(req, VerifiedExpand)
+            return on_expand(self.state, req)
         except Exception as e:  # noqa: BLE001 — every failure becomes an ERROR reply
             return error_reply(re, e)
-
-
-def _positive_int(v: Any) -> int | None:
-    """A whole number above 0, as TS's ``Number.isInteger`` sees it: ``800.0`` and ``1e3`` count,
-    since JSON can't tell them from ``800`` and ``1000``. Booleans don't."""
-    if type(v) is float and v.is_integer():
-        v = int(v)
-    return v if type(v) is int and v > 0 else None
 
 
 def service(id: str, name: str, summary: str = "", **kw: Any) -> Service:

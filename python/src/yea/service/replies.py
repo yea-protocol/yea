@@ -1,4 +1,5 @@
-"""Building reply frames: the frame itself and error replies, and reading a request's params."""
+"""Building reply frames: the frame itself, error replies, and the consent request a commit over its
+limits carries (SPEC §6.6)."""
 
 from __future__ import annotations
 
@@ -21,10 +22,9 @@ def error_reply(re: str, e: BaseException) -> dict:
     return reply_frame(re, "ERROR", {"code": "internal", "message": "the service failed unexpectedly", "retry": 5})
 
 
-def params_of(frame: dict) -> dict:
-    params = frame.get("params")
-    if params is None:
-        return {}
-    if not isinstance(params, dict):
-        raise YeaError("invalid_params", "`params` must be an object")
-    return params
+def consent_request(service: str, proposal: dict, principal: str | None) -> dict:
+    return {
+        "proposal": proposal["id"], "hash": proposal["hash"], "service": service,
+        "capability": proposal["capability"], "principal": principal,
+        "summary": proposal["summary"], "expires": proposal["expires"],
+    }

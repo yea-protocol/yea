@@ -6,51 +6,26 @@ import asyncio
 
 from ..budget import fit
 from ..errors import YeaError, fix
-from .authorize import authorize
 from .execute import execute
-from .state import ServiceState, _StoredProposal
-from .util import Emit, _json_str, random_id
+from .state import ServiceState
+from .util import Emit, random_id
+from .verified_request import VerifiedCommit
 
 
-def check_requester(stored: _StoredProposal, frame: dict) -> None:
-    """Only the agent that asked for a proposal (with a verified proof) may commit it (§4.4)."""
-    if stored.requester is None:
-        raise YeaError("forbidden", "this proposal came from an anonymous INTENT and can't be committed",
-                       fix=[fix("send INTENT again with your grant, then commit that proposal")])
-    if stored.requester != frame["proof"]["key"]:
-        raise YeaError("forbidden", "only the agent that requested this proposal can commit it",
-                       fix=[fix("send INTENT yourself, then commit your own proposal")])
-
-
-async def on_commit(state: ServiceState, frame: dict, budget: int, emit: Emit) -> dict:
-    pid = frame.get("proposal")
-    stored = state.proposals.get(pid) if isinstance(pid, str) else None
-    if stored is None:
-        raise YeaError("not_found", f"no proposal {_json_str(pid)}", fix=[fix("send INTENT again to get fresh proposals")])
-    proposal = stored.proposal
-    if frame.get("hash") != proposal["hash"]:
-        # Never reveal the right hash: the agent must commit what it actually read.
-        raise YeaError(
-            "conflict",
-            "hash does not match the proposal; you would commit something other than what you saw",
-            fix=[fix("re-read the proposal, or send INTENT again")],
-        )
+async def on_commit(state: ServiceState, req: VerifiedCommit, emit: Emit) -> dict:
+    """``req`` comes from the proposal's requester, under a grant from its principal."""
+    proposal = req.stored.proposal
+    pid = proposal["id"]
     existing = state.commits.get(pid)
     if existing is not None:
-        auth = await authorize(state, frame, "COMMIT", proposal["capability"], proposal["hash"], proposal,
-                                principal=stored.principal, replay=True)
-        assert auth is not None
-        check_requester(stored, frame)
+        # Idempotent replay (§4.4): limits already spent don't block it.
         prior = await asyncio.shield(existing)
         stored_receipt = state.receipts.get(prior["receipt"]["id"]) if prior["kind"] == "RECEIPT" else None
-        if prior["kind"] == "RECEIPT" and (stored_receipt is None or stored_receipt.principal != auth.principal):
+        if prior["kind"] == "RECEIPT" and (stored_receipt is None or stored_receipt.principal != req.principal):
             raise YeaError("forbidden", "this proposal was committed by a different principal")
-        return {**prior, "id": random_id("s"), "re": frame["id"], **({"replay": True} if prior["kind"] == "RECEIPT" else {})}
-    auth = await authorize(state, frame, "COMMIT", proposal["capability"], proposal["hash"], proposal,
-                           principal=stored.principal)
-    assert auth is not None
-    check_requester(stored, frame)
+        return {**prior, "id": random_id("s"), "re": req.id, **({"replay": True} if prior["kind"] == "RECEIPT" else {})}
+    auth = req.limits()
     if state.now() >= proposal["expires"]:
         raise YeaError("expired", "this proposal has expired", fix=[fix("send INTENT again to get a fresh proposal")])
-    out = await execute(state, pid, auth, frame["id"], emit)
-    return fit(out, budget, state.handles, frame["proof"]["key"]) if out["kind"] == "RECEIPT" else out
+    out = await execute(state, pid, auth, req.id, emit)
+    return fit(out, req.budget, state.handles, req.holder) if out["kind"] == "RECEIPT" else out

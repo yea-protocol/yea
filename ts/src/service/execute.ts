@@ -1,5 +1,5 @@
 /** Carries out an authorized commit: reserve its uses against the `total` ledger, apply the plan, record the receipt. */
-import type { Authorized } from '../authorize.js';
+
 import { consentRequest } from '../consent.js';
 import { randomId } from '../crypto.js';
 import { YeaError } from '../errors.js';
@@ -17,6 +17,7 @@ import type {
 import { exact } from '../uses.js';
 import { errorReply, eventFrame } from './replies.js';
 import type { ServiceState, StoredProposal } from './state.js';
+import type { Authorized } from './verified-request.js';
 
 export class Executor {
   constructor(

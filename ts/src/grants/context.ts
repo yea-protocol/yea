@@ -16,6 +16,11 @@ export interface CheckContext {
   proofKey: string;
   /** The exact amount of measure `of` already committed or reserved under a block id (for `total`). */
   used?: (blockId: string, of: string) => bigint;
+  /**
+   * False checks who may act only (ADR-0002): `each`, `total` and `risk` are still checked for
+   * shape, but never deny and count no `total`. Defaults to true.
+   */
+  limits?: boolean;
 }
 
 export type GrantCheck =

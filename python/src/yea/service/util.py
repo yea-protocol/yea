@@ -1,5 +1,5 @@
-"""Small helpers the service modules share: the EVENT callback type, ids, calling sync or async handlers, and
-formatting."""
+"""Small helpers the service modules share: the EVENT callback type, ids, calling sync or async handlers, reading
+a budget, and formatting."""
 
 from __future__ import annotations
 
@@ -33,3 +33,11 @@ def _json_str(v: Any) -> str:
 
 def _iso(t: int) -> str:
     return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def _positive_int(v: Any) -> int | None:
+    """A whole number above 0, as TS's ``Number.isInteger`` sees it: ``800.0`` and ``1e3`` count,
+    since JSON can't tell them from ``800`` and ``1000``. Booleans don't."""
+    if type(v) is float and v.is_integer():
+        v = int(v)
+    return v if type(v) is int and v > 0 else None

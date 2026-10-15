@@ -11,7 +11,8 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from ._json import dumps, loads
-from .service import Service, _positive_int
+from .service import Service
+from .service.util import _positive_int
 
 log = logging.getLogger("yea")
 

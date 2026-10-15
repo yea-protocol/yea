@@ -108,6 +108,23 @@ infrastructure. It is a *transport*: YEA semantics are unchanged.
 | `grants` | string[] | Grant tokens (§6). Required for `COMMIT` and `UNDO`; a service MAY require them for `ASK`/`INTENT`. |
 | `proof` | object | Proof of possession (§6.5). Required whenever `grants` is present. |
 
+### 3.1 Reading a request
+
+A service reads a request frame before it looks up anything the frame names or checks its grants.
+`conformance/requests.json` holds examples of each rule below.
+
+- `grants` that is not missing, `null` or a list of strings is a `bad_frame`. This applies to
+  `ASK`, `INTENT`, `COMMIT` and `UNDO`. `HELLO` and `EXPAND` ignore `grants`.
+- `params` that is not missing, `null` or an object is `invalid_params`. Missing and `null` mean
+  `{}`. A frame with both a bad `grants` and bad `params` gets `bad_frame`.
+- A `budget` that is not a whole number above 0 counts as no budget, so the default applies.
+- A `capability`, `proposal`, `receipt` or `handle` that is missing or not a string is looked up
+  like an unknown name. The reply is `unknown_capability`, `not_found` or `expired`, and it names
+  the value as `null`. A `hash` that is missing or not a string never matches, so it gets
+  `conflict`.
+- A `goal` that is not a string is ignored.
+- A `proof` without a string `key`, an integer `ts` and a string `sig` counts as a missing proof.
+
 ---
 
 ## 4. Verbs
