@@ -6,7 +6,7 @@ on:
 permissions: { contents: read, security-events: write, actions: read }
 jobs:
   osv-scanner:
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.0
   codeql:
     runs-on: ubuntu-latest
     steps:
