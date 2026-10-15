@@ -6,8 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ..risk import at_least
-from .decision import denied_reason
+from .decision import ruled_out
 from .phrase import phrase_matches, phrase_of
 from .plan import HashedPlan
 from .policy import Policy
@@ -26,7 +25,8 @@ class Verdict:
 
 def judge_answer(state: dict, answer: Mapping[str, Any], recomputed: list[HashedPlan], policy: Policy,
                  phrase_for: Callable[[HashedPlan], str]) -> Verdict:
-    """Steps 3–7 of §5, after the state was verified and its nonce consumed."""
+    """Steps 3–7 of §5. Only the job call session calls it, after it has verified the state and
+    consumed its nonce."""
     if answer.get("action") != "accept":
         return Verdict("not-approved")  # no why, as TS: the caller says "not approved" itself
     content = answer.get("content") if isinstance(answer.get("content"), dict) else {}
@@ -36,10 +36,9 @@ def judge_answer(state: dict, answer: Mapping[str, Any], recomputed: list[Hashed
     chosen = next((p for p in recomputed if p.plan_hash == pick), None)
     if chosen is None:
         return _again(state, "the plans changed; choose again")
-    if chosen.tool in policy.deny:
-        return Verdict("denied", denied_reason(chosen.tool))
-    if at_least(chosen.risk, policy.out_of_band):
-        return Verdict("out-of-band", plan=chosen)
+    out = ruled_out(chosen, policy)
+    if out is not None:
+        return Verdict("denied", out.why) if out.kind == "denied" else Verdict("out-of-band", plan=chosen)
     phrase = phrase_of(chosen, phrase_for)
     if not phrase_matches(content.get("confirm"), phrase):
         return _again(state, f'type "{phrase}" exactly to approve')

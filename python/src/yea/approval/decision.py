@@ -24,16 +24,25 @@ class Decision:
     reserve: tuple[tuple[LedgerKey, int, int], ...] = ()  # (key, amount, max) to reserve before apply
 
 
+def ruled_out(p: HashedPlan, policy: Policy) -> Decision | None:
+    """The one check of a plan against the unsigned rules (§2): ``denied``, or ``out-of-band`` (at
+    or above ``out_of_band``, so approved only outside the chat), with why; None when neither."""
+    if p.tool in policy.deny:
+        return Decision("denied", denied_reason(p.tool))
+    if at_least(p.risk, policy.out_of_band):
+        return Decision("out-of-band", out_of_band_reason(p))
+    return None
+
+
 def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], int], now: int) -> Decision:
     """What a job call should do with these plans under this policy, at ``now`` (a policy loaded
     earlier still expires on time). Only ``plans[0]`` can run."""
     if not plans:
         return Decision("nothing")
     first = plans[0]
-    if first.tool in policy.deny:
-        return Decision("denied", denied_reason(first.tool))
-    if at_least(first.risk, policy.out_of_band):
-        return Decision("out-of-band", f"risk is {first.risk}, which needs approval outside the chat")
+    out = ruled_out(first, policy)
+    if out is not None:
+        return out
     why = needs_approval(first, policy, used, now)
     if why is not None:
         return Decision("ask", why)
@@ -64,6 +73,10 @@ def _names_tools(g: Grant) -> bool:
 
 def denied_reason(tool: str) -> str:
     return f"your policy never allows {tool}"
+
+
+def out_of_band_reason(p: HashedPlan) -> str:
+    return f"risk is {p.risk}, which needs approval outside the chat"
 
 
 def _reservations(p: HashedPlan, policy: Policy) -> tuple[tuple[LedgerKey, int, int], ...]:

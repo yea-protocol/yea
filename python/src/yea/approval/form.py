@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ..lens import fmt_duration, safe_effect_line
-from ..risk import at_least
 from ..text import printable
 from ..uses import check_uses, fmt_uses
+from .decision import ruled_out
 from .phrase import phrase_of
 from .plan import HashedPlan
 from .policy import Policy
@@ -15,7 +15,7 @@ from .policy import Policy
 
 def offered_plans(plans: list[HashedPlan], policy: Policy) -> list[HashedPlan]:
     """The plans the form may offer: not denied, and below ``out_of_band``."""
-    return [p for p in plans if p.tool not in policy.deny and not at_least(p.risk, policy.out_of_band)]
+    return [p for p in plans if ruled_out(p, policy) is None]
 
 
 def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Callable[[HashedPlan], str]) -> dict | None:
@@ -30,8 +30,9 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
         lines.extend(_plan_lines(i, p))
         if p in offered:
             lines.append(f"  to approve, type: {printable(phrase_of(p, phrase_for))}")
-    held = [f"[{i}]" for i, p in enumerate(plans, 1) if p not in offered and p.tool not in policy.deny]
-    denied = [f"[{i}]" for i, p in enumerate(plans, 1) if p.tool in policy.deny]
+    rules = [ruled_out(p, policy) for p in plans]
+    held = [f"[{i}]" for i, r in enumerate(rules, 1) if r is not None and r.kind == "out-of-band"]
+    denied = [f"[{i}]" for i, r in enumerate(rules, 1) if r is not None and r.kind == "denied"]
     if held:
         lines.extend(["", f"Not offered here (approve outside the chat): {', '.join(held)}"])
     if denied:

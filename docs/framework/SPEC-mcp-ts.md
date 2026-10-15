@@ -266,7 +266,13 @@ cap of its own, relying on that 4 MiB default.
 
 ## How a call runs
 
-The guarded callback does, in order (SPEC-approval §5 and §6):
+A call runs in this order (SPEC-approval §5 and §6). The SDK's job call session (`jobCall`,
+SPEC-approval "The job call session") does steps 1–3, 6, 7 and 10 and decides 4, 8 and 9; the
+guarded callback is its adapter. It reads who is calling, the policy, whether the client can ask
+and, in step 5, the state and answer a retry carries; it gives the session those facts, the
+handler and the store; and it turns the outcome into a result: the preview, the
+`inputRequired` (with the state sealed by the codec), the consent codes, a refusal, or step 11
+for a `run`.
 
 1. **Validate.** The wrapper schema has already validated the input and taken `preview` off.
    Refuse non-integer numbers.
@@ -428,9 +434,9 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
 mcp/src/index.ts           yea(), job(), and the public exports
 mcp/src/guard.ts           guard(): wrapping a registered tool
 mcp/src/undo.ts            the undo tool
-mcp/src/call.ts            the guarded callback: steps 1–11, in order
-mcp/src/call/context.ts    the approval context, the job as run, and step 1: caller, policy, phrase
-mcp/src/call/approve.ts    steps 6–10: consents, the form and its rounds, consent codes
+mcp/src/call.ts            the guarded callback: the session's facts in, its outcome out as a result
+mcp/src/call/context.ts    the approval context, the job as run, and who is calling and the policy
+mcp/src/call/round.ts      steps 5 and 8: the retry a request carries, and the sealed form
 mcp/src/call/apply.ts      step 11: apply once, settle, and record the receipt
 mcp/src/schema.ts          the wrapper Standard Schema that carries `preview`
 mcp/src/client.ts          can the client ask, per era
@@ -515,7 +521,8 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - The same job behaves the same on stdio (`serveStdio`) and Streamable HTTP
   (`createMcpHandler`), except that legacy stateless HTTP fails closed.
 - `guard` works on a tool registered by code the author didn't change.
-- All approval decisions come from the SDK core, so `conformance/approval.json` covers them.
+- All approval decisions, and their order, come from the SDK core's job call session, so
+  `conformance/approval.json` and `conformance/job-calls.json` cover them.
 
 ## Decisions
 

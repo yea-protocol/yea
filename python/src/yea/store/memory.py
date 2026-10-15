@@ -21,6 +21,12 @@ from .lock import CLAIM_STALE
 PRUNE_AT = 1024  # MemoryStore drops expired consumed ids once it holds this many
 
 
+def is_memory_store(store: Any) -> bool:
+    """By name along the class's ancestry, not by class: two copies of the SDK core mean two
+    MemoryStore classes, and a subclass (a counting store in tests, say) is still one."""
+    return any(c.__name__ == "MemoryStore" and c.__module__.startswith("yea") for c in type(store).__mro__)
+
+
 class MemoryStore:
     """One process's store. Fine for a single-process server; totals reset on restart."""
 

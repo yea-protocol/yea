@@ -23,6 +23,7 @@ from yea.store import (
     FileStore,
     MemoryStore,
     default_store_dir,
+    is_memory_store,
 )
 
 from .call import (
@@ -30,7 +31,6 @@ from .call import (
     PartialApplyError,
     Req,
     Yea,
-    is_memory_store,
     run_job,
 )
 from .guard import Guarded, GuardMiddleware

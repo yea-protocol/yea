@@ -1,4 +1,4 @@
-"""What the routine starts from: whose call it is, the policy that applies, and the hashed plans (step 3)."""
+"""What a call starts from: whose call it is and the policy that applies; and a guarded tool's plan."""
 
 from __future__ import annotations
 
@@ -6,17 +6,10 @@ from collections.abc import Callable
 from typing import Any
 
 from yea import Plan
-from yea.approval import HashedPlan, Policy, Tightening, load_policy, plan_hash
-from yea.risk import resolve_risk
+from yea.approval import Policy, Tightening, load_policy
 
 from ..policy import has_total, read_policy, read_tightening_for
-from .model import JobDef, Yea, _maybe
-
-
-def is_memory_store(store: Any) -> bool:
-    """By name along the class's ancestry, not by class: two copies of the SDK core mean two
-    MemoryStore classes, and a subclass (a counting store in tests, say) is still one."""
-    return any(c.__name__ == "MemoryStore" and c.__module__.startswith("yea") for c in type(store).__mro__)
+from .model import Yea, _maybe
 
 
 def caller_of(y: Yea, rctx: Any) -> str:
@@ -37,17 +30,6 @@ def policy_for(y: Yea) -> Policy:
         raise ValueError("the policy has a total limit, which a MemoryStore can only keep when one process "
                          "serves every request (single_process=True)")
     return load_policy(grant, y.service_id, y.principal.key, Tightening(rules.deny, rules.out_of_band))
-
-
-def hash_plans(job: JobDef, input: dict, plans: list[Any]) -> list[HashedPlan]:
-    out = []
-    for p in plans:
-        if not isinstance(p, Plan):
-            raise TypeError("a job's plan function must return a list of yea.Plan, or clarify(...)")
-        risk = resolve_risk("medium", p.risk, job.risk)  # an unknown risk refuses the call
-        undoable = p.undo_window is not None and job.revert is not None
-        out.append(HashedPlan(job.name, p, plan_hash(job.name, input, p, risk), risk, undoable))
-    return out
 
 
 def described_risk(d: dict) -> Any:

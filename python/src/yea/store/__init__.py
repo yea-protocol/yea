@@ -19,7 +19,7 @@ from .contract import (
 from .file_store import FileStore
 from .files import default_store_dir
 from .lock import CLAIM_STALE, LOCK_STALE, LOCK_WAIT
-from .memory import PRUNE_AT, MemoryStore
+from .memory import PRUNE_AT, MemoryStore, is_memory_store
 
 __all__ = [
     "RECEIPT_ID",
@@ -30,6 +30,7 @@ __all__ = [
     "is_receipt_id",
     "PRUNE_AT",
     "MemoryStore",
+    "is_memory_store",
     "default_store_dir",
     "LOCK_WAIT",
     "LOCK_STALE",

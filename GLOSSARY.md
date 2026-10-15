@@ -59,5 +59,6 @@ _Avoid_: consent cache, consents dir
 **Job call**:
 One call of a job tool, from the plans its handler returns to an outcome: run a plan, ask the
 person, hand out a consent code, refuse, or clarify. A call that asks the person spans several
-rounds of the same job call.
+rounds of the same job call. The SDK runs it as a **job call session**, one step per round; the
+MCP packages carry the state between rounds and turn each outcome into a result.
 _Avoid_: job run, guarded call

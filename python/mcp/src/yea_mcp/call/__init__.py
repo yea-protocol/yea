@@ -1,13 +1,13 @@
-"""How a job call runs (SPEC-mcp-py, "How a call runs", steps 1–11). Every decision comes from the
-SDK core (``decide``, ``build_form``, ``judge_answer``, ``consent_for``); this package only orders
-them and turns their answers into MCP results. The job wrapper and the guard middleware share it.
+"""How a job call runs (SPEC-mcp-py, "How a call runs"). The SDK's job call session
+(``yea.job_call``) decides every round and owns the order that keeps it safe; this package is its
+adapter: it reads the request, turns each outcome into an MCP result, and applies the chosen plan.
+The job wrapper and the guard middleware share it.
 
 The entry of the ``yea_mcp.call`` package: it re-exports the parts, each one job per module."""
 
 from __future__ import annotations
 
 from .model import (
-    BAD_STATE,
     Call,
     JobDef,
     PartialApplyError,
@@ -21,8 +21,6 @@ from .prepare import (
     caller_of,
     described_plans,
     described_risk,
-    hash_plans,
-    is_memory_store,
     policy_for,
 )
 from .route import run_job
@@ -32,15 +30,12 @@ __all__ = [
     "PartialApplyError",
     "is_partial",
     "Result",
-    "BAD_STATE",
     "Yea",
     "JobDef",
     "Req",
     "Call",
-    "is_memory_store",
     "caller_of",
     "policy_for",
-    "hash_plans",
     "described_risk",
     "described_plans",
     "run_job",

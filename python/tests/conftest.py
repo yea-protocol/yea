@@ -10,7 +10,7 @@ CONFORMANCE = ROOT.parent / "conformance"
 # (test_zz_vectors_read.py checks that nothing was left unread, like ts/test/conformance.test.ts).
 LOADED: set[str] = set()
 READ: dict[str, set[str]] = {}
-READERS = ("test_conformance.py", "test_approval_conformance.py")
+READERS = ("test_conformance.py", "test_approval_conformance.py", "test_job_call_conformance.py")
 DESELECTED_READERS: list[str] = []
 
 

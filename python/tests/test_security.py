@@ -14,8 +14,9 @@ from yea import (
     Client, GrantContext, Plan, Service, create, decode_grant, issue_grant, key_from_seed, local, serve_http, verify_grant,
 )
 from yea._json import b64url_encode
-from yea.approval import reserve_all
+from yea.approval import Policy, reserve_all
 from yea.errors import YeaError
+from yea.job_call import JobCall, JobTool, Outcome, Retry, job_call
 from yea.keys import sign_proof
 from yea.service.verified_request import VerifiedIntent, verify_request
 from yea.store import LedgerKey, MemoryStore
@@ -152,6 +153,53 @@ def test_a9_reserve_all_releases_what_it_made_when_the_store_fails_part_way():
         with pytest.raises(RuntimeError, match="busy"):
             await reserve_all(Failing(), ((LedgerKey("B", "emails"), 1, 5), (LedgerKey("B", "spend"), 1, 5)))
         assert await store.used(LedgerKey("B", "emails")) == 0
+
+    run(go())
+
+
+NOW = 1_790_000_000
+INVALID_STATE = Outcome("refuse", "this approval is invalid, expired, already used, or for another call", again=True)
+ACCEPT = {"action": "accept", "content": {"confirm": "approve"}}
+
+
+def asking_call(input: dict | None = None, now: int = NOW) -> JobCall:
+    """A refund call outside any policy, from a client that can ask: its first round asks."""
+    async def plan():
+        return [Plan("Refund", [], apply=lambda c: None, risk="low")]
+    return JobCall(JobTool("refund"), input or {"who": "Chen"}, plan, "", now, Policy(server_key="S"), True)
+
+
+async def asked_state(store) -> dict:
+    o = await job_call(asking_call(), store)
+    assert o.kind == "ask" and o.state is not None
+    return o.state
+
+
+def test_a5_a_decline_a_stale_state_or_another_input_never_runs_anything():
+    """[A5] Through the job call session, as ts/test/security.test.ts."""
+    async def go():
+        store = MemoryStore()
+        declined = Retry(await asked_state(store), {"action": "decline", "content": {"confirm": "approve"}})
+        assert await job_call(asking_call(), store, declined) == Outcome("refuse", "not approved")
+        other = Retry(await asked_state(store), ACCEPT)
+        assert await job_call(asking_call({"who": "Ana"}), store, other) == INVALID_STATE
+        state = await asked_state(store)
+        assert await job_call(asking_call(now=state["exp"]), store, Retry(state, ACCEPT)) == INVALID_STATE
+
+    run(go())
+
+
+def test_a18_a_state_sent_again_runs_nothing_whatever_its_answer():
+    """[A18] Every retry consumes its state's nonce: resent, approved or declined, it runs nothing."""
+    async def go():
+        store = MemoryStore()
+        approved = Retry(await asked_state(store), ACCEPT)
+        assert (await job_call(asking_call(), store, approved)).kind == "run"
+        assert await job_call(asking_call(), store, approved) == INVALID_STATE
+        declined = await asked_state(store)
+        assert await job_call(asking_call(), store, Retry(declined, {"action": "decline"})) == Outcome(
+            "refuse", "not approved")
+        assert await job_call(asking_call(), store, Retry(declined, ACCEPT)) == INVALID_STATE
 
     run(go())
 

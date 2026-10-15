@@ -239,7 +239,13 @@ raises a `PartialApplyError` is reported as failing part-way, with its message, 
 ## How a call runs
 
 The job wrapper and the guard middleware share one routine, in this order (SPEC-approval §5
-and §6, and the same order as `mcp-ts`):
+and §6, and the same order as `mcp-ts`). The SDK's job call session (`yea.job_call.job_call`,
+SPEC-approval "The job call session") does steps 1–3, 6, 7 and 10 and decides 4, 8 and 9; the
+routine is its adapter. It reads who is calling, the policy, whether the client can ask and, in
+step 5, the state and answer a retry carries; it gives the session those facts, the plan
+function and the store; and it turns the outcome into a result, asking per era, or runs step 11
+for a `run`. A 2025 client's in-call answer is the next round: the routine steps the session
+again, with the clock, the policy and the plans as they are then.
 
 1. **Validate.** The SDK has validated the input (jobs) or not (guards). Take `preview` off.
    Build `input` (above). Refuse non-integer numbers (`plan_hash` raises).
@@ -421,7 +427,7 @@ Each gets its own test and a note in the code:
 
 ```
 python/mcp/src/yea_mcp/__init__.py    yea(), job(), guard(), token_subject(), PartialApplyError, the undo tool
-python/mcp/src/yea_mcp/call/          the shared routine: steps 1–11
+python/mcp/src/yea_mcp/call/          the shared routine: the session's adapter, and step 11
 python/mcp/src/yea_mcp/ask.py         asking per era, and can the client ask
 python/mcp/src/yea_mcp/http.py        the HTTP front end: the Host, Origin and bearer gate, http_app, serve_http
 python/mcp/src/yea_mcp/signature.py   the synthesized job signature and the JSON-mode input
@@ -494,8 +500,9 @@ doesn't guard a same-named tool on another.
 - The same job behaves the same on stdio and Streamable HTTP, except that legacy stateless HTTP
   fails closed.
 - `guard` works on a tool registered by code the author didn't change.
-- All approval decisions come from the SDK core, so `conformance/approval.json` covers them, and
-  the results match `mcp-ts` for the same calls.
+- All approval decisions, and their order, come from the SDK core's job call session, so
+  `conformance/approval.json` and `conformance/job-calls.json` cover them, and the results match
+  `mcp-ts` for the same calls.
 
 ## Decisions
 

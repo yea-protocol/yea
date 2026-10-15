@@ -7,14 +7,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from yea.approval import HashedPlan, Policy
+from yea.approval import HashedPlan
 from yea.store import ApprovalStore
 
 from ..policy import Pinned
 
 Result = Any  # a CallToolResult, an InputRequiredResult, or (guard) the original's wire mapping
-BAD_STATE = ("this approval is invalid, expired, already used, or for another call; nothing was run. "
-             "Call the tool again to ask again.")
 
 
 @dataclass
@@ -68,15 +66,16 @@ class Req:
 
 @dataclass
 class Call:
+    """One call as the adapter sees it: who is calling, when, and how to plan (on each round of a
+    2025 in-call ask too). The session reads the policy and the plans afresh each round."""
+
     y: Yea
     job: JobDef
     input: dict
     req: Req
     sub: str
     now: int
-    policy: Policy
-    plans: list[HashedPlan]
-    plan: Callable[[], Awaitable[Any]]  # re-plans for each round of a 2025 in-call ask
+    plan: Callable[[], Awaitable[Any]]
 
 
 async def _maybe(v: Any) -> Any:

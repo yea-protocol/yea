@@ -531,7 +531,8 @@ async def test_m15_errors_from_plan_apply_and_revert_and_an_undo_cant_forge_a_li
 
 def test_a13_a_tool_level_unknown_risk_fails_closed_through_hash_plans(world):
     """[A13] job(risk="critical"): the plans can't be hashed, so nothing is offered."""
-    from yea_mcp.call import JobDef, hash_plans
+    from yea.job_call import hash_plans
+    from yea_mcp.call import JobDef
 
     with pytest.raises(ValueError, match="unknown risk"):
         hash_plans(JobDef("refund", "critical", None, None), {"amount": 5}, [Plan("Refund", [], apply=lambda: None)])

@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 from yea import Plan
 
-from yea_mcp.call import JobDef, hash_plans
+from yea.job_call import hash_plans
+from yea_mcp.call import JobDef
 
 VECTORS = Path(__file__).resolve().parents[3] / "conformance" / "approval.json"
 HASH = [c for c in json.loads(VECTORS.read_text(encoding="utf-8"))["hash"] if not c.get("error")]

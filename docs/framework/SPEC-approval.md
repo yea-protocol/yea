@@ -78,6 +78,26 @@ Each call is a new request. MCP has no frame id to deduplicate on, so a client t
 auto-run call runs it again, as it would any MCP tool. Tools that must not repeat should be
 idempotent themselves (the Stripe example passes an idempotency key).
 
+### The job call session
+
+The SDK core runs this diagram as one **job call session** (`jobCall` in TypeScript,
+`yea.job_call.job_call` in Python). It's a step function: each round of a call is one step,
+which takes
+- the call's facts: the tool (name, risk, whether it has `revert`, its phrase), the input, the
+  handler, `preview`, `sub`, the time, the policy, and whether the client can take a form;
+- the store;
+- on a retry, the state the last round handed out, as it came back, and the person's answer.
+
+It returns one outcome: `clarify`, `preview`, `run` (a plan, how it was allowed, and the
+reservations it holds), `ask` (the form and the state to carry round the client), `consent-codes`
+(§6) or `refuse` (with why). The session owns the order: deny before the handler runs, a consent
+consumed before its plan runs, reservations after the decision, the state checked and its nonce
+consumed before the answer is judged. The MCP packages only read the request, carry the state,
+turn outcomes into results, and apply the plan a `run` names: settling its reservations if
+`apply()` succeeds, and releasing them if it fails. A developer's error (a non-integer input, a
+handler that returns neither plans nor a clarification, a phrase no one can type) and a store
+failure raise before anything runs, and the call is refused with the message.
+
 ### 1. Plan hash
 
 Approval binds to a **plan hash** that stays the same when the same plan is recomputed:
@@ -452,12 +472,15 @@ The wire protocol doesn't change. SPEC.md gets an "MCP binding" section after v0
 ## Where the code lives
 
 ```
-ts/src/approval.ts        plan hash, policy decision, form builder, state payload, answer check
+ts/src/job-call.ts        the job call session: the decisions below, in their safe order
+ts/src/approval.ts        plan hash, policy decision, reservations, undo
+ts/src/ask.ts             form builder, state payload, answer check, consent codes
 ts/src/store.ts           ApprovalStore, MemoryStore, FileStore
 ts/src/cli/approve.ts     yea approve for job consent codes
 ts/test/approval.test.ts  unit tests + the shared conformance cases
-python/src/yea/approval/, store/, python/tests/test_approval.py   the same, for Python
-conformance/approval.json shared cases, generated from the TS reference (like the other vectors)
+python/src/yea/job_call/, approval/, store/, python/tests/test_approval.py   the same, for Python
+conformance/approval.json shared cases for the decisions, generated from the TS reference
+conformance/job-calls.json shared cases for the session, a round per step
 ```
 
 The SDK core stays zero-dependency. The MCP SDKs are peer dependencies of `mcp-ts` and
@@ -497,6 +520,20 @@ export function decide(
 
 ## Testing
 
+- **Job call cases** (`conformance/job-calls.json`, from `ts/scripts/job-call-vectors.mjs`).
+  Each call is a sequence of steps, a round of the session each. A step gives the round's facts
+  (`now`, `sub`, `input`, `canAsk`, `preview`, `plans` or a clarification, `policy`, `unpinned`)
+  and, on a retry, the `state` (`{ "fromStep": n }` for the one step `n` handed out) and the
+  `answer`. It records the store `before` and `after` (`used`: each ledger entry the first
+  step lists; `consumed`: the ids consumed so far, with a state's random nonce written as
+  `nonce of step n`), whether the handler ran (`planned`), and the `outcome`: plans by hash and
+  a state without its nonce. The first step's `before` sets the store up, with the call's
+  `consents`; a step's `race` is reserved by another call between the decision and the
+  reservation. The store is not a MemoryStore, so consent codes are issued. They cover a denied
+  tool, a run inside the policy, asking then answering, a wrong phrase three times, a replayed
+  state, a declined answer, a state for other input or past its expiry, plans that changed, a
+  chosen plan now out of band, a consent code consumed twice, a limit that fills up between
+  decide and reserve, no pinned principal, a clarification and no plans.
 - **Conformance cases** (`conformance/approval.json`). Given plans, a policy and a ledger, both
   languages agree on:
   - the decision, and the reason text;
@@ -543,7 +580,7 @@ export function decide(
 
 ## Success criteria
 
-- Both languages pass `conformance/approval.json`.
+- Both languages pass `conformance/approval.json` and `conformance/job-calls.json`.
 - A resent approved call runs once. A call whose plans changed asks again. A wrong
   confirmation asks again, and three wrong ones refuse the call.
 - Over the same policy, a job either runs, asks, or fails closed with consent codes, and never
