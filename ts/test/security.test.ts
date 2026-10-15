@@ -23,6 +23,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { shop } from '../../examples/shop.ts';
+import { checkJobConsent, reserveAll } from '../src/approval.js';
+import {
+  buildForm,
+  checkedPhrase,
+  checkState,
+  jobConsentCode,
+  MAX_ROUNDS,
+  newState,
+} from '../src/ask.js';
 import { grantCovers } from '../src/client/grant-scope.js';
 import { approveCode, NO_DETAIL } from '../src/consent-round.js';
 import * as P from '../src/index.js';
@@ -944,6 +953,43 @@ const B = await P.keyPair(); // a principal
 const now = 1790000000;
 const tmp = () => mkdtempSync(join(tmpdir(), 'yea-approval-'));
 
+/** A refund call outside any policy, from a client that can ask: its first round asks. */
+const askingCall = (over: Partial<P.JobCall> = {}): P.JobCall => ({
+  tool: { name: 'refund' },
+  input: { who: 'Chen' },
+  plan: () => [
+    { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+  ],
+  sub: '',
+  now,
+  policy: {
+    grant: null,
+    principal: '',
+    server: 'S',
+    deny: [],
+    outOfBand: 'high',
+  },
+  canAsk: true,
+  ...over,
+});
+
+/** The state a first round hands out with its form. */
+async function askedState(store: P.ApprovalStore) {
+  const o = await P.jobCall(askingCall(), store);
+
+  if (o.kind !== 'ask') {
+    throw new Error(`expected a form, got ${o.kind}`);
+  }
+
+  return o.state;
+}
+
+const INVALID_STATE = {
+  kind: 'refuse',
+  why: 'this approval is invalid, expired, already used, or for another call',
+  again: true,
+};
+
 describe('approval security (SPEC-approval)', () => {
   it('[A1] undo ids outside the generated format never reach the store', async () => {
     const dir = tmp();
@@ -973,7 +1019,7 @@ describe('approval security (SPEC-approval)', () => {
 
   it('[A2] a partly failed reservation releases the ones already made', async () => {
     const store = new P.MemoryStore();
-    const got = await P.reserveAll(store, [
+    const got = await reserveAll(store, [
       { key: { block: 'B', of: 'emails' }, amount: 1n, max: 5n },
       { key: { block: 'B', of: 'spend' }, amount: 10n, max: 5n },
     ]);
@@ -1016,46 +1062,60 @@ describe('approval security (SPEC-approval)', () => {
   });
 
   it('[A5] a decline, a stale state or another input never runs anything', async () => {
-    const policy = { outOfBand: 'high' as const, deny: [] };
-    const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
-      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
-    ]);
-    const state = P.newState({
-      tool: 'refund',
-      inputHash: await P.inputHashOf({ who: 'Chen' }),
-      sub: '',
-      plans: [hp.planHash],
-      round: 1,
-      now,
-    });
+    const store = new P.MemoryStore();
+    const accept = {
+      action: 'accept',
+      content: { confirm: 'approve' },
+    } as const;
 
     expect(
-      P.judgeAnswer(
+      await P.jobCall(askingCall(), store, {
+        state: await askedState(store),
+        answer: { action: 'decline', content: { confirm: 'approve' } },
+      }),
+    ).toEqual({ kind: 'refuse', why: 'not approved' });
+    expect(
+      await P.jobCall(askingCall({ input: { who: 'Ana' } }), store, {
+        state: await askedState(store),
+        answer: accept,
+      }),
+    ).toEqual(INVALID_STATE);
+
+    const state = await askedState(store);
+
+    expect(
+      await P.jobCall(askingCall({ now: state.exp }), store, {
         state,
-        { action: 'decline', content: { confirm: 'approve' } },
-        {
-          recomputed: [hp],
-          policy,
-          phraseFor: () => 'approve',
-        },
-      ).kind,
-    ).toBe('not-approved');
-    expect(
-      P.checkState(state, {
-        tool: 'refund',
-        inputHash: await P.inputHashOf({ who: 'Ana' }),
-        sub: '',
-        now,
+        answer: accept,
       }),
-    ).toBeNull();
+    ).toEqual(INVALID_STATE);
+  });
+
+  it('[A18] a state sent again runs nothing, whatever its answer', async () => {
+    const store = new P.MemoryStore();
+    const accept = {
+      action: 'accept',
+      content: { confirm: 'approve' },
+    } as const;
+    const approved = { state: await askedState(store), answer: accept };
+
+    expect((await P.jobCall(askingCall(), store, approved)).kind).toBe('run');
+    expect(await P.jobCall(askingCall(), store, approved)).toEqual(
+      INVALID_STATE,
+    );
+
+    // A declined state's nonce is used up too: resent with a yes, it runs nothing.
+    const declined = await askedState(store);
+
     expect(
-      P.checkState(state, {
-        tool: 'refund',
-        inputHash: state.inputHash,
-        sub: '',
-        now: state.exp,
+      await P.jobCall(askingCall(), store, {
+        state: declined,
+        answer: { action: 'decline' },
       }),
-    ).toBeNull();
+    ).toEqual({ kind: 'refuse', why: 'not approved' });
+    expect(
+      await P.jobCall(askingCall(), store, { state: declined, answer: accept }),
+    ).toEqual(INVALID_STATE);
   });
 
   it('[A6] yea approve refuses a job consent code whose plan, tool or expiry was tampered with', async () => {
@@ -1077,7 +1137,7 @@ describe('approval security (SPEC-approval)', () => {
       job: Record<string, unknown> = {},
     ) => {
       const good = P.decodeConsentCode(
-        P.jobConsentCode({
+        jobConsentCode({
           server: A.public,
           principal: B.public,
           input: { who: 'Chen' },
@@ -1123,7 +1183,7 @@ describe('approval security (SPEC-approval)', () => {
       },
     ]);
     const j = await P.readJobConsent(
-      P.jobConsentCode({
+      jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},
@@ -1146,7 +1206,7 @@ describe('approval security (SPEC-approval)', () => {
       { exp: j.consent.expires },
     ]);
     expect(
-      await P.checkJobConsent(await P.signJobConsent(B, j), {
+      await checkJobConsent(await P.signJobConsent(B, j), {
         hp,
         policy: { principal: B.public, server: A.public },
         now,
@@ -1229,7 +1289,7 @@ describe('approval security (SPEC-approval)', () => {
     });
 
     await expect(
-      P.reserveAll(failing, [
+      reserveAll(failing, [
         { key: { block: 'B', of: 'emails' }, amount: 1n, max: 5n },
         { key: { block: 'B', of: 'spend' }, amount: 1n, max: 5n },
       ]),
@@ -1253,7 +1313,7 @@ describe('approval security (SPEC-approval)', () => {
     });
 
     expect(
-      await P.checkJobConsent(forged, {
+      await checkJobConsent(forged, {
         hp,
         policy: { principal: B.public, server: A.public },
         now,
@@ -1362,7 +1422,7 @@ describe('approval security (SPEC-approval)', () => {
       { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
     ]);
     const good = P.decodeConsentCode(
-      P.jobConsentCode({
+      jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},
@@ -1406,7 +1466,7 @@ describe('approval security (SPEC-approval)', () => {
       },
       { summary: 'Refund 1 USD', effects: [], risk: 'low', apply: () => null },
     ]);
-    const form = P.buildForm(
+    const form = buildForm(
       plans,
       'why\nforged',
       { outOfBand: 'high', deny: [] },
@@ -1438,21 +1498,21 @@ describe('approval security (SPEC-approval)', () => {
 
   it('[A17] an unprintable phrase is refused before anyone is asked, not shown escaped (#130)', async () => {
     // Shown escaped, `go\u{202e}` can never be typed: refuse it as the developer's error.
-    expect(() => P.checkedPhrase('go\u202e')).toThrow(TypeError);
-    expect(() => P.checkedPhrase('go\u202e')).toThrow(
+    expect(() => checkedPhrase('go\u202e')).toThrow(TypeError);
+    expect(() => checkedPhrase('go\u202e')).toThrow(
       'the approval phrase has unprintable characters, so no one could type it: "go\\u{202e}"',
     );
     // Checked as the tool names it: no fallback to `approve`, even when it normalizes to ''.
-    expect(() => P.checkedPhrase('\ufeff')).toThrow(TypeError);
-    expect(P.checkedPhrase('old nav')).toBe('old nav');
-    expect(P.checkedPhrase(' ')).toBe('approve');
+    expect(() => checkedPhrase('\ufeff')).toThrow(TypeError);
+    expect(checkedPhrase('old nav')).toBe('old nav');
+    expect(checkedPhrase(' ')).toBe('approve');
     // Typeable, not just printable: inside, only a plain space; the error shows the others.
-    expect(() => P.checkedPhrase('old\tnav')).toThrow(
+    expect(() => checkedPhrase('old\tnav')).toThrow(
       'the approval phrase has whitespace other than plain spaces inside, so no one could type it: "old\\u{9}nav"',
     );
-    expect(() => P.checkedPhrase('old\u00a0nav')).toThrow('"old\\u{a0}nav"');
+    expect(() => checkedPhrase('old\u00a0nav')).toThrow('"old\\u{a0}nav"');
     // A long phrase is cut in the error.
-    expect(() => P.checkedPhrase(`${'x'.repeat(100)}\u202e`)).toThrow(
+    expect(() => checkedPhrase(`${'x'.repeat(100)}\u202e`)).toThrow(
       `"${'x'.repeat(79)}…"`,
     );
 
@@ -1460,7 +1520,7 @@ describe('approval security (SPEC-approval)', () => {
       { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
     ]);
     const issue = (phrase: string) =>
-      P.jobConsentCode({
+      jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},
@@ -2988,7 +3048,7 @@ describe.skipIf(typeof process.getuid !== 'function' || process.getuid() === 0)(
     it('an approval state past the last round, or before the first, is refused', () => {
       const expect_ = { tool: 't', inputHash: 'h', sub: '', now };
       const state = (round: number) =>
-        P.newState({
+        newState({
           tool: 't',
           inputHash: 'h',
           sub: '',
@@ -2997,12 +3057,12 @@ describe.skipIf(typeof process.getuid !== 'function' || process.getuid() === 0)(
           now,
         });
 
-      for (let round = 1; round <= P.MAX_ROUNDS; round++) {
-        expect(P.checkState(state(round), expect_)).not.toBeNull();
+      for (let round = 1; round <= MAX_ROUNDS; round++) {
+        expect(checkState(state(round), expect_)).not.toBeNull();
       }
 
-      for (const round of [0, -1, P.MAX_ROUNDS + 1, 1000]) {
-        expect(P.checkState(state(round), expect_), String(round)).toBeNull();
+      for (const round of [0, -1, MAX_ROUNDS + 1, 1000]) {
+        expect(checkState(state(round), expect_), String(round)).toBeNull();
       }
     });
 
@@ -3955,7 +4015,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
       { summary: 'Update settings', effects: [], apply: () => null },
     ]);
     const good = P.decodeConsentCode(
-      P.jobConsentCode({
+      jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},

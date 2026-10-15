@@ -1,9 +1,8 @@
 /**
- * Judging the person's answer (docs/framework/SPEC-approval.md §5 steps 3–7;
- * the caller has checked the state and consumed its nonce).
+ * Judging the person's answer (docs/framework/SPEC-approval.md §5 steps 3–7). Only the job call
+ * session calls it, after it has checked the state and consumed its nonce.
  */
-import type { HashedPlan, Policy } from '../approval.js';
-import { atLeast } from '../risk.js';
+import { type HashedPlan, type Policy, ruledOut } from '../approval.js';
 import { type PhraseFor, phraseMatches, withFallback } from './phrase.js';
 import { type ApprovalState, MAX_ROUNDS } from './state.js';
 
@@ -69,12 +68,10 @@ export function judgeAnswer(
     return again(state, 'the plans changed; choose again');
   }
 
-  if (policy.deny.includes(hp.tool)) {
-    return { kind: 'denied', why: `your policy never allows ${hp.tool}` };
-  }
+  const out = ruledOut(hp, policy);
 
-  if (atLeast(hp.risk, policy.outOfBand)) {
-    return { kind: 'out-of-band', plan: hp };
+  if (out) {
+    return out.kind === 'denied' ? out : { kind: 'out-of-band', plan: hp };
   }
 
   return phraseMatches(answer.content?.confirm, phrase(hp))

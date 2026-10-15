@@ -23,8 +23,7 @@ import {
   type Risk,
 } from '@yea-protocol/sdk';
 import { defaultFileStore, serverKeyPath } from '@yea-protocol/sdk/node';
-import type { JobDef, RevertFn, Yea } from './call/context.js';
-import { runJob } from './call.js';
+import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import { type GuardConfig, guardTool } from './guard.js';
 import { pinnedPrincipal } from './policy.js';
 import { jobAnnotations, jobMeta } from './result.js';
@@ -33,9 +32,8 @@ import { checkName, loadServerSeed } from './server-key.js';
 import { registerUndo, undoFree } from './undo.js';
 import { errorMessage, warnOnce } from './util.js';
 
-export { PartialApplyError } from './call/apply.js';
-
-export type { RevertFn, RevertInput } from './call/context.js';
+export type { RevertFn, RevertInput } from './call.js';
+export { PartialApplyError } from './call.js';
 
 export type { Described, GuardConfig } from './guard.js';
 
@@ -180,7 +178,6 @@ export function yea(o: YeaOptions): Approvals {
   const y: Yea = {
     transport: o.transport,
     store,
-    memoryStore: memory,
     principal,
     policy: o.policy,
     tighten: o.tighten ?? {},

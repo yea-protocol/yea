@@ -1,7 +1,7 @@
 /**
  * What a job call works with (SPEC-mcp-ts, "How a call runs", step 1): the approval context
  * `yea()` creates, the job as the callback runs it, and what each call reads afresh: who is
- * calling, the policy for the call, and the phrase the person types.
+ * calling and the policy for the call.
  */
 import type {
   CallToolResult,
@@ -12,9 +12,7 @@ import type {
 } from '@modelcontextprotocol/server';
 import {
   type ApprovalStore,
-  assertIntegers,
   type Clarification,
-  checkedPhrase,
   type HashedPlan,
   type JobPlan,
   type Policy,
@@ -39,8 +37,6 @@ export type RevertFn = (r: RevertInput, ctx: ServerContext) => unknown;
 export interface Yea {
   transport: 'stdio' | 'http';
   store: ApprovalStore;
-  /** A MemoryStore: `yea approve` writes consents to a FileStore, so none can reach it. */
-  memoryStore: boolean;
   principal: Pinned;
   policy: string | undefined;
   tighten: unknown;
@@ -76,7 +72,6 @@ export interface Call {
   sub: string;
   now: number;
   policy: Policy;
-  plans: HashedPlan[];
 }
 
 /** Who is calling; on HTTP an empty answer refuses the call (SPEC-mcp-ts, per-call refusals). */
@@ -117,37 +112,16 @@ async function policyFor(y: Yea): Promise<Policy> {
   };
 }
 
-/** Step 1: who is calling, integer-only input, and the policy for this call. */
+/** Step 1: who is calling, and the policy for this call. */
 export async function begin(
   base: Pick<Call, 'y' | 'server' | 'job' | 'input' | 'ctx'>,
-): Promise<Omit<Call, 'plans'>> {
+): Promise<Call> {
   const sub = callerOf(base.y, base.ctx);
-
-  assertIntegers(base.input);
 
   return {
     ...base,
     sub,
     now: unixNow(),
     policy: await policyFor(base.y),
-  };
-}
-
-/**
- * The phrase the person types for a plan: the tool's, or `approve`. One that isn't a string, or
- * isn't printable text (SPEC-approval §3), is the developer's error: the call is refused before
- * anyone is asked.
- */
-export function phraseFor(call: Call): (hp: HashedPlan) => string {
-  const confirm = call.job.confirmWith;
-
-  return (hp) => {
-    const phrase = confirm ? confirm(hp, call.input) : '';
-
-    if (typeof phrase !== 'string') {
-      throw new TypeError('confirmWith() must return a string');
-    }
-
-    return checkedPhrase(phrase, 'the phrase from confirmWith()');
   };
 }

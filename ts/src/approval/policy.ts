@@ -22,10 +22,41 @@ export interface Policy {
 
 export type Decision =
   | { kind: 'nothing' }
-  | { kind: 'denied'; why: string }
-  | { kind: 'out-of-band'; why: string }
+  | RuledOut
   | { kind: 'ask'; why: string }
   | { kind: 'run'; plan: HashedPlan; reserve: ReserveFor[] };
+
+/** A plan the unsigned rules keep from running here, and why. */
+export type RuledOut =
+  | { kind: 'denied'; why: string }
+  | { kind: 'out-of-band'; why: string };
+
+/** Why the person's policy never allows `tool`, or null when it doesn't deny it. */
+export const deniedWhy = (tool: string, policy: Pick<Policy, 'deny'>) =>
+  policy.deny.includes(tool) ? `your policy never allows ${tool}` : null;
+
+/** Why a plan at or above `outOfBand` can only be approved outside the chat. */
+export const outOfBandWhy = (hp: HashedPlan) =>
+  `risk is ${hp.risk}, which needs approval outside the chat`;
+
+/**
+ * The one check of a plan against the unsigned rules (SPEC-approval §2): denied, or at or above
+ * `outOfBand` and so approved only outside the chat; null when neither.
+ */
+export function ruledOut(
+  hp: HashedPlan,
+  policy: Pick<Policy, 'deny' | 'outOfBand'>,
+): RuledOut | null {
+  const denied = deniedWhy(hp.tool, policy);
+
+  if (denied) {
+    return { kind: 'denied', why: denied };
+  }
+
+  return atLeast(hp.risk, policy.outOfBand)
+    ? { kind: 'out-of-band', why: outOfBandWhy(hp) }
+    : null;
+}
 
 /**
  * What a job call should do with these plans under this policy (SPEC-approval §2, §5).
@@ -43,15 +74,10 @@ export async function decide(
     return { kind: 'nothing' };
   }
 
-  if (policy.deny.includes(first.tool)) {
-    return { kind: 'denied', why: `your policy never allows ${first.tool}` };
-  }
+  const out = ruledOut(first, policy);
 
-  if (atLeast(first.risk, policy.outOfBand)) {
-    return {
-      kind: 'out-of-band',
-      why: `risk is ${first.risk}, which needs approval outside the chat`,
-    };
+  if (out) {
+    return out;
   }
 
   if (!first.undoable) {

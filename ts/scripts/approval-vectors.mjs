@@ -11,6 +11,17 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { checkJobConsent, decide } from '../dist/approval.js';
+import {
+  buildForm,
+  checkedPhrase,
+  checkState,
+  DEFAULT_PHRASE,
+  inputHashOf,
+  jobConsentCode,
+  judgeAnswer,
+  phraseMatches,
+} from '../dist/ask.js';
 import * as P from '../dist/index.js';
 import { FileStore } from '../dist/node.js';
 
@@ -532,7 +543,7 @@ const decideOut = [];
 for (const [name, keys, policyChange, used, want, at = now] of decideCases) {
   const hps = await Promise.all(keys.map(hashed));
   const policy = { ...base, ...policyChange };
-  const d = await P.decide(
+  const d = await decide(
     hps,
     policy,
     (k) => (used[k.of] ? P.exact(used[k.of]) : 0n),
@@ -596,11 +607,7 @@ const phrases = [
   ['ΟΔΟΣ', 'οδος', true],
   ['ὈΔΥΣΣΕΎΣ', 'ὀδυσσεύς', true],
 ].map(([typed, phrase, match]) => {
-  must(
-    `phrase ${JSON.stringify(typed)}`,
-    P.phraseMatches(typed, phrase),
-    match,
-  );
+  must(`phrase ${JSON.stringify(typed)}`, phraseMatches(typed, phrase), match);
 
   return { typed, phrase, match };
 });
@@ -629,7 +636,7 @@ const phraseChecks = [
   let got;
 
   try {
-    got = P.checkedPhrase(phrase);
+    got = checkedPhrase(phrase);
   } catch {
     got = null;
   }
@@ -641,7 +648,7 @@ const phraseChecks = [
 
 // ---- the form (§3) ----
 const phraseFor = (hp) =>
-  hp.tool === 'delete_branch' ? 'old-nav' : P.DEFAULT_PHRASE;
+  hp.tool === 'delete_branch' ? 'old-nav' : DEFAULT_PHRASE;
 const forms = [];
 // The forged plan's phrase hides a bidi override; the form shows it escaped.
 const forgedPhrase = (hp) =>
@@ -699,7 +706,7 @@ for (const [name, keys, why, policyChange] of [
     : name.startsWith('service text')
       ? forgedPhrase
       : phraseFor;
-  const f = P.buildForm(hps, why, policy, phraseOf);
+  const f = buildForm(hps, why, policy, phraseOf);
 
   forms.push({
     name,
@@ -769,7 +776,7 @@ must(
 );
 
 // ---- state (§4) ----
-const inputHash = await P.inputHashOf(input);
+const inputHash = await inputHashOf(input);
 const good = {
   v: 1,
   tool: 'refund',
@@ -791,7 +798,7 @@ const states = [
   ['wrong version', { ...good, v: 2 }, expect, false],
   ['not an object', 'x', expect, false],
 ].map(([name, state, exp, valid]) => {
-  must(name, P.checkState(state, exp) !== null, valid);
+  must(name, checkState(state, exp) !== null, valid);
 
   return { name, state: JSON.parse(JSON.stringify(state)), expect: exp, valid };
 });
@@ -968,7 +975,7 @@ for (const [
     : answer;
   const policy = { ...base, ...policyChange };
   const phraseOf = phraseOverride ?? phraseFor;
-  const v = P.judgeAnswer(state, ans, {
+  const v = judgeAnswer(state, ans, {
     recomputed,
     policy,
     phraseFor: phraseOf,
@@ -1048,7 +1055,7 @@ const tightening = [
 
 // ---- consent codes (§6) ----
 const refundHp = await hashed('refund');
-const consentCode = P.jobConsentCode({
+const consentCode = jobConsentCode({
   server: server.public,
   principal: principal.public,
   input,
@@ -1121,7 +1128,7 @@ for (const [name, grant, at, want] of [
   ],
   ['not a grant at all', 'pg1.bm9wZQ', now, 'not a consent for this plan'],
 ]) {
-  const r = await P.checkJobConsent(grant, {
+  const r = await checkJobConsent(grant, {
     hp: { ...refundHp, plan: { ...refundHp.plan, apply: () => null } },
     policy: { principal: principal.public, server: server.public },
     now: at,

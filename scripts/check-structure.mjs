@@ -44,9 +44,6 @@ export const RATCHET = {
   // Imports from inside another module's folder (ADR-0001): #284.
   'mcp/src/bridge.ts': ['private'],
   'mcp/src/bridge/instructions.ts': ['private'],
-  'mcp/src/guard.ts': ['private'],
-  'mcp/src/index.ts': ['private'],
-  'mcp/src/undo.ts': ['private'],
   'site/.vitepress/theme/components/landing/HeroSection.vue': ['private'],
 };
 

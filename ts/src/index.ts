@@ -6,10 +6,6 @@
  */
 
 export {
-  assertIntegers,
-  checkJobConsent,
-  type Decision,
-  decide,
   type HashedPlan,
   hashPlans,
   isReceiptId,
@@ -18,9 +14,7 @@ export {
   type Policy,
   planHashOf,
   planPreimage,
-  type ReserveFor,
   readTightening,
-  reserveAll,
   type Tightening,
   type UndoOutcome,
   undoJob,
@@ -38,24 +32,10 @@ export {
   type ApprovalAnswer,
   type ApprovalForm,
   type ApprovalState,
-  buildForm,
   CONSENT_TTL,
-  checkedPhrase,
-  checkState,
-  DEFAULT_PHRASE,
-  inputHashOf,
   type JobConsent,
-  type JudgeContext,
-  jobConsentCode,
-  judgeAnswer,
-  MAX_ROUNDS,
-  newState,
-  type PhraseFor,
-  phraseMatches,
   readJobConsent,
-  STATE_TTL,
   signJobConsent,
-  type Verdict,
 } from './ask.js';
 
 export { b64u } from './b64.js';
@@ -128,6 +108,16 @@ export {
 } from './grants.js';
 
 export { fetchHandler } from './http.js';
+
+export {
+  type ConsentCodes,
+  type ConsentCodesOutcome,
+  type JobCall,
+  type JobCallOutcome,
+  type JobCallRetry,
+  type JobTool,
+  jobCall,
+} from './job-call.js';
 
 export {
   effectLine,

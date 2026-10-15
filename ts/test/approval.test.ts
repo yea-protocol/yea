@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { assertIntegers } from '../src/approval.js';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
 
@@ -179,9 +180,9 @@ describe('undo (SPEC-approval §7)', () => {
 describe('assertIntegers (SPEC-approval §1)', () => {
   it('passes integer-only inputs and names the first other number', () => {
     expect(() =>
-      P.assertIntegers({ n: 3, deep: [{ ok: -2 }], s: '1.5' }),
+      assertIntegers({ n: 3, deep: [{ ok: -2 }], s: '1.5' }),
     ).not.toThrow();
-    expect(() => P.assertIntegers({ deep: [{ x: 1.5 }] })).toThrow(
+    expect(() => assertIntegers({ deep: [{ x: 1.5 }] })).toThrow(
       'input.deep.0.x is 1.5: job inputs can only hold safe integers',
     );
   });

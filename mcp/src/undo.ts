@@ -9,8 +9,7 @@ import {
   type ServerContext,
 } from '@modelcontextprotocol/server';
 import { isReceiptId, printable, undoJob, unixNow } from '@yea-protocol/sdk';
-import { isPartial } from './call/apply.js';
-import { callerOf, type RevertFn, type Yea } from './call/context.js';
+import { callerOf, isPartial, type RevertFn, type Yea } from './call.js';
 import { errorResult, textResult, UNDO_ANNOTATIONS } from './result.js';
 import { errorMessage, registryOf } from './util.js';
 

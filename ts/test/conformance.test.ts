@@ -2,6 +2,16 @@ import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { runCall } from '../scripts/job-call-run.mjs';
+import { checkJobConsent, decide } from '../src/approval.js';
+import {
+  buildForm,
+  checkedPhrase,
+  checkState,
+  jobConsentCode,
+  judgeAnswer,
+  phraseMatches,
+} from '../src/ask.js';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
 import { parseRequest } from '../src/service/verified-request.js';
@@ -254,7 +264,7 @@ describe('conformance vectors', () => {
     for (const c of v.decide) {
       const used = (k: P.LedgerKey) =>
         c.used[k.of] ? P.exact(c.used[k.of]) : 0n;
-      const d = await P.decide(c.plans.map(asHashed), c.policy, used, c.now);
+      const d = await decide(c.plans.map(asHashed), c.policy, used, c.now);
       const got = {
         kind: d.kind,
         ...('why' in d ? { why: d.why } : {}),
@@ -274,13 +284,13 @@ describe('conformance vectors', () => {
     }
 
     for (const c of v.phrases) {
-      expect(P.phraseMatches(c.typed, c.phrase), JSON.stringify(c.typed)).toBe(
+      expect(phraseMatches(c.typed, c.phrase), JSON.stringify(c.typed)).toBe(
         c.match,
       );
     }
 
     for (const c of v.phraseChecks) {
-      const check = () => P.checkedPhrase(c.phrase);
+      const check = () => checkedPhrase(c.phrase);
 
       if (c.expect === null) {
         expect(check, c.name).toThrow(TypeError);
@@ -290,7 +300,7 @@ describe('conformance vectors', () => {
     }
 
     for (const c of v.forms) {
-      const f = P.buildForm(
+      const f = buildForm(
         c.plans.map(asHashed),
         c.why,
         c.policy,
@@ -301,11 +311,11 @@ describe('conformance vectors', () => {
     }
 
     for (const c of v.states) {
-      expect(P.checkState(c.state, c.expect) !== null, c.name).toBe(c.valid);
+      expect(checkState(c.state, c.expect) !== null, c.name).toBe(c.valid);
     }
 
     for (const c of v.judge) {
-      const verdict = P.judgeAnswer(c.state, c.answer, {
+      const verdict = judgeAnswer(c.state, c.answer, {
         recomputed: c.recomputed.map(asHashed),
         policy: c.policy,
         phraseFor: (hp) => c.phrases[hp.planHash],
@@ -323,7 +333,7 @@ describe('conformance vectors', () => {
     }
 
     for (const c of v.consents.cases) {
-      const r = await P.checkJobConsent(c.grant, {
+      const r = await checkJobConsent(c.grant, {
         hp: asHashed(v.consents.plan),
         policy: { principal: v.keys.principal, server: v.keys.server },
         now: c.now,
@@ -362,7 +372,7 @@ describe('conformance vectors', () => {
     const cc = v.consentCode;
 
     expect(
-      P.jobConsentCode({
+      jobConsentCode({
         server: cc.server,
         principal: cc.principal,
         input: cc.input,
@@ -371,6 +381,32 @@ describe('conformance vectors', () => {
         now: cc.now,
       }),
     ).toBe(cc.code);
+  });
+  it('job calls: each round of the session, with the store before and after', async () => {
+    const { keys, calls } = load('job-calls');
+
+    for (const c of calls) {
+      for (const s of c.steps) {
+        expect(s.policy.server, c.name).toBe(keys.server);
+        expect([keys.principal, ''], c.name).toContain(s.policy.principal);
+      }
+
+      const want = c.steps.map(
+        (s: {
+          before: unknown;
+          outcome: unknown;
+          planned: unknown;
+          after: unknown;
+        }) => ({
+          before: s.before,
+          outcome: s.outcome,
+          planned: s.planned,
+          after: s.after,
+        }),
+      );
+
+      expect(await runCall(P, c), c.name).toEqual(want);
+    }
   });
   it('approval FileStore layout', async () => {
     const v = load('approval');

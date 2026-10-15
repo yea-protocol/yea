@@ -1,8 +1,9 @@
 /**
  * Asking a person to approve a job (docs/framework/SPEC-approval.md §3–§6): the confirmation
  * phrase, the form, the state that goes round the client, how the answer is judged, and the
- * consent code for `yea approve` when the client can't ask. The parts live in ask/; this file
- * re-exports them.
+ * consent code for `yea approve` when the client can't ask. The job call session (job-call.ts)
+ * orders them; the package's index keeps only reading and signing a consent code. The parts
+ * live in ask/; this file re-exports them.
  */
 
 export {

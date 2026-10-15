@@ -2,9 +2,8 @@
  * The approval form (docs/framework/SPEC-approval.md §3): the message listing
  * each plan, escaped, and the schema of what the person answers.
  */
-import type { HashedPlan, Policy } from '../approval.js';
+import { type HashedPlan, type Policy, ruledOut } from '../approval.js';
 import { fmtDuration, safeEffectLine } from '../lens.js';
-import { atLeast } from '../risk.js';
 import { printable } from '../text.js';
 import { fmtUses } from '../uses.js';
 import { type PhraseFor, withFallback } from './phrase.js';
@@ -58,13 +57,10 @@ export function buildForm(
   phraseFor: PhraseFor,
 ): ApprovalForm | null {
   const phrase = withFallback(phraseFor);
-  const denied = plans.filter((hp) => policy.deny.includes(hp.tool));
-  const outside = plans.filter(
-    (hp) => !denied.includes(hp) && atLeast(hp.risk, policy.outOfBand),
-  );
-  const offered = plans.filter(
-    (hp) => !denied.includes(hp) && !outside.includes(hp),
-  );
+  const rule = (hp: HashedPlan) => ruledOut(hp, policy)?.kind;
+  const denied = plans.filter((hp) => rule(hp) === 'denied');
+  const outside = plans.filter((hp) => rule(hp) === 'out-of-band');
+  const offered = plans.filter((hp) => !rule(hp));
 
   if (!offered.length) {
     return null;
