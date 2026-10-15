@@ -1,11 +1,13 @@
 /**
  * The code-organization check (CONTRIBUTING.md#code-organization): every
  * source file opens with a file header, stays at or under 300 lines, and has
- * a name in its language's style. Known violations sit in RATCHET until the
- * PR that fixes them; the list may only shrink.
+ * a name in its language's style, and no file imports from inside another
+ * module's folder (ADR-0001). Known violations sit in RATCHET until the PR
+ * that fixes them; the list may only shrink.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { privateFolders } from './check-structure/private-folders.mjs';
 
 /** The most lines a source file may have. */
 export const MAX_LINES = 300;
@@ -38,7 +40,18 @@ export const LENGTH_EXEMPT = [
  * until the PR that fixes it, which also removes the entry. The check fails
  * when a listed violation no longer occurs.
  */
-export const RATCHET = {};
+export const RATCHET = {
+  // Imports from inside another module's folder (ADR-0001): #284.
+  'mcp/src/bridge.ts': ['private'],
+  'mcp/src/bridge/instructions.ts': ['private'],
+  'mcp/src/guard.ts': ['private'],
+  'mcp/src/index.ts': ['private'],
+  'mcp/src/undo.ts': ['private'],
+  'site/.vitepress/lens-fence.ts': ['private'],
+  'site/.vitepress/theme/components/landing/HeroSection.vue': ['private'],
+  'ts/src/cli/launch.ts': ['private'],
+  'ts/src/test-drive.ts': ['private'],
+};
 
 /** Run-together names, since renamed to kebab-case (#108); they may not come back. */
 const JOINED = /^(servefetch|filestore|keyfile|serverkey|tooldefs|testdrive)\./;
@@ -208,13 +221,31 @@ export function expand(root, pattern) {
     .filter((dir) => existsSync(`${root}/${dir}`));
 }
 
+/** The violations in the source folder `dir`: each file's, then its imports'. */
+function checkRoot(root, dir) {
+  const files = new Map(
+    walk(root, dir).map((path) => [
+      path,
+      readFileSync(`${root}/${path}`, 'utf8'),
+    ]),
+  );
+
+  return [
+    ...[...files].flatMap(([path, text]) => checkFile(path, text)),
+    ...privateFolders(dir, files),
+  ];
+}
+
 /** Every violation under `roots`, sorted, with paths relative to `root`. */
 export function findViolations(root, roots = ROOTS) {
   return roots
     .flatMap((pattern) => expand(root, pattern))
-    .flatMap((dir) => walk(root, dir))
-    .flatMap((path) => checkFile(path, readFileSync(`${root}/${path}`, 'utf8')))
-    .sort((a, b) => `${a.path} ${a.rule}`.localeCompare(`${b.path} ${b.rule}`));
+    .flatMap((dir) => checkRoot(root, dir))
+    .sort((a, b) =>
+      `${a.path} ${a.rule} ${a.detail}`.localeCompare(
+        `${b.path} ${b.rule} ${b.detail}`,
+      ),
+    );
 }
 
 /**

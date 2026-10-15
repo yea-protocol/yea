@@ -120,6 +120,9 @@ This section covers files and folders; [Code style](#code-style) covers what goe
   still has one interface ([ADR-0001](docs/adr/0001-deep-modules-are-folders-with-private-files.md)).
   Judge a module by the size of its interface, not its line count: splitting a file is never a
   reason to export its parts.
+  A folder is a module's when it has an entry file: `x.ts` beside it (`Landing.vue` fronts
+  `landing/`) or `x/index.ts` inside it. A folder with neither only groups files, and any file
+  may import from it.
 - In Python the entry is the package's `__init__.py`, which wires the parts and re-exports; the
   parts are sibling modules in the package.
 - A package's public API is only what its `index` re-exports. Modules may export to their
@@ -159,7 +162,9 @@ docs embed whole, generated files and the `conformance/` vectors are exempt from
 
 `npm run lint:structure` (`scripts/check-structure.mjs`, run in CI and before each commit)
 checks every source file for the header, the 300-line limit and the name: its case, plus a list
-of known run-together names (`servefetch`, `keyfile`, …). Biome covers exports:
+of known run-together names (`servefetch`, `keyfile`, …). It also reads the relative imports
+in TS, JS and Vue files and fails on any from inside another module's folder (Python packages:
+#283). Biome covers exports:
 `noDefaultExport`, with overrides for the files a framework needs one in, and `noReExportAll`,
 off only for package index files.
 

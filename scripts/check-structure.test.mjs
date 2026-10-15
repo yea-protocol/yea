@@ -1,6 +1,6 @@
 /**
- * Tests for check-structure.mjs: each rule (header, length, name), what the
- * walk skips, and the ratchet in both directions.
+ * Tests for check-structure.mjs: each rule (header, length, name, private),
+ * what the walk skips, and the ratchet in both directions.
  */
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -199,5 +199,155 @@ test('ratchet: an entry for a file renamed away fails', () => {
 
   assert.deepEqual(report(result), [
     'src/servefetch.ts: name (no longer occurs: remove it from the ratchet)',
+  ]);
+});
+
+/** A file that imports `specs`, one statement each. */
+function importing(...specs) {
+  return HEADER + specs.map((s) => `import { a } from '${s}';\n`).join('');
+}
+
+/** `path: rule (detail)` for each violation under `src` in a fixture. */
+function privateFound(name, files) {
+  return report(compare(findViolations(fixture(name, files), ['src']), {}));
+}
+
+test('private: a module folder is closed to files outside it', () => {
+  assert.deepEqual(
+    privateFound('private-sibling', {
+      'src/a/x/part.ts': importing('../y/part.js'),
+      'src/a/y.ts': importing('./y/part.js'),
+      'src/a/y/part.ts': HEADER,
+    }),
+    [
+      'src/a/x/part.ts: private (imports src/a/y/part.js from inside src/a/y/; import src/a/y.ts instead)',
+    ],
+  );
+});
+
+test('private: the entry file and the files in the folder may import it', () => {
+  assert.deepEqual(
+    privateFound('private-allowed', {
+      'src/y.ts': importing('./y/part.js', './y/inner.js'),
+      'src/y/part.ts': importing('./inner.js', '../z.js'),
+      'src/y/inner.ts': importing('./inner/deep.js'),
+      'src/y/inner/deep.ts': importing('../part.js', '../../z.js'),
+      'src/z.ts': importing('./y.js'),
+    }),
+    [],
+  );
+});
+
+test('private: an entry file may not reach into a nested module', () => {
+  assert.deepEqual(
+    privateFound('private-nested', {
+      'src/x.ts': importing('./x/inner/deep.js'),
+      'src/x/inner.ts': HEADER,
+      'src/x/inner/deep.ts': HEADER,
+    }),
+    [
+      'src/x.ts: private (imports src/x/inner/deep.js from inside src/x/inner/; import src/x/inner.ts instead)',
+    ],
+  );
+});
+
+test('private: an index file inside a folder is its entry', () => {
+  assert.deepEqual(
+    privateFound('private-index', {
+      'src/run.ts': importing('./x/index.js', './x', './x/part.js'),
+      'src/x/index.ts': importing('./part.js'),
+      'src/x/part.ts': HEADER,
+    }),
+    [
+      'src/run.ts: private (imports src/x/part.js from inside src/x/; import src/x/index.ts instead)',
+    ],
+  );
+});
+
+test('private: a folder with no entry file is open to all', () => {
+  assert.deepEqual(
+    privateFound('private-plain', {
+      'src/run.ts': importing('./parts/one.js', './parts/two/x.js'),
+      'src/parts/one.ts': HEADER,
+      'src/parts/two/x.ts': HEADER,
+    }),
+    [],
+  );
+});
+
+test('private: a Vue entry fronts its folder whatever its case', () => {
+  const vue = (spec) =>
+    `<script setup lang="ts">\n${HEADER}import A from '${spec}';\n</script>\n`;
+
+  assert.deepEqual(
+    privateFound('private-vue', {
+      'src/Landing.vue': vue('./landing/Hero.vue'),
+      'src/landing/Hero.vue': vue('../playground/Radio.vue'),
+      'src/Playground.vue': vue('./playground/Radio.vue'),
+      'src/playground/Radio.vue': vue('./Radio.vue'),
+    }),
+    [
+      'src/landing/Hero.vue: private (imports src/playground/Radio.vue from inside src/playground/; import src/Playground.vue instead)',
+    ],
+  );
+});
+
+test('private: imports that leave the source root are not checked', () => {
+  assert.deepEqual(
+    privateFound('private-outside', {
+      'src/run.ts': importing('../dist/x/part.js', '../other/y/part.js'),
+      'dist/x.js': HEADER,
+      'dist/x/part.js': HEADER,
+    }),
+    [],
+  );
+});
+
+test('private: every import form is read, bare package names are not', () => {
+  const text = [
+    HEADER,
+    "import type { A } from './x/a.js';",
+    'export * from "./x/b.js";',
+    "export { c } from './x/c.js';",
+    "import './x/d.css';",
+    "const e = await import('./x/e.js');",
+    "const f = require('./x/f.cjs');",
+    "import g from 'node:fs';",
+    "import h from '@yea-protocol/sdk';",
+  ].join('\n');
+  const found = privateFound('private-forms', {
+    'src/run.ts': text,
+    'src/x.ts': HEADER,
+  });
+
+  assert.deepEqual(
+    found.map((line) => /imports (\S+)/.exec(line)?.[1]),
+    ['a.js', 'b.js', 'c.js', 'd.css', 'e.js', 'f.cjs'].map((f) => `src/x/${f}`),
+  );
+});
+
+test('private: Python files are not read by the rule', () => {
+  assert.deepEqual(
+    privateFound('private-python', {
+      'src/run.py': `${DOC}from .x.part import a  # './x/part.js'\n`,
+      'src/x/__init__.py': DOC,
+      'src/x/part.py': DOC,
+    }),
+    [],
+  );
+});
+
+test('ratchet: a listed private violation that no longer occurs fails', () => {
+  const dir = fixture('private-fixed', {
+    'src/run.ts': importing('./x.js'),
+    'src/x.ts': importing('./x/part.js'),
+    'src/x/part.ts': HEADER,
+  });
+  const result = compare(findViolations(dir, ['src']), {
+    'src/run.ts': ['private'],
+  });
+
+  assert.deepEqual(report(result), [
+    'src/run.ts: private (no longer occurs: remove it from the ratchet)',
   ]);
 });
