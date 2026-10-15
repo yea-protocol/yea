@@ -359,7 +359,8 @@ test('private: a Vue file is read only inside <script>', () => {
     '<script setup lang="ts">',
     HEADER,
     "import B from './x/b.vue';",
-    '</script>',
+    '</script >',
+    "<p>import C from './x/c.vue'</p>",
   ].join('\n');
   const found = privateFound('private-vue-template', {
     'src/Run.vue': vue,

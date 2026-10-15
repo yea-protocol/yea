@@ -12,7 +12,7 @@ const QUOTES = new Set(["'", '"', '`']);
 const REGEX_AFTER =
   /(^|[(,=:[!&|?{};+\-*%<>~^]|\b(return|typeof|case|do|else|in|of|void|yield|await))$/;
 
-const SCRIPT_BLOCK = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+const SCRIPT_BLOCK = /<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi;
 
 /** The index just past the string or template literal opening at `i`. */
 function literalEnd(text, i) {
