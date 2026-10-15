@@ -1,48 +1,78 @@
 /**
- * The playground's consent check: find the proposal the agent committed, and check the
- * service's consent request against it with the SDK's `consentToSign`, which says what to sign
- * (built from that proposal) or why it can't be approved. No Vue here, so it can be tested.
+ * The playground's consent round: a COMMIT of a proposal the agent received goes through the
+ * SDK's consent round, whose signer waits on the page for the human. The round checks the
+ * service's request against that proposal and builds what the human signs from it; this file
+ * only starts it and says where it stands. No Vue here, so it can be tested.
  */
-import type { ConsentRequest } from '@yea-protocol/sdk';
-import {
-  type Core,
-  type Exchange,
-  SERVICES,
-  type ServiceKey,
-} from './model.ts';
-import { type ReceivedProposal, receivedProposal, type Seen } from './seen.ts';
+import type {
+  Client,
+  ConsentAsk,
+  ConsentRequest,
+  KeyPair,
+  RoundOutcome,
+} from '@yea-protocol/sdk';
+import type { Core } from './model.ts';
+import type { ReceivedProposal } from './seen.ts';
 
-/** Where the check stands: what to sign once it passes, or why it can't be approved. */
+/** Where the round stands: what the human signs once they approve, or why it can't be approved. */
 export type ConsentCheck =
   | { state: 'checking' }
   | { state: 'ok'; consent: ConsentRequest }
   | { state: 'refused'; why: string };
 
-/** The proposal the exchange committed: the one the agent received, at that service. */
-export function committedProposal(
-  seen: Seen,
-  x: Exchange,
-): ReceivedProposal | null {
-  if (x.request.verb !== 'COMMIT') {
-    return null;
-  }
-
-  const p = receivedProposal(seen, x.request.proposal, x.request.hash);
-
-  return p?.service === x.service ? p : null;
+/** A round waiting on the human: what they're asked, how to answer, and how it ends. */
+export interface Waiting {
+  ask: ConsentAsk;
+  decide: (yes: boolean) => void;
+  done: Promise<RoundOutcome>;
 }
 
-/** Check request `c` against `p`, the proposal shown, at the service that sent it. */
-export async function checkAgainst(
-  sdk: Pick<Core, 'consentToSign'>,
-  c: ConsentRequest,
-  p: ReceivedProposal,
-  service: ServiceKey,
-): Promise<ConsentCheck> {
-  const { service: _s, committed: _c, ...proposal } = p;
-  const r = await sdk.consentToSign(c, proposal, SERVICES[service]);
+/** How a round's first stretch ended: it waits on the human, or it's already over. */
+export type Started = { waiting: Waiting } | { out: RoundOutcome };
 
-  return 'why' in r
-    ? { state: 'refused', why: r.why }
-    : { state: 'ok', consent: r.consent };
+/**
+ * Commit `proposal` through the consent round as the agent; the human's key signs only once
+ * `decide(true)` is called. Resolves when the round waits on the human or ends.
+ */
+export function startRound(
+  sdk: Pick<Core, 'consentRound' | 'signer'>,
+  o: {
+    client: Client;
+    proposal: ReceivedProposal;
+    principal: KeyPair;
+    budget?: number;
+  },
+): Promise<Started> {
+  const { service: _s, committed: _c, ...proposal } = o.proposal;
+  const c = o.client;
+  let asked: (w: Omit<Waiting, 'done'>) => void = () => undefined;
+  const waiting = new Promise<Omit<Waiting, 'done'>>((r) => {
+    asked = r;
+  });
+  const done = sdk.consentRound({
+    client: {
+      key: c.key,
+      audience: () => c.audience(),
+      commit: (p, x) => c.commit(p, { ...x, budget: o.budget }),
+    },
+    proposal,
+    approver: sdk.signer(
+      o.principal,
+      (ask) => new Promise((decide) => asked({ ask, decide })),
+    ),
+  });
+
+  return Promise.race([
+    done.then((out) => ({ out })),
+    waiting.then((w) => ({ waiting: { ...w, done } })),
+  ]);
+}
+
+/** Where a started round stands, for the card: waiting with what's signed, or refused. */
+export function checkOf(s: Started): ConsentCheck | null {
+  if ('waiting' in s) {
+    return { state: 'ok', consent: s.waiting.ask.request };
+  }
+
+  return s.out.kind === 'refused' ? { state: 'refused', why: s.out.why } : null;
 }

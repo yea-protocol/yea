@@ -16,12 +16,7 @@ import { shop } from './examples/shop.js';
 import { issueGrant } from './grants.js';
 import { est } from './lens.js';
 import { printable } from './text.js';
-import {
-  type Approver,
-  createToolHost,
-  TOOLS,
-  type ToolHost,
-} from './tools.js';
+import { type Confirm, createToolHost, TOOLS, type ToolHost } from './tools.js';
 import { unixNow } from './util.js';
 
 const c = {
@@ -76,7 +71,7 @@ export async function testDrive(
   const prompt = o.prompt ?? DEFAULT_PROMPT();
   const clients = await throwawayClients();
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const host = await createToolHost(clients, terminalApprover(rl));
+  const host = await createToolHost(clients, terminalConfirm(rl));
   const tools: Anthropic.Beta.BetaTool[] = TOOLS.map((t) => ({
     name: t.name,
     description: t.description,
@@ -151,7 +146,7 @@ async function throwawayClients(): Promise<Client[]> {
 }
 
 /** Ask the person at the terminal; without a TTY nothing is approved. */
-function terminalApprover(rl: Interface): Approver {
+function terminalConfirm(rl: Interface): Confirm {
   // `shown` starts with `at <service>:`; it and `reason` come escaped, and escaping is
   // idempotent, so `printable` here only guards against another caller.
   return async ({ shown, reason }) => {

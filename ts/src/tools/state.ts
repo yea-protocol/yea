@@ -1,4 +1,4 @@
-/** What the `yea test-drive` tools share: the model's arguments, the host's state and the human approver. */
+/** What the `yea test-drive` tools share: the model's arguments, the host's state and the human's yes or no. */
 import type { Client } from '../client.js';
 import type { Proposal } from '../types.js';
 
@@ -6,7 +6,7 @@ import type { Proposal } from '../types.js';
  * Ask the human to approve `shown`: `at <service>:` and the proposal's Lens, escaped, as are
  * `service` and `reason`. Resolve true only on explicit approval.
  */
-export type Approver = (req: {
+export type Confirm = (req: {
   service: string;
   shown: string;
   reason: string;
@@ -35,7 +35,7 @@ export interface HostState {
   // Remember each proposal as shown, so the model only handles short ids while COMMIT
   // (and any consent) still binds to exactly what was shown.
   seen: Map<string, { service: string; proposal: Proposal }>;
-  approve?: Approver;
+  approve?: Confirm;
 }
 
 export type ToolFn = (

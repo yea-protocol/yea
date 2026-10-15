@@ -11,7 +11,7 @@ interface ShortcutDeps {
   form: RequestForm;
   current: ComputedRef<Exchange | null>;
   examples: Examples;
-  send: (extraGrants?: string[]) => Promise<void>;
+  send: () => Promise<void>;
 }
 
 export function useShortcuts({ form, current, examples, send }: ShortcutDeps) {
@@ -20,7 +20,6 @@ export function useShortcuts({ form, current, examples, send }: ShortcutDeps) {
     verb: TargetVerb,
     target: string,
     service = current.value?.service,
-    extraGrants?: string[],
   ): Promise<void> {
     if (!service) {
       return;
@@ -31,7 +30,7 @@ export function useShortcuts({ form, current, examples, send }: ShortcutDeps) {
     form.verb = verb;
     await nextTick();
     form.target = target;
-    await send(extraGrants);
+    await send();
   }
 
   /** Answer a CLARIFY: the same INTENT again, with the option's params merged in. */

@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { ConsentStore } from './consent-round.js';
 import { type KeyPair, keyPair } from './crypto.js';
 
 let moved = false;
@@ -123,6 +124,12 @@ export function loadConsent(hash: string): string | null {
 
   return existsSync(f) ? readFileSync(f, 'utf8').trim() : null;
 }
+
+/** The agent's `~/.yea/consents` as the consent round's store: `yea approve` here writes it too. */
+export const homeConsents: ConsentStore = {
+  get: (hash) => loadConsent(hash),
+  put: (hash, token) => saveGrant(token, 'consents', hash),
+};
 
 export function loadGrants(kind: 'grants' | 'consents' = 'grants'): string[] {
   const d = p(kind);

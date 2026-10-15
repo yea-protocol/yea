@@ -10,10 +10,14 @@
 import type {
   Caveat,
   Client,
+  CommitReply,
+  ConsentAsk,
   ConsentRequest,
   KeyPair,
   Proposal,
   Receipt,
+  RoundClient,
+  RoundOutcome,
   Service,
 } from '@yea-protocol/sdk';
 
@@ -21,12 +25,12 @@ import type {
 export type SessionSdk = Pick<
   typeof import('@yea-protocol/sdk'),
   | 'Client'
-  | 'consentGrant'
-  | 'consentToSign'
+  | 'consentRound'
   | 'issueGrant'
   | 'keyPair'
   | 'local'
   | 'proposalHash'
+  | 'signer'
 >;
 
 /** Makes an example service, trusting the given principal keys. */
@@ -46,11 +50,13 @@ export interface Waiting {
   params: Record<string, unknown>;
   proposalsLens: string;
   proposal: Proposal;
-  /** What the person signs: built from `proposal` by `consentToSign`, never the service's request. */
+  /** What the person signs: built from `proposal` by the consent round, never the service's request. */
   consent: ConsentRequest;
   /** The service's reason, from its consent_required error. */
   reason: string;
   consentLens: string;
+  /** The round waiting on the person: their answer, and how it ends. */
+  round: { decide: (yes: boolean) => void; done: Promise<RoundOutcome> };
 }
 
 export interface Done {
@@ -79,6 +85,31 @@ const expiryOf = (caveats: Caveat[]) =>
     (t, c) => ('exp' in c ? Math.min(t, c.exp) : t),
     Number.POSITIVE_INFINITY,
   );
+
+/** A promise, and the function that resolves it. */
+function deferred<T>() {
+  let resolve: (v: T) => void = () => undefined;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+
+  return { promise, resolve: (v: T) => resolve(v) };
+}
+
+/** A round that ended without asking: a receipt inside the policy, or why the commit failed. */
+function within(out: RoundOutcome): Done {
+  if (out.kind === 'reply' && out.reply.kind === 'RECEIPT') {
+    return { receipt: out.reply.receipt, lens: out.reply.lens };
+  }
+
+  if (out.kind === 'refused') {
+    throw new Error(
+      `The service's consent request can't be approved: ${out.why}.`,
+    );
+  }
+
+  throw failure("The commit didn't go through", out.reply);
+}
 
 interface Parts {
   sdk: SessionSdk;
@@ -155,29 +186,41 @@ export class Session {
     };
   }
 
-  /** The agent's COMMIT: it goes through inside the policy, or the service asks the person. */
+  /**
+   * The agent's COMMIT, through the consent round: it goes through inside the policy, or the
+   * service asks the person, and the round waits on their answer (`approve`).
+   */
   async commit(p: Proposed): Promise<Answer> {
-    const c = await this.client.commit(p.proposal);
+    // The last COMMIT's reply, for its Lens: the round asks right after the first.
+    const seen: { last?: CommitReply } = {};
+    const client: RoundClient = {
+      key: this.client.key,
+      audience: () => this.client.audience(),
+      commit: async (x, o) => {
+        seen.last = await this.client.commit(x, o);
 
-    if (c.kind === 'RECEIPT') {
-      return { outcome: 'within', done: { receipt: c.receipt, lens: c.lens } };
-    }
+        return seen.last;
+      },
+    };
+    const asked = deferred<{
+      ask: ConsentAsk;
+      decide: (yes: boolean) => void;
+    }>();
+    const done = this.sdk.consentRound({
+      client,
+      proposal: p.proposal,
+      approver: this.sdk.signer(
+        this.keys.principal,
+        (ask) => new Promise((decide) => asked.resolve({ ask, decide })),
+      ),
+    });
+    const first = await Promise.race([
+      done.then((out) => ({ out })),
+      asked.promise,
+    ]);
 
-    if (c.kind !== 'ERROR' || c.code !== 'consent_required' || !c.consent) {
-      throw failure("The commit didn't go through", c);
-    }
-
-    // What the person signs is built from the proposal the page shows, after the SDK's check.
-    const toSign = await this.sdk.consentToSign(
-      c.consent,
-      p.proposal,
-      await this.client.audience(),
-    );
-
-    if ('why' in toSign) {
-      throw new Error(
-        `The service's consent request can't be approved: ${toSign.why}.`,
-      );
+    if ('out' in first) {
+      return { outcome: 'within', done: within(first.out) };
     }
 
     return {
@@ -186,9 +229,10 @@ export class Session {
         params: p.params,
         proposalsLens: p.proposalsLens,
         proposal: p.proposal,
-        consent: toSign.consent,
-        reason: c.message,
-        consentLens: c.lens,
+        consent: first.ask.request,
+        reason: first.ask.reason,
+        consentLens: seen.last?.lens ?? '',
+        round: { decide: first.decide, done },
       },
     };
   }
@@ -197,23 +241,26 @@ export class Session {
   async approve(w: Waiting): Promise<Done & { consentGrant: string }> {
     // A consent for an expired proposal can't be accepted; say so rather than ask again.
     if (Date.now() / 1000 >= w.proposal.expires) {
+      w.round.decide(false);
+
       throw new Error(
         "It didn't go through: the proposal expired before it was approved.",
       );
     }
 
-    const consentGrant = await this.sdk.consentGrant({
-      principal: this.keys.principal,
-      agent: this.keys.agent.public,
-      consent: w.consent,
-    });
-    const r = await this.client.commit(w.proposal, { grants: [consentGrant] });
+    w.round.decide(true);
 
-    if (r.kind !== 'RECEIPT') {
-      throw failure("It didn't go through", r);
+    const out = await w.round.done;
+
+    if (out.kind !== 'reply' || out.reply.kind !== 'RECEIPT' || !out.consent) {
+      throw failure("It didn't go through", out.reply);
     }
 
-    return { receipt: r.receipt, lens: r.lens, consentGrant };
+    return {
+      receipt: out.reply.receipt,
+      lens: out.reply.lens,
+      consentGrant: out.consent,
+    };
   }
 
   async undo(receipt: string): Promise<Done> {

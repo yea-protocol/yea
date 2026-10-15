@@ -268,6 +268,7 @@ export { defaultFileStore, FileStore } from './file-store.js';
 export {
   agentKey,
   home,
+  homeConsents,
   loadConsent,
   loadGrants,
   saveGrant,

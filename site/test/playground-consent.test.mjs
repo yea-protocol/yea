@@ -1,8 +1,9 @@
 /**
- * Tests for the playground's consent check (consent-check.ts, #276): it checks the service's
- * consent request against the proposal the agent committed, signs only a consent built from
- * that proposal, and says why when it refuses. They import the TypeScript source and the built
- * SDK, so they need Node's type stripping (22.18+) and `npm run build` first.
+ * Tests for the playground's consent round (consent-check.ts, #276, #277): a COMMIT goes through
+ * the SDK's consent round, which checks the service's consent request against the proposal the
+ * agent received, waits on the human, and signs only a consent built from that proposal. They
+ * import the TypeScript source and the built SDK, so they need Node's type stripping (22.18+)
+ * and `npm run build` first.
  */
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -15,93 +16,122 @@ const skip =
     'needs Node with type stripping (22.18+) to import .ts') ||
   (!built && 'needs npm run build');
 
-/** A proposal the agent received from the shop, its consent request, and the exchange. */
-async function setup() {
+/**
+ * A shop client whose COMMIT replies pass through `edit`, as a lying service's would, counting
+ * its COMMITs; a proposal over its 10 USD limit, as the playground received it; the keys.
+ */
+async function setup(edit = (r) => r) {
   const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
   const check = await import(`${THEME}/consent-check.ts`);
-  const bound = {
-    id: 'p_1',
-    capability: 'shop.order',
-    summary: '4 meals — 53.95 USD',
-    effects: [{ op: 'create', target: 'order/1' }],
-    risk: 'low',
-    undo: null,
-    expires: 4_000_000_000,
-  };
-  const p = { ...bound, hash: await sdk.proposalHash(bound) };
-  const received = { ...p, service: 'shop' };
-  const seen = {
-    proposals: [{ ...received, id: 'p_0' }, received],
-    receipts: [],
-    handles: [],
-  };
-  const k = {
-    proposal: p.id,
-    hash: p.hash,
-    service: 'shop.example',
-    capability: p.capability,
-    principal: 'pk',
-    summary: p.summary,
-    expires: p.expires,
-  };
-  const exchange = {
-    service: 'shop',
-    request: { verb: 'COMMIT', proposal: p.id, hash: p.hash },
-  };
+  const [principal, agent] = await Promise.all([sdk.keyPair(), sdk.keyPair()]);
+  const t = sdk.local(shop({ trust: [principal.public] }));
+  const commits = [];
+  const client = new sdk.Client(
+    {
+      ...t,
+      async request(f, on) {
+        if (f.verb === 'COMMIT') {
+          commits.push(f);
+        }
 
-  return { sdk, check, p, received, seen, k, exchange };
+        return edit(await t.request(f, on));
+      },
+    },
+    {
+      key: agent.seed,
+      grants: [
+        await sdk.issueGrant({
+          principal,
+          to: agent.public,
+          caveats: [
+            { each: { of: 'spend', max: 1000, scale: 2, unit: 'USD' } },
+          ],
+        }),
+      ],
+    },
+  );
+  const r = await client.intent('shop.order', {
+    items: [{ sku: 'm001', qty: 4 }],
+    deliver: '2030-01-01',
+  });
+
+  assert.equal(r.kind, 'PROPOSALS');
+
+  const received = { ...r.proposals[0], service: 'shop' };
+  const start = (proposal = received) =>
+    check.startRound(sdk, { client, proposal, principal });
+
+  return { check, received, commits, start };
 }
 
-test('committedProposal: the proposal the COMMIT named, at its service', {
+/** The service's consent request, with `patch` applied. */
+const consentSaying = (patch) => (r) =>
+  r.kind === 'ERROR' && r.consent
+    ? { ...r, consent: { ...r.consent, ...patch } }
+    : r;
+
+test("startRound: waits on the human with a consent built from the proposal, not the service's request", {
   skip,
 }, async () => {
-  const { check, received, seen, exchange } = await setup();
+  const lie = { summary: 'something else', expires: 4_000_000_000 };
+  const { check, received, commits, start } = await setup(consentSaying(lie));
+  const started = await start();
 
-  assert.equal(check.committedProposal(seen, exchange), received);
-  assert.equal(
-    check.committedProposal(seen, { ...exchange, service: 'calendar' }),
-    null,
-  );
-  assert.equal(
-    check.committedProposal(seen, {
-      ...exchange,
-      request: { ...exchange.request, hash: 'x' },
-    }),
-    null,
-  );
-  assert.equal(
-    check.committedProposal(seen, { ...exchange, request: { verb: 'UNDO' } }),
-    null,
-  );
+  assert.ok('waiting' in started);
+  assert.deepEqual(check.checkOf(started), {
+    state: 'ok',
+    consent: started.waiting.ask.request,
+  });
+  assert.equal(started.waiting.ask.request.summary, received.summary);
+  assert.equal(started.waiting.ask.request.expires, received.expires);
+  assert.equal(commits.length, 1);
+
+  // Approving lets the round sign and commit once more.
+  started.waiting.decide(true);
+
+  const out = await started.waiting.done;
+
+  assert.equal(out.kind, 'reply');
+  assert.equal(out.reply.kind, 'RECEIPT');
+  assert.equal(out.reply.receipt.proposal, received.id);
+  assert.equal(commits.length, 2);
 });
 
-test("checkAgainst: signs a consent built from the proposal, not the service's request", {
+test('startRound: a decline ends the round with no second COMMIT', {
   skip,
 }, async () => {
-  const { sdk, check, p, received, k } = await setup();
-  const lying = { ...k, summary: 'something else', expires: p.expires + 999 };
-  const r = await check.checkAgainst(sdk, lying, received, 'shop');
+  const { commits, start } = await setup();
+  const started = await start();
 
-  assert.equal(r.state, 'ok');
-  assert.deepEqual(r.consent, { ...k, summary: p.summary });
+  started.waiting.decide(false);
+
+  assert.equal((await started.waiting.done).kind, 'declined');
+  assert.equal(commits.length, 1);
 });
 
-test('checkAgainst: refuses a request that names another proposal, hash, capability or service, or a tampered proposal, and says why', {
+test('startRound: refuses a request that names another proposal, hash, capability or service, or a tampered proposal, and says why', {
   skip,
 }, async () => {
-  const { sdk, check, received, k } = await setup();
   const refusals = [
-    [{ ...k, proposal: 'p_x' }, received, 'shop', 'names another proposal'],
-    [{ ...k, hash: 'x' }, received, 'shop', "hash isn't the proposal's"],
-    [{ ...k, capability: 'shop.x' }, received, 'shop', 'another capability'],
-    [k, received, 'calendar', 'names another service'],
-    [k, { ...received, summary: '1 roll' }, 'shop', "doesn't match its hash"],
+    [{ proposal: 'p_x' }, 'names another proposal'],
+    [{ hash: 'x' }, "hash isn't the proposal's"],
+    [{ capability: 'shop.x' }, 'another capability'],
+    [{ service: 'evil.example' }, 'names another service'],
   ];
 
-  for (const [request, proposal, service, why] of refusals) {
-    const r = await check.checkAgainst(sdk, request, proposal, service);
+  for (const [patch, why] of refusals) {
+    const { check, commits, start } = await setup(consentSaying(patch));
+    const started = await start();
 
-    assert.equal(r.state, 'refused', why);
-    assert.match(r.why, new RegExp(why));
+    assert.equal(check.checkOf(started).state, 'refused', why);
+    assert.match(check.checkOf(started).why, new RegExp(why));
+    assert.equal(commits.length, 1, why);
   }
+
+  // Shown one thing, bound to another: the round refuses it before anyone is asked.
+  const { check, received, start } = await setup();
+  const tampered = await start({ ...received, summary: '1 roll' });
+
+  assert.match(check.checkOf(tampered).why, /doesn't match its hash/);
 });

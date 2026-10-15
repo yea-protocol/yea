@@ -1,16 +1,20 @@
 /**
- * The `yea_commit` tool: commit a proposal the model was shown, routing a required consent to the
- * human, built from that proposal and never from the service's error.
+ * The `yea_commit` tool: commit a proposal the model was shown through the consent round, which
+ * routes a required consent to the human, built from that proposal and never from the service's
+ * error. A consent the human doesn't give here becomes a code for `yea approve`.
  */
-import { consentFrom, consentLines } from '../approve.js';
+import { outOfBand, signer } from '../approvers.js';
 import type { Client } from '../client.js';
-import { consentCode, consentGrant } from '../consent.js';
-import { keyPair } from '../crypto.js';
-import { loadGrants, principalKey, saveGrant } from '../home.js';
+import {
+  type Approver,
+  consentRound,
+  type RoundOutcome,
+} from '../consent-round.js';
+import { homeConsents, principalKey } from '../home.js';
 import { untrustedLens } from '../lens.js';
 import { printable } from '../text.js';
-import type { ConsentRequest, ErrorReply, Event, Proposal } from '../types.js';
-import type { Approver, HostState, ToolArgs, ToolResult } from './state.js';
+import type { Event } from '../types.js';
+import type { Confirm, HostState, ToolArgs, ToolResult } from './state.js';
 
 export async function commitTool(
   s: HostState,
@@ -28,107 +32,58 @@ export async function commitTool(
     };
   }
 
-  const p = known.proposal;
-  let r = await c.commit(p, { grants: loadGrants('consents'), onEvent });
+  const out = await consentRound({
+    client: c,
+    proposal: known.proposal,
+    approver: humanApprover(s.approve),
+    consents: homeConsents,
+    onEvent,
+  });
 
-  if (r.kind === 'ERROR' && r.code === 'consent_required') {
-    const asked = await consentFor(r, c, p);
-
-    if ('why' in asked) {
-      return {
-        text:
-          untrustedLens(r) +
-          `\n  → the service's consent request doesn't match this proposal (${asked.why}); not asking the user to sign it.`,
-        isError: true,
-      };
-    }
-
-    const { consent, shown } = asked;
-    const token = await askHuman({
-      approve: s.approve,
-      consent,
-      shown,
-      err: r,
-      c,
-    });
-
-    if (!token) {
-      return {
-        text:
-          untrustedLens(r) +
-          `\n  → the user did not approve this here. If they want it, ask them to review it and run, in their own terminal: yea approve ${consentCode(consent, p)}  — then call yea_commit again.`,
-        isError: true,
-      };
-    }
-
-    r = await c.commit(p, { grants: [token], onEvent });
-  }
-
-  return {
-    text: [...events, untrustedLens(r)].join('\n'),
-    isError: r.kind === 'ERROR',
-  };
+  return resultOf(out, events);
 }
 
 /**
- * Check the service's consent request against the proposal we showed, and build the consent
- * from that proposal, never from the service's error; with the lines to show the person.
+ * Ask the human through `approve` when the principal key the consent is for is here, and sign
+ * on a yes; otherwise, or on a no, hand back a code for `yea approve`.
  */
-async function consentFor(
-  err: ErrorReply,
-  c: Client,
-  p: Proposal,
-): Promise<{ consent: ConsentRequest; shown: string[] } | { why: string }> {
-  const k = err.consent;
+const humanApprover =
+  (approve: Confirm | undefined): Approver =>
+  async (ask) => {
+    const principal = await principalKey();
 
-  if (!k) {
-    return { why: 'the service sent none' };
+    if (!approve || !principal || principal.public !== ask.request.principal) {
+      return outOfBand()(ask);
+    }
+
+    const a = await signer(principal, (k) =>
+      approve({
+        service: printable(k.request.service),
+        shown: k.lines.join('\n'),
+        reason: k.reason,
+      }),
+    )(ask);
+
+    return 'declined' in a ? outOfBand()(ask) : a;
+  };
+
+/** The tool result for how the round ended. */
+function resultOf(out: RoundOutcome, events: string[]): ToolResult {
+  const lens = untrustedLens(out.reply);
+
+  if (out.kind === 'reply') {
+    return {
+      text: [...events, lens].join('\n'),
+      isError: out.reply.kind === 'ERROR',
+    };
   }
 
-  const view = await consentLines(k, p, await c.audience());
+  const then =
+    out.kind === 'pending'
+      ? `the user did not approve this here. If they want it, ask them to review it and run, in their own terminal: yea approve ${out.code}  — then call yea_commit again.`
+      : out.kind === 'refused'
+        ? `not asking the user to sign the service's consent request: ${out.why}.`
+        : 'the user did not approve this.';
 
-  return 'why' in view
-    ? view
-    : { consent: consentFrom(k, p), shown: view.lines };
-}
-
-/** Route a consent to the human; returns the signed consent grant, or null if not approved. */
-async function askHuman(o: {
-  approve?: Approver;
-  consent: ConsentRequest;
-  shown: string[];
-  err: ErrorReply;
-  c: Client;
-}): Promise<string | null> {
-  const { approve, consent, c } = o;
-  const principal = await principalKey();
-
-  if (
-    !approve ||
-    !principal ||
-    principal.public !== consent.principal ||
-    !c.key
-  ) {
-    return null;
-  }
-
-  if (
-    !(await approve({
-      service: printable(consent.service),
-      shown: o.shown.join('\n'),
-      reason: printable(o.err.message),
-    }))
-  ) {
-    return null;
-  }
-
-  const token = await consentGrant({
-    principal,
-    agent: (await keyPair(c.key)).public,
-    consent,
-  });
-
-  saveGrant(token, 'consents', consent.hash);
-
-  return token;
+  return { text: `${lens}\n  → ${then}`, isError: true };
 }

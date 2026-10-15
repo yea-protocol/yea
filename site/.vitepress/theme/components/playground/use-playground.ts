@@ -107,6 +107,7 @@ export function usePlayground() {
   const grants = useGrant({ core, keys, transportFor: exchanges.transportFor });
   const request = useRequestForm({ services, seen, examples });
   const { form, parsedParams } = request;
+  const consent = useConsent({ core, keys, ...exchanges });
   const { busy, send } = useSend({
     clients: grants.clients,
     form,
@@ -114,9 +115,9 @@ export function usePlayground() {
     parsedParams,
     selected,
     markAuto: exchanges.markAuto,
+    commit: consent.commit,
   });
   const shortcuts = useShortcuts({ form, current, examples, send });
-  const consent = useConsent({ core, keys, current, seen, act: shortcuts.act });
 
   const { failed, opened } = openOnMount({
     runtime,

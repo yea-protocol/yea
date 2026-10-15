@@ -3,14 +3,9 @@
  * only saves a consent `yea approve` signed, after every check. It signs and commits nothing.
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
-import { printable } from '@yea-protocol/sdk';
+import { type ConsentStore, printable } from '@yea-protocol/sdk';
 import { errorResult, textResult } from '../../result.js';
-import {
-  type ConsentStore,
-  checkConsent,
-  consentId,
-  readConsent,
-} from '../consent.js';
+import { checkConsent, consentId, readConsent } from '../consent.js';
 import type { Service } from '../greet.js';
 import type { Pending, PendingProposals } from '../pending.js';
 import type { Bridge } from '../state.js';
@@ -120,7 +115,7 @@ async function keepConsent(
     proposal: { id: string; hash: string; summary: string };
   },
 ): Promise<CallToolResult> {
-  const kept = c.consents.get(o.proposal.hash);
+  const kept = await c.consents.get(o.proposal.hash);
 
   // One that already failed to commit this entry's proposal doesn't block a new approval.
   const blocking =

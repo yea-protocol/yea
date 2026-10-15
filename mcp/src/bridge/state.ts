@@ -1,9 +1,8 @@
 /**
- * What every bridge call shares: the pending proposals, the consent store, the read budget, the
- * person's unsigned tightening and the clock. It lives apart from types.ts because it names
- * `ConsentStore`: there it would make a type-only cycle with consent.ts.
+ * What every bridge call shares: the pending proposals, the consent store (the consent round's
+ * seam), the read budget, the person's unsigned tightening and the clock.
  */
-import type { ConsentStore } from './consent.js';
+import type { ConsentStore } from '@yea-protocol/sdk';
 import type { PendingProposals } from './pending.js';
 
 /** What every call shares: the pending proposals, the consent store and the clock. */

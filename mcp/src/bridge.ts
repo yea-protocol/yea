@@ -11,8 +11,8 @@
  * machine) waits for James (decision 4). Nothing here loads a principal key or signs anything.
  */
 import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
-import { Client, unixNow } from '@yea-protocol/sdk';
-import { type ConsentStore, homeConsents } from './bridge/consent.js';
+import { Client, type ConsentStore, unixNow } from '@yea-protocol/sdk';
+import { homeConsents } from '@yea-protocol/sdk/node';
 import { greet } from './bridge/greet.js';
 import { instructionsFor } from './bridge/instructions.js';
 import { passThrough } from './bridge/params.js';
@@ -23,7 +23,7 @@ import { buildTools, errorOf, utilityTools } from './bridge/tools.js';
 import type { ToolSpec } from './bridge/types.js';
 import type { Obj } from './util.js';
 
-export type { ConsentStore } from './bridge/consent.js';
+export type { ConsentStore } from '@yea-protocol/sdk';
 export type { ToolMode } from './bridge/tools/generic.js';
 
 const VERSION = '0.1.0';

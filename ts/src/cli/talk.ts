@@ -1,12 +1,12 @@
 /** Talk to a service: hello, ask, intent, commit, undo, expand, and `yea do`. */
 import { createInterface, type Interface } from 'node:readline/promises';
-import { consentFrom, consentLines } from '../approve.js';
+import { signer } from '../approvers.js';
 import type { Client } from '../client.js';
-import { consentGrant } from '../consent.js';
-import { agentKey, principalKey } from '../home.js';
+import { type Approver, consentRound } from '../consent-round.js';
+import { principalKey } from '../home.js';
 import { untrustedLens } from '../lens.js';
 import { jsonPrintable } from '../text.js';
-import type { ConsentRequest, Proposal, Reply } from '../types.js';
+import type { Proposal, Reply } from '../types.js';
 import { die, type Options } from './shared.js';
 
 /** `key=value` arguments as params; a value that parses as JSON is JSON. */
@@ -128,16 +128,7 @@ async function interactive(
         return;
       }
 
-      let res = await c.commit(chosen, { onEvent: say });
-
-      if (res.kind === 'ERROR' && res.code === 'consent_required') {
-        say(res);
-        res =
-          (await consentAndRetry({ c, rl, chosen, consent: res.consent })) ??
-          res;
-      }
-
-      say(res);
+      await commitChosen(c, rl, chosen);
 
       return;
     }
@@ -172,58 +163,44 @@ async function chooseProposal(
 }
 
 /**
- * The service wants the principal's consent. If the principal key is here, show the proposal,
- * and on a yes sign a one-time consent and commit again. Returns the new reply, or null.
+ * At the terminal: if the principal key the consent is for is here, show the proposal and, on
+ * a yes, sign a one-time consent. Otherwise decline: the service's error is the answer.
  */
-async function consentAndRetry({
-  c,
-  rl,
-  chosen,
-  consent: k,
-}: {
-  c: Client;
-  rl: Interface;
-  chosen: Proposal;
-  consent: ConsentRequest | undefined;
-}) {
-  if (!k) {
-    die("✗ the service's error has no consent request; not signing");
-  }
+const terminalApprover =
+  (rl: Interface): Approver =>
+  async (ask) => {
+    const p = await principalKey();
 
-  const view = await consentLines(k, chosen, await c.audience());
+    if (!p || p.public !== ask.request.principal) {
+      return { declined: true };
+    }
 
-  if ('why' in view) {
-    die(
-      `✗ the service's consent request doesn't match the proposal shown (${view.why}); not signing`,
-    );
-  }
+    return signer(p, async ({ lines, reason }) => {
+      // SPEC.md §6.6: effects, uses, risk and undo, from the proposal whose hash was just checked.
+      console.log(['', reason, ...lines.map((l) => `  ${l}`)].join('\n'));
 
-  const p = await principalKey();
+      return /^y/i.test(
+        await rl.question(
+          '\n[principal] approve this exact proposal? [y/N] › ',
+        ),
+      );
+    })(ask);
+  };
 
-  if (!p || p.public !== k.principal) {
-    return null;
-  }
-
-  // SPEC.md §6.6: effects, uses, risk and undo, from the proposal whose hash was just checked.
-  console.log(['', ...view.lines.map((l) => `  ${l}`)].join('\n'));
-
-  if (
-    !/^y/i.test(
-      await rl.question('\n[principal] approve this exact proposal? [y/N] › '),
-    )
-  ) {
-    return null;
-  }
-
-  const a = (await agentKey()) ?? die('no agent key');
-  const token = await consentGrant({
-    principal: p,
-    agent: a.public,
-    consent: consentFrom(k, chosen),
-  });
-
-  return c.commit(chosen, {
-    grants: [token],
+/** Commit `chosen` through the consent round, and print how it ended; a refusal exits. */
+async function commitChosen(c: Client, rl: Interface, chosen: Proposal) {
+  const out = await consentRound({
+    client: c,
+    proposal: chosen,
+    approver: terminalApprover(rl),
     onEvent: say,
   });
+
+  say(out.reply);
+
+  if (out.kind === 'refused') {
+    die(
+      `✗ the service's consent request can't be signed (${out.why}); not signing`,
+    );
+  }
 }

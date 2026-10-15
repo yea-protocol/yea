@@ -129,14 +129,3 @@ export function targetsOf(
       return [];
   }
 }
-
-/** The received (not auto-committed) proposal with this id and hash, if the agent saw one. */
-export const receivedProposal = (
-  seen: Seen,
-  id: string,
-  hash: string,
-): ReceivedProposal | null =>
-  seen.proposals.find(
-    (p): p is ReceivedProposal =>
-      !p.committed && p.id === id && p.hash === hash,
-  ) ?? null;

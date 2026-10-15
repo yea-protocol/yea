@@ -6,27 +6,14 @@
  */
 import {
   checkGrant,
-  consentCode,
+  consentCodeFor,
   decodeGrant,
   inspectGrant,
   type Proposal,
 } from '@yea-protocol/sdk';
-import { loadConsent, saveGrant } from '@yea-protocol/sdk/node';
 import { errorMessage, isObject, type Obj } from '../util.js';
 import type { Pending } from './pending.js';
 import type { JobCall } from './types.js';
-
-/** Where consents are kept, by the proposal hash they commit. */
-export interface ConsentStore {
-  get(hash: string): string | null;
-  put(hash: string, token: string): void;
-}
-
-/** The agent's `~/.yea/consents`, which `yea approve` on this machine also writes. */
-export const homeConsents: ConsentStore = {
-  get: (hash) => loadConsent(hash),
-  put: (hash, token) => saveGrant(token, 'consents', hash),
-};
 
 /**
  * What a consent is known by once refused: its grant id (the root block id), so the same grant
@@ -193,18 +180,6 @@ export function codesFor(call: JobCall, entry: Pending) {
 
   return entry.proposals.map((p) => ({
     proposal: p.id,
-    code: consentCode(
-      {
-        proposal: p.id,
-        hash: p.hash,
-        service: entry.service,
-        capability: p.capability,
-        principal,
-        summary: p.summary,
-        expires: p.expires,
-      },
-      p,
-      { agent },
-    ),
+    code: consentCodeFor(p, { service: entry.service, principal, agent }),
   }));
 }

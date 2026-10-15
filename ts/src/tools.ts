@@ -10,7 +10,7 @@ import { INSTRUCTIONS } from './tool-defs.js';
 import { askTool, intentTool, undoTool } from './tools/calls.js';
 import { commitTool } from './tools/commit.js';
 import type {
-  Approver,
+  Confirm,
   HostState,
   ToolArgs,
   ToolFn,
@@ -18,7 +18,7 @@ import type {
 } from './tools/state.js';
 
 export { INSTRUCTIONS, TOOLS } from './tool-defs.js';
-export type { Approver, ToolResult } from './tools/state.js';
+export type { Confirm, ToolResult } from './tools/state.js';
 
 export interface ToolHost {
   instructions: string;
@@ -36,7 +36,7 @@ const TOOL_FNS: Record<string, ToolFn> = {
 
 export async function createToolHost(
   clients: Client[],
-  approve?: Approver,
+  approve?: Confirm,
 ): Promise<ToolHost> {
   const state: HostState = { services: new Map(), seen: new Map(), approve };
   const { briefs, problems } = await greet(clients, state.services);

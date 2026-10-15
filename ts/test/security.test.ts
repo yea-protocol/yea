@@ -23,13 +23,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { shop } from '../../examples/shop.ts';
-import {
-  consentFrom,
-  consentLines,
-  consentView,
-  NO_DETAIL,
-} from '../src/approve.js';
 import { grantCovers } from '../src/client/grant-scope.js';
+import { approveCode, NO_DETAIL } from '../src/consent-round.js';
 import * as P from '../src/index.js';
 import {
   checkKeyFile,
@@ -1619,110 +1614,240 @@ function yeaDo(args: string[], home: string) {
   );
 }
 
-// `yea do` (cli/talk.ts `consentAndRetry`), test-drive and `yea approve` all decide with
-// `consentLines`; [C6] also runs `yea do` itself against a lying service.
+// Every caller (`yea do`, test-drive, `yea approve`, the bridge, the site) goes through the
+// consent round (consent-round.ts). These run it with a fake approver against the pay service,
+// through a transport that edits its replies as a lying service would; [C6] also runs `yea do`.
 describe('consent requests (SPEC.md §6.6)', () => {
-  /** A real consent_required from the pay service, and the proposal it's for. */
-  async function consentRequired() {
-    const c = await client(payService(), agent, principal, [
-      { each: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
-    ]);
+  type Edit = (r: P.FinalReply) => P.FinalReply;
+
+  const LIMIT: P.Caveat[] = [
+    { each: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
+  ];
+
+  /**
+   * A client of the pay service, counting its COMMITs, and the proposal over the limit it got.
+   * Its replies pass through the edit `lie` makes for that proposal and the one shown.
+   */
+  async function lyingClient(o: {
+    lie?: (p: P.Proposal, shown: P.Proposal) => Edit;
+    shown?: (p: P.Proposal) => P.Proposal | Promise<P.Proposal>;
+  }) {
+    const t = P.local(payService());
+    const commits: P.Request[] = [];
+    let edit: Edit = (r) => r;
+    const c = new P.Client(
+      {
+        ...t,
+        request: async (f, on) => {
+          if (f.verb === 'COMMIT') {
+            commits.push(f);
+          }
+
+          return edit(await t.request(f, on));
+        },
+      },
+      {
+        key: agent.seed,
+        grants: [
+          await P.issueGrant({ principal, to: agent.public, caveats: LIMIT }),
+        ],
+      },
+    );
+
     const p = await intent(c, { to: 'a', amt: 500 });
-    const r = await c.commit(p);
+    const shown = o.shown ? await o.shown(p) : p;
 
-    if (r.kind !== 'ERROR' || !r.consent) {
-      throw new Error(r.lens);
-    }
+    edit = o.lie ? o.lie(p, shown) : edit;
 
-    return { p, k: r.consent, service: await c.audience() };
+    return { c, commits, shown };
   }
 
-  const why = async (...a: Parameters<typeof consentLines>) => {
-    const v = await consentLines(...a);
+  /** The consent request the pay service sends for `p`, naming `hash`. */
+  const requestFor = (p: P.Proposal, hash = p.hash): P.ConsentRequest => ({
+    proposal: p.id,
+    hash,
+    service: 'pay',
+    capability: p.capability,
+    principal: principal.public,
+    summary: p.summary,
+    expires: p.expires,
+  });
 
-    return 'why' in v ? v.why : null;
-  };
+  /** The service's consent request, with `patch` applied. */
+  const patched =
+    (patch: Partial<P.ConsentRequest>): Edit =>
+    (r) =>
+      r.kind === 'ERROR' && r.consent
+        ? { ...r, consent: { ...r.consent, ...patch } }
+        : r;
+
+  /** Every COMMIT's reply as `consent_required` with consent request `k`. */
+  const asking =
+    (k: P.ConsentRequest): Edit =>
+    (r) =>
+      r.kind === 'ERROR' || r.kind === 'RECEIPT'
+        ? {
+            yea: 1,
+            id: r.id,
+            re: r.re,
+            kind: 'ERROR',
+            code: 'consent_required',
+            message: 'needs consent',
+            consent: k,
+          }
+        : r;
+
+  /** A fake approver: records each ask, then answers with `answer`. */
+  function fakeApprover(
+    answer: (a: P.ConsentAsk) => Promise<P.ConsentAnswer> = async () => ({
+      declined: true,
+    }),
+  ) {
+    const asks: P.ConsentAsk[] = [];
+    const approver: P.Approver = (a) => {
+      asks.push(a);
+
+      return answer(a);
+    };
+
+    return { asks, approver };
+  }
+
+  /** The principal, saying yes. */
+  const yes = P.signer(principal, async () => true);
+
+  /** One round for the proposal shown (default: the one the service sent), with its lie. */
+  async function round(
+    o: Parameters<typeof lyingClient>[0] & {
+      answer?: (a: P.ConsentAsk) => Promise<P.ConsentAnswer>;
+      consents?: P.ConsentStore;
+    } = {},
+  ) {
+    const { c, commits, shown } = await lyingClient(o);
+    const { asks, approver } = fakeApprover(o.answer);
+    const out = await P.consentRound({
+      client: c,
+      proposal: shown,
+      approver,
+      consents: o.consents,
+    });
+
+    return { out, asks, commits, p: shown };
+  }
+
+  /** Why the round refused, having asked no one and committed only once; or null if it asked. */
+  async function refusal(o: Parameters<typeof round>[0]) {
+    const { out, asks, commits } = await round(o);
+
+    if (out.kind !== 'refused') {
+      return null;
+    }
+
+    expect(asks).toEqual([]);
+    expect(commits).toHaveLength(1);
+
+    return out.why;
+  }
 
   it('[C1] a matching request passes; one naming another service, hash, capability or proposal does not', async () => {
-    const { p, k, service } = await consentRequired();
+    const ok = await round({ answer: yes });
 
-    expect(await why(k, p, service)).toBeNull();
-    expect(await why(k, p, 'other')).toBe(
-      'the consent request names another service',
-    );
-    expect(await why({ ...k, hash: 'x' }, p, service)).toBe(
-      "the consent request's hash isn't the proposal's",
-    );
-    expect(await why({ ...k, capability: 'pay.x' }, p, service)).toBe(
-      'the consent request names another capability',
-    );
-    expect(await why({ ...k, proposal: 'p_x' }, p, service)).toBe(
-      'the consent request names another proposal',
-    );
+    expect(ok.asks).toHaveLength(1);
+    expect(ok.out.kind === 'reply' && ok.out.reply.kind).toBe('RECEIPT');
+
+    for (const [patch, why] of [
+      [{ service: 'other' }, 'the consent request names another service'],
+      [{ hash: 'x' }, "the consent request's hash isn't the proposal's"],
+      [{ capability: 'pay.x' }, 'the consent request names another capability'],
+      [{ proposal: 'p_x' }, 'the consent request names another proposal'],
+    ] as const) {
+      expect(await refusal({ lie: () => patched(patch), answer: yes })).toBe(
+        why,
+      );
+    }
   });
 
   it("[C2] a proposal that doesn't hash to its hash is refused, even when the request echoes that hash", async () => {
-    const { p, k, service } = await consentRequired();
     // The service changed what's shown but kept the hash the person would sign. `yea do`
     // used to compare only the request's fields with this proposal, so it passed.
-    const tampered = { ...p, summary: 'pay a 0.01' };
-
-    expect(await why(k, tampered, service)).toBe(
-      "the proposal doesn't match its hash",
-    );
+    expect(
+      await refusal({
+        shown: (p) => ({ ...p, summary: 'pay a 0.01' }),
+        answer: yes,
+      }),
+    ).toBe("the proposal doesn't match its hash");
 
     // Unhashable (a float) is refused, not thrown.
-    const float = { ...p, effects: [{ ...p.effects[0], to: 1.5 }] };
-
-    expect(await why(k, float, service)).toBe(
-      "the proposal doesn't match its hash",
-    );
+    expect(
+      await refusal({
+        shown: (p) => ({ ...p, effects: [{ ...p.effects[0], to: 1.5 }] }),
+        answer: yes,
+      }),
+    ).toBe("the proposal doesn't match its hash");
   });
 
-  it('[C3] a proposal with a malformed uses is refused', async () => {
-    const { p, k, service } = await consentRequired();
-    const bad = {
-      ...p,
-      uses: { spend: { amount: -1, unit: 'USD' } },
-    } as P.Proposal;
+  /** A round showing the proposal changed by `change` and rehashed, so only the change is wrong. */
+  const rehashed = (change: (p: P.Proposal) => P.Proposal, answer = yes) =>
+    round({
+      shown: async (p) => {
+        const bad = change(p);
 
-    expect(await why(k, bad, service)).toBe(
+        bad.hash = await P.proposalHash(bad);
+
+        return bad;
+      },
+      lie: (p, shown) => asking(requestFor(p, shown.hash)),
+      answer,
+    });
+
+  it('[C3] a proposal with a malformed uses is refused', async () => {
+    const { out, asks } = await rehashed(
+      (p) =>
+        ({ ...p, uses: { spend: { amount: -1, unit: 'USD' } } }) as P.Proposal,
+    );
+
+    expect(asks).toEqual([]);
+    expect(out.kind === 'refused' && out.why).toBe(
       'the proposal has a malformed uses',
     );
   });
 
   it('[C8] a proposal with an unknown risk is refused', async () => {
-    const { p, k, service } = await consentRequired();
-    const bad = { ...p, risk: 'critical' } as unknown as P.Proposal;
+    const { out, asks } = await rehashed(
+      (p) => ({ ...p, risk: 'critical' }) as unknown as P.Proposal,
+    );
 
-    // Rehashed, so only the risk is wrong.
-    bad.hash = await P.proposalHash(bad);
-
-    expect(await why({ ...k, hash: bad.hash }, bad, service)).toBe(
+    expect(asks).toEqual([]);
+    expect(out.kind === 'refused' && out.why).toBe(
       'the proposal has an unknown risk',
     );
   });
 
   it('[C4] the consent view shows uses, risk and undo, escapes service text, and never shows data', async () => {
-    const { p } = await consentRequired();
     // A bidi override; spelled as a code point so the source shows no hidden character.
     const RLO = String.fromCodePoint(0x202e);
-    const lines = consentView({
-      ...p,
-      summary: 'pay a\n  + create payment/b\u001b[2K',
-      effects: [
-        {
-          op: 'create',
-          target: `payment/a${RLO}`,
-          detail: 'x\ry',
-          to: `q\u0085${RLO}`,
-        },
-      ],
-      data: { note: 'SECRET-UNHASHED' },
-    });
+    const { asks } = await rehashed(
+      (p) => ({
+        ...p,
+        summary: 'pay a\n  + create payment/b\u001b[2K',
+        effects: [
+          {
+            op: 'create',
+            target: `payment/a${RLO}`,
+            detail: 'x\ry',
+            to: `q\u0085${RLO}`,
+          },
+        ],
+        data: { note: 'SECRET-UNHASHED' },
+      }),
+      async () => ({ declined: true }),
+    );
+    const [ask] = asks;
+    const [where, ...lines] = ask.lines;
 
+    expect(where).toBe(`at ${printable(ask.request.service)}:`);
     expect(lines[0]).toBe(
-      `[${p.id}] pay a\\u{a}  + create payment/b\\u{1b}[2K`,
+      `[${ask.proposal.id}] pay a\\u{a}  + create payment/b\\u{1b}[2K`,
     );
     expect(lines[1]).toMatch(/^ {2}\+ create payment\/a\\u\{202e\}/);
     expect(lines[1]).toContain('— x\\u{d}y');
@@ -1730,27 +1855,30 @@ describe('consent requests (SPEC.md §6.6)', () => {
       /^ {2}uses: spend .+ · risk: \w+ · undo: .+ · expires: /,
     );
     expect(lines).toHaveLength(3);
-    expect(lines.join('\n')).not.toContain('SECRET-UNHASHED');
+    expect(ask.lines.join('\n')).not.toContain('SECRET-UNHASHED');
 
-    for (const l of lines) {
+    for (const l of ask.lines) {
       expect(printable(l)).toBe(l);
     }
   });
 
-  it('[C5] consentFrom takes the earlier expiry and only the principal from the request', async () => {
-    const { p, k } = await consentRequired();
-    const c = consentFrom(
-      { ...k, expires: p.expires + 999, summary: 'lie' },
-      p,
-    );
+  it('[C5] the consent asked for takes the earlier expiry and only the principal from the request', async () => {
+    const asked = async (by: number) => {
+      const { asks, p } = await round({
+        lie: (p) => patched({ expires: p.expires + by, summary: 'lie' }),
+      });
 
-    expect(c.expires).toBe(p.expires);
-    expect(c.summary).toBe(p.summary);
-    expect(consentFrom({ ...k, expires: p.expires - 1 }, p).expires).toBe(
-      p.expires - 1,
-    );
+      return { k: asks[0].request, p };
+    };
+    const later = await asked(999);
+
+    expect(later.k.expires).toBe(later.p.expires);
+    expect(later.k.summary).toBe(later.p.summary);
+
+    const earlier = await asked(-1);
+
+    expect(earlier.k.expires).toBe(earlier.p.expires - 1);
   });
-
   it.skipIf(!existsSync(CLI))(
     '[C6] yea do refuses a tampered proposal, signs nothing, and prints no escape',
     async () => {
@@ -1874,41 +2002,111 @@ for await (const line of createInterface({ input: process.stdin })) {
   );
 
   // #276: the docs site signed the service's request as it arrived. Its two consent flows now
-  // sign only what `consentToSign` returns.
-  it("[C9] consentToSign refuses what consentLines refuses, and builds the rest from the proposal, not the service's request", async () => {
-    const { p, k, service } = await consentRequired();
-    const refused = async (...a: Parameters<typeof P.consentToSign>) => {
-      const v = await P.consentToSign(...a);
+  // go through the round, which signs only the consent it builds from the proposal.
+  it("[C9] a signer's consent is built from the proposal, not the service's request", async () => {
+    const { out, asks, commits, p } = await round({
+      lie: (p) => patched({ summary: 'lie', expires: p.expires + 999 }),
+      answer: yes,
+    });
+    const grant =
+      out.kind === 'reply' && out.consent ? P.decodeGrant(out.consent) : [];
 
-      return 'why' in v ? v.why : null;
-    };
-
-    for (const [bad, reason] of [
-      [{ ...k, proposal: 'p_x' }, 'the consent request names another proposal'],
-      [{ ...k, hash: 'x' }, "the consent request's hash isn't the proposal's"],
-      [
-        { ...k, capability: 'pay.x' },
-        'the consent request names another capability',
-      ],
-    ] as const) {
-      expect(await refused(bad, p, service)).toBe(reason);
-    }
-
-    expect(await refused(k, p, 'other')).toBe(
-      'the consent request names another service',
-    );
-    expect(await refused(k, { ...p, summary: 'pay a 0.01' }, service)).toBe(
-      "the proposal doesn't match its hash",
-    );
-
-    const lying = { ...k, summary: 'lie', expires: p.expires + 999 };
-    const ok = await P.consentToSign(lying, p, service);
-
-    expect(ok).toEqual({ consent: consentFrom(lying, p) });
-    expect('consent' in ok && ok.consent).toMatchObject({
+    expect(asks[0].request).toMatchObject({
       summary: p.summary,
       expires: p.expires,
     });
+    expect(commits).toHaveLength(2);
+    expect(out.kind === 'reply' && out.reply.kind).toBe('RECEIPT');
+    expect(grant[0].p.caveats).toContainEqual({ exp: p.expires });
+    expect(grant[0].p.caveats).toContainEqual({ only: p.hash });
+  });
+
+  it('[C10] a returned grant that signs a different request is refused, and not committed or kept', async () => {
+    const kept: string[] = [];
+    const consents: P.ConsentStore = {
+      get: () => null,
+      put: (hash) => {
+        kept.push(hash);
+      },
+    };
+    const signed =
+      (
+        o: { by?: P.KeyPair; to?: string },
+        patch: Partial<P.ConsentRequest> = {},
+      ) =>
+      async (a: P.ConsentAsk): Promise<P.ConsentAnswer> => ({
+        grant: await P.consentGrant({
+          principal: o.by ?? principal,
+          agent: o.to ?? a.agent,
+          consent: { ...a.request, ...patch },
+        }),
+      });
+    const extra = async (a: P.ConsentAsk): Promise<P.ConsentAnswer> => ({
+      grant: await P.issueGrant({
+        principal,
+        to: a.agent,
+        caveats: [
+          { svc: [a.request.service] },
+          { verbs: ['COMMIT'] },
+          { can: [a.request.capability] },
+          { only: a.request.hash },
+          { exp: a.request.expires },
+          { risk: 'high' },
+        ],
+      }),
+    });
+
+    for (const [answer, why] of [
+      [signed({}, { hash: 'h_other' }), 'it consents to something other'],
+      [
+        signed({}, { expires: 4_000_000_000 }),
+        'it consents to something other',
+      ],
+      [signed({ to: otherAgent.public }), "it's issued to another key"],
+      [signed({ by: other }), "it isn't signed by the request's principal"],
+      [extra, 'it consents to something other'],
+      [async () => ({ grant: 'pg1.nope' }), "it isn't a readable grant"],
+    ] as const) {
+      const { out, commits } = await round({ answer, consents });
+
+      expect(out.kind).toBe('refused');
+      expect(out.kind === 'refused' && out.why).toContain(why);
+      expect(commits).toHaveLength(1);
+    }
+
+    // A grant with the right fields whose signature doesn't hold is refused by the grant check.
+    const forged = async (a: P.ConsentAsk): Promise<P.ConsentAnswer> => {
+      const [b] = P.decodeGrant(
+        await P.consentGrant({
+          principal: other,
+          agent: a.agent,
+          consent: a.request,
+        }),
+      );
+
+      return {
+        grant: P.encodeGrant([{ ...b, p: { ...b.p, iss: principal.public } }]),
+      };
+    };
+    const { out } = await round({ answer: forged, consents });
+
+    expect(out.kind === 'refused' && out.why).toContain('its check failed');
+    expect(kept).toEqual([]);
+  });
+
+  it('[C11] a second consent_required after the retry is returned, not asked again', async () => {
+    const { out, asks, commits } = await round({
+      lie: (p) => asking(requestFor(p)),
+      answer: yes,
+    });
+
+    expect(asks).toHaveLength(1);
+    expect(commits).toHaveLength(2);
+    expect(out.kind).toBe('reply');
+    expect(
+      out.kind === 'reply' && out.reply.kind === 'ERROR' && out.reply.code,
+    ).toBe('consent_required');
+    expect(out.kind === 'reply' && out.consent).toMatch(/^pg1\./);
   });
 });
 
@@ -2098,26 +2296,20 @@ for await (const line of createInterface({ input: process.stdin })) {
       summary: 'pay a 1',
       expires: 4_000_000_000,
     });
-    const shown: string[] = [];
     let asked = false;
-    const r = await P.approveConsentCode({
-      principal,
+    const r = await approveCode({
+      principal: principal.public,
       code,
       localAgent: agent.public,
-      io: {
-        print: (l) => shown.push(l),
-        confirm: async () => {
-          asked = true;
+      approver: P.signer(principal, async () => {
+        asked = true;
 
-          return true;
-        },
-      },
-      save: () => {},
+        return true;
+      }),
     });
 
     expect(r).toEqual({ ok: false, why: NO_DETAIL });
     expect(NO_DETAIL).toMatch(/make a new code, which includes the proposal/);
-    expect(shown).toEqual([]);
     expect(asked).toBe(false);
 
     if (existsSync(CLI)) {

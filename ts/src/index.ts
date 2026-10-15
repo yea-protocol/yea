@@ -30,10 +30,9 @@ export {
   type ApproveIO,
   type ApproveOutcome,
   approveConsentCode,
-  checkProposal,
-  consentToSign,
-  keyFingerprint,
 } from './approve.js';
+
+export { consentCodeFor, outOfBand, signer } from './approvers.js';
 
 export {
   type ApprovalAnswer,
@@ -87,6 +86,21 @@ export {
   consentRecipient,
   decodeConsentCode,
 } from './consent.js';
+
+export {
+  type Approver,
+  type CommitReply,
+  type ConsentAnswer,
+  type ConsentAsk,
+  type ConsentStore,
+  checkProposal,
+  consentRound,
+  keyFingerprint,
+  memoryConsents,
+  type RoundClient,
+  type RoundOptions,
+  type RoundOutcome,
+} from './consent-round.js';
 
 export {
   type KeyPair,

@@ -1,8 +1,7 @@
 /**
  * Shapes the bridge's modules share: a tool as the server factory registers it, and one job
  * call. They live apart so the modules that use them never import each other in a cycle.
- * `Bridge` lives in state.ts: it names `ConsentStore`, so here it would make a type-only cycle
- * with consent.ts.
+ * What every call shares, `Bridge`, lives in state.ts.
  */
 import type {
   CallToolResult,

@@ -1,6 +1,6 @@
 /** `yea approve`: review and sign a one-time consent for one proposal or one job plan. */
 import { createInterface } from 'node:readline/promises';
-import { approveConsentCode, NO_DETAIL } from '../approve.js';
+import { approveConsentCode } from '../approve.js';
 import {
   type JobConsent,
   phraseMatches,
@@ -8,6 +8,7 @@ import {
   signJobConsent,
 } from '../ask.js';
 import { decodeConsentCode } from '../consent.js';
+import { NO_DETAIL } from '../consent-round.js';
 import type { KeyPair } from '../crypto.js';
 import { defaultFileStore } from '../file-store.js';
 import { agentKey, principalKey, saveGrant } from '../home.js';

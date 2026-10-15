@@ -1,13 +1,19 @@
 /**
  * Step 3 of a job call (SPEC-bridge): a call whose proposals are already pending. It commits a
- * proposal with the agent's grants plus a saved consent, or hands back the same proposals and
- * codes. It signs nothing: consents come only from `yea_consent` or `yea approve` (TODO(#73)).
+ * proposal through the consent round, with the agent's grants plus a saved consent, or hands
+ * back the same proposals and codes. It signs nothing: its approver is out of band, so consents
+ * come only from `yea_consent` or `yea approve` (TODO(#73)).
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Client,
+  type ConsentStore,
+  consentRound,
+  outOfBand,
   type Proposal,
   printable,
+  type RoundClient,
+  type RoundOutcome,
   untrustedLens,
 } from '@yea-protocol/sdk';
 import { NOTHING_RAN, refused } from '../../result.js';
@@ -22,24 +28,12 @@ import type { JobCall } from '../types.js';
 /** Errors after which the pending proposals are gone, so a fresh INTENT is the way on. */
 const STALE = new Set(['not_found', 'expired', 'conflict']);
 
-/** COMMIT, retried once as is if it fails in transport: it's idempotent (SPEC.md §4.4). */
-async function commitOnce(c: Client, p: Proposal, extra: string[]) {
-  const events: string[] = [];
-  const o = {
-    grants: extra,
-    onEvent: (e: Parameters<typeof untrustedLens>[0]) =>
-      events.push(untrustedLens(e)),
-  };
-  let r: Awaited<ReturnType<Client['commit']>>;
-
-  try {
-    r = await c.commit(p, o);
-  } catch {
-    r = await c.commit(p, o);
-  }
-
-  return { r, events };
-}
+/** The client, with COMMIT retried once as is if it fails in transport: it's idempotent (SPEC.md §4.4). */
+const retrying = (c: Client): RoundClient => ({
+  key: c.key,
+  audience: () => c.audience(),
+  commit: (p, o) => c.commit(p, o).catch(() => c.commit(p, o)),
+});
 
 /**
  * Step 3, with pending proposals. A call naming `proposal` acts on that proposal only: it commits
@@ -52,25 +46,21 @@ export async function pendingCall(
   call: JobCall,
   entry: Pending,
 ): Promise<CallToolResult | null> {
+  const consents = usableConsents(b, call, entry);
+
   if (call.proposal !== undefined) {
     const p = entry.proposals.find((x) => x.id === call.proposal);
 
     return p
-      ? commitPending(b, call, {
-          entry,
-          p,
-          consent: await usableConsent(b, call, { entry, p }),
-        })
+      ? commitPending(call, { b, entry, p, consents })
       : refused(
           `${printable(call.proposal)} is not one of this call's proposals (${entry.proposals.map((x) => printable(x.id)).join(', ')})`,
         );
   }
 
   for (const p of entry.proposals) {
-    const consent = await usableConsent(b, call, { entry, p });
-
-    if (consent) {
-      return commitPending(b, call, { entry, p, consent });
+    if (await consents.get(p.hash)) {
+      return commitPending(call, { b, entry, p, consents });
     }
   }
 
@@ -91,47 +81,52 @@ export async function pendingCall(
 }
 
 /**
- * The saved consent (from `yea_consent` or `yea approve`) for `p`, if it passes every
- * `yea_consent` check and no COMMIT of this entry has failed with it.
+ * The bridge's consent store as this entry may use it: a saved consent (from `yea_consent` or
+ * `yea approve`) for one of its proposals, only if it passes every `yea_consent` check and no
+ * COMMIT of this entry has failed with it.
  */
-async function usableConsent(
+function usableConsents(
   b: Bridge,
   call: JobCall,
-  o: { entry: Pending; p: Proposal },
-): Promise<string | null> {
-  const agent = call.svc.agent;
-  const token = b.consents.get(o.p.hash);
+  entry: Pending,
+): ConsentStore {
+  return {
+    async get(hash) {
+      const agent = call.svc.agent;
+      const token = await b.consents.get(hash);
 
-  if (!agent || !token || o.entry.refused.has(await consentId(token))) {
-    return null;
-  }
+      if (!agent || !token || entry.refused.has(await consentId(token))) {
+        return null;
+      }
 
-  const check = await checkConsent(token, {
-    entry: o.entry,
-    agent,
-    now: b.now(),
-  });
+      const check = await checkConsent(token, { entry, agent, now: b.now() });
 
-  return check.ok && check.proposal.hash === o.p.hash ? token : null;
+      return check.ok && check.proposal.hash === hash ? token : null;
+    },
+    put: (hash, token) => b.consents.put(hash, token),
+  };
 }
 
 /**
- * Commit a pending proposal with the agent's grants, plus its consent if any. A receipt drops the
- * entry; a stale proposal drops it and returns null. A consent the service refused is never
- * used again for this entry, so the call can't wedge on it; `consent_required` without a consent
- * gives that proposal's code.
+ * Commit a pending proposal through the consent round, with its saved consent if any. A receipt
+ * drops the entry; a stale proposal drops it and returns null. A consent the service refused is
+ * never used again for this entry, so the call can't wedge on it; `consent_required` without a
+ * consent gives that proposal's code.
  */
 async function commitPending(
-  b: Bridge,
   call: JobCall,
-  commit: { entry: Pending; p: Proposal; consent: string | null },
+  o: { b: Bridge; entry: Pending; p: Proposal; consents: ConsentStore },
 ): Promise<CallToolResult | null> {
-  const { entry, p, consent } = commit;
-  const { r, events } = await commitOnce(
-    call.svc.client,
-    p,
-    consent ? [consent] : [],
-  );
+  const { b, entry, p } = o;
+  const events: string[] = [];
+  const out = await consentRound({
+    client: retrying(call.svc.client),
+    proposal: p,
+    approver: outOfBand(),
+    consents: o.consents,
+    onEvent: (e) => events.push(untrustedLens(e)),
+  });
+  const r = out.reply;
 
   if (r.kind === 'RECEIPT') {
     b.pending.drop(entry.key);
@@ -145,21 +140,41 @@ async function commitPending(
     return null;
   }
 
-  if (consent) {
-    entry.refused.add(await consentId(consent));
+  if (out.saved) {
+    entry.refused.add(await consentId(out.saved));
 
     return replyResult(r, undefined, [
       `The saved consent for [${printable(p.id)}] didn't commit it, so this call won't use it again; ${NOTHING_RAN}. The user can approve its code again, or you can call again later for fresh proposals.`,
     ]);
   }
 
-  if (r.code === 'consent_required') {
-    return proposalsResult(
-      { ...entry, proposals: [p] },
-      `${printable(r.message)}: this needs the user's approval`,
-      [],
-    );
+  return needsConsent(entry, p, out);
+}
+
+/**
+ * A round that ended without a consent: the proposal and its code again. The code is the one
+ * handed out with it, built from the proposal and the principal of the agent's grants, never
+ * from the service's consent request (the round's code takes the principal from that request).
+ */
+function needsConsent(
+  entry: Pending,
+  p: Proposal,
+  out: RoundOutcome,
+): CallToolResult {
+  if (out.kind === 'reply' || out.kind === 'declined') {
+    return replyResult(out.reply);
   }
 
-  return replyResult(r);
+  const mismatch =
+    out.kind === 'refused'
+      ? [
+          `The service's consent request for [${printable(p.id)}] can't be approved (${out.why}); the code below is built from the proposal itself.`,
+        ]
+      : [];
+
+  return proposalsResult(
+    { ...entry, proposals: [p] },
+    `${printable(out.reply.message)}: this needs the user's approval`,
+    mismatch,
+  );
 }

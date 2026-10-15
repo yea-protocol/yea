@@ -1,10 +1,10 @@
 /**
  * Sending the request form: the one client call its verb stands for, with its params,
- * budget and target.
+ * budget and target. A COMMIT of a proposal the agent received goes through the consent round.
  */
 import type { Client } from '@yea-protocol/sdk';
 import type { RequestForm } from './model';
-import type { Seen } from './seen';
+import type { ReceivedProposal, Seen } from './seen';
 
 export interface SendInput {
   client: Client;
@@ -12,8 +12,12 @@ export interface SendInput {
   seen: Seen;
   /** The form's params as an object, or null when they don't parse (nothing is sent). */
   params: () => Record<string, unknown> | null;
-  /** One-off grants for a COMMIT, such as a consent grant. */
-  extraGrants?: string[];
+  /** COMMIT a received proposal through the consent round (use-consent.ts). */
+  commit: (
+    client: Client,
+    p: ReceivedProposal,
+    budget?: number,
+  ) => Promise<void>;
 }
 
 /** HELLO, ASK or INTENT, from the form's fields. */
@@ -46,17 +50,17 @@ async function sendCapability(
 
 /** COMMIT, UNDO or EXPAND whatever the form's target names. */
 async function sendToTarget(
-  { client, form, seen, extraGrants }: SendInput,
+  { client, form, seen, commit }: SendInput,
   budget: number | undefined,
 ) {
   if (form.verb === 'COMMIT') {
     const p = seen.proposals.find((x) => x.id === form.target);
 
-    if (p) {
-      await client.commit(
-        { id: p.id, hash: p.hash },
-        { budget, grants: extraGrants },
-      );
+    // One the service auto-committed, or got from another service, has no round to run.
+    if (p && !p.committed && p.service === form.service) {
+      await commit(client, p, budget);
+    } else if (p) {
+      await client.commit({ id: p.id, hash: p.hash }, { budget });
     }
   } else if (form.verb === 'UNDO') {
     if (form.target) {
