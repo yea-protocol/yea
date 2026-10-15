@@ -115,6 +115,11 @@ This section covers files and folders; [Code style](#code-style) covers what goe
 - The entry file holds the top-level flow (orchestration, dispatch or the public class) or only
   re-exports; the parts it uses live in the same-named folder. Code in the folder never imports
   its entry file.
+- The folder's files are private to the module: only its entry file and the other files in the
+  folder import them. Everyone else goes through the entry file, so a module that spans files
+  still has one interface ([ADR-0001](docs/adr/0001-deep-modules-are-folders-with-private-files.md)).
+  Judge a module by the size of its interface, not its line count: splitting a file is never a
+  reason to export its parts.
 - In Python the entry is the package's `__init__.py`, which wires the parts and re-exports; the
   parts are sibling modules in the package.
 - A package's public API is only what its `index` re-exports. Modules may export to their
