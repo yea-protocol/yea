@@ -295,6 +295,64 @@ describe('requestState that isn’t this call’s', () => {
     expect(w.applied).toEqual([]);
   });
 
+  it('[M17] a denied tool called with a state that isn’t ours runs nothing, not even its handler', async () => {
+    const codec = sharedCodec((ctx) => `${ctx.mcpReq.method}\0`);
+    const theirs = await codec.mint({ inner: 'step-2' }, {
+      mcpReq: { method: 'tools/call' },
+    } as never);
+    const answer = { yea: { action: 'accept', content: { confirm: 'ch_1' } } };
+    const cases = [
+      // An unverified string: the server was built without serverOptions().
+      { codec: undefined, requestState: 'v1.anything', why: /not verified/ },
+      // Another tool's verified state, on a shared codec.
+      { codec, requestState: theirs, why: /belongs to something else/ },
+    ];
+
+    for (const c of cases) {
+      const w = await world(c.codec ? { codec: c.codec } : {});
+      let planned = 0;
+      const job = refundJob(w);
+      const conn = await connect('2026', () => {
+        const server = c.codec
+          ? new McpServer(
+              { name: 'b', version: '1' },
+              w.approvals.serverOptions(),
+            )
+          : new McpServer({ name: 'b', version: '1' });
+
+        w.approvals.job(server, 'refund', {
+          ...job,
+          plan: (input, ctx) => {
+            planned++;
+
+            return job.plan(input, ctx);
+          },
+        });
+
+        return server;
+      });
+
+      writeFileSync(
+        join(w.home, 'policy.json'),
+        JSON.stringify({ deny: ['refund'] }),
+      );
+
+      const r = await conn.raw({
+        name: 'refund',
+        arguments: ch1,
+        requestState: c.requestState,
+        inputResponses: answer,
+      });
+
+      // The state is read before the session's deny check: either refusal runs nothing.
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(c.why);
+      expect(textOf(r)).toMatch(/nothing was run/);
+      expect(planned).toBe(0);
+      expect(w.applied).toEqual([]);
+    }
+  });
+
   it('[M7] a state from another job on the same server runs nothing there', async () => {
     const w = await world();
     const conn = await connect('2026', () => {

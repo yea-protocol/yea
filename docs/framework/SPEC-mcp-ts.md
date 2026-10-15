@@ -269,10 +269,10 @@ cap of its own, relying on that 4 MiB default.
 A call runs in this order (SPEC-approval §5 and §6). The SDK's job call session (`jobCall`,
 SPEC-approval "The job call session") does steps 1–3, 6, 7 and 10 and decides 4, 8 and 9; the
 guarded callback is its adapter. It reads who is calling, the policy, whether the client can ask
-and, in step 5, the state and answer a retry carries; it gives the session those facts, the
+and the retry a request carries (step 5, read first); it gives the session those facts, the
 handler and the store; and it turns the outcome into a result: the preview, the
-`inputRequired` (with the state sealed by the codec), the consent codes, a refusal, or step 11
-for a `run`.
+`inputRequired` (with the session's state sealed by the codec), the consent codes, a refusal, or
+step 11 for a `run`.
 
 1. **Validate.** The wrapper schema has already validated the input and taken `preview` off.
    Refuse non-integer numbers.
@@ -282,11 +282,14 @@ for a `run`.
    No plans means an `isError` result.
 4. **Preview.** If `preview` was set, return the plans as Lens text
    (`structuredContent: { plans }`). Nothing is stored.
-5. **Retry?** Read `ctx.mcpReq.requestState()`:
-   - `undefined`: carry on;
-   - an object with our `yea` key: step 10;
-   - anything else refuses the call. A string means the codec isn't installed; an object
-     without `yea` is another tool's state (possible with `yea({ codec })`).
+5. **Retry?** The callback reads `ctx.mcpReq.requestState()` before the session runs (so
+   before step 1), unless `preview` is set:
+   - `undefined`: a first call;
+   - an object with our `yea` key: a retry, which the session takes to step 10 after steps 1–3;
+   - anything else refuses the call before the session runs: nothing runs, the handler
+     included, and for a denied tool the refusal names the state, not the deny list. A string
+     means the codec isn't installed; an object without `yea` is another tool's state
+     (possible with `yea({ codec })`).
 6. **Consents.** For each plan, in order:
    - look up `store.getConsent(planHash)`, and check it with `checkJobConsent`;
    - `consumeOnce(<grant id>, <the consent grant's exp caveat>)`;
@@ -299,12 +302,14 @@ for a `run`.
      "a limit filled up while this call was being decided".
    - `denied`: an `isError` result.
    - `ask` or `out-of-band`: step 8. The form leaves out-of-band plans unoffered.
-8. **Ask.** If the client can take a form (below), `buildForm`; if it can't, or the form is
-   null, step 9. Otherwise return:
+8. **Ask.** If the client can take a form (below), the session builds it (`buildForm`); if it
+   can't, or no plan can be offered, step 9. Otherwise the session's `ask` outcome carries the
+   form and a fresh state (`newState`, with `plans: form.offered` and `round`), and the callback
+   returns:
    ```ts
    inputRequired({
      inputRequests: { yea: inputRequired.elicit({ message, requestedSchema }) },
-     requestState: await codec.mint({ yea: newState({ …, plans: form.offered, round }) }, ctx),
+     requestState: await codec.mint({ yea: ask.state }, ctx),
    })
    ```
    `round` is 1 on a first ask, and the verdict's round on an ask-again.

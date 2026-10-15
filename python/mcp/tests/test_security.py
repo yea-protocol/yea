@@ -116,6 +116,38 @@ async def test_a_verified_state_without_yea_is_refused(world, monkeypatch):
     assert r.is_error and "belongs to something else" in text(r) and done == []
 
 
+@pytest.mark.parametrize("how", ["sealed without yea", "a raw string behind no boundary"])
+async def test_m17_a_denied_tool_with_a_state_that_isnt_ours_runs_nothing_not_even_its_plan(world, monkeypatch, how):
+    """[M17] The routine reads the state before the session's deny check: either refusal runs
+    nothing, and the plan function never runs. As mcp/test/security.test.ts."""
+    from mcp.server.request_state import RequestStateBoundary
+
+    done, planned = [], []
+
+    @world.approvals.job(world.server, risk="low")
+    async def refund(amount: int) -> list[Plan]:
+        planned.append(amount)
+        return [Plan(f"Refund {amount}", [create("refund")], apply=lambda: done.append(amount))]
+
+    import yea_mcp.call.route as call_mod  # where _ask reads input_required
+
+    real = call_mod.input_required
+    monkeypatch.setattr(call_mod, "input_required", lambda form, state: t.InputRequiredResult(
+        input_requests=real(form, state).input_requests, request_state=json.dumps({"other": state})))
+    answer = {"yea": t.ElicitResult(action="accept", content={"confirm": "approve"})}
+    async with world.client("auto", Person()) as c:
+        state = (await c.session.call_tool("refund", {"amount": 5}, allow_input_required=True)).request_state
+        if how != "sealed without yea":
+            world.server.middleware[:] = [m for m in world.server.middleware if not isinstance(m, RequestStateBoundary)]
+            state = "not-a-state"
+        world.approvals._y.tighten = {"deny": ["refund"]}
+        planned.clear()
+        r = await c.session.call_tool("refund", {"amount": 5}, input_responses=answer, request_state=state,
+                                      allow_input_required=True)
+    assert r.is_error and "belongs to something else" in text(r) and "nothing was run" in text(r)
+    assert planned == [] and done == []
+
+
 async def test_another_jobs_state_is_refused(world):
     done = []
     jobs(world, done)

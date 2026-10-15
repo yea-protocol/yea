@@ -230,6 +230,36 @@ async def test_the_2025_in_call_ask_rejudges_against_fresh_plans(world):
     assert "the plans changed" in person.seen[1].message
 
 
+@pytest.mark.parametrize("second", ["raises", "clarifies", "has no plans"])
+async def test_a_2025_in_call_answer_is_a_whole_new_round(world, second):
+    """The person's in-call answer re-runs the session, as a 2026 retry (or TS's re-run) would: a
+    plan function that now raises, clarifies or has no plans ends the call there, and nothing runs.
+    (Before the job call session, these all asked again as plans that changed.)"""
+    from yea import clarify
+
+    done, rounds = [], []
+
+    @world.approvals.job(world.server, risk="low")
+    async def price(item: str) -> list[Plan]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return [Plan(f"Buy {item}", [create("order/1")], apply=lambda: done.append(item))]
+        if second == "raises":
+            raise RuntimeError("the shop is closed")
+        return clarify("Which pen?", [{"label": "Blue", "params": {"item": "blue pen"}}]) if second == "clarifies" else []
+
+    person = Person()
+    async with world.client("legacy", person) as c:
+        r = await c.call_tool("price", {"item": "pen"})
+    assert done == [] and len(rounds) == 2 and len(person.seen) == 1
+    if second == "raises":
+        assert r.is_error and text(r) == "✗ the shop is closed; nothing was run"
+    elif second == "clarifies":
+        assert not r.is_error and text(r).startswith("? Which pen?")
+    else:
+        assert r.is_error and text(r) == "✗ price has no way to do this; nothing was run"
+
+
 @pytest.mark.parametrize("mode", MODES)
 async def test_an_apply_that_fails_part_way_says_what_it_left_and_keeps_its_reservation(world, mode):
     """As TS: a PartialApplyError is never "nothing changed", and what it used stays counted (#149)."""

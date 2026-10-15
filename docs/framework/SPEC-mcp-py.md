@@ -241,8 +241,8 @@ raises a `PartialApplyError` is reported as failing part-way, with its message, 
 The job wrapper and the guard middleware share one routine, in this order (SPEC-approval §5
 and §6, and the same order as `mcp-ts`). The SDK's job call session (`yea.job_call.job_call`,
 SPEC-approval "The job call session") does steps 1–3, 6, 7 and 10 and decides 4, 8 and 9; the
-routine is its adapter. It reads who is calling, the policy, whether the client can ask and, in
-step 5, the state and answer a retry carries; it gives the session those facts, the plan
+routine is its adapter. It reads who is calling, the policy, whether the client can ask and the
+state and answer a retry carries (step 5, read first); it gives the session those facts, the plan
 function and the store; and it turns the outcome into a result, asking per era, or runs step 11
 for a `run`. A 2025 client's in-call answer is the next round: the routine steps the session
 again, with the clock, the policy and the plans as they are then.
@@ -255,11 +255,14 @@ again, with the clock, the policy and the plans as they are then.
    returned as text. No plans means an `is_error` result.
 4. **Preview.** If `preview` was set, return the plans as Lens text
    (`structured_content: {"plans": …}`). Nothing is stored.
-5. **Retry?** Read the state: `ctx.request_state` in a job, `params["requestState"]` in the
-   guard middleware (both plaintext inside the boundary):
-   - `None`: carry on;
-   - JSON whose object has a `yea` key: step 10;
-   - anything else refuses the call.
+5. **Retry?** The routine reads the state before the session runs (so before step 1), unless
+   `preview` is set: `ctx.request_state` in a job, `params["requestState"]` in the guard
+   middleware (both plaintext inside the boundary):
+   - `None`: a first call;
+   - JSON whose object has a `yea` key: a retry, which the session takes to step 10 after
+     steps 1–3;
+   - anything else refuses the call before the session runs: nothing runs, the plan function
+     included, and for a denied tool the refusal names the state, not the deny list.
 6. **Consents.** For each plan, in order: `store.get_consent(planHash)`, `check_job_consent`,
    then `consume_once(<grant id>, <its exp>)`; the first that passes runs that plan (step 11).
    `consent_for` does this.
@@ -327,7 +330,10 @@ own `request_state` (they can't carry our nonce). So the plugin asks in one of t
   and `consume_once` in-process, so rounds, the three-try cap and one-time use are the same;
   ask-again loops inside the same call. After each answer the routine refreshes the clock and
   re-plans, as a 2026 retry (or `mcp-ts`'s re-run) would, so a changed plan asks again and the
-  state can expire. Nothing is sealed, because nothing leaves the process. If the client can't
+  state can expire. Each answer is a whole new round of the session: a plan function that now
+  raises refuses the call with its message, one that now returns a clarification returns it,
+  and one that returns no plans refuses, as in TypeScript (before, these all asked again as
+  plans that changed). Nothing is sealed, because nothing leaves the process. If the client can't
   be asked from here (`NoBackChannelError` on some 2025 HTTP set-ups, or a client that claimed
   elicitation and fails it), the routine takes step 9.
 
