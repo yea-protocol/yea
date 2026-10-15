@@ -45,7 +45,7 @@ once more with it.
 _Avoid_: approval flow, consent loop
 
 **Approver**:
-Whoever a consent round asks for the person's consent. It gives a signed consent, declines, or
+Whoever a consent round asks for the person's consent. It gives a consent grant, declines, or
 hands back a consent code to approve somewhere else.
 _Avoid_: signer (for the role), consent provider
 

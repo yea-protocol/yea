@@ -94,7 +94,7 @@ async function commitWithConsent(
     },
   };
 
-  await consentRound({
+  const out = await consentRound({
     client,
     proposal: pick,
     onEvent: (e) => events.push(e.lens),
@@ -108,4 +108,8 @@ async function commitWithConsent(
       return true;
     }),
   });
+
+  if (out.kind === 'refused') {
+    n.say(n.agent, `doesn't ask the human: ${out.why}.`);
+  }
 }
