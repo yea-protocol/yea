@@ -1,29 +1,21 @@
 /**
  * Consent: when a reply asks the human to approve, find the proposal the agent committed,
- * check the request against it with the SDK's `consentToSign` (proposal, hash, capability,
- * service, and the proposal itself), describe it, and on approval sign the consent built from
- * that proposal, never the service's request, and commit with it.
+ * check the request against it (consent-check.ts), describe it, and on approval sign the
+ * consent built from that proposal, never the service's request, and commit with it.
  */
 import type { ConsentRequest } from '@yea-protocol/sdk';
 import { type ComputedRef, computed, ref, type ShallowRef, watch } from 'vue';
 import { factsLine, proposalFacts } from '../proposal-facts';
 import {
-  type Core,
-  type Exchange,
-  type Keys,
-  SERVICES,
-  type ServiceKey,
-} from './model';
-import { type ReceivedProposal, receivedProposal, type Seen } from './seen';
+  type ConsentCheck,
+  checkAgainst,
+  committedProposal,
+} from './consent-check';
+import type { Core, Exchange, Keys } from './model';
+import type { Seen } from './seen';
 import type { useShortcuts } from './use-shortcuts';
 
 type Act = ReturnType<typeof useShortcuts>['act'];
-
-/** Where the check stands: what to sign once it passes, or why it can't be approved. */
-export type ConsentCheck =
-  | { state: 'checking' }
-  | { state: 'ok'; consent: ConsentRequest }
-  | { state: 'refused'; why: string };
 
 /** What the consent card shows about the proposal. */
 export interface ConsentFacts {
@@ -38,32 +30,6 @@ interface ConsentDeps {
   current: ComputedRef<Exchange | null>;
   seen: Seen;
   act: Act;
-}
-
-/** The proposal the exchange committed: the one the agent received, at that service. */
-function committedProposal(seen: Seen, x: Exchange): ReceivedProposal | null {
-  if (x.request.verb !== 'COMMIT') {
-    return null;
-  }
-
-  const p = receivedProposal(seen, x.request.proposal, x.request.hash);
-
-  return p?.service === x.service ? p : null;
-}
-
-/** Check request `c` against `p`, the proposal shown, at the service that sent it. */
-async function checkAgainst(
-  sdk: Core,
-  c: ConsentRequest,
-  p: ReceivedProposal,
-  service: ServiceKey,
-): Promise<ConsentCheck> {
-  const { service: _s, committed: _c, ...proposal } = p;
-  const r = await sdk.consentToSign(c, proposal, SERVICES[service]);
-
-  return 'why' in r
-    ? { state: 'refused', why: r.why }
-    : { state: 'ok', consent: r.consent };
 }
 
 export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {

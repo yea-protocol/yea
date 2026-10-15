@@ -153,7 +153,8 @@ export const consentFrom = (
  * The consent to sign for request `k`, or why there is none (SPEC.md §6.6): `k` must pass the
  * same check as `consentLines` against `p`, the proposal the person was shown, and the consent
  * is then built from `p` by `consentFrom`, never taken from `k` as it arrived. For a caller
- * that shows `p` its own way, such as the docs site.
+ * that shows `p` its own way, such as the docs site. Pass `service`, where `p` came from,
+ * whenever it's known: without it, as with `consentLines`, `k`'s service isn't checked.
  */
 export async function consentToSign(
   k: ConsentRequest,

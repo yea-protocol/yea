@@ -4,7 +4,8 @@
  * proposal the agent committed, it shows exactly what the human is approving, with one button;
  * otherwise it says why it can't be approved.
  */
-import type { ConsentCheck, ConsentFacts } from './use-consent';
+import type { ConsentCheck } from './consent-check';
+import type { ConsentFacts } from './use-consent';
 
 defineProps<{
   message: string;
