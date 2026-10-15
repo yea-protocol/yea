@@ -1,4 +1,4 @@
-/** The INTENT verb: plan a capability into hashed proposals, committing an auto INTENT at once when a grant allows it. */
+/** The INTENT verb: plan a capability into hashed proposals for the commit ledger, committing an auto INTENT at once when a grant allows it. */
 import { fit } from '../budget.js';
 import { proposalHash, randomId } from '../crypto.js';
 import { fix, YeaError } from '../errors.js';
@@ -8,64 +8,27 @@ import { resolveRisk } from '../risk.js';
 import type { Event, FinalReply, Proposal } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
 import { DAY } from '../util.js';
-import type { Executor } from './execute.js';
-import { replayOf } from './replies.js';
-import type { ServiceState, StoredProposal } from './state.js';
-import type { Sweeper } from './sweep.js';
-import type { AutoCommit, VerifiedIntent } from './verified-request.js';
+import type { Admit, StoredProposal } from './commit-ledger.js';
+import type { ServiceState } from './state.js';
+import type { VerifiedIntent } from './verified-request.js';
 
 export class IntentHandler {
   constructor(
     private readonly state: Pick<
       ServiceState,
-      'opts' | 'proposals' | 'autoSeen' | 'handles' | 'now'
+      'opts' | 'ledger' | 'handles' | 'now'
     >,
-    private readonly executor: Executor,
-    private readonly sweeper: Sweeper,
   ) {}
 
-  async onIntent(
-    req: VerifiedIntent,
-    emit: (e: Event) => void,
-  ): Promise<FinalReply> {
-    // A replayed auto INTENT (same holder key + request id) gets the original reply, never a second commit.
+  /** A repeated auto INTENT (same holder key and frame id) gets the original reply, never a second commit. */
+  onIntent(req: VerifiedIntent, emit: (e: Event) => void): Promise<FinalReply> {
     const replay = req.auto?.replay;
 
-    if (replay) {
-      const prior = this.state.autoSeen.get(replay.key);
-
-      if (prior && prior.exp > this.state.now()) {
-        return replayOf(await prior.reply, req.id);
-      }
-    }
-
-    const reply = this.planIntent(req, emit);
-
-    if (replay) {
-      this.rememberAuto(replay.key, reply, replay.proofTs);
-    }
-
-    return reply;
-  }
-
-  private rememberAuto(
-    key: string,
-    reply: Promise<FinalReply>,
-    proofTs: number,
-  ) {
-    // outlive every proof that could carry this frame id: proofs are valid for ±300s around ts
-    this.state.autoSeen.set(key, {
-      reply,
-      exp: Math.max(this.state.now(), proofTs) + 900,
-    });
-
-    if (this.state.autoSeen.size > 10_000) {
-      for (const [k, v] of this.state.autoSeen) {
-        if (v.exp <= this.state.now()) {
-          this.state.autoSeen.delete(k);
-        }
-      }
-    }
+    return replay
+      ? this.state.ledger.answerOnce(replay, req.id, () =>
+          this.planIntent(req, emit),
+        )
+      : this.planIntent(req, emit);
   }
 
   private async planIntent(
@@ -105,14 +68,13 @@ export class IntentHandler {
         created: now,
       };
 
-      this.state.proposals.set(proposal.id, s);
       stored.push(s);
     }
 
-    this.sweeper.sweep(now);
+    this.state.ledger.propose(stored);
 
-    const committed = req.auto
-      ? await this.autoCommit(stored[0], req, req.auto, emit)
+    const committed = req.auto?.admit
+      ? await this.autoCommit(stored[0], req, req.auto.admit, emit)
       : null;
 
     if (committed) {
@@ -155,29 +117,19 @@ export class IntentHandler {
     return { ...p, hash: await proposalHash(p) } as Proposal;
   }
 
-  /**
-   * Commit an auto INTENT's proposal now if it is undoable and a grant allows it outright; null
-   * leaves it a proposal. An undo window of 0 can never be used, so it doesn't count (§4.3.1).
-   */
+  /** Commit an auto INTENT's first proposal if the ledger admits it outright; null leaves it a proposal. */
   private async autoCommit(
     stored: StoredProposal,
     req: VerifiedIntent,
-    auto: AutoCommit,
+    admit: Admit,
     emit: (e: Event) => void,
   ): Promise<FinalReply | null> {
-    if ((stored.proposal.undo?.window ?? 0) <= 0) {
-      return null;
-    }
+    const out = await this.state.ledger.autoCommit(stored, admit, {
+      re: req.id,
+      emit,
+    });
 
-    const ok = await auto.grant(stored.proposal);
-
-    if (!ok) {
-      return null;
-    }
-
-    const out = await this.executor.execute(stored, ok, req.id, emit);
-
-    return out.kind === 'RECEIPT'
+    return out?.kind === 'RECEIPT'
       ? fit({ ...out, auto: true }, req.budget, this.state.handles, req.holder)
       : out;
   }

@@ -10,16 +10,16 @@ import {
   type GrantCheck,
 } from '../../grants.js';
 import { checkProof } from '../../proof.js';
-import { ledgerId } from '../../store.js';
 import type { Proof, Proposal, Verb } from '../../types.js';
+import type { Admit, Used } from '../commit-ledger.js';
 import type { ServiceState } from '../state.js';
 
-export type Authorized = GrantCheck & { ok: true };
+type Authorized = GrantCheck & { ok: true };
 
 type Failed = GrantCheck & { ok: false };
 
-/** What a grant check reads of the service: its id, trust, clock and `total` ledger. */
-export type Checker = Pick<ServiceState, 'id' | 'opts' | 'now' | 'used'>;
+/** What a grant check reads of the service: its id, trust and clock. */
+export type Checker = Pick<ServiceState, 'id' | 'opts' | 'now'>;
 
 /** What a request is checked for. */
 export interface Scope {
@@ -28,8 +28,11 @@ export interface Scope {
   proposal?: Proposal;
   /** Only grants from this principal (the one the proposal was made for) may act. */
   principal?: string | null;
-  /** False checks who may act only: `each`, `total` and `risk` never deny (ADR-0002). */
-  limits: boolean;
+  /**
+   * The usage ledger `total` counts against, to check `each`, `total` and `risk` too; null
+   * checks who may act only, and those three never deny (ADR-0002).
+   */
+  limits: Used | null;
 }
 
 /** The request proof, if it is validly signed over this verb and target; throws otherwise. */
@@ -129,6 +132,30 @@ export function grantFailure(
   return new YeaError('unauthorized', failed[0].reason);
 }
 
+/**
+ * Grant evaluation with the limits included (ADR-0002), for the commit ledger: of the grants
+ * from `principal` held by `holder`, the first that admits a COMMIT of the proposal, or the
+ * error that says why none does.
+ */
+export const admitter =
+  (
+    state: Checker,
+    grants: string[],
+    holder: string,
+    principal: string | null,
+  ): Admit =>
+  async (proposal, used) => {
+    const { granted, failed } = await firstGrant(state, grants, holder, {
+      verb: 'COMMIT',
+      capability: proposal.capability,
+      proposal,
+      principal,
+      limits: used,
+    });
+
+    return granted ?? grantFailure(failed, proposal, state.id);
+  };
+
 function grantContext(
   state: Checker,
   proofKey: string,
@@ -148,7 +175,7 @@ function grantContext(
       uses: proposal.uses,
       risk: proposal.risk,
     },
-    used: (id, of) => state.used.get(ledgerId({ block: id, of })) ?? 0n,
-    limits: scope.limits,
+    used: (block, of) => scope.limits?.({ block, of }) ?? 0n,
+    limits: scope.limits !== null,
   };
 }

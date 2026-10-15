@@ -38,12 +38,19 @@ import {
   serveFetch,
   serveHttp,
 } from '../src/node.js';
+import { CommitLedger } from '../src/service/commit-ledger.js';
 import {
   type Verifier,
   verifyRequest,
 } from '../src/service/verified-request.js';
 import { printable } from '../src/text.js';
 import { createToolHost } from '../src/tools.js';
+import {
+  commitOf,
+  deferred,
+  ledgerFixture,
+  totalGrant,
+} from './commit-ledger-fixture.js';
 
 // Pass-through `openSync`, `renameSync`, `mkdirSync` and `accessSync` with hooks: to swap a file
 // just before or after an open (the key file blocks below), to act right after a rename or a
@@ -108,7 +115,7 @@ const principal = await P.keyPair(),
   otherAgent = await P.keyPair();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function payService(opts: { slow?: number; failRevert?: boolean } = {}) {
+function payService(opts: { failRevert?: boolean } = {}) {
   return P.service({
     id: 'pay',
     name: 'Pay',
@@ -126,13 +133,7 @@ function payService(opts: { slow?: number; failRevert?: boolean } = {}) {
           unit: params.cur ?? 'USD',
         }),
       },
-      apply: async () => {
-        if (opts.slow) {
-          await sleep(opts.slow);
-        }
-
-        return { secret: `order-for-${params.to}` };
-      },
+      apply: () => ({ secret: `order-for-${params.to}` }),
       revert: async () => {
         if (opts.failRevert) {
           throw new Error('bank down');
@@ -391,23 +392,6 @@ describe('security regressions', () => {
 
     expect(ok.status).toBe(200);
     expect(calls).toBe(2);
-  });
-
-  it("[H2] concurrent commits can't overshoot a spend cap", async () => {
-    const svc = payService({ slow: 30 });
-    const c = await client(svc, agent, principal, [
-      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
-    ]);
-    const [p1, p2] = [
-      await intent(c, { to: 'a', amt: 60 }),
-      await intent(c, { to: 'b', amt: 60 }),
-    ];
-    const [r1, r2] = await Promise.all([c.commit(p1), c.commit(p2)]);
-
-    expect([r1.kind, r2.kind].sort()).toEqual(['ERROR', 'RECEIPT']);
-    expect((r1.kind === 'ERROR' ? r1 : (r2 as P.ErrorReply)).code).toBe(
-      'consent_required',
-    );
   });
 
   // [H3] (the bridge never signs a consent that doesn't match the proposal it showed) moved with
@@ -725,109 +709,7 @@ describe('security regressions', () => {
     );
   });
 
-  it('[U5] two concurrent COMMITs of one proposal run it once and count it once', async () => {
-    let runs = 0;
-    const svc = P.service({
-      id: 'pay',
-      name: 'Pay',
-      summary: 'pay',
-      trust: [principal.public],
-    }).intent('pay.send', {
-      summary: 'send money',
-      params: { to: 'string', amt: 'int' },
-      plan: ({ params }) => ({
-        summary: `pay ${params.to}`,
-        effects: [P.create(`payment/${params.to}`)],
-        uses: { spend: P.quantity(params.amt, { scale: 2, unit: 'USD' }) },
-        apply: async () => {
-          runs++;
-          await sleep(20);
-
-          return null;
-        },
-      }),
-    });
-    const c = await client(svc, agent, principal, [
-      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
-    ]);
-    const p = await intent(c, { to: 'a', amt: 60 });
-    const [r1, r2] = await Promise.all([c.commit(p), c.commit(p)]);
-
-    expect(runs).toBe(1);
-    expect([r1.kind, r2.kind]).toEqual(['RECEIPT', 'RECEIPT']);
-    expect(
-      [r1, r2].filter((r) => r.kind === 'RECEIPT' && r.replay),
-    ).toHaveLength(1);
-    // Only 60 of the 100 is used, so a 40 still fits.
-    expect((await c.commit(await intent(c, { to: 'b', amt: 40 }))).kind).toBe(
-      'RECEIPT',
-    );
-  });
-
-  // #187: a synchronous throw from apply() ran before the run was stored, so the ERROR was
-  // cached and a retry replayed it instead of running apply again.
-  it('[U5b] a sync apply that throws once is retried, and a success still runs once', async () => {
-    let runs = 0;
-    const errors: unknown[] = [];
-    const svc = P.service({
-      id: 'pay',
-      name: 'Pay',
-      summary: 'pay',
-      trust: [principal.public],
-      onError: (e) => {
-        errors.push(e);
-
-        throw new Error('onError failed too');
-      },
-    }).intent('pay.send', {
-      summary: 'send money',
-      params: { to: 'string', amt: 'int' },
-      plan: ({ params }) => ({
-        summary: `pay ${params.to}`,
-        effects: [P.create(`payment/${params.to}`)],
-        uses: { spend: P.quantity(params.amt, { scale: 2, unit: 'USD' }) },
-        apply: () => {
-          runs++;
-
-          if (runs === 1) {
-            throw new Error('card network down');
-          }
-
-          return { ok: true };
-        },
-      }),
-    });
-    const c = await client(svc, agent, principal, [
-      { total: { of: 'spend', max: 100, scale: 2, unit: 'USD' } },
-    ]);
-    const p = await intent(c, { to: 'a', amt: 60 });
-    const failed = await c.commit(p);
-
-    // A throwing onError doesn't fail the request either.
-    expect(failed.kind === 'ERROR' && failed.code).toBe('internal');
-    expect(String(errors[0])).toMatch(/card network down/);
-
-    const retried = await c.commit(p);
-
-    expect(retried.kind === 'RECEIPT' && !retried.replay).toBe(true);
-    expect(runs).toBe(2);
-
-    const again = await c.commit(p);
-
-    expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
-    expect(runs).toBe(2);
-
-    // The failed attempt released its spend exactly once: 60 of the 100 is used, so 41 is over
-    // and 40 fits.
-    const over = await c.commit(await intent(c, { to: 'b', amt: 41 }));
-
-    expect(over.kind === 'ERROR' && over.code).toBe('consent_required');
-    expect((await c.commit(await intent(c, { to: 'b', amt: 40 }))).kind).toBe(
-      'RECEIPT',
-    );
-  });
-
-  // #187: the same shape in UNDO: a synchronous throw from revert() cached the ERROR.
+  // #187: the same shape in UNDO as [U5b]: a synchronous throw from revert() cached the ERROR.
   it('[U5c] a sync revert that throws once is retried, and a success still runs once', async () => {
     let reverts = 0;
     const svc = P.service({
@@ -3547,11 +3429,12 @@ describe('requests are read as Python reads them (#157)', () => {
 // verified, a COMMIT only from the proposal's requester, an owned handle only for its owner.
 describe('the verified request (#278)', () => {
   const now = () => Math.floor(Date.now() / 1000);
-  const stateOf = (): Verifier => ({
+  const opts = { id: 'v', name: 'V', summary: 'v', trust: [principal.public] };
+  const stateOf = (): Verifier & { ledger: CommitLedger } => ({
     id: 'v',
-    opts: { id: 'v', name: 'V', summary: 'v', trust: [principal.public] },
+    opts,
     now,
-    used: new Map(),
+    ledger: new CommitLedger({ id: 'v', opts, now }),
     asks: new Map(),
     intents: new Map([
       [
@@ -3562,8 +3445,6 @@ describe('the verified request (#278)', () => {
         },
       ],
     ]),
-    proposals: new Map(),
-    receipts: new Map(),
     handles: new P.MemoryHandleStore(),
   });
   const proofBy = (seed: string, verb: P.Verb, target: string) =>
@@ -3639,20 +3520,22 @@ describe('the verified request (#278)', () => {
     });
     const created = now();
 
-    state.proposals.set('p_mine', {
-      proposal: proposal('p_mine'),
-      plan,
-      principal: principal.public,
-      requester: agent.public,
-      created,
-    });
-    state.proposals.set('p_anon', {
-      proposal: proposal('p_anon'),
-      plan,
-      principal: null,
-      requester: null,
-      created,
-    });
+    state.ledger.propose([
+      {
+        proposal: proposal('p_mine'),
+        plan,
+        principal: principal.public,
+        requester: agent.public,
+        created,
+      },
+      {
+        proposal: proposal('p_anon'),
+        plan,
+        principal: null,
+        requester: null,
+        created,
+      },
+    ]);
 
     const commit = async (pid: string, who: { seed: string; public: string }) =>
       verifyRequest(state, {
@@ -3699,6 +3582,126 @@ describe('the verified request (#278)', () => {
 
     expect(mine.verb === 'EXPAND' && mine.owner).toBe(agent.public);
     expect(await codeOf(expand(other.seed))).toBe('unauthorized');
+  });
+});
+
+// The commit ledger at its interface (#279), with no keys, proofs or sleeps: grant evaluation is
+// a stand-in that judges one `total` (commit-ledger-fixture.ts). More of it is in
+// commit-ledger.test.ts.
+describe('the commit ledger (#279)', () => {
+  const noEvents = () => undefined;
+
+  it("[H2] concurrent commits can't overshoot a spend cap", async () => {
+    const { ledger, propose } = ledgerFixture();
+    const grant = totalGrant(100);
+    const [a, b] = [propose(60), propose(60)];
+    const [ra, rb] = await Promise.allSettled([
+      ledger.commit(commitOf(a, grant.admit), noEvents),
+      ledger.commit(commitOf(b, grant.admit), noEvents),
+    ]);
+
+    expect(ra.status === 'fulfilled' && ra.value.kind).toBe('RECEIPT');
+    // Both passed grant evaluation before either reserved: the reservation refuses the second.
+    expect(grant.calls).toBe(2);
+    expect(
+      rb.status === 'rejected' &&
+        rb.reason instanceof P.YeaError && [
+          rb.reason.code,
+          rb.reason.message,
+          rb.reason.extra.consent,
+        ],
+    ).toEqual([
+      'consent_required',
+      expect.stringContaining('other commits are in flight'),
+      expect.objectContaining({ proposal: b.proposal.id, principal: 'alice' }),
+    ]);
+  });
+
+  it('[U5] two concurrent COMMITs of one proposal run it once and count it once', async () => {
+    const { ledger, propose } = ledgerFixture();
+    const grant = totalGrant(100);
+    const started = deferred();
+    const held = deferred();
+    let runs = 0;
+    const p = propose(60, {
+      apply: async () => {
+        runs++;
+        started.resolve();
+        await held.promise;
+
+        return null;
+      },
+    });
+    const both = Promise.all([
+      ledger.commit(commitOf(p, grant.admit), noEvents),
+      ledger.commit(commitOf(p, grant.admit), noEvents),
+    ]);
+
+    await started.promise;
+    held.resolve();
+
+    const [r1, r2] = await both;
+
+    expect(runs).toBe(1);
+    expect([r1.kind, r2.kind]).toEqual(['RECEIPT', 'RECEIPT']);
+    expect(
+      [r1, r2].filter((r) => r.kind === 'RECEIPT' && r.replay),
+    ).toHaveLength(1);
+    // Only 60 of the 100 is used, so a 40 still fits.
+    expect(
+      (await ledger.commit(commitOf(propose(40), grant.admit), noEvents)).kind,
+    ).toBe('RECEIPT');
+  });
+
+  // #187: a synchronous throw from apply() ran before the run was stored, so the ERROR was
+  // cached and a retry replayed it instead of running apply again.
+  it('[U5b] a sync apply that throws once is retried, and a success still runs once', async () => {
+    const errors: unknown[] = [];
+    const { ledger, propose } = ledgerFixture({
+      onError: (e) => {
+        errors.push(e);
+
+        throw new Error('onError failed too');
+      },
+    });
+    const grant = totalGrant(100);
+    let runs = 0;
+    const p = propose(60, {
+      apply: () => {
+        runs++;
+
+        if (runs === 1) {
+          throw new Error('card network down');
+        }
+
+        return { ok: true };
+      },
+    });
+    const commit = () => ledger.commit(commitOf(p, grant.admit), noEvents);
+    const failed = await commit();
+
+    // A throwing onError doesn't fail the request either.
+    expect(failed.kind === 'ERROR' && failed.code).toBe('internal');
+    expect(String(errors[0])).toMatch(/card network down/);
+
+    const retried = await commit();
+
+    expect(retried.kind === 'RECEIPT' && !retried.replay).toBe(true);
+    expect(runs).toBe(2);
+
+    const again = await commit();
+
+    expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
+    expect(runs).toBe(2);
+
+    // The failed attempt released its spend exactly once: 60 of the 100 is used, so 41 is over
+    // and 40 fits.
+    const over = ledger.commit(commitOf(propose(41), grant.admit), noEvents);
+
+    await expect(over).rejects.toMatchObject({ code: 'consent_required' });
+    expect(
+      (await ledger.commit(commitOf(propose(40), grant.admit), noEvents)).kind,
+    ).toBe('RECEIPT');
   });
 });
 

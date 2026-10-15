@@ -3,13 +3,12 @@
  * looked up and its proof and grants checked. It says who is acting (the holder), for whom (the
  * principal) and, for a COMMIT, from which requester. Handlers get this, never the raw frame.
  *
- * It checks every caveat but `each`, `total` and `risk` (ADR-0002). Until #279 moves them to the
- * commit ledger, a COMMIT's `limits()` and an auto INTENT's `auto.grant()` check those here.
+ * It checks every caveat but `each`, `total` and `risk` (ADR-0002). The commit ledger checks those
+ * three, with the grant evaluation a COMMIT or an auto INTENT carries as `admit`.
  */
 import type { Parked } from '../budget.js';
 import type { AskDef, IntentDef } from '../plan.js';
-import type { StoredProposal, StoredReceipt } from './state.js';
-import type { Authorized } from './verified-request/grants.js';
+import type { Admit, StoredProposal, StoredReceipt } from './commit-ledger.js';
 import { type ParsedRequest, parseRequest } from './verified-request/parse.js';
 import {
   type AutoCommit,
@@ -21,7 +20,6 @@ import {
   verifyUndo,
 } from './verified-request/verbs.js';
 
-export type { Authorized } from './verified-request/grants.js';
 export type { ParsedRequest } from './verified-request/parse.js';
 export type { AutoCommit, Verifier } from './verified-request/verbs.js';
 export { parseRequest };
@@ -63,8 +61,8 @@ export type VerifiedCommit = Base & {
   stored: StoredProposal;
   holder: string;
   principal: string;
-  /** The grant that also admits the proposal's `each`, `total` and `risk`, or the error why none does. */
-  limits(): Promise<Authorized>;
+  /** Grant evaluation with the limits included, for the commit ledger (ADR-0002). */
+  admit: Admit;
 };
 
 /** An UNDO under a grant from the principal who committed the receipt. */

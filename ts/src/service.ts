@@ -2,22 +2,21 @@
  * Build a YEA service. Transport-independent: `handle(frame)` turns a request frame
  * into its final reply (emitting EVENTs along the way). Transports live in node.ts / http.ts.
  * The verb handlers live in service/; this file registers capabilities and dispatches frames.
- * A verb that needs collaborators or private helpers is a `<Verb>Handler` class holding a
- * `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`.
+ * A verb that needs private helpers is a `<Verb>Handler` class holding a `Pick<ServiceState>`;
+ * the rest are `on<Verb>(state, req)`. Each proposal's life is the commit ledger's.
  */
 import { fit, MemoryHandleStore } from './budget.js';
 import { frameId, replyFrame } from './frames.js';
 import type { AskDef, IntentDef, ServiceOptions } from './plan.js';
 import { onAsk } from './service/ask.js';
 import { listCapabilities } from './service/capabilities.js';
-import { CommitHandler } from './service/commit.js';
-import { Executor } from './service/execute.js';
+import { onCommit } from './service/commit.js';
+import { CommitLedger } from './service/commit-ledger.js';
 import { onExpand } from './service/expand.js';
 import { IntentHandler } from './service/intent.js';
 import { errorReply } from './service/replies.js';
 import type { ServiceState } from './service/state.js';
-import { Sweeper } from './service/sweep.js';
-import { UndoHandler } from './service/undo.js';
+import { onUndo } from './service/undo.js';
 import { verifyRequest } from './service/verified-request.js';
 import type { Brief, CapabilityInfo, Event, FinalReply } from './types.js';
 import { unixNow } from './util.js';
@@ -26,35 +25,22 @@ export class Service {
   readonly id: string;
   private readonly state: ServiceState;
   private readonly intentHandler: IntentHandler;
-  private readonly commitHandler: CommitHandler;
-  private readonly undoHandler: UndoHandler;
 
   constructor(opts: ServiceOptions) {
     this.id = opts.id;
+
+    const now = opts.now ?? unixNow;
 
     this.state = {
       id: opts.id,
       opts,
       asks: new Map(),
       intents: new Map(),
-      proposals: new Map(),
-      commits: new Map(),
-      receipts: new Map(),
-      used: new Map(),
-      autoSeen: new Map(),
+      ledger: new CommitLedger({ id: opts.id, opts, now }),
       handles: opts.handles ?? new MemoryHandleStore(),
-      now: opts.now ?? unixNow,
+      now,
     };
-
-    const executor = new Executor(this.state);
-
-    this.intentHandler = new IntentHandler(
-      this.state,
-      executor,
-      new Sweeper(this.state),
-    );
-    this.commitHandler = new CommitHandler(this.state, executor);
-    this.undoHandler = new UndoHandler(this.state);
+    this.intentHandler = new IntentHandler(this.state);
   }
 
   /** Register a read-only capability. */
@@ -116,9 +102,9 @@ export class Service {
         case 'INTENT':
           return await this.intentHandler.onIntent(req, send);
         case 'COMMIT':
-          return await this.commitHandler.onCommit(req, send);
+          return await onCommit(this.state, req, send);
         case 'UNDO':
-          return await this.undoHandler.onUndo(req, send);
+          return await onUndo(this.state, req, send);
         case 'EXPAND':
           return onExpand(this.state, req);
       }

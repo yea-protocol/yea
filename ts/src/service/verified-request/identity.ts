@@ -4,7 +4,6 @@
  */
 import type { Proof } from '../../types.js';
 import {
-  type Authorized,
   type Checker,
   firstGrant,
   grantFailure,
@@ -54,7 +53,7 @@ export async function identify(
   const proof = await verifyProof(state, req.proof, scope.verb, scope.target);
   const { granted } = await firstGrant(state, req.grants, proof.key, {
     ...scope,
-    limits: false,
+    limits: null,
   });
 
   return { holder: proof.key, principal: granted?.iss ?? null, proof };
@@ -73,7 +72,7 @@ export async function identifyRequired(
   const proof = await verifyProof(state, req.proof, scope.verb, scope.target);
   const { granted, failed } = await firstGrant(state, req.grants, proof.key, {
     ...scope,
-    limits: false,
+    limits: null,
   });
 
   if (!granted) {
@@ -81,23 +80,4 @@ export async function identifyRequired(
   }
 
   return { holder: proof.key, principal: granted.iss, proof };
-}
-
-/** The grant that authorizes the request with its limits too, or the error that says why none does. */
-export async function withLimits(
-  state: Checker,
-  grants: string[],
-  holder: string,
-  scope: Omit<Scope, 'limits'>,
-): Promise<Authorized> {
-  const { granted, failed } = await firstGrant(state, grants, holder, {
-    ...scope,
-    limits: true,
-  });
-
-  if (granted) {
-    return granted;
-  }
-
-  throw grantFailure(failed, scope.proposal, state.id);
 }

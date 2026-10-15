@@ -5,41 +5,34 @@
 import type { Parked } from '../../budget.js';
 import { fix, YeaError } from '../../errors.js';
 import { autoTarget, checkProof } from '../../proof.js';
-import type { Proposal } from '../../types.js';
 import { validateParams } from '../../validate.js';
 import { unknownCapability } from '../capabilities.js';
-import type { ServiceState, StoredProposal, StoredReceipt } from '../state.js';
-import { type Authorized, firstGrant } from './grants.js';
-import {
-  type Identity,
-  identify,
-  identifyRequired,
-  withLimits,
-} from './identity.js';
+import type {
+  Admit,
+  AutoReplay,
+  CommitLedger,
+  StoredProposal,
+  StoredReceipt,
+} from '../commit-ledger.js';
+import type { ServiceState } from '../state.js';
+import { admitter } from './grants.js';
+import { type Identity, identify, identifyRequired } from './identity.js';
 import type { ParsedRequest } from './parse.js';
 
-/** What verifying a request reads of the service. */
+/** What verifying a request reads of the service: the commit ledger only to look up what a request names. */
 export type Verifier = Pick<
   ServiceState,
-  | 'id'
-  | 'opts'
-  | 'now'
-  | 'used'
-  | 'asks'
-  | 'intents'
-  | 'proposals'
-  | 'receipts'
-  | 'handles'
->;
+  'id' | 'opts' | 'now' | 'asks' | 'intents' | 'handles'
+> & { ledger: Pick<CommitLedger, 'proposal' | 'receipt'> };
 
 type Parsed<V extends ParsedRequest['verb']> = ParsedRequest & { verb: V };
 
-/** An auto INTENT (SPEC §4.3.1): its replay key, and the grant that commits its proposal outright. */
+/** An auto INTENT (SPEC §4.3.1): its replay key, and the grant evaluation that commits its proposal. */
 export interface AutoCommit {
   /** The verified holder key and frame id, and the proof's `ts`; null with no verified proof. */
-  replay: { key: string; proofTs: number } | null;
-  /** A grant that authorizes COMMIT of `proposal` with no consent, if it is undoable; else null. */
-  grant(proposal: Proposal): Promise<Authorized | null>;
+  replay: AutoReplay | null;
+  /** The commit ledger's grant evaluation for the proposal (ADR-0002); null with no holder. */
+  admit: Admit | null;
 }
 
 /** The capability a request names, registered under `defs`; throws `unknown_capability` otherwise. */
@@ -98,12 +91,14 @@ export async function verifyIntent(state: Verifier, req: Parsed<'INTENT'>) {
 }
 
 /**
- * The auto-commit check of an INTENT whose identity was verified against the auto target. Only
- * that proof's key is ever a replay key: an unverified one would let anyone claim a replay.
+ * The auto-commit of an INTENT whose identity was verified against the auto target. Only that
+ * proof's key is ever a replay key: an unverified one would let anyone claim a replay.
  *
- * The proof is checked once, when the request arrives (#278). `grant` doesn't check it again
+ * The proof is checked once, when the request arrives (#278). `admit` doesn't check it again
  * after the plan runs, so a plan that outlasts the proof's 300s window still auto-commits. The
- * grants are checked again at commit time, so `exp` and the other caveats still hold then.
+ * grants are checked again at commit time, so `exp` and the other caveats still hold then. Only
+ * a grant from the proposal's principal counts, so the search goes on past a valid grant from
+ * another one.
  */
 function autoCommit(
   state: Verifier,
@@ -112,29 +107,13 @@ function autoCommit(
 ): AutoCommit {
   return {
     replay: proof && { key: `${proof.key}:${req.id}`, proofTs: proof.ts },
-    grant: async (proposal) => {
-      if (!proposal.undo || !holder) {
-        return null;
-      }
-
-      // Only a grant from the proposal's principal counts, so the search goes on past a valid
-      // grant from another one.
-      const { granted } = await firstGrant(state, req.grants, holder, {
-        verb: 'COMMIT',
-        capability: proposal.capability,
-        proposal,
-        principal,
-        limits: true,
-      });
-
-      return granted ?? null;
-    },
+    admit: holder ? admitter(state, req.grants, holder, principal) : null,
   };
 }
 
 export async function verifyCommit(state: Verifier, req: Parsed<'COMMIT'>) {
   const stored =
-    req.proposal === null ? undefined : state.proposals.get(req.proposal);
+    req.proposal === null ? undefined : state.ledger.proposal(req.proposal);
 
   if (!stored) {
     throw new YeaError(
@@ -156,14 +135,11 @@ export async function verifyCommit(state: Verifier, req: Parsed<'COMMIT'>) {
     );
   }
 
-  const scope = {
-    verb: 'COMMIT' as const,
+  const { holder, principal } = await identifyRequired(state, req, {
+    verb: 'COMMIT',
     capability: proposal.capability,
     proposal,
     principal: stored.principal,
-  };
-  const { holder, principal } = await identifyRequired(state, req, {
-    ...scope,
     target: proposal.hash,
   });
 
@@ -173,7 +149,7 @@ export async function verifyCommit(state: Verifier, req: Parsed<'COMMIT'>) {
     stored,
     holder,
     principal,
-    limits: () => withLimits(state, req.grants, holder, scope),
+    admit: admitter(state, req.grants, holder, stored.principal),
   };
 }
 
@@ -202,7 +178,7 @@ function checkRequester(stored: StoredProposal, holder: string) {
 
 export async function verifyUndo(state: Verifier, req: Parsed<'UNDO'>) {
   const stored: StoredReceipt | undefined =
-    req.receipt === null ? undefined : state.receipts.get(req.receipt);
+    req.receipt === null ? undefined : state.ledger.receipt(req.receipt);
 
   if (!stored || stored.receipt.undoes || req.receipt === null) {
     throw new YeaError(

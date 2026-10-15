@@ -1,5 +1,5 @@
 """Bounding a service's memory: expired proposals, old receipts and stale auto-INTENT replays are
-forgotten now and then (mirrors ts/src/service/sweep.ts)."""
+forgotten now and then (mirrors the sweep in ts/src/service/commit-ledger.ts)."""
 
 from __future__ import annotations
 

@@ -828,7 +828,7 @@ def test_proof_failures_read_as_in_ts():
 
 
 def test_an_in_flight_total_refusal_names_its_measure():
-    """As ts/src/service/execute.ts: "<measure> would pass a total limit (other commits are in flight)" (#145)."""
+    """As ts/src/service/commit-ledger.ts: "<measure> would pass a total limit (other commits are in flight)" (#145)."""
     from yea.grants import GrantContext, verify_grant
     from yea.service.execute import reserve
 
@@ -992,7 +992,7 @@ def test_after_the_connection_fails_a_new_request_fails_at_once():
 
 def test_old_proposals_receipts_and_replays_are_swept():
     """Memory stays bounded: every 100th INTENT (or at 5000 proposals) forgets uncommitted
-    proposals an hour past expiry and receipts a day past their undo window, as TS's Sweeper."""
+    proposals an hour past expiry and receipts a day past their undo window, as TS's commit ledger."""
     clock = [int(time.time())]  # proofs carry real time, so the commit happens before the clock moves
 
     async def go():
