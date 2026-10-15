@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * The approval card for a consent_required reply: once the request checks out against the
- * proposal the agent received, it shows exactly what the human is approving, with one button.
+ * proposal the agent committed, it shows exactly what the human is approving, with one button;
+ * otherwise it says why it can't be approved.
  */
 import type { ConsentCheck, ConsentFacts } from './use-consent';
 
@@ -19,7 +20,7 @@ const emit = defineEmits<{ approve: [] }>();
   <div class="consent" role="region" aria-label="Approval needed">
     <h3>Your agent needs your approval</h3>
     <p class="reason">{{ message }}</p>
-    <template v-if="facts && check === 'ok'">
+    <template v-if="facts && check.state === 'ok'">
       <p class="what">{{ facts.summary }}</p>
       <ul>
         <li v-for="(e, i) in facts.effects" :key="i"><code>{{ e }}</code></li>
@@ -30,7 +31,7 @@ const emit = defineEmits<{ approve: [] }>();
       </div>
       <p class="fine">Signs a one-time grant: COMMIT of this proposal hash, at {{ service }}, until it expires. Nothing else.</p>
     </template>
-    <p v-else-if="check === 'mismatch'" class="err">This consent request doesn't match a proposal the agent received, so it can't be approved here.</p>
+    <p v-else-if="check.state === 'refused'" class="err">This consent request can't be approved here: {{ check.why }}.</p>
   </div>
 </template>
 

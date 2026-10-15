@@ -414,6 +414,86 @@ test('each example lands where the page says under the one policy it signs', {
   }
 });
 
+/** The SDK with a transport that passes each reply through `edit`, as a lying service would. */
+const lyingSdk = (sdk, edit) => ({
+  ...sdk,
+  local(svc) {
+    const t = sdk.local(svc);
+
+    return { ...t, request: async (f, on) => edit(await t.request(f, on)) };
+  },
+});
+
+test("the session refuses a consent request that doesn't match the proposal, and signs one built from it (#276)", {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { landingCaveats } = await import(`${LANDING}/policy.ts`);
+  const { Session } = await import(`${LANDING}/session.ts`);
+  const { SCENES, tomorrow } = await import(`${LANDING}/scenes.ts`);
+  const dinner = SCENES.dinner;
+  const ask = async (edit) => {
+    const s = await Session.start(
+      lyingSdk(sdk, edit),
+      shop,
+      landingCaveats(Math.floor(Date.now() / 1000)),
+    );
+
+    return {
+      s,
+      p: await s.propose(dinner.capability, dinner.params(tomorrow())),
+    };
+  };
+  const consentSaying = (patch) => (r) =>
+    r.kind === 'ERROR' && r.consent
+      ? { ...r, consent: { ...r.consent, ...patch } }
+      : r;
+  const refusals = [
+    [{ proposal: 'p_x' }, 'the consent request names another proposal'],
+    [{ hash: 'x' }, "the consent request's hash isn't the proposal's"],
+    [{ capability: 'shop.x' }, 'the consent request names another capability'],
+    [{ service: 'evil.example' }, 'the consent request names another service'],
+  ];
+
+  for (const [patch, why] of refusals) {
+    const { s, p } = await ask(consentSaying(patch));
+
+    await assert.rejects(s.commit(p), {
+      message: `The service's consent request can't be approved: ${why}.`,
+    });
+  }
+
+  // Shown one thing, bound to another: the proposal fails the SDK's checkProposal.
+  const cheaper = (r) =>
+    r.kind === 'PROPOSALS'
+      ? {
+          ...r,
+          proposals: r.proposals.map((p) => ({
+            ...p,
+            summary: 'one bread roll',
+          })),
+        }
+      : r;
+  const tampered = await ask(cheaper);
+
+  await assert.rejects(tampered.s.commit(tampered.p), {
+    message:
+      "The service's consent request can't be approved: the proposal doesn't match its hash.",
+  });
+
+  // What the person signs is built from the proposal, not the service's request.
+  const { s, p } = await ask(
+    consentSaying({ summary: 'something else', expires: 4_000_000_000 }),
+  );
+  const a = await s.commit(p);
+
+  assert.equal(a.outcome, 'asks');
+  assert.equal(a.waiting.consent.summary, p.proposal.summary);
+  assert.equal(a.waiting.consent.expires, p.proposal.expires);
+  assert.equal((await s.approve(a.waiting)).receipt.proposal, p.proposal.id);
+});
+
 /** A hero state with plain `{ value }` refs, as runScene reads and writes it. */
 const heroState = (scene) =>
   Object.fromEntries(

@@ -22,6 +22,7 @@ export type SessionSdk = Pick<
   typeof import('@yea-protocol/sdk'),
   | 'Client'
   | 'consentGrant'
+  | 'consentToSign'
   | 'issueGrant'
   | 'keyPair'
   | 'local'
@@ -45,6 +46,7 @@ export interface Waiting {
   params: Record<string, unknown>;
   proposalsLens: string;
   proposal: Proposal;
+  /** What the person signs: built from `proposal` by `consentToSign`, never the service's request. */
   consent: ConsentRequest;
   /** The service's reason, from its consent_required error. */
   reason: string;
@@ -165,9 +167,17 @@ export class Session {
       throw failure("The commit didn't go through", c);
     }
 
-    // What the person signs must be the proposal the page shows.
-    if (p.hash !== c.consent.hash) {
-      throw new Error('the consent request does not match the proposal');
+    // What the person signs is built from the proposal the page shows, after the SDK's check.
+    const toSign = await this.sdk.consentToSign(
+      c.consent,
+      p.proposal,
+      await this.client.audience(),
+    );
+
+    if ('why' in toSign) {
+      throw new Error(
+        `The service's consent request can't be approved: ${toSign.why}.`,
+      );
     }
 
     return {
@@ -176,7 +186,7 @@ export class Session {
         params: p.params,
         proposalsLens: p.proposalsLens,
         proposal: p.proposal,
-        consent: c.consent,
+        consent: toSign.consent,
         reason: c.message,
         consentLens: c.lens,
       },

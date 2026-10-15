@@ -31,6 +31,7 @@ export {
   type ApproveOutcome,
   approveConsentCode,
   checkProposal,
+  consentToSign,
   keyFingerprint,
 } from './approve.js';
 

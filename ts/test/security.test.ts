@@ -1872,6 +1872,44 @@ for await (const line of createInterface({ input: process.stdin })) {
     },
     20_000,
   );
+
+  // #276: the docs site signed the service's request as it arrived. Its two consent flows now
+  // sign only what `consentToSign` returns.
+  it("[C9] consentToSign refuses what consentLines refuses, and builds the rest from the proposal, not the service's request", async () => {
+    const { p, k, service } = await consentRequired();
+    const refused = async (...a: Parameters<typeof P.consentToSign>) => {
+      const v = await P.consentToSign(...a);
+
+      return 'why' in v ? v.why : null;
+    };
+
+    for (const [bad, reason] of [
+      [{ ...k, proposal: 'p_x' }, 'the consent request names another proposal'],
+      [{ ...k, hash: 'x' }, "the consent request's hash isn't the proposal's"],
+      [
+        { ...k, capability: 'pay.x' },
+        'the consent request names another capability',
+      ],
+    ] as const) {
+      expect(await refused(bad, p, service)).toBe(reason);
+    }
+
+    expect(await refused(k, p, 'other')).toBe(
+      'the consent request names another service',
+    );
+    expect(await refused(k, { ...p, summary: 'pay a 0.01' }, service)).toBe(
+      "the proposal doesn't match its hash",
+    );
+
+    const lying = { ...k, summary: 'lie', expires: p.expires + 999 };
+    const ok = await P.consentToSign(lying, p, service);
+
+    expect(ok).toEqual({ consent: consentFrom(lying, p) });
+    expect('consent' in ok && ok.consent).toMatchObject({
+      summary: p.summary,
+      expires: p.expires,
+    });
+  });
 });
 
 // #89: `show` (yea hello/ask/intent/commit/undo) and test-drive's tool results passed the

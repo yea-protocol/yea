@@ -1,7 +1,8 @@
 /**
- * Consent: when a reply asks the human to approve, find the proposal the agent received,
- * check that the request matches it (service, capability, hash), describe it, and on approval
- * sign a one-time consent grant and commit with it.
+ * Consent: when a reply asks the human to approve, find the proposal the agent committed,
+ * check the request against it with the SDK's `consentToSign` (proposal, hash, capability,
+ * service, and the proposal itself), describe it, and on approval sign the consent built from
+ * that proposal, never the service's request, and commit with it.
  */
 import type { ConsentRequest } from '@yea-protocol/sdk';
 import { type ComputedRef, computed, ref, type ShallowRef, watch } from 'vue';
@@ -18,7 +19,11 @@ import type { useShortcuts } from './use-shortcuts';
 
 type Act = ReturnType<typeof useShortcuts>['act'];
 
-export type ConsentCheck = 'checking' | 'ok' | 'mismatch';
+/** Where the check stands: what to sign once it passes, or why it can't be approved. */
+export type ConsentCheck =
+  | { state: 'checking' }
+  | { state: 'ok'; consent: ConsentRequest }
+  | { state: 'refused'; why: string };
 
 /** What the consent card shows about the proposal. */
 export interface ConsentFacts {
@@ -35,20 +40,30 @@ interface ConsentDeps {
   act: Act;
 }
 
-/** Whether the consent request names exactly this proposal, at the service that sent it. */
-async function matches(
+/** The proposal the exchange committed: the one the agent received, at that service. */
+function committedProposal(seen: Seen, x: Exchange): ReceivedProposal | null {
+  if (x.request.verb !== 'COMMIT') {
+    return null;
+  }
+
+  const p = receivedProposal(seen, x.request.proposal, x.request.hash);
+
+  return p?.service === x.service ? p : null;
+}
+
+/** Check request `c` against `p`, the proposal shown, at the service that sent it. */
+async function checkAgainst(
   sdk: Core,
   c: ConsentRequest,
   p: ReceivedProposal,
   service: ServiceKey,
-): Promise<boolean> {
+): Promise<ConsentCheck> {
   const { service: _s, committed: _c, ...proposal } = p;
+  const r = await sdk.consentToSign(c, proposal, SERVICES[service]);
 
-  return (
-    c.service === SERVICES[service] &&
-    c.capability === p.capability &&
-    (await sdk.proposalHash(proposal)) === c.hash
-  );
+  return 'why' in r
+    ? { state: 'refused', why: r.why }
+    : { state: 'ok', consent: r.consent };
 }
 
 export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {
@@ -66,11 +81,11 @@ export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {
     return r?.kind === 'ERROR' ? r.message : '';
   });
   const proposal = computed(() => {
-    const c = request.value;
+    const x = current.value;
 
-    return c ? receivedProposal(seen, c.proposal, c.hash) : null;
+    return x ? committedProposal(seen, x) : null;
   });
-  const check = ref<ConsentCheck>('checking');
+  const check = ref<ConsentCheck>({ state: 'checking' });
   const facts = computed((): ConsentFacts | null => {
     const p = proposal.value;
     const sdk = core.value;
@@ -91,44 +106,47 @@ export function useConsent({ core, keys, current, seen, act }: ConsentDeps) {
     onCleanup(() => {
       stale = true;
     });
-    check.value = 'checking';
+    check.value = { state: 'checking' };
 
     const p = proposal.value;
     const sdk = core.value;
     const x = current.value;
 
     if (!c || !p || !sdk || !x) {
-      check.value = 'mismatch';
+      check.value = {
+        state: 'refused',
+        why: "the agent didn't commit a proposal it received from this service",
+      };
 
       return;
     }
 
-    const ok = await matches(sdk, c, p, x.service);
+    const checked = await checkAgainst(sdk, c, p, x.service);
 
     if (!stale) {
-      check.value = ok ? 'ok' : 'mismatch';
+      check.value = checked;
     }
   });
 
-  /** Sign a consent grant for exactly this proposal as the human, then commit with it. */
+  /** Sign the consent built from the shown proposal as the human, then commit with it. */
   async function approve(): Promise<void> {
-    const c = request.value;
+    const ok = check.value;
     const k = keys.value;
     const sdk = core.value;
 
-    if (!c || check.value !== 'ok' || !k || !sdk) {
+    if (ok.state !== 'ok' || !k || !sdk) {
       return;
     }
 
     const token = await sdk.consentGrant({
       principal: k.principal,
       agent: k.agent.public,
-      consent: c,
+      consent: ok.consent,
     });
     const service = current.value?.service;
 
     if (service) {
-      await act('COMMIT', c.proposal, service, [token]);
+      await act('COMMIT', ok.consent.proposal, service, [token]);
     }
   }
 

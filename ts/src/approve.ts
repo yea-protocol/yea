@@ -149,6 +149,22 @@ export const consentFrom = (
   expires: Math.min(k.expires, p.expires),
 });
 
+/**
+ * The consent to sign for request `k`, or why there is none (SPEC.md §6.6): `k` must pass the
+ * same check as `consentLines` against `p`, the proposal the person was shown, and the consent
+ * is then built from `p` by `consentFrom`, never taken from `k` as it arrived. For a caller
+ * that shows `p` its own way, such as the docs site.
+ */
+export async function consentToSign(
+  k: ConsentRequest,
+  p: Proposal,
+  service?: string,
+): Promise<{ consent: ConsentRequest } | { why: string }> {
+  const why = await checkConsentRequest(k, p, service);
+
+  return why ? { why } : { consent: consentFrom(k, p) };
+}
+
 /** Who the consent is for, or why none can be chosen (with the code's suggestion, fingerprinted). */
 async function recipientOf(
   named: unknown,
