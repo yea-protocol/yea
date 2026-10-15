@@ -7,6 +7,6 @@
     "@yea-protocol/mcp": "*",
     "@yea-protocol/sdk": "*",
     "@yea-protocol/stripe": "*",
-    "zod": "^4.2.0"
+    "zod": "^4.6.6"
   }
 }
