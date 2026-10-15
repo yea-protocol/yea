@@ -44,6 +44,16 @@ names the proposal the agent was shown, get the person's consent to that proposa
 once more with it.
 _Avoid_: approval flow, consent loop
 
+**Approver**:
+Whoever a consent round asks for the person's consent. It gives a signed consent, declines, or
+hands back a consent code to approve somewhere else.
+_Avoid_: signer (for the role), consent provider
+
+**Consent store**:
+Where an agent keeps consents given somewhere else, by the proposal they commit. A consent round
+looks there before asking the person.
+_Avoid_: consent cache, consents dir
+
 ### Jobs (the framework)
 
 **Job call**:

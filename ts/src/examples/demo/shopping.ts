@@ -1,12 +1,14 @@
 /**
  * The demo's shop scenes: a menu search fitted to a token budget, then an order over the policy's
- * limit, committed once the human signs a one-time consent.
+ * limit, committed through the consent round once the human signs a one-time consent.
  */
 import {
   type Answer,
   type Client,
-  consentGrant,
+  consentRound,
   type Proposal,
+  type RoundClient,
+  signer,
 } from '../../index.js';
 import type { Keys } from './grants.js';
 import { day, type Narrator } from './narrator.js';
@@ -61,41 +63,49 @@ export async function order(n: Narrator, sh: Client, keys: Keys) {
   }
 }
 
+/** Commit `pick` through the consent round, narrating each COMMIT it sends and the human's yes. */
 async function commitWithConsent(
   n: Narrator,
   sh: Client,
   pick: Proposal,
-  { james, agent }: Keys,
+  { james }: Keys,
 ) {
   n.say(n.agent, `commits [${pick.id}]:`);
-  n.wire('COMMIT', `${pick.id} #${pick.hash.slice(0, 10)}…`);
-
-  const denied = await sh.commit(pick);
-
-  n.show(denied.lens);
-
-  if (denied.kind !== 'ERROR' || !denied.consent) {
-    return;
-  }
-
-  n.say(
-    n.human,
-    `(simulated) gets a push notification, reads the exact effects and taps Approve. That signs a one-time consent for this proposal only (hash ${pick.hash.slice(0, 10)}…):`,
-  );
-
-  const consent = await consentGrant({
-    principal: james,
-    agent: agent.public,
-    consent: denied.consent,
-  });
-
-  n.wire('COMMIT', `${pick.id} + consent grant`);
 
   const events: string[] = [];
-  const ok = await sh.commit(pick, {
-    grants: [consent],
-    onEvent: (e) => events.push(e.lens),
-  });
+  const client: RoundClient = {
+    key: sh.key,
+    audience: () => sh.audience(),
+    async commit(p, o) {
+      const consent = Boolean(o?.grants?.length);
 
-  n.show([...events, ok.lens].join('\n'));
+      n.wire(
+        'COMMIT',
+        consent
+          ? `${p.id} + consent grant`
+          : `${p.id} #${p.hash.slice(0, 10)}…`,
+      );
+
+      const r = await sh.commit(p, o);
+
+      n.show([...events.splice(0), r.lens].join('\n'));
+
+      return r;
+    },
+  };
+
+  await consentRound({
+    client,
+    proposal: pick,
+    onEvent: (e) => events.push(e.lens),
+    // The round has checked the service's request against `pick`; this signs the consent it built.
+    approver: signer(james, async () => {
+      n.say(
+        n.human,
+        `(simulated) gets a push notification, reads the exact effects and taps Approve. That signs a one-time consent for this proposal only (hash ${pick.hash.slice(0, 10)}…):`,
+      );
+
+      return true;
+    }),
+  });
 }

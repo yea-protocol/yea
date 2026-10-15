@@ -331,7 +331,7 @@ describe('bridge security', () => {
       const text = readFileSync(f, 'utf8');
 
       expect(text, f).not.toMatch(
-        /principalKey|consentGrant|issueGrant|signJobConsent|\bsign\(|\.seed\b.*sign/,
+        /principalKey|consentGrant|issueGrant|signJobConsent|\bsigner\b|\bsign\(|\.seed\b.*sign/,
       );
     }
   });

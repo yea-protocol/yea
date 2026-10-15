@@ -57,7 +57,12 @@ export type ConsentAnswer =
 /** Asks for a consent; the round checks whatever grant comes back before it's used. */
 export type Approver = (ask: ConsentAsk) => Promise<ConsentAnswer>;
 
-/** Consents given somewhere else, by the proposal hash they commit. */
+/**
+ * Consents given somewhere else, by the proposal hash they commit. The round trusts what `get`
+ * returns: it sends it on the first COMMIT unchecked (unlike an approver's grant), leaving the
+ * check to the service. That's safe, since a consent is issued to one agent key and names one
+ * proposal hash; a store that must refuse some consents (the bridge's) checks them in `get`.
+ */
 export interface ConsentStore {
   get(hash: string): string | null | Promise<string | null>;
   put(hash: string, token: string): void;
@@ -154,6 +159,8 @@ async function askAndRetry(
     return { kind: 'refused', why, reply: first, saved };
   }
 
+  // Kept before the retry, so a COMMIT that fails in transport can be tried again with it. One
+  // the service then refuses stays kept; the next round sends it, gets consent_required, and asks.
   o.consents?.put(ask.request.hash, a.grant);
 
   const reply = await o.client.commit(o.proposal, {

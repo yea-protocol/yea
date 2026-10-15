@@ -112,6 +112,10 @@ function usableConsents(
  * drops the entry; a stale proposal drops it and returns null. A consent the service refused is
  * never used again for this entry, so the call can't wedge on it; `consent_required` without a
  * consent gives that proposal's code.
+ *
+ * That code is the bridge's own (`codesFor`), not the round's `pending` code, which is left
+ * unused on purpose: the round's takes its principal from the service's consent request, the
+ * bridge's from the agent's grants, so a hostile service can't pick whose key it names (H3).
  */
 async function commitPending(
   call: JobCall,

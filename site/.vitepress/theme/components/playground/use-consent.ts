@@ -45,10 +45,35 @@ interface Round {
   waiting?: Waiting;
 }
 
+/** An exchange a round ran, whose round has ended. */
 const OVER: ConsentCheck = {
   state: 'refused',
   why: "it isn't waiting on you any more; commit the proposal again to be asked",
 };
+
+/** An exchange no round ran: a COMMIT of a proposal auto-committed or got from another service. */
+const NO_ROUND: ConsentCheck = {
+  state: 'refused',
+  why: 'the playground asks you only when the agent commits a proposal it received from this service, and this COMMIT was not one',
+};
+
+/** The exchanges the consent round sent, and how to note the latest one. */
+function roundExchanges(log: Ref<Exchange[]>) {
+  const ran = shallowRef<ReadonlySet<number>>(new Set());
+
+  /** Note the latest exchange as the round's; its number, if there is one. */
+  function mark(): number | undefined {
+    const n = log.value[log.value.length - 1]?.n;
+
+    if (n !== undefined) {
+      ran.value = new Set([...ran.value, n]);
+    }
+
+    return n;
+  }
+
+  return { ran, mark };
+}
 
 /** What the exchange on show asks: the service's consent request, and its own reason. */
 function askedIn(current: ComputedRef<Exchange | null>) {
@@ -69,17 +94,24 @@ function askedIn(current: ComputedRef<Exchange | null>) {
 }
 
 /** What the card shows for `here`, the round at the exchange on show. */
-function cardFor(
-  core: ShallowRef<Core | null>,
-  here: ComputedRef<Round | null>,
-  starting: Ref<boolean>,
-) {
+function cardFor(o: {
+  core: ShallowRef<Core | null>;
+  current: ComputedRef<Exchange | null>;
+  here: ComputedRef<Round | null>;
+  starting: Ref<boolean>;
+  ran: Ref<ReadonlySet<number>>;
+}) {
+  const { core, here } = o;
   const check = computed((): ConsentCheck => {
     if (here.value) {
       return here.value.check;
     }
 
-    return starting.value ? { state: 'checking' } : OVER;
+    if (o.starting.value) {
+      return { state: 'checking' };
+    }
+
+    return o.ran.value.has(o.current.value?.n ?? -1) ? OVER : NO_ROUND;
   });
   const facts = computed((): ConsentFacts | null => {
     const p = here.value?.waiting?.ask.proposal;
@@ -109,7 +141,8 @@ export function useConsent({
   const here = computed(() =>
     round.value && round.value.n === current.value?.n ? round.value : null,
   );
-  const { check, facts } = cardFor(core, here, starting);
+  const { ran, mark } = roundExchanges(log);
+  const { check, facts } = cardFor({ core, current, here, starting, ran });
 
   /** COMMIT `p` through the round; resolves once it waits on the human or ends. */
   async function commit(
@@ -137,7 +170,7 @@ export function useConsent({
         budget,
       });
       const shown = checkOf(started);
-      const n = log.value[log.value.length - 1]?.n;
+      const n = mark();
 
       if (shown && n !== undefined) {
         round.value = {
@@ -163,6 +196,7 @@ export function useConsent({
     selected.value = null;
     w.decide(true);
     await w.done;
+    mark();
   }
 
   return { ...askedIn(current), facts, check, approve, commit };
