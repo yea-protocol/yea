@@ -14,7 +14,7 @@ No. Lens is designed to be read cold: tables for uniform lists, `~ update` and `
 
 ## Does it cost more to use?
 
-About the same. In [live runs](/benchmark/live) with Claude Sonnet 5 in headless Claude Code, YEA cost 3–15% more per task than a REST-style MCP server, with the same success rate. YEA's replies are 30–45% smaller than JSON ([payload benchmark](/reference/benchmark)), but a live session's cost is dominated by the model re-reading its context every turn, so that doesn't lower the bill on its own. What you get for the difference is a policy the service enforces, previews and undo.
+About the same. In [live runs](/benchmark/live) with Claude Sonnet 5 in headless Claude Code, YEA cost 3–15% more per task than a REST-style MCP server, with the same success rate. YEA's replies are mostly smaller than JSON, but the bridge's tool definitions are about twice a REST server's, so in the [payload benchmark](/reference/benchmark) YEA sends 21% more tokens in total ([#300](https://github.com/yea-protocol/yea/issues/300) shrinks the definitions; until [#297](https://github.com/yea-protocol/yea/issues/297) that benchmark measured an older tool surface and showed 32% fewer). And a live session's cost is dominated by the model re-reading its context every turn, not by tool payloads. What you get for the difference is a policy the service enforces, previews and undo.
 
 ## Why not JWT or OAuth for delegation?
 

@@ -21,5 +21,5 @@ In live runs with a real model, YEA costs about the same as a REST-style MCP ser
 
 ## See also
 
-- [Payload benchmark](/reference/benchmark): how much smaller YEA's replies are, measured without a model.
+- [Payload benchmark](/reference/benchmark): what each protocol sends the model, definitions and replies, measured without a model.
 - [A real Claude session](/reference/claude-session): one unedited run through the MCP bridge.

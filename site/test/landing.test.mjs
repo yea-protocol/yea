@@ -207,9 +207,8 @@ test('amount and span say limits and durations as a reader would', {
 test('costRows: deltas as published, bars on one zero-based scale', {
   skip,
 }, async () => {
-  const { costRows, deltaRange, dollars, percentChange } = await import(
-    `${LANDING}/evidence.ts`
-  );
+  const { costRows, deltaRange, dollars, fewerOrMore, percentChange } =
+    await import(`${LANDING}/evidence.ts`);
   const { LIVE } = await import(`${LANDING}/numbers.ts`);
   const rows = costRows(LIVE.tasks);
 
@@ -223,6 +222,10 @@ test('costRows: deltas as published, bars on one zero-based scale', {
   assert.deepEqual(
     [dollars(0.1), percentChange(1, 0.96), percentChange(1, 1)],
     ['$0.100', '-4%', '0%'],
+  );
+  assert.deepEqual(
+    [fewerOrMore(32), fewerOrMore(-21), fewerOrMore(0)],
+    ['32% fewer', '21% more', '0% fewer'],
   );
 });
 

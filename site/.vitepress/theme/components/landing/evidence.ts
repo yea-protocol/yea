@@ -29,6 +29,10 @@ export function percentChange(from: number, to: number): string {
   return pct > 0 ? `+${pct}%` : `${pct}%`;
 }
 
+/** A saving in percent as words, whichever way it went: `32% fewer`, `21% more`. */
+export const fewerOrMore = (saved: number) =>
+  saved < 0 ? `${-saved}% more` : `${saved}% fewer`;
+
 /** Bar lengths share one zero-based scale, so similar costs look similar. */
 export function costRows(tasks: readonly CostInput[]): CostRow[] {
   const max = Math.max(...tasks.flatMap((t) => [t.rest, t.yea]));
