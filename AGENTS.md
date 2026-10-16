@@ -5,9 +5,9 @@ Guidance for AI coding agents (and humans) working in this repo.
 ## Layout
 - `SPEC.md`: the protocol. It is the source of truth; code follows it.
 - `conformance/*.json`: language-neutral test vectors generated from the TS reference (`ts/scripts/vectors.mjs`).
-- `ts/`: TypeScript reference implementation (npm `@yea-protocol/sdk`). Zero runtime dependencies. `src/` holds the core, `src/cli.ts` the CLI's dispatcher (`run(argv)`) and `src/cli/*.ts` its commands, `src/tools.ts` the generic tools of `yea test-drive`, and `src/openapi.ts` the OpenAPI adapter.
-- `cli/`: the `yea` command (npm `@yea-protocol/cli`), a thin package over the SDK's `./cli` export. The CLI's code lives in `ts/src/cli.ts` (dispatcher, `run(argv)`) and `ts/src/cli/*.ts`, except `yea mcp` (`cli/bin/mcp.js`).
-- `mcp/`: `@yea-protocol/mcp`, job tools for the TypeScript MCP SDK, and the bridge behind `yea mcp` (`mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`).
+- `ts/`: TypeScript reference implementation (npm `@yea-protocol/sdk`). Zero runtime dependencies. `src/` holds the core, `src/cli.ts` the CLI's dispatcher (`run(argv)`) and `src/cli/*.ts` its commands, and `src/openapi.ts` the OpenAPI adapter.
+- `cli/`: the `yea` command (npm `@yea-protocol/cli`), a thin package over the SDK's `./cli` export. The CLI's code lives in `ts/src/cli.ts` (dispatcher, `run(argv)`) and `ts/src/cli/*.ts`, except `yea mcp` (`cli/bin/mcp.js`) and `yea test-drive` (`mcp/src/test-drive.ts`).
+- `mcp/`: `@yea-protocol/mcp`, job tools for the TypeScript MCP SDK, the bridge behind `yea mcp` (`mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`), and `yea test-drive`, which drives that bridge (`mcp/src/test-drive.ts`, exported as `@yea-protocol/mcp/test-drive`).
 - `python/`: second implementation (PyPI `yea-sdk`, import `yea`).
 - `examples/`, `bench/`, `site/` (VitePress docs and playground), `deploy/demo/` (Cloudflare Worker).
 - `docs/agents/`: config for the engineering skills (issue tracker, triage labels, domain docs); see [Agent skills](#agent-skills).
@@ -17,7 +17,7 @@ Guidance for AI coding agents (and humans) working in this repo.
 1. **Spec first.** Anything that changes bytes on the wire or Lens output needs a SPEC.md edit, regenerated vectors (`cd ts && npm run build && node scripts/vectors.mjs`), and passing TS and Python suites. CI fails if the vectors drift.
 2. **Parity.** A protocol change lands in both `ts/` and `python/`. The interop tests (`ts/test/interop-python.test.ts`, `python/tests/test_interop.py`) must pass in both directions.
 3. **Security.** Unknown or malformed caveats fail closed. Never add a path that signs with the principal key on an agent's behalf. Every security fix gets a regression test: in `ts/test/security.test.ts` for the SDK, and in `mcp/test/bridge-security.test.ts` for the bridge.
-4. **Zero dependencies** in `ts/` at runtime. Dev dependencies are fine. `@anthropic-ai/sdk` is an optional peer used only by `yea test-drive`.
+4. **Zero dependencies** in `ts/` at runtime. Dev dependencies are fine. `ts/` has no peers either: `@anthropic-ai/sdk` is an optional peer of `@yea-protocol/mcp` and `@yea-protocol/cli`, used only by `yea test-drive`.
 5. **Readable code.** `npm run lint`, `npm run lint:style` and `npm run lint:structure` must pass. Split long or complex functions into named helpers; no `any` and no `!` assertions. See [CONTRIBUTING.md](CONTRIBUTING.md#code-style), and [Code organization](CONTRIBUTING.md#code-organization) for how files are laid out.
 6. **Honest numbers.** Benchmarks are reproducible (`npm run bench`) and published with caveats. Don't cherry-pick.
 7. **Work from issues.** Pick up `ready-for-agent` issues in your area, claim them (assignee, `in-progress`, a comment naming your session), and link the PR with `Closes #n`. Don't start untracked work: open a Task first. Put decisions and anything needing credentials or money on `ready-for-human` instead of guessing.

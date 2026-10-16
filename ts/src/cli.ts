@@ -20,7 +20,13 @@ import {
   cmdServices,
   cmdUninstall,
 } from './cli/install.js';
-import { cmdDemo, cmdExamples, cmdMcp, cmdOpenapi } from './cli/launch.js';
+import {
+  cmdDemo,
+  cmdExamples,
+  cmdMcp,
+  cmdOpenapi,
+  cmdTestDrive,
+} from './cli/launch.js';
 import {
   type Command,
   client,
@@ -38,7 +44,6 @@ import {
   cmdIntent,
   cmdUndo,
 } from './cli/talk.js';
-import { cmdTestDrive } from './cli/test-drive.js';
 import { home } from './home.js';
 import { printable } from './text.js';
 
@@ -74,7 +79,7 @@ talk to a service  (url: yea://host:port · yeas://… · http(s)://…/yea · "
   yea do     <url> <capability> [key=value …]   intent → choose → commit, with consent prompts
 
 try it
-  yea test-drive [--model m] ["task"]  watch a real Claude model use YEA live (needs an Anthropic API key)
+  yea test-drive [--model m] ["task"]  watch a real Claude model use YEA live (needs an Anthropic API key; @yea-protocol/cli)
   yea demo                              narrated end-to-end demo (two services, consent, undo, sub-agents)
   yea examples [--port 7447] [--host]            serve the example calendar (7447), shop (7449) and billing (7451), trusting your principal
 

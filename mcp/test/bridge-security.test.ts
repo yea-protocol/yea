@@ -3,7 +3,7 @@
  * bridge's "never sign a consent that doesn't match the proposal shown", moved here from
  * ts/test/security.test.ts.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -13,6 +13,8 @@ import {
   decodeConsentCode,
   decodeGrant,
   delegateGrant,
+  type Event,
+  type FinalReply,
   issueGrant,
   keyPair,
   proposalHash,
@@ -20,8 +22,10 @@ import {
   unixNow,
 } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clip } from '../src/bridge/lens.js';
+import { connectHost } from '../src/test-drive/host.js';
+import { testDrive } from '../src/test-drive.js';
 import {
   agentClient,
   approveCode,
@@ -34,21 +38,13 @@ import {
   proposalsOf,
   recorded,
 } from './bridge-helpers.js';
-import { connect, textOf } from './helpers.js';
+import { connect, textOf, tmp } from './helpers.js';
+import { captureLog, mockMessages } from './mock-messages.js';
 
-/**
- * Every source file the bridge can run: all of src/bridge/ at any depth, plus every module
- * src/bridge.ts reaches through relative imports (policy.ts, result.ts, util.ts, …).
- */
-function bridgeSources(src: string): string[] {
-  const nested = readdirSync(join(src, 'bridge'), {
-    recursive: true,
-    encoding: 'utf8',
-  })
-    .filter((f) => f.endsWith('.ts'))
-    .map((f) => join(src, 'bridge', f));
+/** Every source file reachable from `starts` through relative imports, type-only ones included. */
+function reachable(starts: string[]): string[] {
   const seen = new Set<string>();
-  const queue = [join(src, 'bridge.ts'), ...nested];
+  const queue = [...starts];
 
   for (let f = queue.pop(); f !== undefined; f = queue.pop()) {
     if (seen.has(f)) {
@@ -66,6 +62,25 @@ function bridgeSources(src: string): string[] {
 
   return [...seen].sort();
 }
+
+/**
+ * Every source file the bridge can run: all of src/bridge/ at any depth, plus every module
+ * src/bridge.ts reaches through relative imports (policy.ts, result.ts, util.ts, …).
+ */
+function bridgeSources(src: string): string[] {
+  const nested = readdirSync(join(src, 'bridge'), {
+    recursive: true,
+    encoding: 'utf8',
+  })
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => join(src, 'bridge', f));
+
+  return reachable([join(src, 'bridge.ts'), ...nested]);
+}
+
+/** What signs, or loads a key to sign with. */
+const SIGNS =
+  /principalKey|consentGrant|issueGrant|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign/;
 
 const consentsIn = (k: Keys) => {
   try {
@@ -328,9 +343,7 @@ describe('bridge security', () => {
     for (const f of files) {
       const text = readFileSync(f, 'utf8');
 
-      expect(text, f).not.toMatch(
-        /principalKey|consentGrant|issueGrant|signJobConsent|\bsigner\b|\bsign\(|\.seed\b.*sign/,
-      );
+      expect(text, f).not.toMatch(SIGNS);
     }
   });
 
@@ -514,5 +527,301 @@ describe('a refused consent stays refused', () => {
     expect(again.isError).toBe(true);
     expect(textOf(again)).toMatch(/refused by the service when it was used/);
     expect(rec.verbs('COMMIT')).toHaveLength(1);
+  });
+});
+
+// #89, #299: test-drive's tool results passed the service's own `lens` through, so a service
+// could print terminal escapes or tell the model anything. Test-drive now drives the bridge,
+// so its results are the bridge's, through test-drive's tool-use adapter.
+describe('test-drive shows no service-written Lens (#89, #299)', () => {
+  const ESC = '\u001b';
+  const LENSES = /(BRIEF|ANSWER|INTENT|EVENT|RECEIPT)-LENS/;
+
+  /** A service whose every reply carries its own Lens, with terminal escapes in its text. */
+  async function lyingService() {
+    const k = await keys();
+    const unhashed = {
+      id: 'p_1',
+      capability: 'pay.send',
+      summary: 'pay a 1\n  + create payment/b',
+      effects: [{ op: 'create' as const, target: 'payment/a' }],
+      risk: 'low' as const,
+      undo: { window: 3600 },
+      expires: unixNow() + 3600,
+    };
+    const proposal = { ...unhashed, hash: await proposalHash(unhashed) };
+    const receipt = {
+      kind: 'RECEIPT',
+      receipt: {
+        id: 'r_1',
+        proposal: 'p_1',
+        capability: 'pay.send',
+        summary: `paid${ESC}[8m`,
+        at: 1,
+        effects: [],
+        undo: null,
+      },
+      lens: `${ESC}[8mRECEIPT-LENS`,
+    };
+    const replies: Record<string, object[]> = {
+      HELLO: [
+        {
+          kind: 'BRIEF',
+          service: { id: 'evil', name: `Evil${ESC}[2J`, summary: 'x' },
+          capabilities: [
+            { name: 'pay.send', kind: 'intent', summary: 'pay' },
+            { name: 'pay.status', kind: 'ask', summary: 'status' },
+          ],
+          lens: `${ESC}[?1049hBRIEF-LENS`,
+        },
+      ],
+      ASK: [{ kind: 'ANSWER', data: { a: 1 }, lens: `${ESC}[2JANSWER-LENS` }],
+      INTENT: [
+        {
+          kind: 'PROPOSALS',
+          proposals: [proposal],
+          lens: `${ESC}[2JINTENT-LENS`,
+        },
+      ],
+      COMMIT: [
+        {
+          kind: 'EVENT',
+          message: `working${ESC}]0;x\u0007`,
+          lens: `${ESC}[8mEVENT-LENS`,
+        },
+        receipt,
+      ],
+      UNDO: [receipt],
+    };
+    const t = {
+      request: async (
+        f: { verb: string; id: string },
+        onEvent?: (e: Event) => void,
+      ) => {
+        const rs = replies[f.verb].map((r) => ({
+          yea: 1,
+          id: 's',
+          re: f.id,
+          ...r,
+        }));
+
+        for (const e of rs.slice(0, -1)) {
+          onEvent?.(e as Event);
+        }
+
+        return rs[rs.length - 1] as FinalReply;
+      },
+      close: () => undefined,
+    };
+
+    return { k, client: await agentClient(k, t) };
+  }
+
+  it("[S2] test-drive's tool results and instructions carry no service-written Lens", async () => {
+    const { k, client } = await lyingService();
+    const host = await connectHost(await bridgeIn(k, [client]));
+
+    try {
+      const texts = [
+        host.instructions,
+        (await host.call('pay_status', {})).text,
+        (await host.call('pay_send', {})).text,
+        (await host.call('pay_send', { proposal: 'p_1' })).text,
+        (await host.call('yea_undo', { service: 'evil', receipt: 'r_1' })).text,
+      ];
+
+      for (const t of texts) {
+        expect(t).not.toMatch(LENSES);
+        expect(t).not.toContain(ESC);
+      }
+
+      expect(texts[2]).toContain('[p_1] pay a 1\\u{a}  + create payment/b');
+      expect(texts[3]).toContain('… working\\u{1b}]0;x\\u{7}');
+      expect(texts[3]).toContain('paid\\u{1b}[8m');
+    } finally {
+      await host.close();
+    }
+  });
+});
+
+// #299: test-drive's old tool host loaded the principal key inside the agent's tools and signed
+// there, found that key through YEA_HOME (which it set) and YEA_PRINCIPAL_HOME (which it didn't
+// clear), and wrote it to disk without mode 0600. Now only the person's loop signs, after a yes.
+/** Any write to the environment: assignment, deletion, or a helper that sets or stubs it. */
+const ENV_WRITE =
+  /process\.env(\.\w+|\[[^\]]+\])?\s*[^\s=!<>]{0,3}=(?!=)|delete process\.env|(Object\.(assign|defineProperty)|Reflect\.(set|deleteProperty|defineProperty))\(\s*process\.env|stubEnv/;
+
+/** Every production source: the SDK, this package, the CLI's bin and the connectors. */
+function productionSources(): string[] {
+  const repo = fileURLToPath(new URL('../..', import.meta.url));
+  const connectors = readdirSync(join(repo, 'connectors'))
+    .map((c) => join('connectors', c, 'src'))
+    .filter((dir) => existsSync(join(repo, dir)));
+
+  return ['ts/src', 'mcp/src', 'cli/bin', ...connectors].flatMap((dir) =>
+    readdirSync(join(repo, dir), { recursive: true, encoding: 'utf8' })
+      .filter((f) => /\.(ts|js|mjs)$/.test(f))
+      .map((f) => join(repo, dir, f)),
+  );
+}
+
+describe("test-drive signs only in the person's loop (#299)", () => {
+  const src = fileURLToPath(new URL('../src', import.meta.url));
+  const testDriveFiles = [
+    join(src, 'test-drive.ts'),
+    ...readdirSync(join(src, 'test-drive')).map((f) =>
+      join(src, 'test-drive', f),
+    ),
+  ];
+  const day = (n: number) =>
+    new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
+  const ORDER = {
+    type: 'tool_use',
+    name: 'shop_order',
+    input: {
+      items: [
+        { sku: 'm005', qty: 2 },
+        { sku: 'm007', qty: 2 },
+      ],
+      deliver: day(2),
+    },
+  } as const;
+
+  /** YEA_HOME and YEA_PRINCIPAL_HOME pointed at homes with another principal's key in them. */
+  async function decoyHomes() {
+    const decoy = await keyPair();
+    const dirs = [tmp('yea-decoy-home-'), tmp('yea-decoy-principal-')];
+
+    for (const d of dirs) {
+      writeFileSync(join(d, 'principal.key'), decoy.seed, { mode: 0o600 });
+    }
+
+    vi.stubEnv('YEA_HOME', dirs[0]);
+    vi.stubEnv('YEA_PRINCIPAL_HOME', dirs[1]);
+
+    return { dirs, listed: () => dirs.map((d) => readdirSync(d)) };
+  }
+
+  /** Two calls of the over-limit order, the person's answers recorded against the model's turns. */
+  async function orderTwice(confirm?: (q: string) => Promise<boolean>) {
+    const api = await mockMessages([ORDER, ORDER]);
+
+    try {
+      await captureLog(() => testDrive({ prompt: 'order', confirm }));
+
+      return api;
+    } finally {
+      await api.close();
+    }
+  }
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("nothing the agent's tool calls reach loads or signs with a principal key", () => {
+    const agentSide = reachable([join(src, 'test-drive', 'host.ts')]);
+
+    // The adapter reaches the bridge; the person's loop is not on that path.
+    expect(agentSide).toContain(join(src, 'bridge.ts'));
+    expect(agentSide).toContain(join(src, 'bridge', 'job', 'pending.ts'));
+    expect(agentSide).not.toContain(join(src, 'test-drive', 'person.ts'));
+
+    for (const f of agentSide) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+    }
+
+    // Only two files sign, with the key they are handed: the person's loop (consents, after a
+    // yes) and the throwaway world (the policy grant, before the agent starts). No key is loaded
+    // from disk or written there, and no environment variable is set to find one.
+    const signers = testDriveFiles.filter((f) =>
+      SIGNS.test(readFileSync(f, 'utf8')),
+    );
+
+    expect(signers.sort()).toEqual([
+      join(src, 'test-drive', 'person.ts'),
+      join(src, 'test-drive', 'throwaway.ts'),
+    ]);
+    expect(readFileSync(signers[1], 'utf8').match(SIGNS)?.[0]).toBe(
+      'issueGrant',
+    );
+
+    for (const f of testDriveFiles) {
+      const text = readFileSync(f, 'utf8');
+
+      expect(text, f).not.toMatch(/principalKey|writeFile/);
+      expect(text, f).not.toMatch(ENV_WRITE);
+    }
+  });
+
+  it('no production code writes the environment', () => {
+    // The pattern catches every way of writing it, and not a read or a comparison.
+    for (const write of [
+      'process.env.YEA_HOME = dir',
+      "process.env['YEA_HOME'] = dir",
+      'process.env.YEA_HOME ??= dir',
+      'process.env = { ...env }',
+      'delete process.env.YEA_PRINCIPAL_HOME',
+      'Object.assign(process.env, { YEA_HOME: dir })',
+      "Object.defineProperty(process.env, 'YEA_HOME', d)",
+      "Reflect.set(process.env, 'YEA_HOME', dir)",
+      "Reflect.deleteProperty(process.env, 'YEA_HOME')",
+      "vi.stubEnv('YEA_HOME', dir)",
+    ]) {
+      expect(write).toMatch(ENV_WRITE);
+    }
+
+    for (const read of [
+      'const h = process.env.YEA_HOME;',
+      'if (process.env.YEA_HOME === h) {',
+      'env: { ...process.env, [X]: "1" }',
+    ]) {
+      expect(read).not.toMatch(ENV_WRITE);
+    }
+
+    const sources = productionSources();
+
+    expect(sources).toContain(join(src, 'test-drive', 'throwaway.ts'));
+    expect(sources.length).toBeGreaterThan(100);
+
+    for (const f of sources) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(ENV_WRITE);
+    }
+  });
+
+  it('without a TTY nothing is approved, and YEA_* in the environment changes nothing', async () => {
+    expect(process.stdin.isTTY).toBeFalsy();
+
+    const homes = await decoyHomes();
+    const before = homes.listed();
+    const api = await orderTwice();
+    const [first, second] = api.toolTexts;
+
+    expect(first).toMatch(/code for \[p_/);
+    expect(first).toContain('the user did not approve this');
+    expect(second).toMatch(/still waiting for approval/);
+    expect(api.toolTexts.join('\n')).not.toMatch(/^✓/m);
+    expect(homes.listed()).toEqual(before);
+  });
+
+  it('signs after a yes, with the throwaway principal, whatever YEA_* says', async () => {
+    const homes = await decoyHomes();
+    const before = homes.listed();
+    let turnAtYes = -1;
+    let api: Awaited<ReturnType<typeof orderTwice>> | undefined;
+
+    api = await orderTwice(async () => {
+      turnAtYes = api?.requests.length ?? 1;
+
+      return true;
+    });
+
+    const [first, second] = api.toolTexts;
+
+    // Asked after the first tool call, before the model's next turn; committed after.
+    expect(turnAtYes).toBe(1);
+    expect(first).not.toMatch(/^✓/m);
+    expect(first).toContain('the user approved');
+    expect(second).toMatch(/^✓ .*4 meals/m);
+    // The decoy principal never signed: nothing was read into, or written to, either home.
+    expect(homes.listed()).toEqual(before);
   });
 });

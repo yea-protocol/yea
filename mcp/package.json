@@ -15,6 +15,10 @@
       "types": "./dist/bridge.d.ts",
       "default": "./dist/bridge.js"
     },
+    "./test-drive": {
+      "types": "./dist/test-drive.d.ts",
+      "default": "./dist/test-drive.js"
+    },
     "./http": {
       "types": "./dist/http.d.ts",
       "default": "./dist/http.js"
@@ -37,10 +41,21 @@
     "typecheck": "tsc -p tsconfig.test.json"
   },
   "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.100.0",
+    "@modelcontextprotocol/client": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",
     "@yea-protocol/sdk": "^0.1.0"
   },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@modelcontextprotocol/client": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/server": "2.3.1",
     "@types/node": "^22.20.5",

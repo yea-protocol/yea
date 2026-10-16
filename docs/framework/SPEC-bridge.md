@@ -252,12 +252,14 @@ one exact proposal at one service, and still needs the agent key's proof.
   exported. It doesn't reuse `runJob`, whose plans come from a local handler and a local
   policy.
 - **The command.** `yea mcp` moves to the CLI package (`cli/`), which depends on
-  `@yea-protocol/mcp`: `cli/bin/yea.js` handles `mcp` itself and passes everything else to
-  the SDK's CLI. The SDK can't import `@yea-protocol/mcp` without a cycle.
+  `@yea-protocol/mcp`: `cli/bin/yea.js` handles `mcp` and `test-drive` itself and passes
+  everything else to the SDK's CLI. The SDK can't import `@yea-protocol/mcp` without a cycle.
 - **The SDK core.** It drops `ts/src/mcp.ts` and its `./mcp` export, so it stays
-  zero-dependency. `ts/src/tools.ts` stays, because `yea test-drive` uses its generic tools
-  with the Claude API, and the SDK root exports `TOOLS` and `INSTRUCTIONS` for
-  `bench/run.ts`.
+  zero-dependency. It has no tool host of its own: `yea test-drive`
+  (`@yea-protocol/mcp/test-drive`, #299) connects an MCP client to `bridge()` in-process and
+  maps its tools and results to the Claude API's tool use. When a result carries a consent
+  code, test-drive's own loop asks the person and approves the code as `yea approve` does,
+  with a throwaway principal held in memory; the bridge still signs nothing.
 - **`yea approve`.** A protocol code may carry an `agent` field, the key the consent should be
   issued to. It's unsigned, so `yea approve`:
   - checks its format, and prints it next to the proposal;
