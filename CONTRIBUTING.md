@@ -131,6 +131,11 @@ This section covers files and folders; [Code style](#code-style) covers what goe
 (VitePress config and theme, Vitest config, Worker entries). No `export *` outside a package
 index.
 
+**The principal key stays on the person's side.** Only person-facing commands (`init`,
+`grant`, `install`, `approve`, `talk`) load it. Code on the agent side (a tool host, the bridge,
+a server, `yea()`) is handed a home directory and never loads the principal key from it
+([ADR-0003](docs/adr/0003-the-principal-key-never-joins-an-agent-side-home.md)).
+
 **One home for shared code.**
 
 - Small generic helpers live in the package's `util.ts`; display escaping lives in `text.ts`.
