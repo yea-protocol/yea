@@ -96,20 +96,31 @@ computes identically (§8), not by any model's tokenizer.
 **Alternatives.** Bytes/4 (the classic rule of thumb, and our first draft). A real
 tokenizer (model-specific, large, and different in every language).
 
-**Measurement.** Compared to o200k BPE counts over 25 texts (conformance Lens outputs,
-benchmark payloads, and the menu as JSON and as Lens), reproducible with
-`node bench/estimator.ts`:
+**Measurement.** Compared to o200k BPE counts over 63 texts of at least 15 tokens each
+(58 conformance Lens outputs, 2 benchmark payloads, and the menu as minified JSON,
+pretty JSON and Lens). To regenerate the table, run
+`npm run build && node bench/estimator.ts` from the repo root:
 
-| Estimator | mean ratio to real tokens | range |
-|---|---|---|
-| `ceil(bytes / 4)` | 0.61 | 0.37 – 1.00 |
-| `ceil(bytes / 3)` | 0.82 | 0.47 – 1.35 |
-| **`[A-Za-z]+\|[0-9]{1,3}\|\n {2,}\|[^ \t\n\r\f\vA-Za-z0-9]`** | **1.00** | **0.77 – 1.55** |
+| Estimator | mean ratio to real tokens | min | max |
+|---|---|---|---|
+| `ceil(bytes / 4)` | 1.31 | 0.33 | 5.02 |
+| `ceil(bytes / 3)` | 1.75 | 0.43 | 6.69 |
+| **`[A-Za-z]+\|[0-9]{1,3}\|\n {2,}\|[^ \t\n\r\f\vA-Za-z0-9]`** | **1.01** | **0.77** | **2.17** |
 
-Bytes/4 undercounts structured text by up to 2.7×. It estimates the full menu's Lens at
-623 tokens when it's really 1,095, so an "800-token" budget let the whole thing through.
-The regex tracks real tokenizers on the text YEA actually sends, and it's four
-alternatives long.
+Bytes/4's mean above 1 doesn't mean it overcounts. It undercounts 51 of the 63 texts, by
+up to 3×. The mean is pulled up by 11 indentation-heavy conformance vectors (mostly
+deep-nesting tests), where runs of spaces are many bytes but few tokens, and there it
+overcounts by 2.7× to 5×. It lands between 0.8× and 1.25× the real count on 2
+texts; the regex does on 55. On the full menu as Lens, bytes/4 estimates 623 tokens when
+it's really 1,095, so an "800-token" budget let the whole thing through (the regex says
+994).
+
+The regex isn't exact either. Its 0.77 floor means real tokens can run about 1.3× over
+the estimate, so a budget is approximate in real tokens, not a hard cap. At the top it
+overcounts runs of JSON punctuation, which BPE merges into single tokens: 1.91× and
+2.17× on the two conformance vectors with deeply nested brackets or braces, and 1.55× on
+the menu as minified JSON, which isn't Lens. Every other Lens output falls between 0.77
+and 1.47. The regex is four alternatives long.
 
 **Elision safety.** Budget fitting may drop whole trailing proposals or capabilities, and
 may elide anything inside `data` and `result`. It may **never** alter a proposal's
