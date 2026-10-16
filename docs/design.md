@@ -111,16 +111,16 @@ Bytes/4's mean above 1 doesn't mean it overcounts. It undercounts 51 of the 63 t
 up to 3×. The mean is pulled up by 11 indentation-heavy conformance vectors (mostly
 deep-nesting tests), where runs of spaces are many bytes but few tokens, and there it
 overcounts by 2.7× to 5×. It lands within a factor of 1.25 of the real count on 2
-texts; the regex does on 55. On the text that matters most, bytes/4 estimates the full
-menu's Lens at 623 tokens when it's really 1,095, so an "800-token" budget let the whole
-thing through (the regex says 994).
+texts; the regex does on 55. On the full menu as Lens, bytes/4 estimates 623 tokens when
+it's really 1,095, so an "800-token" budget let the whole thing through (the regex says
+994).
 
 The regex isn't exact either. Its 0.77 floor means real tokens can run about 1.3× over
 the estimate, so a budget is approximate in real tokens, not a hard cap. At the top it
 overcounts runs of JSON punctuation, which BPE merges into single tokens: 1.91× and
-2.17× on the two deepest nested-bracket conformance vectors, and 1.55× on the menu as
-minified JSON, which isn't Lens. Every other Lens output falls between 0.77 and 1.47.
-The regex is four alternatives long.
+2.17× on the two conformance vectors with deeply nested brackets or braces, and 1.55× on
+the menu as minified JSON, which isn't Lens. Every other Lens output falls between 0.77
+and 1.47. The regex is four alternatives long.
 
 **Elision safety.** Budget fitting may drop whole trailing proposals or capabilities, and
 may elide anything inside `data` and `result`. It may **never** alter a proposal's
