@@ -54,6 +54,17 @@ Where an agent keeps consents given somewhere else, by the proposal they commit.
 looks there before asking the person.
 _Avoid_: consent cache, consents dir
 
+**Job consent**:
+A person's consent to one job plan, given somewhere else (`yea approve`) and kept by plan hash
+in the job's store, where the job's server looks for it on the next identical call. The
+consent store keeps the other kind: consents to one proposal, for an agent's consent round.
+_Avoid_: consents dir (for either), round consent
+
+**Tool host**:
+The module that gives an AI agent YEA tools. It is on the agent's side, so it must be handed the
+agent's side of the home only, never the principal key, and can't sign for the agent.
+_Avoid_: harness
+
 ### Jobs (the framework)
 
 **Job call**:
