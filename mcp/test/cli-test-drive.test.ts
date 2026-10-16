@@ -1,6 +1,7 @@
 // #106: without @anthropic-ai/sdk, `yea test-drive` re-runs itself through npx with the CLI
-// package (the one with the `yea` bin) and the SDK, once. The built CLI is copied somewhere
-// @anthropic-ai/sdk can't be resolved from, and a stub `npx` on PATH records how it was called.
+// package (the one with the `yea` bin) and the SDK, once. The `yea` bin and the built
+// @yea-protocol/mcp beside it are copied somewhere @anthropic-ai/sdk can't be resolved from, and
+// a stub `npx` on PATH records how it was called.
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
@@ -21,12 +22,12 @@ import {
   anthropicSdkSpec,
   TEST_DRIVE_REEXEC,
   testDriveNpxArgs,
-} from '../src/cli/test-drive.js';
+} from '../src/test-drive/reexec.js';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 const readJson = (path: string) =>
   JSON.parse(readFileSync(join(REPO, path), 'utf8'));
-const SDK_PKG = readJson('ts/package.json');
+const MCP_PKG = readJson('mcp/package.json');
 const ARGV = ['test-drive', '--model', 'm', 'book it'];
 const roots: string[] = [];
 
@@ -37,18 +38,23 @@ afterEach(() => {
 });
 
 /**
- * A copy of the built CLI with no node_modules above it, and a `bin` directory for PATH. With
- * `npxExit`, the directory holds a stub npx that records its arguments, one per line, and the
- * guard's value, then exits with that code; without it, there is no npx at all.
+ * A copy of the `yea` bin and the built @yea-protocol/mcp, with no node_modules above them, and
+ * a `bin` directory for PATH. With `npxExit`, the directory holds a stub npx that records its
+ * arguments, one per line, and the guard's value, then exits with that code; without it, there
+ * is no npx at all.
  */
 function sandbox(npxExit?: number) {
   const root = mkdtempSync(join(tmpdir(), 'yea-reexec-'));
   const pkg = join(root, 'pkg');
   const bin = join(root, 'bin');
 
+  const mcp = join(pkg, 'node_modules', '@yea-protocol', 'mcp');
+
   roots.push(root);
-  cpSync(join(REPO, 'ts', 'dist'), join(pkg, 'dist'), { recursive: true });
-  copyFileSync(join(REPO, 'ts', 'package.json'), join(pkg, 'package.json'));
+  cpSync(join(REPO, 'cli', 'bin'), join(pkg, 'bin'), { recursive: true });
+  copyFileSync(join(REPO, 'cli', 'package.json'), join(pkg, 'package.json'));
+  cpSync(join(REPO, 'mcp', 'dist'), join(mcp, 'dist'), { recursive: true });
+  copyFileSync(join(REPO, 'mcp', 'package.json'), join(mcp, 'package.json'));
   mkdirSync(bin);
 
   if (npxExit !== undefined) {
@@ -59,7 +65,7 @@ function sandbox(npxExit?: number) {
     chmodSync(join(bin, 'npx'), 0o755);
   }
 
-  return { root, cli: join(pkg, 'dist', 'cli.js'), bin };
+  return { root, cli: join(pkg, 'bin', 'yea.js'), bin };
 }
 
 /** `yea test-drive …` in the sandbox, with only its bin directory on PATH. */
@@ -110,12 +116,15 @@ describe('the npx re-run', () => {
     expect(anthropicSdkSpec({ version: '1' })).toBe('@anthropic-ai/sdk');
   });
 
-  it('can name the CLI at the SDK version: the packages ship in lockstep', () => {
+  it('can name the CLI at this package version: the packages ship in lockstep', () => {
     const cli = readJson('cli/package.json');
 
-    expect(cli.version).toBe(SDK_PKG.version);
-    expect(cli.dependencies['@yea-protocol/sdk']).toBe(SDK_PKG.version);
-    expect(SDK_PKG.peerDependencies['@anthropic-ai/sdk']).toBeTruthy();
+    expect(cli.version).toBe(MCP_PKG.version);
+    expect(cli.dependencies['@yea-protocol/mcp']).toBe(MCP_PKG.version);
+    expect(MCP_PKG.peerDependencies['@anthropic-ai/sdk']).toBeTruthy();
+    expect(MCP_PKG.peerDependenciesMeta['@anthropic-ai/sdk'].optional).toBe(
+      true,
+    );
   });
 });
 
@@ -131,7 +140,7 @@ describe.skipIf(process.platform === 'win32')(
         /fetching @anthropic-ai\/sdk .*npm install @anthropic-ai\/sdk/,
       );
       expect(recorded(box, 'npx-args')).toBe(
-        `${testDriveNpxArgs(SDK_PKG, ARGV).join('\n')}\n`,
+        `${testDriveNpxArgs(MCP_PKG, ARGV).join('\n')}\n`,
       );
       expect(recorded(box, 'npx-guard')).toBe('1');
     });

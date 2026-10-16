@@ -110,3 +110,10 @@ export async function cmdMcp() {
     'yea mcp runs from @yea-protocol/cli: npx -y @yea-protocol/cli mcp [<url> …]',
   );
 }
+
+/** `yea test-drive` drives the bridge, so it lives in @yea-protocol/cli too. */
+export async function cmdTestDrive() {
+  die(
+    'yea test-drive runs from @yea-protocol/cli: npx @yea-protocol/cli test-drive',
+  );
+}

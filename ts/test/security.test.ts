@@ -53,7 +53,6 @@ import {
   verifyRequest,
 } from '../src/service/verified-request.js';
 import { printable } from '../src/text.js';
-import { createToolHost } from '../src/tools.js';
 import {
   commitOf,
   deferred,
@@ -2209,55 +2208,8 @@ for await (const line of createInterface({ input: process.stdin })) {
     20_000,
   );
 
-  it("[S2] test-drive's tool results and instructions carry no service-written Lens", async () => {
-    const home = mkdtempSync(join(tmpdir(), 'yea-td-'));
-    const transport = {
-      request: async (
-        f: { verb: string; id: string },
-        onEvent?: (e: P.Event) => void,
-      ) => {
-        const rs = replies[f.verb].map((r) => ({
-          yea: 1,
-          id: 's',
-          re: f.id,
-          ...r,
-        }));
-
-        for (const e of rs.slice(0, -1)) {
-          onEvent?.(e as P.Event);
-        }
-
-        return rs[rs.length - 1] as P.FinalReply;
-      },
-      close: () => {},
-    };
-
-    vi.stubEnv('YEA_HOME', home);
-
-    try {
-      const host = await createToolHost([new P.Client(transport)]);
-      const call = (name: string, a: Record<string, unknown>) =>
-        host.call(name, { service: 'evil', ...a });
-      const texts = [
-        host.instructions,
-        (await call('yea_ask', {})).text,
-        (await call('yea_ask', { capability: 'pay.send' })).text,
-        (await call('yea_intent', { capability: 'pay.send' })).text,
-        (await call('yea_commit', { proposal: 'p_1' })).text,
-        (await call('yea_undo', { receipt: 'r_1' })).text,
-      ];
-
-      for (const t of texts) {
-        expect(t).not.toMatch(LENSES);
-      }
-
-      expect(texts[3]).toContain('[p_1] pay a 1\\u{a}  + create payment/b');
-      expect(texts[4]).toContain('… working\\u{1b}]0;x\\u{7}');
-    } finally {
-      vi.unstubAllEnvs();
-      rmSync(home, { recursive: true, force: true });
-    }
-  });
+  // [S2], test-drive's tool results and instructions, moved with test-drive to
+  // mcp/test/bridge-security.test.ts: test-drive now drives the bridge.
 
   it('[S3] yea approve refuses a consent code without the proposal, before showing or asking', async () => {
     const code = P.consentCode({
