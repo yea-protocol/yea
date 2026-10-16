@@ -11,6 +11,7 @@
  */
 import { parseArgs } from 'node:util';
 import type { TestDriveOptions } from './test-drive/drive.js';
+import { withPeerHint } from './test-drive/peers.js';
 import {
   hasAnthropicSdk,
   reexecWithAnthropicSdk,
@@ -22,11 +23,19 @@ export type { Confirm } from './test-drive/person.js';
 
 const USAGE = 'usage: yea test-drive [--model <model>] ["task"]';
 
-/** Run one test drive. Needs `@anthropic-ai/sdk`. */
+/**
+ * Run one test drive. Needs the optional peers `@anthropic-ai/sdk` and
+ * `@modelcontextprotocol/client` (`@yea-protocol/cli` brings the client); without one, it
+ * throws an error that says how to install it.
+ */
 export async function testDrive(o: TestDriveOptions = {}): Promise<void> {
-  const { drive } = await import('./test-drive/drive.js');
+  try {
+    const { drive } = await import('./test-drive/drive.js');
 
-  await drive(o);
+    await drive(o);
+  } catch (e) {
+    throw withPeerHint(e);
+  }
 }
 
 /** The command's model and task; exits on a bad option. */

@@ -1,8 +1,10 @@
 // Drives `yea test-drive` against a mock Messages API, through the bridge: the loop, the
 // adapter, auto-commit within policy and the person's approval all run for real; only the
 // model and the person's answers are scripted.
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { testDrive } from '../src/test-drive.js';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { codesOf } from '../src/test-drive/host.js';
+import { withPeerHint } from '../src/test-drive/peers.js';
+import { type TestDriveOptions, testDrive } from '../src/test-drive.js';
 import {
   captureLog,
   type MockMessages,
@@ -127,5 +129,99 @@ describe('yea test-drive', () => {
     expect(you.asked).toHaveLength(codes.length);
     expect(proposed).toContain('the user did not approve this');
     expect(api.toolTexts.join('\n')).not.toMatch(/^✓/m);
+  });
+
+  it('offers each proposal in turn, and commits the first one the person approves', async () => {
+    api = await mockMessages([
+      ORDER,
+      ORDER,
+      { type: 'text', text: 'Ordered.' },
+    ]);
+
+    // No to the first proposal, yes to the second (the express delivery).
+    const you = person(false, true);
+
+    await captureLog(() =>
+      testDrive({ prompt: 'order', confirm: you.confirm }),
+    );
+
+    const [proposed, committed] = api.toolTexts;
+    const ids = [...proposed.matchAll(/code for \[(p_[^\]]+)\]/g)].map(
+      (m) => m[1],
+    );
+
+    expect(ids).toHaveLength(2);
+    expect(you.asked).toHaveLength(2);
+    expect(proposed).toContain(`the user approved [${ids[1]}]`);
+    expect(committed).toMatch(/^✓ .*\(express/m);
+  });
+});
+
+describe("test-drive's options", () => {
+  it('name no key, home or principal: the person signs only with the throwaway key', () => {
+    expectTypeOf<keyof TestDriveOptions>().toEqualTypeOf<
+      'model' | 'prompt' | 'maxTurns' | 'confirm'
+    >();
+  });
+});
+
+describe('the adapter reads consent codes from structured content only', () => {
+  const CODE = 'pc1.eyJhIjoxfQ';
+
+  it('ignores a code that is only in the text', () => {
+    expect(
+      codesOf({
+        content: [{ type: 'text', text: `  code for [p_1]: ${CODE}` }],
+      } as never),
+    ).toEqual([]);
+    expect(codesOf({ structuredContent: { proposals: [] } })).toEqual([]);
+    expect(codesOf({ structuredContent: { codes: 'p_1' } })).toEqual([]);
+  });
+
+  it('keeps well-formed entries and drops the rest', () => {
+    expect(
+      codesOf({
+        structuredContent: {
+          codes: [
+            { proposal: 'p_1', code: CODE },
+            { proposal: 'p_2' },
+            { proposal: 2, code: CODE },
+            null,
+            CODE,
+          ],
+        },
+      }),
+    ).toEqual([{ proposal: 'p_1', code: CODE }]);
+  });
+});
+
+describe('a missing optional peer', () => {
+  it('is named, with how to install it', async () => {
+    // Node's own error for a missing package, whose wording the hint relies on.
+    const name: string = '@yea-protocol/no-such-package';
+    const missing = await import(name).catch((e: unknown) => e);
+
+    expect(withPeerHint(missing)).toBe(missing);
+
+    const client = Object.assign(
+      new Error(
+        "Cannot find package '@modelcontextprotocol/client' imported from /x/host.js",
+      ),
+      { code: 'ERR_MODULE_NOT_FOUND' },
+    );
+    const hinted = withPeerHint(client) as Error;
+
+    expect((missing as Error).message).toContain(
+      "'@yea-protocol/no-such-package'",
+    );
+    expect(hinted.message).toMatch(
+      /needs @modelcontextprotocol\/client.*npm install @modelcontextprotocol\/client/,
+    );
+    expect(hinted.cause).toBe(client);
+
+    // Anything else passes through as is.
+    const other = new Error('boom');
+
+    expect(withPeerHint(other)).toBe(other);
   });
 });

@@ -16,6 +16,12 @@ import {
 import { indent, paint } from './style.js';
 import { POLICY_TEXT, throwaway } from './throwaway.js';
 
+/**
+ * A test drive's options. None of them names a key, a home or a principal: the only key the
+ * person's loop ever signs with is the throwaway principal it makes in memory, which only the
+ * in-process example services trust. Adding such an option would change that; a test pins
+ * these four keys.
+ */
 export interface TestDriveOptions {
   /** The Claude model. Default `claude-opus-5`. */
   model?: string;
@@ -23,7 +29,12 @@ export interface TestDriveOptions {
   prompt?: string;
   /** The most model turns. Default 20. */
   maxTurns?: number;
-  /** The person's yes or no. Default: ask at the terminal, and approve nothing without a TTY. */
+  /**
+   * The person's yes or no to one proposal, for tests and embedding. Default: ask at the
+   * terminal, and approve nothing without a TTY; `yea test-drive` never sets it. A yes signs a
+   * consent with the throwaway principal only, so a caller that always says yes approves
+   * nothing outside this test drive's own throwaway world.
+   */
   confirm?: Confirm;
 }
 

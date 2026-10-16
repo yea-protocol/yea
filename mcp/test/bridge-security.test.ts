@@ -647,6 +647,24 @@ describe('test-drive shows no service-written Lens (#89, #299)', () => {
 // #299: test-drive's old tool host loaded the principal key inside the agent's tools and signed
 // there, found that key through YEA_HOME (which it set) and YEA_PRINCIPAL_HOME (which it didn't
 // clear), and wrote it to disk without mode 0600. Now only the person's loop signs, after a yes.
+/** Any write to the environment: assignment, deletion, or a helper that sets or stubs it. */
+const ENV_WRITE =
+  /process\.env(\.\w+|\[[^\]]+\])?\s*[^\s=!<>]{0,3}=(?!=)|delete process\.env|(Object\.(assign|defineProperty)|Reflect\.(set|deleteProperty|defineProperty))\(\s*process\.env|stubEnv/;
+
+/** Every production source: the SDK, this package, the CLI's bin and the connectors. */
+function productionSources(): string[] {
+  const repo = fileURLToPath(new URL('../..', import.meta.url));
+  const connectors = readdirSync(join(repo, 'connectors')).map((c) =>
+    join('connectors', c, 'src'),
+  );
+
+  return ['ts/src', 'mcp/src', 'cli/bin', ...connectors].flatMap((dir) =>
+    readdirSync(join(repo, dir), { recursive: true, encoding: 'utf8' })
+      .filter((f) => /\.(ts|js|mjs)$/.test(f))
+      .map((f) => join(repo, dir, f)),
+  );
+}
+
 describe("test-drive signs only in the person's loop (#299)", () => {
   const src = fileURLToPath(new URL('../src', import.meta.url));
   const testDriveFiles = [
@@ -730,9 +748,42 @@ describe("test-drive signs only in the person's loop (#299)", () => {
       const text = readFileSync(f, 'utf8');
 
       expect(text, f).not.toMatch(/principalKey|writeFile/);
-      expect(text, f).not.toMatch(
-        /process\.env(\.\w+|\[[^\]]+\])\s*=[^=]|delete process\.env/,
-      );
+      expect(text, f).not.toMatch(ENV_WRITE);
+    }
+  });
+
+  it('no production code writes the environment', () => {
+    // The pattern catches every way of writing it, and not a read or a comparison.
+    for (const write of [
+      'process.env.YEA_HOME = dir',
+      "process.env['YEA_HOME'] = dir",
+      'process.env.YEA_HOME ??= dir',
+      'process.env = { ...env }',
+      'delete process.env.YEA_PRINCIPAL_HOME',
+      'Object.assign(process.env, { YEA_HOME: dir })',
+      "Object.defineProperty(process.env, 'YEA_HOME', d)",
+      "Reflect.set(process.env, 'YEA_HOME', dir)",
+      "Reflect.deleteProperty(process.env, 'YEA_HOME')",
+      "vi.stubEnv('YEA_HOME', dir)",
+    ]) {
+      expect(write).toMatch(ENV_WRITE);
+    }
+
+    for (const read of [
+      'const h = process.env.YEA_HOME;',
+      'if (process.env.YEA_HOME === h) {',
+      'env: { ...process.env, [X]: "1" }',
+    ]) {
+      expect(read).not.toMatch(ENV_WRITE);
+    }
+
+    const sources = productionSources();
+
+    expect(sources).toContain(join(src, 'test-drive', 'throwaway.ts'));
+    expect(sources.length).toBeGreaterThan(100);
+
+    for (const f of sources) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(ENV_WRITE);
     }
   });
 
