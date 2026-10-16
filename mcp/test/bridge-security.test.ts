@@ -3,7 +3,7 @@
  * bridge's "never sign a consent that doesn't match the proposal shown", moved here from
  * ts/test/security.test.ts.
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -654,9 +654,9 @@ const ENV_WRITE =
 /** Every production source: the SDK, this package, the CLI's bin and the connectors. */
 function productionSources(): string[] {
   const repo = fileURLToPath(new URL('../..', import.meta.url));
-  const connectors = readdirSync(join(repo, 'connectors')).map((c) =>
-    join('connectors', c, 'src'),
-  );
+  const connectors = readdirSync(join(repo, 'connectors'))
+    .map((c) => join('connectors', c, 'src'))
+    .filter((dir) => existsSync(join(repo, dir)));
 
   return ['ts/src', 'mcp/src', 'cli/bin', ...connectors].flatMap((dir) =>
     readdirSync(join(repo, dir), { recursive: true, encoding: 'utf8' })
