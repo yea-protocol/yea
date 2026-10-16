@@ -12,7 +12,7 @@ from typing import Any
 
 from yea import KeyPair
 from yea._json import b64url_encode, is_b64url
-from yea.store.files import make_private_dirs, yea_home
+from yea.store.files import make_private_dirs
 
 from .util import warn_once
 
@@ -26,8 +26,9 @@ def check_name(name: Any) -> str:
     return name
 
 
-def default_key_path(name: str) -> Path:
-    return yea_home() / "server" / f"{name}.key"
+def default_key_path(name: str, home: Path) -> Path:
+    """``server/<name>.key`` in the home directory."""
+    return home / "server" / f"{name}.key"
 
 
 def _check_dir(d: Path) -> None:

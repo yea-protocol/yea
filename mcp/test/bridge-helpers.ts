@@ -20,7 +20,11 @@ import {
   type Transport,
 } from '@yea-protocol/sdk';
 import { calendar, shop } from '@yea-protocol/sdk/examples';
-import { type BridgeOptions, bridge } from '../src/bridge.js';
+import {
+  type BridgeOptions,
+  type BridgeService,
+  bridge,
+} from '../src/bridge.js';
 import { connect, type Kind, tmp } from './harness.js';
 
 /** A spending limit per commit: 40.00 USD. */
@@ -36,15 +40,21 @@ export interface Keys {
 
 /** A fresh YEA home (consents are kept there), a principal and an agent. */
 export async function keys(): Promise<Keys> {
-  const home = tmp('yea-bridge-');
-
-  process.env.YEA_HOME = home;
-  delete process.env.YEA_PRINCIPAL_HOME;
-
-  return { home, principal: await keyPair(), agent: await keyPair() };
+  return {
+    home: tmp('yea-bridge-'),
+    principal: await keyPair(),
+    agent: await keyPair(),
+  };
 }
 
-/** Write `~/.yea/policy.json` (the unsigned tightening) in the test home. */
+/** The bridge with the test home as the agent's: its `policy.json` and consents are there. */
+export const bridgeIn = (
+  k: Keys,
+  services: BridgeService[],
+  o: BridgeOptions = {},
+) => bridge(services, { home: k.home, ...o });
+
+/** Write `policy.json` (the unsigned tightening) in the test home. */
 export const writePolicy = (k: Keys, policy: unknown) =>
   writeFileSync(join(k.home, 'policy.json'), JSON.stringify(policy));
 
@@ -118,7 +128,7 @@ export async function bridged(
   o: { caveats?: Caveat[] | null; options?: BridgeOptions } = {},
 ) {
   const ex = await examples(k, { caveats: o.caveats });
-  const factory = await bridge(ex.clients, o.options);
+  const factory = await bridgeIn(k, ex.clients, o.options);
   const conn = await connect(kind, factory);
 
   return { ...ex, factory, conn };

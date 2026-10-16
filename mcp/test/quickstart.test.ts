@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer, filesRoot } from '../../examples/mcp-quickstart.js';
 import {
   approve,
@@ -26,7 +26,7 @@ import {
 } from './helpers.js';
 
 afterEach(() => {
-  delete process.env.YEA_HOME;
+  vi.unstubAllEnvs();
 });
 
 /** A folder with docs/report.pdf in it, and the example's server. */
@@ -246,6 +246,9 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
     });
 
     it('without a pinned principal key, says why and gives no code', async () => {
+      // The subject: no `principal` option and no YEA_PRINCIPAL_PUB, whatever the shell has.
+      vi.stubEnv('YEA_PRINCIPAL_PUB', '');
+
       const w = await world({ name: 'files', principal: undefined });
       const f = files(w);
       const conn = await connect(kind, f.factory);

@@ -14,7 +14,6 @@ import {
 
 afterEach(() => {
   vi.useRealTimers();
-  delete process.env.YEA_HOME;
 });
 
 const ch1 = { charge: 'ch_1' };
@@ -92,9 +91,11 @@ describe.each<Kind>(['2026', '2025'])('undo on a %s client', (kind) => {
     const other = yea({
       name: 'other',
       transport: 'stdio',
+      home: w.home,
       store: w.store,
       serverKey: join(w.home, 'other.key'),
       principal: w.principal.public,
+      policy: w.policy,
     });
     const elsewhere = await connect(kind, () => {
       const server = new McpServer(

@@ -173,15 +173,14 @@ async def test_another_jobs_state_is_refused(world):
     assert check_state(ours, "refund_other", input_hash({"amount": 5}), "", 1_790_000_000) is None
 
 
-async def test_a_state_replayed_by_another_caller_is_refused(tmp_path, monkeypatch):
+async def test_a_state_replayed_by_another_caller_is_refused(tmp_path):
     """[M10] With no access token the SDK's boundary binds no principal, so our state's sub is what
     refuses a state replayed by another caller."""
     import contextvars
 
-    monkeypatch.setenv("YEA_HOME", str(tmp_path))
     who = contextvars.ContextVar("who", default="alice")
     done = []
-    ap = yea(name="s", transport="http", sub=lambda r: who.get(), store=FileStore(tmp_path / "st"),
+    ap = yea(name="s", transport="http", home=tmp_path, sub=lambda r: who.get(), store=FileStore(tmp_path / "st"),
              server_key=tmp_path / "k", principal=PRINCIPAL.public)
     srv = MCPServer("s", request_state_security=ap.request_state_security())
 
@@ -488,7 +487,7 @@ async def test_m8_an_explicit_approval_reserves_nothing_against_the_policy_total
     person = Person()
     async with world.client("legacy", person) as c:
         r = await c.call_tool("refund", {"amount": 5})
-    block = decode_grant(os.environ["YEA_POLICY"]).id
+    block = decode_grant(world.token).id
     assert not r.is_error and done == [5] and "emails would pass" in person.seen[0].message
     assert await world.store.used(LedgerKey(block, "emails")) == 0
 

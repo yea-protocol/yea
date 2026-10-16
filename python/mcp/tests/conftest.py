@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import mcp_types as t
@@ -44,10 +44,13 @@ class World:
     server: MCPServer
     store: FileStore
     home: str
+    policy: Path  # the server's ``policy`` option: a file read on every call
+    token: str | None = None  # the policy grant last installed
 
     def grant(self, *caveats: dict, principal: Any = PRINCIPAL) -> None:
-        """Install a signed policy grant, issued to this server's key."""
-        os.environ["YEA_POLICY"] = issue_grant(principal, self.approvals.service_id(), list(caveats)).encode()
+        """Install a signed policy grant, issued to this server's key (what `yea grant` makes)."""
+        self.token = issue_grant(principal, self.approvals.service_id(), list(caveats)).encode()
+        self.policy.write_text(self.token + "\n")
 
     def client(self, mode: str, person: Any = None) -> Client:
         if person is None:
@@ -56,15 +59,14 @@ class World:
 
 
 @pytest.fixture
-def world(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> World:
-    monkeypatch.setenv("YEA_HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("YEA_POLICY", raising=False)
-    monkeypatch.delenv("YEA_PRINCIPAL_PUB", raising=False)
+def world(tmp_path: Any) -> World:
+    """A server pointed at a temp home through options, not ``YEA_*``."""
+    home, policy = tmp_path / "home", tmp_path / "policy.pg"
     store = FileStore(tmp_path / "store")  # stdio's default kind: `yea approve` can reach it
-    approvals = yea(name="billing", transport="stdio", store=store,
-                    server_key=tmp_path / "server.key", principal=PRINCIPAL.public)
+    approvals = yea(name="billing", transport="stdio", home=home, store=store,
+                    server_key=tmp_path / "server.key", principal=PRINCIPAL.public, policy=str(policy))
     server = MCPServer("billing", request_state_security=approvals.request_state_security())
-    return World(approvals, server, store, str(tmp_path / "home"))
+    return World(approvals, server, store, str(home), policy)
 
 
 def text(r: Any) -> str:

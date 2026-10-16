@@ -4,13 +4,10 @@ import { yea } from '../src/index.js';
 import { tmp } from './helpers.js';
 
 afterEach(() => {
-  delete process.env.YEA_HOME;
   vi.restoreAllMocks();
 });
 
 it('logs the service id to stderr once, when yea() is created', async () => {
-  process.env.YEA_HOME = tmp();
-
   const lines: string[] = [];
   const stdout = vi.spyOn(console, 'log');
 
@@ -18,7 +15,7 @@ it('logs the service id to stderr once, when yea() is created', async () => {
     lines.push(String(line));
   });
 
-  const approvals = yea({ name: 'files', transport: 'stdio' });
+  const approvals = yea({ name: 'files', transport: 'stdio', home: tmp() });
   const id = await approvals.serviceId();
 
   await approvals.serviceId();

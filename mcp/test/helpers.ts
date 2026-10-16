@@ -40,8 +40,10 @@ export async function world(over: Partial<YeaOptions> = {}): Promise<World> {
   const options: YeaOptions = {
     name: 'billing',
     transport: 'stdio',
+    home: h.home,
     store: h.store,
     principal: h.principal.public,
+    policy: h.policy,
     ...over,
   };
 

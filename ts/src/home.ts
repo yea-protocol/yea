@@ -44,9 +44,9 @@ export function home() {
 
 const p = (...s: string[]) => join(home(), ...s);
 
-function ensure() {
+function ensure(dir: string) {
   for (const d of ['', 'grants', 'consents']) {
-    mkdirSync(p(d), { recursive: true, mode: 0o700 });
+    mkdirSync(join(dir, d), { recursive: true, mode: 0o700 });
   }
 }
 
@@ -79,7 +79,8 @@ async function loadKey(
     return null;
   }
 
-  ensure();
+  // Keys stay on home(): the agent-side `home` option (#298) never reaches them.
+  ensure(home());
   mkdirSync(join(f, '..'), { recursive: true, mode: 0o700 });
 
   const kp = await keyPair();
@@ -106,33 +107,42 @@ export function agentKey(create = false) {
 }
 
 /** The file a grant or consent is saved in, named after `name` with unsafe characters replaced. */
-const grantFile = (kind: 'grants' | 'consents', name: string) =>
-  p(kind, `${name.replace(/[^A-Za-z0-9_-]/g, '_')}.pg`);
+const grantFile = (dir: string, kind: 'grants' | 'consents', name: string) =>
+  join(dir, kind, `${name.replace(/[^A-Za-z0-9_-]/g, '_')}.pg`);
 
+/** Save a grant or consent in the home `dir` (default: `home()`). */
 export function saveGrant(
   token: string,
   kind: 'grants' | 'consents',
   name: string,
+  dir = home(),
 ) {
-  ensure();
-  writeFileSync(grantFile(kind, name), `${token}\n`, { mode: 0o600 });
+  ensure(dir);
+  writeFileSync(grantFile(dir, kind, name), `${token}\n`, { mode: 0o600 });
 }
 
 /** The consent saved for a proposal hash (by `yea approve` or the bridge), or null if none. */
-export function loadConsent(hash: string): string | null {
-  const f = grantFile('consents', hash);
+export function loadConsent(hash: string, dir = home()): string | null {
+  const f = grantFile(dir, 'consents', hash);
 
   return existsSync(f) ? readFileSync(f, 'utf8').trim() : null;
 }
 
-/** The agent's `~/.yea/consents` as the consent round's store: `yea approve` here writes it too. */
-export const homeConsents: ConsentStore = {
-  get: (hash) => loadConsent(hash),
-  put: (hash, token) => saveGrant(token, 'consents', hash),
-};
+/**
+ * The agent's consents in the home `dir` (default: `home()`, so `~/.yea/consents`) as the consent
+ * round's store: `yea approve` here writes it too.
+ */
+export const homeConsents = (dir = home()): ConsentStore => ({
+  get: (hash) => loadConsent(hash, dir),
+  put: (hash, token) => saveGrant(token, 'consents', hash, dir),
+});
 
-export function loadGrants(kind: 'grants' | 'consents' = 'grants'): string[] {
-  const d = p(kind);
+/** The grants or consents saved in the home `dir` (default: `home()`). */
+export function loadGrants(
+  kind: 'grants' | 'consents' = 'grants',
+  dir = home(),
+): string[] {
+  const d = join(dir, kind);
 
   if (!existsSync(d)) {
     return [];

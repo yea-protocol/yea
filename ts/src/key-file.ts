@@ -31,9 +31,12 @@ export const canCheckOwners = () => typeof process.getuid === 'function';
 /** This process's OS user id, or -1 where the platform has none (Windows). */
 export const uid = () => process.getuid?.() ?? -1;
 
-/** Where the server named `name` keeps its seed: `~/.yea/server/<name>.key`. */
-export const serverKeyPath = (name: string) =>
-  join(home(), 'server', `${name}.key`);
+/**
+ * Where the server named `name` keeps its seed: `server/<name>.key` in the home `dir` (default:
+ * `home()`, so `~/.yea/server/<name>.key`).
+ */
+export const serverKeyPath = (name: string, dir = home()) =>
+  join(dir, 'server', `${name}.key`);
 
 /** How `readPrivateFile` names the file in errors, and who must own it. */
 export interface PrivateFileOptions {

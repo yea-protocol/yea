@@ -66,12 +66,13 @@ while keys, store and codec live in the one `yea()` context.
 |---|---|---|
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file and appears in consent codes. |
 | `transport` | required | `'stdio'` or `'http'`. Picks the defaults below. |
-| `store` | `FileStore` for stdio (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`, the store `yea approve` writes to), `MemoryStore` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
+| `home` | `YEA_HOME`, else `~/.yea` | The home directory: `policy.json`, the default store and the default server key are in it. `yea()` resolves it once, and nothing below reads `YEA_HOME`, `YEA_STORE` or `~/.yea` itself, so two servers in one process can have different homes. `policy.json` is still re-read from it on every call. The principal key is never read from it. |
+| `store` | `FileStore` for stdio (`YEA_STORE`, else `<home>/store`, the store `yea approve` writes to), `MemoryStore` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `singleProcess` | `false` | HTTP only: a promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
-| `serverKey` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, created on first run, mode `0600`, in a `0700` directory: written to a temp file and linked into place (which fails if the key exists, like `O_EXCL`), so a concurrent reader never sees an empty key. It is opened with `O_NOFOLLOW` (and `O_NONBLOCK`, so a FIFO can't block the open) and checked on the open file: a symlink, anything but a regular file, a file over 64 KiB, a file another user owns, or one readable by others is refused, and so is a key directory another user owns or others can write. Where the platform has no owners or mode bits to check (Windows), the file is read with a warning on stderr. `yea service-id <name>` reads the key under the same rules. Its public key is the service id, and the holder of policy and consent grants. |
+| `serverKey` | `<home>/server/<name>.key` | The server's Ed25519 seed, created on first run, mode `0600`, in a `0700` directory: written to a temp file and linked into place (which fails if the key exists, like `O_EXCL`), so a concurrent reader never sees an empty key. It is opened with `O_NOFOLLOW` (and `O_NONBLOCK`, so a FIFO can't block the open) and checked on the open file: a symlink, anything but a regular file, a file over 64 KiB, a file another user owns, or one readable by others is refused, and so is a key directory another user owns or others can write. Where the platform has no owners or mode bits to check (Windows), the file is read with a warning on stderr. `yea service-id <name>` reads the key under the same rules. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `readPinnedKey()` (`YEA_PRINCIPAL_PUB`) | The pinned principal public key (`ed25519:…`). Passed as an option, it's taken as the author's code gives it, without the file check. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed: the consent-code result then carries no codes and says why. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call, so a new grant applies without a restart. |
-| `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `readTightening`: `deny` is the union of both, and `outOfBand` the lower (stricter) of the two. A `policy.json` that can't be read, isn't a JSON object, or has a bad `deny` or `outOfBand` refuses every job call and says why: its `deny` can't be known. Unknown fields only warn. |
+| `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `readTightening`: `deny` is the union of both, and `outOfBand` the lower (stricter) of the two. A `policy.json` that can't be read, isn't a JSON object, or has a bad `deny` or `outOfBand` refuses every job call and says why: its `deny` can't be known. Unknown fields only warn. |
 | `codec` | created from `stateKey` | An existing `createRequestStateCodec` result, for a server that already uses one. |
 | `stateKey` | random per process | The ≥ 32-byte codec key. A shared key only makes sense with a shared store (see below). |
 | `sub` | stdio: `() => ''`; HTTP: required | Who is calling. Used for the state binding and for undo. |
@@ -428,6 +429,11 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
 - From the SDK core it uses the approval exports, plus small ones added for it:
   `assertIntegers` (step 1's check, before planning), `home` from `@yea-protocol/sdk/node`
   (where `~/.yea` is, honouring `YEA_HOME`), and `isMemoryStore` with `MemoryStore`'s brand.
+  `yea()` and `bridge()` call `home()` once, when no `home` option is given, and pass the
+  directory to `serverKeyPath(name, dir)` and `homeConsents(dir)`; `loadGrants`, `saveGrant`
+  and `loadConsent` take the same optional directory. Each defaults to `home()`. `yea()` reads
+  `YEA_STORE` itself, once, for its default store, as `yea_mcp` does; `defaultFileStore()`
+  stays the CLI's (`yea approve`).
 - Node ≥ 20 (the SDK's floor), ESM only.
 - `yea mcp` (the 2025-era bridge) moves onto this package in `bridge` (#40), not here.
 - Four entry points: `.` (the job tools), `./bridge` (`yea mcp`), `./http` (the Streamable HTTP
@@ -474,6 +480,10 @@ can't elicit. For each:
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
 - the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
 - the start-up line, once, on stderr;
+- two servers in one process with different `home`s read their own `policy.json` deny lists
+  and keep their own default stores; without `home`, `yea()` reads `YEA_HOME` once, at
+  start-up (`mcp/test/home.test.ts`). Tests pass `home`, `store`, `principal` and `policy` as
+  options rather than setting `YEA_*`, except where reading the env is the subject;
 - after `apply()`: a result that can't be serialized applies once and says so, and a store
   failure says the action happened (for `guard`, appended to the original's result);
 - a 2025 client that can't elicit, spoofing an envelope that says it can, gets consent codes;

@@ -2,7 +2,7 @@
  * The connector over MCP, with the in-memory clients @yea-protocol/mcp's tests use: 2026 and
  * 2025 clients that can show a form, and ones that can't.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   accept,
   approve,
@@ -14,11 +14,6 @@ import {
   textOf,
   world,
 } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-  delete process.env.YEA_POLICY;
-});
 
 const chen = { customer: 'chen@wei.studio' };
 

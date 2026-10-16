@@ -40,6 +40,8 @@ export interface Yea {
   principal: Pinned;
   policy: string | undefined;
   tighten: unknown;
+  /** The home directory `policy.json` is read from on every call; resolved once by `yea()`. */
+  home: string;
   codec: RequestStateCodec<unknown>;
   sub(ctx: ServerContext): string;
   serviceId(): Promise<string>;
@@ -92,7 +94,7 @@ export function callerOf(y: Yea, ctx: ServerContext): string {
  * which HTTP promises with `singleProcess: true` at start-up, so there's no per-call check.)
  */
 async function policyFor(y: Yea): Promise<Policy> {
-  const { broken, deny, outOfBand } = readTighteningFor(y.tighten);
+  const { broken, deny, outOfBand } = readTighteningFor(y.tighten, y.home);
 
   // A policy file that can't be read hides its deny list: refuse rather than guess.
   if (broken) {

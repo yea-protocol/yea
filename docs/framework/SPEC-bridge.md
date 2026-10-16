@@ -116,10 +116,10 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
   left, or when a call finds only uncoded proposals and no saved approval (it then starts over
   with a fresh `INTENT` rather than wait out the last minutes).
 
-1. **Deny.** If the capability is in the local unsigned `deny` list (`~/.yea/policy.json`,
-   SPEC-approval §2), refuse before anything else, previews included. Entries match either
-   the capability name or `service-id/capability`, never the tool name, so a suffix can't
-   dodge them. The bridge honours local tightening, and never loosens anything. A
+1. **Deny.** If the capability is in the local unsigned `deny` list (`policy.json` in the
+   bridge's `home`, `~/.yea/policy.json` by default, SPEC-approval §2), refuse before
+   anything else, previews included. Entries match either the capability name or
+   `service-id/capability`, never the tool name, so a suffix can't dodge them. The bridge honours local tightening, and never loosens anything. A
    `policy.json` that can't be read, isn't JSON, isn't an object, or has a bad `deny` or
    `outOfBand` refuses every job call, since its `deny` can't be known (unknown fields only
    warn). `@yea-protocol/mcp`'s job tools do the same.
@@ -242,7 +242,12 @@ one exact proposal at one service, and still needs the agent key's proof.
 ## Package and compatibility
 
 - **Code.** The bridge becomes `mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`,
-  with `bridge(clients, options)` returning a server factory. It uses mcp-ts's result
+  with `bridge(clients, options)` returning a server factory. Its options are `tools`,
+  `budget`, `home`, `consents`, `tighten` and `now`. `home` is the agent's home directory
+  (default `YEA_HOME`, else `~/.yea`), resolved once when `bridge()` is called: `policy.json`
+  is re-read from it on every call, and the default `consents` store is its `consents`
+  directory (`homeConsents(home)`). The principal key is never read from it, so two bridges
+  in one process can have different homes, and tests pass one instead of setting `YEA_HOME`. It uses mcp-ts's result
   helpers (render.ts) and the approval core's form and state; the ones it needs are
   exported. It doesn't reuse `runJob`, whose plans come from a local handler and a local
   policy.
@@ -321,6 +326,8 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   - a `high` proposal gets a code, not the form;
 - `preview` commits nothing; `deny` refuses first, including previews, and matches the
   capability after a suffix;
+- two bridges in one process with different `home`s read their own `policy.json` deny lists
+  and keep their own consents; without `home`, `bridge()` reads `YEA_HOME` once, at start-up;
 - `yea_expand`, `yea_undo` and `yea_consent` work. `yea_consent` refuses a policy grant, a
   delegated or extra-caveat grant, another principal's or another holder's grant, one for no
   pending proposal, an expired one, and an overwrite of a valid consent;

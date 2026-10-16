@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { MemoryStore } from '@yea-protocol/sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { type YeaOptions, yea } from '../src/index.js';
 import {
   connect,
@@ -20,18 +20,15 @@ import {
   world,
 } from './helpers.js';
 
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
-
 /** yea() with a temp home and key, so only the option under test can refuse. */
 function start(over: Partial<YeaOptions>) {
-  process.env.YEA_HOME = tmp();
+  const home = tmp();
 
   return () =>
     yea({
       name: 'billing',
       transport: 'stdio',
+      home,
       principal: undefined,
       ...over,
     } as YeaOptions);
@@ -124,10 +121,7 @@ describe('start-up refusals: yea() throws, so nothing is served', () => {
 
   it('creates the key file on first run: 0600 in a 0700 directory, then reuses it', async () => {
     const home = tmp();
-
-    process.env.YEA_HOME = home;
-
-    const a = yea({ name: 'billing', transport: 'stdio' });
+    const a = yea({ name: 'billing', transport: 'stdio', home });
     const key = join(home, 'server', 'billing.key');
 
     expect(existsSync(key)).toBe(true);
@@ -135,15 +129,16 @@ describe('start-up refusals: yea() throws, so nothing is served', () => {
     expect(readdirSync(join(home, 'server'))).toEqual(['billing.key']);
     expect(statSync(key).mode & 0o777).toBe(0o600);
     expect(statSync(join(home, 'server')).mode & 0o777).toBe(0o700);
-    expect(await yea({ name: 'billing', transport: 'stdio' }).serviceId()).toBe(
-      await a.serviceId(),
-    );
+    expect(
+      await yea({ name: 'billing', transport: 'stdio', home }).serviceId(),
+    ).toBe(await a.serviceId());
   });
 
   it('a codec and a stateKey together', () => {
     const codec = yea({
       name: 'x',
       transport: 'stdio',
+      home: tmp(),
       serverKey: join(tmp(), 'k'),
     });
 

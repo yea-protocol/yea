@@ -29,7 +29,7 @@ import type { JobCall } from './types.js';
  * refuses every job call, since its `deny` can't be known.
  */
 function denied(b: Bridge, call: JobCall): string | null {
-  const { deny, broken } = readTighteningFor(b.tighten);
+  const { deny, broken } = readTighteningFor(b.tighten, b.home);
 
   if (broken) {
     return `your unsigned policy can't be used (${broken}), so no job runs until it's fixed`;

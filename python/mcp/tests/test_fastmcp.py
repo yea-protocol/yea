@@ -134,7 +134,7 @@ async def test_policy_auto_run_settles_its_total(world, fm, mode):
     async with Client(fm, mode=mode) as c:
         r = await c.call_tool("send", {"to": "ana"})
     assert done == ["ana"] and "Send to ana" in text(r)
-    assert await world.store.used(LedgerKey(decode_grant(os.environ["YEA_POLICY"]).id, "emails")) == 10**18
+    assert await world.store.used(LedgerKey(decode_grant(world.token).id, "emails")) == 10**18
 
 
 @pytest.mark.parametrize("mode", MODES)

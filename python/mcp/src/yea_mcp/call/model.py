@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from yea.approval import HashedPlan
@@ -26,6 +27,7 @@ class Yea:
     principal: Pinned
     policy: str | None
     tighten: Any
+    home: Path  # where policy.json is read on every call; resolved once by yea()
     service_id: str
     sub: Callable[[Any], str]
 

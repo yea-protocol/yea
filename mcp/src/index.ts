@@ -3,6 +3,8 @@
  * the official TypeScript MCP SDK v2 (docs/framework/SPEC-mcp-ts.md). `yea()` once per process,
  * then `job()` or `guard()` in the server factory.
  */
+
+import { join } from 'node:path';
 import {
   createRequestStateCodec,
   type McpServer,
@@ -22,7 +24,7 @@ import {
   MemoryStore,
   type Risk,
 } from '@yea-protocol/sdk';
-import { defaultFileStore, serverKeyPath } from '@yea-protocol/sdk/node';
+import { FileStore, home, serverKeyPath } from '@yea-protocol/sdk/node';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import { type GuardConfig, guardTool } from './guard.js';
 import { pinnedPrincipal } from './policy.js';
@@ -45,17 +47,22 @@ export interface YeaOptions {
   /** The server's name, `[a-z0-9._-]{1,64}`: names its key file and appears in consent codes. */
   name: string;
   transport: 'stdio' | 'http';
-  /** Default: a FileStore (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`) for stdio, a MemoryStore for HTTP. */
+  /**
+   * The home directory: `policy.json`, the default store and the default server key live in it.
+   * Default `YEA_HOME`, else `~/.yea`, resolved once. The principal key is never read from it.
+   */
+  home?: string;
+  /** Default: a FileStore (`YEA_STORE`, else `<home>/store`) for stdio, a MemoryStore for HTTP. */
   store?: ApprovalStore;
   /** HTTP only: a promise that one process serves every request. HTTP on a MemoryStore must set it. */
   singleProcess?: boolean;
-  /** Path to the server's Ed25519 seed. Default `~/.yea/server/<name>.key`, created on first run. */
+  /** Path to the server's Ed25519 seed. Default `<home>/server/<name>.key`, created on first run. */
   serverKey?: string;
   /** The pinned principal public key. Default: the file `YEA_PRINCIPAL_PUB` names, checked. */
   principal?: string;
   /** The signed policy grant: a `pg1.` token, or a path to one. Default `YEA_POLICY`. */
   policy?: string;
-  /** Unsigned tightening, merged with `~/.yea/policy.json`: `{ deny?, outOfBand? }`. */
+  /** Unsigned tightening, merged with `<home>/policy.json`: `{ deny?, outOfBand? }`. */
   tighten?: { deny?: string[]; outOfBand?: Risk };
   /** An existing `createRequestStateCodec` result; our state lives under its payload's `yea` key. */
   codec?: RequestStateCodec<unknown>;
@@ -140,8 +147,14 @@ function checkOptions(o: YeaOptions, memory: boolean) {
   }
 }
 
-const defaultStore = (o: YeaOptions): ApprovalStore =>
-  o.transport === 'http' ? new MemoryStore() : defaultFileStore();
+/**
+ * A MemoryStore for HTTP; for stdio the FileStore `yea approve` writes to: `YEA_STORE` (read
+ * here, once; an empty one counts as unset), else `store` in the home.
+ */
+const defaultStore = (o: YeaOptions, dir: string): ApprovalStore =>
+  o.transport === 'http'
+    ? new MemoryStore()
+    : new FileStore(process.env.YEA_STORE || join(dir, 'store'));
 
 /** A random per-process codec key: only safe while one process handles every round. */
 const randomKey = () => globalThis.crypto.getRandomValues(new Uint8Array(32));
@@ -155,9 +168,11 @@ export function yea(o: YeaOptions): Approvals {
 
   checkOptions(o, memory);
 
-  const store = o.store ?? defaultStore(o);
+  // The one place the home is resolved; everything below is handed it.
+  const dir = o.home ?? home();
+  const store = o.store ?? defaultStore(o, dir);
 
-  const seed = loadServerSeed(o.serverKey ?? serverKeyPath(o.name));
+  const seed = loadServerSeed(o.serverKey ?? serverKeyPath(o.name, dir));
   const sub = o.sub ?? (() => '');
   const codec =
     o.codec ??
@@ -181,6 +196,7 @@ export function yea(o: YeaOptions): Approvals {
     principal,
     policy: o.policy,
     tighten: o.tighten ?? {},
+    home: dir,
     codec,
     sub,
     serviceId: () => {

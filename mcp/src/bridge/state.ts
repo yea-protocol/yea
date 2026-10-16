@@ -10,7 +10,9 @@ export interface Bridge {
   pending: PendingProposals;
   consents: ConsentStore;
   budget: number;
-  /** Unsigned tightening merged with `~/.yea/policy.json`; only `deny` applies here. */
+  /** Unsigned tightening merged with the home's `policy.json`; only `deny` applies here. */
   tighten: unknown;
+  /** The agent's home directory, where `policy.json` is read on every call; resolved once. */
+  home: string;
   now(): number;
 }
