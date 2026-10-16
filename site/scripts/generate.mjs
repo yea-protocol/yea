@@ -207,7 +207,7 @@ const optional = [
   [
     'Payload benchmark',
     '/reference/benchmark',
-    'Reply sizes versus a REST-style MCP server, measured without a model',
+    'Total input tokens, tool definitions and replies, versus a REST-style MCP server, measured without a model',
   ],
   [
     'A real Claude session',

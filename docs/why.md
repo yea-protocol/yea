@@ -73,8 +73,13 @@ the whole context.
 
 That result led to the most important feature in the protocol: **policy-gated
 auto-commit**. The human's grant decides what can skip the preview. In a scripted payload
-benchmark, YEA now sends the model 32% fewer tokens than minified-JSON REST. Against a
-REST server with an equally outcome-shaped endpoint, the difference is only 4%.
+benchmark it cut the reschedule task from 3 calls to 1. Over all tasks, though, YEA now
+sends the model 21% more tokens than minified-JSON REST: its replies are mostly smaller,
+but the tool definitions `yea mcp` ships are about twice REST's, and every turn re-reads
+them. We used to publish 32% fewer, measured on an older, smaller tool surface that
+`yea mcp` doesn't serve; [#297](https://github.com/yea-protocol/yea/issues/297) fixed the
+measurement, and [#300](https://github.com/yea-protocol/yea/issues/300) shrinks the
+definitions.
 
 Then we ran real agents, and the numbers got humbler. In headless Claude Code, the same
 tasks cost about the same through YEA as through a REST MCP server: 3–15% more, with

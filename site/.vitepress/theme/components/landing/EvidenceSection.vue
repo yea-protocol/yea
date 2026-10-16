@@ -5,7 +5,7 @@
  */
 import { withBase } from 'vitepress';
 import CostChart from './CostChart.vue';
-import { deltaRange } from './evidence';
+import { deltaRange, fewerOrMore } from './evidence';
 import { LIVE, PAYLOAD } from './numbers';
 
 const range = deltaRange(LIVE.tasks);
@@ -33,11 +33,13 @@ const p = PAYLOAD;
       <div class="left">
         <CostChart />
         <p class="prose">
-          Replies are {{ p.smallerThanMinified }}% smaller than minified JSON across a scripted benchmark
-          ({{ p.smallerThanPretty }}% against pretty-printed), but in live use that saving is outweighed by the context each
-          turn re-reads, so it doesn't lower the bill on its own. When REST offers the same outcome-level endpoint, the
-          reschedule row's saving drops from {{ p.crudRescheduleSaving }}% to {{ p.outcomeEndpointSaving }}%, so most of that
-          row's gain is API shape.
+          In a scripted benchmark of what each protocol sends the model, YEA sends {{ fewerOrMore(p.savedVsMinified) }}
+          tokens than minified JSON ({{ fewerOrMore(p.savedVsPretty) }} than pretty-printed). Its replies are mostly smaller, but the
+          bridge's tool definitions take {{ p.yeaDefs.toLocaleString('en-US') }} tokens against REST's {{ p.restDefs }}, and every turn re-reads them.
+          Until #297 that benchmark counted an older, smaller tool surface and showed a saving; shrinking the definitions is
+          <a href="https://github.com/yea-protocol/yea/issues/300">#300</a>. When REST offers the same outcome-level endpoint,
+          the reschedule row goes from {{ fewerOrMore(p.crudRescheduleSaving) }} to {{ fewerOrMore(p.outcomeEndpointSaving) }},
+          so most of that row's gain is API shape.
           <a :href="withBase('/reference/benchmark')">Method and raw output</a>
         </p>
       </div>

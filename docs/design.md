@@ -50,8 +50,13 @@ slow.
 signed policy**. "My agent may move meetings and spend up to $40 on anything it can undo"
 becomes one round trip. Anything outside that falls back to proposals automatically.
 Irreversible actions never auto-commit. In the scripted payload benchmark this took the
-reschedule task from 3 calls to 1, and YEA sends 32% fewer tokens than minified-JSON
-REST (43% against pretty JSON; only ~4% against an equivalent outcome-level REST endpoint).
+reschedule task from 3 calls to 1, which saves 19% against REST's CRUD calls (YEA sends
+92% more than an equivalent outcome-level REST endpoint). Over all tasks YEA sends 21%
+more tokens than minified-JSON REST (3% more than pretty JSON), because the tool
+definitions `yea mcp` ships are about twice REST's. The first published figure, 32%
+fewer, measured an older tool surface; see
+[#297](https://github.com/yea-protocol/yea/issues/297) and
+[#300](https://github.com/yea-protocol/yea/issues/300).
 In **live** agent runs ([bench/agent-eval](../bench/agent-eval/)), total cost comes out
 about even (+3–15% per task): turns dominate cost there, and models don't always hand
 their goal straight to an intent. When they do, it's 1 call instead of 3.

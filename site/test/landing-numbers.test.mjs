@@ -160,8 +160,8 @@ test('the payload figures match bench/RESULTS.md', { skip }, async () => {
 
   assert.equal(number(all[2]), PAYLOAD.restMinified);
   assert.equal(number(all[4]), PAYLOAD.yea);
-  assert.equal(number(all[5]), PAYLOAD.smallerThanMinified);
-  assert.equal(number(all[6]), PAYLOAD.smallerThanPretty);
+  assert.equal(number(all[5]), PAYLOAD.savedVsMinified);
+  assert.equal(number(all[6]), PAYLOAD.savedVsPretty);
   assert.equal(
     number(row('Reschedule a meeting (REST: search')[5]),
     PAYLOAD.crudRescheduleSaving,
@@ -170,4 +170,12 @@ test('the payload figures match bench/RESULTS.md', { skip }, async () => {
     number(row('Reschedule a meeting (REST: one outcome')[5]),
     PAYLOAD.outcomeEndpointSaving,
   );
+
+  const defs = read('bench/RESULTS.md').match(
+    /REST MCP \*\*([\d,]+)\*\* tokens .* vs YEA \*\*([\d,]+)\*\*/,
+  );
+
+  assert.ok(defs, 'no tool-definitions line in bench/RESULTS.md');
+  assert.equal(number(defs[1]), PAYLOAD.restDefs);
+  assert.equal(number(defs[2]), PAYLOAD.yeaDefs);
 });

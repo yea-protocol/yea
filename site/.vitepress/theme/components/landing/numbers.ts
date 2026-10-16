@@ -47,14 +47,20 @@ export const LIVE = {
   },
 } as const;
 
-/** Scripted payload benchmark: total input tokens over all tasks (bench/RESULTS.md). */
+/**
+ * Scripted payload benchmark: total input tokens over all tasks (bench/RESULTS.md). It measures
+ * the bridge `yea mcp` ships since #297; a negative saving means YEA sent more.
+ */
 export const PAYLOAD = {
   restMinified: 12902,
-  yea: 8714,
+  yea: 15637,
   /** YEA's saving against minified and against pretty-printed JSON, in percent. */
-  smallerThanMinified: 32,
-  smallerThanPretty: 43,
+  savedVsMinified: -21,
+  savedVsPretty: -3,
   /** The reschedule row's saving against REST's CRUD calls, and against one outcome-level endpoint. */
-  crudRescheduleSaving: 59,
-  outcomeEndpointSaving: 4,
+  crudRescheduleSaving: 19,
+  outcomeEndpointSaving: -92,
+  /** Tool definitions in context every turn, in tokens. */
+  restDefs: 761,
+  yeaDefs: 1466,
 } as const;
