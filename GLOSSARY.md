@@ -62,7 +62,8 @@ _Avoid_: consents dir (for either), round consent
 
 **Tool host**:
 The module that gives an AI agent YEA tools. It is on the agent's side, so it must be handed the
-agent's side of the home only, never the principal key, and can't sign for the agent.
+agent's side of the home only, never the principal key, and can't sign for the agent. A
+person-facing loop that drives one, such as the test drive's, asks the person and signs outside it.
 _Avoid_: harness
 
 ### Jobs (the framework)
