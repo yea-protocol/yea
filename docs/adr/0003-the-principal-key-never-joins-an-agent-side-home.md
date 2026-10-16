@@ -8,11 +8,12 @@ risk: test-drive's tool host loads the principal key inside the agent's tools, s
 that can reach the key can sign for the agent.
 
 Only person-facing commands create the principal key or sign with it: `init`, `install`,
-`grant`, `approve`, `talk`, and test-drive's person loop. Four more load it only to read its
-public half, and never sign: `whoami` and `doctor` report on it, and `examples` and `openapi`
-trust it. A home that code on the agent side is given holds the agent's side only: a tool host,
-the bridge, a server and `yea()` never load the principal key from it. So the home stays a
-directory option (`yea({ home })`, `bridge({ home })`), not an object with key loaders.
+`grant`, `approve`, `talk`, and test-drive's person loop. Four more load it only to check for
+it or read its public half, and never sign: `whoami` and `doctor` report on it, and `examples`
+and `openapi` trust it. A home that code on the agent side is given holds the agent's side only:
+a tool host, the bridge, a server and `yea()` never load the principal key from it (see
+Consequences for the one exception today). So the home stays a directory option
+(`yea({ home })`, `bridge({ home })`), not an object with key loaders.
 
 ## Considered options
 
@@ -29,6 +30,6 @@ the agent's tools. #299 removes it: test-drive drives the bridge and approves in
 as the person.
 
 The home helpers that `@yea-protocol/sdk/node` exports (`home`, `agentKey`, `loadGrants`,
-`saveGrant`, `loadConsent`, `homeConsents`) stay public, as SPEC-mcp-ts documents them. None of
-them loads the principal key, and `principalKey` is not exported from any of the SDK's entry
-points.
+`saveGrant`, `loadConsent`, `homeConsents`) stay public, as SPEC-mcp-ts documents them, plus
+`agentKey`. None of them loads the principal key, and `principalKey` is not exported from any
+of the SDK's entry points.
