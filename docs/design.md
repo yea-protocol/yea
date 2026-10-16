@@ -110,7 +110,7 @@ pretty JSON and Lens). To regenerate the table, run
 Bytes/4's mean above 1 doesn't mean it overcounts. It undercounts 51 of the 63 texts, by
 up to 3×. The mean is pulled up by 11 indentation-heavy conformance vectors (mostly
 deep-nesting tests), where runs of spaces are many bytes but few tokens, and there it
-overcounts by 2.7× to 5×. It lands within a factor of 1.25 of the real count on 2
+overcounts by 2.7× to 5×. It lands between 0.8× and 1.25× the real count on 2
 texts; the regex does on 55. On the full menu as Lens, bytes/4 estimates 623 tokens when
 it's really 1,095, so an "800-token" budget let the whole thing through (the regex says
 994).
