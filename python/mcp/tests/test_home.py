@@ -49,8 +49,9 @@ def serve(tmp_path: Path, name: str, **options: Any) -> Server:
     return s
 
 
-async def test_two_servers_with_their_own_homes_read_their_own_deny_lists_and_stores(tmp_path):
-    a, b = serve(tmp_path, "a"), serve(tmp_path, "b")  # no store option: each has <home>/store
+async def test_two_servers_with_their_own_homes_read_their_own_deny_lists_and_stores(tmp_path, monkeypatch):
+    monkeypatch.delenv("YEA_STORE", raising=False)  # with no store option either, each has <home>/store
+    a, b = serve(tmp_path, "a"), serve(tmp_path, "b")
     a.deny("move")
     b.deny("something_else")
     refused = await a.move()

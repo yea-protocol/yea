@@ -430,9 +430,10 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
   `assertIntegers` (step 1's check, before planning), `home` from `@yea-protocol/sdk/node`
   (where `~/.yea` is, honouring `YEA_HOME`), and `isMemoryStore` with `MemoryStore`'s brand.
   `yea()` and `bridge()` call `home()` once, when no `home` option is given, and pass the
-  directory to `defaultFileStore(dir)`, `serverKeyPath(name, dir)` and `homeConsents(dir)`;
-  `loadGrants`, `saveGrant` and `loadConsent` take the same optional directory. Each defaults
-  to `home()`.
+  directory to `serverKeyPath(name, dir)` and `homeConsents(dir)`; `loadGrants`, `saveGrant`
+  and `loadConsent` take the same optional directory. Each defaults to `home()`. `yea()` reads
+  `YEA_STORE` itself, once, for its default store, as `yea_mcp` does; `defaultFileStore()`
+  stays the CLI's (`yea approve`).
 - Node ≥ 20 (the SDK's floor), ESM only.
 - `yea mcp` (the 2025-era bridge) moves onto this package in `bridge` (#40), not here.
 - Four entry points: `.` (the job tools), `./bridge` (`yea mcp`), `./http` (the Streamable HTTP

@@ -47,7 +47,9 @@ async function refundedIn(w: World) {
 
 describe('two job servers in one process, each with its own home', () => {
   it('read their own policy.json deny list and keep their own default store', async () => {
-    // No store option: each server's store is the `store` directory in its home.
+    // No store option and no YEA_STORE: each server's store is the `store` directory in its home.
+    vi.stubEnv('YEA_STORE', '');
+
     const a = await world({ store: undefined });
     const b = await world({ store: undefined });
 
@@ -77,6 +79,8 @@ describe('two job servers in one process, each with its own home', () => {
   });
 
   it('never read principal.key from the home: no pinned key means nothing auto-runs', async () => {
+    vi.stubEnv('YEA_PRINCIPAL_PUB', '');
+
     const w = await world({ principal: undefined });
 
     writeFileSync(join(w.home, 'principal.key'), `${w.principal.seed}\n`);

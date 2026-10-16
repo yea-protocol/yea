@@ -209,12 +209,11 @@ export class FileStore implements ApprovalStore {
 }
 
 /**
- * The store the MCP servers and the `yea` command share: `YEA_STORE` if set, else `store` in the
- * home `dir` (default: `home()`, so `$YEA_HOME/store`, else `~/.yea/store`). An empty
- * `YEA_STORE` counts as unset.
+ * The store the MCP servers and the `yea` command share: `YEA_STORE` if set, else
+ * `$YEA_HOME/store`, else `~/.yea/store`. An empty `YEA_STORE` counts as unset.
  */
-export const defaultFileStore = (dir = home()) =>
-  new FileStore(process.env.YEA_STORE || join(dir, 'store'));
+export const defaultFileStore = () =>
+  new FileStore(process.env.YEA_STORE || undefined);
 
 /** Names are b64url ids, receipt ids or measure names; anything else is refused. */
 function safeName(s: string): string {

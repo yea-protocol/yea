@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequestStateCodec } from '@modelcontextprotocol/server';
 import { exact, quantity } from '@yea-protocol/sdk';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   approve,
   connect,
@@ -518,7 +518,14 @@ describe('with a MemoryStore and one process', () => {
 });
 
 describe('a pinned principal key', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('without one, nothing auto-runs and codes can’t be approved', async () => {
+    // The subject: no `principal` option and no YEA_PRINCIPAL_PUB, whatever the shell has.
+    vi.stubEnv('YEA_PRINCIPAL_PUB', '');
+
     const w = await world({ principal: undefined });
 
     await grantPolicy(w);
@@ -534,6 +541,8 @@ describe('a pinned principal key', () => {
   });
 
   it('without one, the form still works', async () => {
+    vi.stubEnv('YEA_PRINCIPAL_PUB', '');
+
     const w = await world({ principal: undefined });
     const conn = await connect('2025', refundServer(w));
 

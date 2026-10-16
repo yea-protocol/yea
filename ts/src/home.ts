@@ -79,6 +79,7 @@ async function loadKey(
     return null;
   }
 
+  // Keys stay on home(): the agent-side `home` option (#298) never reaches them.
   ensure(home());
   mkdirSync(join(f, '..'), { recursive: true, mode: 0o700 });
 

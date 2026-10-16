@@ -3,6 +3,8 @@
  * the official TypeScript MCP SDK v2 (docs/framework/SPEC-mcp-ts.md). `yea()` once per process,
  * then `job()` or `guard()` in the server factory.
  */
+
+import { join } from 'node:path';
 import {
   createRequestStateCodec,
   type McpServer,
@@ -22,7 +24,7 @@ import {
   MemoryStore,
   type Risk,
 } from '@yea-protocol/sdk';
-import { defaultFileStore, home, serverKeyPath } from '@yea-protocol/sdk/node';
+import { FileStore, home, serverKeyPath } from '@yea-protocol/sdk/node';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import { type GuardConfig, guardTool } from './guard.js';
 import { pinnedPrincipal } from './policy.js';
@@ -145,8 +147,14 @@ function checkOptions(o: YeaOptions, memory: boolean) {
   }
 }
 
+/**
+ * A MemoryStore for HTTP; for stdio the FileStore `yea approve` writes to: `YEA_STORE` (read
+ * here, once; an empty one counts as unset), else `store` in the home.
+ */
 const defaultStore = (o: YeaOptions, dir: string): ApprovalStore =>
-  o.transport === 'http' ? new MemoryStore() : defaultFileStore(dir);
+  o.transport === 'http'
+    ? new MemoryStore()
+    : new FileStore(process.env.YEA_STORE || join(dir, 'store'));
 
 /** A random per-process codec key: only safe while one process handles every round. */
 const randomKey = () => globalThis.crypto.getRandomValues(new Uint8Array(32));
