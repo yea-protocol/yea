@@ -57,12 +57,13 @@ assume it.
 |---|---|---|
 | `name` | required | The server's name, `[a-z0-9._-]{1,64}`. Names its key file, and is the request-state audience. |
 | `transport` | required | `"stdio"` or `"http"`. Picks the defaults below. |
-| `store` | `FileStore()` for stdio (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
+| `home` | `YEA_HOME`, else `~/.yea` | The home directory, as in `mcp-ts`: `policy.json`, the default store and the default server key are in it. `yea()` resolves it once, and nothing below reads `YEA_HOME`, `YEA_STORE` or `~/.yea` itself. `policy.json` is still re-read from it on every call. The principal key is never read from it. |
+| `store` | `FileStore()` for stdio (`YEA_STORE`, else `<home>/store`), `MemoryStore()` for HTTP | The `ApprovalStore` (SPEC-approval §8). |
 | `single_process` | `False` | A promise that one process serves every request. HTTP on a `MemoryStore` must set it. |
-| `server_key` | `~/.yea/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and writable by no one else (it's created `0700`), and that directory's parent this user's or root's and not writable by its group or others unless sticky; without POSIX owners (Windows), as in `mcp-ts`, only the file checks apply. It's read with `O_NOFOLLOW` and checked on the open file (a regular file of at most 64 KiB, this user's, readable by no one else); without POSIX owners it warns once on stderr that it can't check who owns or can read the file, as `mcp-ts` does. Its public key is the service id, and the holder of policy and consent grants. |
+| `server_key` | `<home>/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and writable by no one else (it's created `0700`), and that directory's parent this user's or root's and not writable by its group or others unless sticky; without POSIX owners (Windows), as in `mcp-ts`, only the file checks apply. It's read with `O_NOFOLLOW` and checked on the open file (a regular file of at most 64 KiB, this user's, readable by no one else); without POSIX owners it warns once on stderr that it can't check who owns or can read the file, as `mcp-ts` does. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
-| `tighten` | `{}` | Unsigned tightening, merged with `~/.yea/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
+| `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
 | `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. On `MCPServer` it gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly); on FastMCP, FastMCP's request context. Used for the state binding and for undo. |
 
@@ -473,6 +474,10 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
 - `token_subject` returns `""` for a token with no subject;
 - the 2025 in-call path takes step 9 on `NoBackChannelError`;
 - the start-up and per-call refusals listed under `yea()`;
+- two servers in one process with different `home`s read their own `policy.json` deny lists
+  and keep their own default stores; without `home`, `yea()` reads `YEA_HOME` once, at
+  start-up (`tests/test_home.py`). Tests pass `home`, `store`, `principal` and `policy` as
+  options rather than setting `YEA_*`, except where reading the env is the subject;
 - a legacy stateless HTTP request takes the consent-code path;
 - FastMCP: a transform over a guarded tool is refused at call time, and a task-enabled tool is
   refused by `guard()`;

@@ -22,7 +22,7 @@ def caller_of(y: Yea, rctx: Any) -> str:
 
 def policy_for(y: Yea) -> Policy:
     """The policy for this call; raises when its totals can't be kept on this store."""
-    rules = read_tightening_for(y.tighten)
+    rules = read_tightening_for(y.tighten, y.home)
     if rules.broken:  # a policy file that can't be read hides its deny list: refuse rather than guess
         raise ValueError(f"your unsigned policy can't be used ({rules.broken})")
     grant = read_policy(y.policy) if y.principal.key else None  # no pinned principal: nothing auto-runs

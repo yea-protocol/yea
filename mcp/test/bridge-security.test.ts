@@ -20,14 +20,14 @@ import {
   unixNow,
 } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { clip } from '../src/bridge/lens.js';
-import { bridge } from '../src/bridge.js';
 import {
   agentClient,
   approveCode,
   BIG_ORDER,
   bridged,
+  bridgeIn,
   EACH_40,
   type Keys,
   keys,
@@ -35,10 +35,6 @@ import {
   recorded,
 } from './bridge-helpers.js';
 import { connect, textOf } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 /**
  * Every source file the bridge can run: all of src/bridge/ at any depth, plus every module
@@ -182,7 +178,7 @@ describe('bridge security', () => {
     );
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const r = await conn.call(BIG_ORDER, 'shop_order');
     const { proposals, codes } = proposalsOf(r);
@@ -211,7 +207,7 @@ describe('bridge security', () => {
     );
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const tip = { order: 'o1', usd: 50 };
     const [p] = proposalsOf(await conn.call(tip, 'shop_tip')).proposals;
@@ -250,7 +246,9 @@ describe('bridge security', () => {
           apply: () => null,
         }),
       });
-    const factory = await bridge([await agentClient(k, recorded(evil).t, [])]);
+    const factory = await bridgeIn(k, [
+      await agentClient(k, recorded(evil).t, []),
+    ]);
     const conn = await connect('2026', factory);
     const { tools } = await conn.client.listTools();
     const consent = tools.filter((t) => t.name.startsWith('yea_consent'));
@@ -291,7 +289,7 @@ describe('bridge security', () => {
     );
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const text = textOf(await conn.call(BIG_ORDER, 'shop_order'));
 
@@ -306,7 +304,7 @@ describe('bridge security', () => {
     );
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const r = textOf(await conn.call({ tag: 'vegan' }, 'shop_search'));
 
@@ -498,7 +496,7 @@ describe('a refused consent stays refused', () => {
     );
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
     const token = await approveCode(k.principal, codes[0].code);

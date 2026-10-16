@@ -7,17 +7,12 @@ import { yea } from '@yea-protocol/mcp';
 import { httpApp, httpGate, subOf } from '@yea-protocol/mcp/http';
 import { serveHttp } from '@yea-protocol/mcp/http/node';
 import { MemoryStore } from '@yea-protocol/sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { stripeServer } from '../src/server.js';
 import { fakeStripe } from './fake-stripe.js';
 import { NOW, suggestedGrant, TEST_KEY, textOf, world } from './helpers.js';
 
 const TOKEN = 't'.repeat(40);
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-  delete process.env.YEA_POLICY;
-});
 
 /** The connector over HTTP, as `yea-stripe --http` builds it, on a MemoryStore. */
 async function httpWorld() {
@@ -28,7 +23,9 @@ async function httpWorld() {
     store: new MemoryStore(),
     singleProcess: true,
     sub: subOf,
+    home: w.home,
     principal: w.principal.public,
+    policy: w.policy,
   });
   const stripe = fakeStripe({ now: NOW });
   const front = {

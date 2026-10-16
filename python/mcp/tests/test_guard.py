@@ -91,7 +91,7 @@ async def test_a_failing_original_writes_no_receipt_and_releases(world, mode):
         r = await c.call_tool("charge", {"cents": 500})
     assert r.is_error and text(r) == "card declined" and calls == [500]  # auto-run, with a reservation
     assert not (r.meta or {}).get("dev.yea/receipt")
-    block = decode_grant(os.environ["YEA_POLICY"]).id
+    block = decode_grant(world.token).id
     assert await world.store.used(LedgerKey(block, "spend")) == 0  # released
 
 

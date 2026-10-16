@@ -39,38 +39,38 @@ export interface Home {
   store: FileStore;
   storeDir: string;
   principal: KeyPair;
+  /** The file `installGrant` writes the policy grant to: `yea()`'s `policy` option. */
+  policy: string;
 }
 
-/** A fresh YEA home with a store in it and a principal; the other YEA_* variables are unset. */
+/**
+ * A fresh YEA home with a store in it, a principal, and a policy file not yet written. Servers
+ * are pointed at it through options (`home`, `store`, `principal`, `policy`), not `YEA_*`.
+ */
 export async function freshHome(prefix?: string): Promise<Home> {
   const home = tmp(prefix);
   const storeDir = join(home, 'store');
-
-  process.env.YEA_HOME = home;
-  delete process.env.YEA_POLICY;
-  delete process.env.YEA_STORE;
-  delete process.env.YEA_PRINCIPAL_PUB;
-  delete process.env.YEA_PRINCIPAL_HOME;
 
   return {
     home,
     store: new FileStore(storeDir),
     storeDir,
     principal: await keyPair(),
+    policy: join(home, 'policy.pg'),
   };
 }
 
-/** Whoever a policy grant goes to: a home, its principal, and the server's key. */
+/** Whoever a policy grant goes to: the server's policy file, its principal, and its key. */
 export interface Grantee {
-  home: string;
+  policy: string;
   principal: KeyPair;
   approvals: { serviceId(): Promise<string> };
 }
 
 /**
  * Issue a signed policy grant to the server, valid for `ttl` seconds, and install it (what
- * `yea grant` makes). YEA_POLICY names a file, read on every call: a new grant applies without
- * a restart.
+ * `yea grant` makes) in the file its `policy` option names, read on every call: a new grant
+ * applies without a restart.
  */
 export async function installGrant(
   w: Grantee,
@@ -82,10 +82,8 @@ export async function installGrant(
     to: await w.approvals.serviceId(),
     caveats: [...caveats, { exp: unixNow() + ttl }],
   });
-  const path = join(w.home, 'policy.pg');
 
-  writeFileSync(path, `${token}\n`);
-  process.env.YEA_POLICY = path;
+  writeFileSync(w.policy, `${token}\n`);
 
   return token;
 }

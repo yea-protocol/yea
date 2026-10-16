@@ -10,13 +10,13 @@ import { join } from 'node:path';
 import { service, unixNow } from '@yea-protocol/sdk';
 import { shop } from '@yea-protocol/sdk/examples';
 import { saveGrant } from '@yea-protocol/sdk/node';
-import { afterEach, describe, expect, it } from 'vitest';
-import { bridge } from '../src/bridge.js';
+import { describe, expect, it } from 'vitest';
 import {
   agentClient,
   approveCode,
   BIG_ORDER,
   bridged,
+  bridgeIn,
   examples,
   type Keys,
   keys,
@@ -49,10 +49,6 @@ function twoTimes(k: Keys, a: number, b: number) {
       })),
   });
 }
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 describe.each<Kind>([
   '2026',
@@ -231,6 +227,7 @@ describe('a job tool call', () => {
       await approveCode(k.principal, codes[0].code),
       'consents',
       proposals[0].hash,
+      k.home,
     );
 
     expect(textOf(await conn.call(BIG_ORDER, 'shop_order'))).toContain(
@@ -273,7 +270,7 @@ describe('a job tool call', () => {
           }
         : r,
     );
-    const factory = await bridge([
+    const factory = await bridgeIn(k, [
       { client: await agentClient(k, rewritten.t), url: 'test:shop' },
       ex.clients[0],
     ]);
@@ -327,7 +324,7 @@ describe('proposals expire one by one, and only kept ones get codes', () => {
     const rec = recorded(twoTimes(k, 60, 600));
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const r = await conn.call({}, 'lab_pick');
     const { proposals, codes } = proposalsOf(r);
@@ -345,7 +342,7 @@ describe('proposals expire one by one, and only kept ones get codes', () => {
     const rec = recorded(twoTimes(k, 30, 60));
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const r = await conn.call({}, 'lab_pick');
 
@@ -363,7 +360,7 @@ describe('proposals expire one by one, and only kept ones get codes', () => {
     const rec = recorded(twoTimes(k, 300, 900));
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)], { now: () => now }),
+      await bridgeIn(k, [await agentClient(k, rec.t)], { now: () => now }),
     );
     const first = proposalsOf(await conn.call({}, 'lab_pick'));
 
@@ -397,7 +394,7 @@ describe('proposals expire one by one, and only kept ones get codes', () => {
     const rec = recorded(twoTimes(k, 300, 300));
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)], { now: () => now }),
+      await bridgeIn(k, [await agentClient(k, rec.t)], { now: () => now }),
     );
     const first = proposalsOf(await conn.call({}, 'lab_pick'));
 
@@ -425,7 +422,7 @@ describe('a failed consent never wedges the call, and a named proposal is the on
     );
     const conn = await connect(
       '2026',
-      await bridge([await agentClient(k, rec.t)]),
+      await bridgeIn(k, [await agentClient(k, rec.t)]),
     );
     const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
     const token = await approveCode(k.principal, codes[0].code);
@@ -522,7 +519,7 @@ describe('deny', () => {
 
     const a = recorded(shop({ trust, id: 'shop.a' }));
     const b = recorded(shop({ trust, id: 'shop.b' }));
-    const factory = await bridge([
+    const factory = await bridgeIn(k, [
       await agentClient(k, a.t),
       await agentClient(k, b.t),
     ]);

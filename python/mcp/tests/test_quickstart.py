@@ -22,17 +22,16 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
-def files(tmp_path, monkeypatch):
-    monkeypatch.setenv("YEA_HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("YEA_POLICY", raising=False)
+def files(tmp_path):
     root = tmp_path / "files"
     (root / "docs").mkdir(parents=True)
     report = root / "docs" / "report.pdf"
     report.write_text("q3")
     store = FileStore(tmp_path / "store")
-    approvals = yea(name="files", transport="stdio", store=store, server_key=tmp_path / "k" / "files.key",
-                    principal=PRINCIPAL.public)
-    return {"approvals": approvals, "store": store, "root": root, "report": report,
+    policy = tmp_path / "policy.pg"
+    approvals = yea(name="files", transport="stdio", home=tmp_path / "home", store=store,
+                    server_key=tmp_path / "k" / "files.key", principal=PRINCIPAL.public, policy=str(policy))
+    return {"approvals": approvals, "store": store, "root": root, "report": report, "policy": policy,
             "server": mcp_quickstart.create_server(approvals, str(root))}
 
 
@@ -72,9 +71,9 @@ async def test_step_4_the_job_asks_and_undo_puts_the_file_back(files, mode):
     assert not u.is_error and files["report"].read_text() == "q3"
 
 
-async def test_step_5_a_policy_lets_only_the_undoable_job_run_on_its_own(files, monkeypatch):
+async def test_step_5_a_policy_lets_only_the_undoable_job_run_on_its_own(files):
     grant = issue_grant(PRINCIPAL, files["approvals"].service_id(), [{"can": ["move_to_trash"]}, {"risk": "low"}])
-    monkeypatch.setenv("YEA_POLICY", grant.encode())
+    files["policy"].write_text(grant.encode())
     person = Person(["decline"])
     async with Client(files["server"], mode="auto", elicitation_callback=person) as c:
         moved = await c.call_tool("move_to_trash", {"path": "docs/report.pdf"})
@@ -101,12 +100,11 @@ async def test_step_6_a_client_that_cant_ask_gets_a_code_and_a_consent_runs_once
 
 
 def test_the_start_up_lines(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("YEA_HOME", str(tmp_path))
-    monkeypatch.delenv("YEA_PRINCIPAL_PUB", raising=False)
+    monkeypatch.delenv("YEA_PRINCIPAL_PUB", raising=False)  # the subject: no pinned key from the env
     import yea_mcp.util
 
     monkeypatch.setattr(yea_mcp.util, "_warned", set())  # the warning is printed once per process
-    ap = yea(name="files", transport="stdio", server_key=tmp_path / "k" / "files.key")
+    ap = yea(name="files", transport="stdio", home=tmp_path, server_key=tmp_path / "k" / "files.key")
     err = capsys.readouterr().err
     assert f"yea: service id {ap.service_id()} (name files)" in err
     assert ("yea: no pinned principal key (YEA_PRINCIPAL_PUB is not set): nothing auto-runs and no consent is "

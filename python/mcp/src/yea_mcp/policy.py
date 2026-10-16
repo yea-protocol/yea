@@ -13,7 +13,6 @@ from typing import Any
 from yea import decode_grant
 from yea.approval import RISK_ORDER, Tightening, load_principal_key, read_tightening
 from yea.keys import is_public_key
-from yea.store.files import yea_home
 
 from .util import warn_once
 
@@ -95,10 +94,10 @@ def _parse_tightening(path: Path, text: str) -> Tightening | str:
     return f"{path}: {bad}" if bad else t
 
 
-def _file_tightening() -> Tightening | str | None:
-    """The unsigned rules in ``~/.yea/policy.json``: None when there's no file, a reason string
+def _file_tightening(home: Path) -> Tightening | str | None:
+    """The unsigned rules in ``policy.json`` in ``home``: None when there's no file, a reason string
     when it can't be used. Its ``deny`` can't be known then, so job calls refuse."""
-    path = yea_home() / "policy.json"
+    path = home / "policy.json"
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -108,9 +107,10 @@ def _file_tightening() -> Tightening | str | None:
     return _parse_tightening(path, text)
 
 
-def read_tightening_for(option: Any) -> Rules:
-    """The option and ``~/.yea/policy.json`` merged: ``deny`` is the union, ``outOfBand`` the stricter."""
-    from_file = _file_tightening()
+def read_tightening_for(option: Any, home: Path) -> Rules:
+    """The option and ``policy.json`` in ``home`` merged: ``deny`` is the union, ``outOfBand`` the
+    stricter. The file is read on every call, so a new rule applies without a restart."""
+    from_file = _file_tightening(home)
     parts = [read_tightening(option or {}), *([from_file] if isinstance(from_file, Tightening) else [])]
     for w in (w for t in parts for w in t.warnings):
         warn_once(f"policy: {w}")

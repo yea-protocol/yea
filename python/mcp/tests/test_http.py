@@ -98,11 +98,11 @@ def serving(app):
         thread.join(5)
 
 
-def test_end_to_end_the_person_is_the_tokens_sub_and_others_are_refused(tmp_path, monkeypatch):
-    monkeypatch.setenv("YEA_HOME", str(tmp_path))
+def test_end_to_end_the_person_is_the_tokens_sub_and_others_are_refused(tmp_path):
     done = []
-    ap = yea(name="h", transport="http", sub=token_subject, store=MemoryStore(), single_process=True,
-             server_key=tmp_path / "k", principal=PRINCIPAL.public)
+    policy = tmp_path / "policy.pg"
+    ap = yea(name="h", transport="http", home=tmp_path, sub=token_subject, store=MemoryStore(), single_process=True,
+             server_key=tmp_path / "k", principal=PRINCIPAL.public, policy=str(policy))
     srv = MCPServer("h", request_state_security=ap.request_state_security())
 
     @srv.tool()
@@ -113,7 +113,7 @@ def test_end_to_end_the_person_is_the_tokens_sub_and_others_are_refused(tmp_path
     async def move(event: str) -> list[Plan]:
         return [Plan(f"Move {event}", [create("event/1")], apply=lambda: done.append(event), undo_window=60)]
 
-    monkeypatch.setenv("YEA_POLICY", issue_grant(PRINCIPAL, ap.service_id(), [{"can": ["move"]}, {"risk": "low"}]).encode())
+    policy.write_text(issue_grant(PRINCIPAL, ap.service_id(), [{"can": ["move"]}, {"risk": "low"}]).encode())
 
     async def go(url):
         hc = httpx2.AsyncClient(headers={"Authorization": f"Bearer {TOKEN}"})
@@ -163,10 +163,9 @@ def test_the_gate_refuses_a_host_with_userinfo_or_a_path_and_a_non_ascii_token()
         http_auth_from({"YEA_HTTP_TOKEN": "é" * 40, "YEA_SUB": "alice"})
 
 
-def test_off_loopback_a_public_host_is_served_and_on_loopback_a_foreign_origin_is_not(tmp_path, monkeypatch):
+def test_off_loopback_a_public_host_is_served_and_on_loopback_a_foreign_origin_is_not():
     """loopback=False turns the SDK's Host check off too (else every public Host would get its 421);
     on loopback a foreign Origin gets the gate's 403, before the token is even checked."""
-    monkeypatch.setenv("YEA_HOME", str(tmp_path))
 
     def server():
         srv = MCPServer("h")

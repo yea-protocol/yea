@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import date
 from enum import Enum
 
@@ -43,7 +42,7 @@ async def test_a_job_the_policy_allows_runs_once_and_settles_its_total(world, mo
     assert not r.is_error and "Move e1" in text(r) and done == [("move", "e1")]
     receipt = r.structured_content["receipt"]
     assert receipt["service"] == world.approvals.service_id() and receipt["undo"] is not None
-    block = decode_grant(os.environ["YEA_POLICY"]).id
+    block = decode_grant(world.token).id
     assert await world.store.used(LedgerKey(block, "emails")) == 10**18
 
 
@@ -276,7 +275,7 @@ async def test_an_apply_that_fails_part_way_says_what_it_left_and_keeps_its_rese
     async with world.client(mode, Person()) as c:
         r = await c.call_tool("schedule", {"event": "e1"})
     assert r.is_error and text(r) == "✗ Schedule failed part-way: schedule sch_1 was left behind."
-    block = decode_grant(os.environ["YEA_POLICY"]).id
+    block = decode_grant(world.token).id
     assert await world.store.used(LedgerKey(block, "emails")) == 10**18  # held, not released
 
 
@@ -304,7 +303,7 @@ async def test_a_release_that_fails_never_hides_why_the_plan_failed(world, monke
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("schedule", {"event": "e1"})
     assert r.is_error and text(r) == "✗ Schedule failed: the calendar is down; nothing changed."
-    block = decode_grant(os.environ["YEA_POLICY"]).id
+    block = decode_grant(world.token).id
     used = [await world.store.used(LedgerKey(block, of)) for of in ("emails", "sms")]
     assert failed and sorted(used) == [0, 10**18]  # the failed one stays held; the other is released
 

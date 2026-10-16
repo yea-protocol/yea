@@ -6,7 +6,7 @@ import {
   type RegisteredTool,
 } from '@modelcontextprotocol/server';
 import { exact, quantity } from '@yea-protocol/sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import * as z from 'zod';
 import type { GuardConfig } from '../src/index.js';
 import {
@@ -19,10 +19,6 @@ import {
   type World,
   world,
 } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 interface Counter {
   charged: string[];

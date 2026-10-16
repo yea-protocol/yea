@@ -36,7 +36,7 @@ export async function commitTool(
     client: c,
     proposal: known.proposal,
     approver: humanApprover(s.approve),
-    consents: homeConsents,
+    consents: homeConsents(),
     onEvent,
   });
 

@@ -3,16 +3,12 @@
  * endpoints it calls: the read, the refund that always asks, and the cancel that can be undone.
  */
 import { unixNow } from '@yea-protocol/sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   createServer,
   connect as stripeClient,
 } from '../../examples/stripe-jobs.js';
 import { connect, grantPolicy, textOf, type World, world } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 const D = 86_400;
 const now = unixNow();

@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createServer, filesRoot } from '../../examples/mcp-quickstart.js';
 import {
   approve,
@@ -24,10 +24,6 @@ import {
   type World,
   world,
 } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 /** A folder with docs/report.pdf in it, and the example's server. */
 function files(w: Pick<World, 'approvals'>) {

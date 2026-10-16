@@ -131,8 +131,10 @@ export async function world(
   const approvals = yea({
     name: 'yea-stripe',
     transport: 'stdio',
+    home: h.home,
     store: h.store,
     principal: h.principal.public,
+    policy: h.policy,
   });
   const s = setup(o);
   const factory = stripeServer({

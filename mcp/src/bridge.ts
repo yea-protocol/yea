@@ -12,7 +12,7 @@
  */
 import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
 import { Client, type ConsentStore, unixNow } from '@yea-protocol/sdk';
-import { homeConsents } from '@yea-protocol/sdk/node';
+import { home, homeConsents } from '@yea-protocol/sdk/node';
 import { greet } from './bridge/greet.js';
 import { instructionsFor } from './bridge/instructions.js';
 import { passThrough } from './bridge/params.js';
@@ -33,9 +33,14 @@ export interface BridgeOptions {
   tools?: ToolMode;
   /** The token budget for reads, expands and proposals. Default 1500. */
   budget?: number;
-  /** Where consents are kept. Default: the agent's `~/.yea/consents`. */
+  /**
+   * The agent's home directory: `policy.json` and the default consent store live in it. Default
+   * `YEA_HOME`, else `~/.yea`, resolved once. The principal key is never read from it.
+   */
+  home?: string;
+  /** Where consents are kept. Default: the home's `consents` directory. */
   consents?: ConsentStore;
-  /** Unsigned tightening, merged with `~/.yea/policy.json`; only `deny` applies. */
+  /** Unsigned tightening, merged with the home's `policy.json`; only `deny` applies. */
   tighten?: { deny?: string[] };
   /** The clock, in seconds. For tests. */
   now?: () => number;
@@ -85,11 +90,14 @@ export async function bridge(
   o: BridgeOptions = {},
 ): Promise<BridgeFactory> {
   const mode = o.tools ?? 'auto';
+  // The one place the home is resolved; everything below is handed it.
+  const dir = o.home ?? home();
   const b: Bridge = {
     pending: new PendingProposals(),
-    consents: o.consents ?? homeConsents,
+    consents: o.consents ?? homeConsents(dir),
     budget: o.budget ?? 1500,
     tighten: o.tighten ?? {},
+    home: dir,
     now: o.now ?? unixNow,
   };
   const { services: greeted, problems } = await greet(services.map(asEntry));

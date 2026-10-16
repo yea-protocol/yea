@@ -11,6 +11,7 @@ import secrets
 import sys
 import weakref
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import mcp_types as t
@@ -22,9 +23,9 @@ from yea.store import (
     ApprovalStore,
     FileStore,
     MemoryStore,
-    default_store_dir,
     is_memory_store,
 )
+from yea.store.files import yea_home
 
 from .call import (
     JobDef,
@@ -53,11 +54,12 @@ def token_subject(ctx: Any = None) -> str:
     return subject if isinstance(subject, str) else ""
 
 
-def _default_store(transport: str) -> ApprovalStore:
+def _default_store(transport: str, home: Path) -> ApprovalStore:
+    """A MemoryStore for HTTP; for stdio a FileStore at ``YEA_STORE``, else ``store`` in the home."""
     if transport == "http":
         return MemoryStore()
     env = os.environ.get("YEA_STORE")
-    return FileStore(env if env else default_store_dir())
+    return FileStore(env if env else home / "store")
 
 
 def _state_key(key: bytes | str | None) -> bytes:
@@ -82,18 +84,22 @@ def _check_options(transport: str, sub: Any, store: ApprovalStore, single_proces
         raise ValueError("yea(): HTTP on a MemoryStore needs single_process=True, or pass a store every process shares")
 
 
-def yea(*, name: str, transport: str, store: ApprovalStore | None = None, single_process: bool = False,
-        server_key: str | os.PathLike[str] | None = None, principal: str | None = None, policy: str | None = None,
-        tighten: dict | None = None, state_key: bytes | str | None = None,
+def yea(*, name: str, transport: str, home: str | os.PathLike[str] | None = None, store: ApprovalStore | None = None,
+        single_process: bool = False, server_key: str | os.PathLike[str] | None = None, principal: str | None = None,
+        policy: str | None = None, tighten: dict | None = None, state_key: bytes | str | None = None,
         sub: Callable[[Any], str] | None = None) -> Approvals:
-    """The approval context, once per process (SPEC-mcp-py ``yea()``)."""
+    """The approval context, once per process (SPEC-mcp-py ``yea()``). ``home`` (default ``YEA_HOME``,
+    else ``~/.yea``) is resolved here, once: ``policy.json``, the default store and the default server
+    key live in it. The principal key is never read from it."""
     check_name(name)
-    chosen = store if store is not None else _default_store(transport)
+    resolved = Path(home) if home is not None else yea_home()
+    chosen = store if store is not None else _default_store(transport, resolved)
     _check_options(transport, sub, chosen, single_process, state_key)
-    key = load_server_key(server_key if server_key is not None else default_key_path(name))
+    key = load_server_key(server_key if server_key is not None else default_key_path(name, resolved))
     y = Yea(name=name, transport=transport, store=chosen,
             shared_memory=is_memory_store(chosen) and not single_process,
-            principal=pinned_principal(principal), policy=policy, tighten=tighten, service_id=key.public,
+            principal=pinned_principal(principal), policy=policy, tighten=tighten, home=resolved,
+            service_id=key.public,
             sub=sub if sub is not None else (lambda rctx: ""))
     _announce(y)
     return Approvals(y, _state_key(state_key))

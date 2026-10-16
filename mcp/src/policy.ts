@@ -13,7 +13,7 @@ import {
   readTightening,
   type Tightening,
 } from '@yea-protocol/sdk';
-import { home, readPinnedKey } from '@yea-protocol/sdk/node';
+import { readPinnedKey } from '@yea-protocol/sdk/node';
 import { errno, errorMessage, warnOnce } from './util.js';
 
 export type Pinned = { key: string } | { why: string };
@@ -89,11 +89,13 @@ function parseTightening(
 }
 
 /**
- * The unsigned rules in `~/.yea/policy.json`: null when there is no file. A file that can't be
- * read or parsed is `broken`, and job calls refuse: its `deny` can't be known.
+ * The unsigned rules in `policy.json` in the home `dir`: null when there is no file. A file that
+ * can't be read or parsed is `broken`, and job calls refuse: its `deny` can't be known.
  */
-function fileTightening(): { t: Tightening } | { broken: string } | null {
-  const path = join(home(), 'policy.json');
+function fileTightening(
+  dir: string,
+): { t: Tightening } | { broken: string } | null {
+  const path = join(dir, 'policy.json');
   let text: string;
 
   try {
@@ -118,10 +120,13 @@ export interface Rules {
   broken: string | null;
 }
 
-/** The option and `~/.yea/policy.json` merged: `deny` is the union, `outOfBand` the stricter. */
-export function readTighteningFor(option: unknown): Rules {
+/**
+ * The option and `policy.json` in the home `dir` merged: `deny` is the union, `outOfBand` the
+ * stricter. The file is read on every call, so a new rule applies without a restart.
+ */
+export function readTighteningFor(option: unknown, dir: string): Rules {
   const fromOption = readTightening(option);
-  const file = fileTightening();
+  const file = fileTightening(dir);
   const fromFile = file && 't' in file ? file.t : null;
   const all = fromFile ? [fromOption, fromFile] : [fromOption];
 

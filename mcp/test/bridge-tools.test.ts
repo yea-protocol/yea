@@ -14,7 +14,7 @@ import {
   unixNow,
 } from '@yea-protocol/sdk';
 import { calendar, shop } from '@yea-protocol/sdk/examples';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { sanitize } from '../src/bridge/names.js';
 import {
   MAX_PENDING,
@@ -23,19 +23,15 @@ import {
   sortedJson,
 } from '../src/bridge/pending.js';
 import { MAX_TOOLS_PER_SERVICE } from '../src/bridge/tools.js';
-import { bridge } from '../src/bridge.js';
 import {
   agentClient,
+  bridgeIn,
   EACH_40,
   type Keys,
   keys,
   recorded,
 } from './bridge-helpers.js';
 import { connect, textOf } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 /** The 6-character suffix for a capability at a service. */
 const suffix = async (svc: string, cap: string) =>
@@ -86,7 +82,7 @@ async function toolsOf(k: Keys, services: Service[], o = {}) {
       url: `test:${i}`,
     })),
   );
-  const factory = await bridge(clients, o);
+  const factory = await bridgeIn(k, clients, o);
   const conn = await connect('2026', factory);
   const { tools } = await conn.client.listTools();
 
@@ -275,7 +271,7 @@ describe('what the bridge serves', () => {
         params: { 'a.b-c_d?': 'string' },
         run: () => 1,
       });
-    const factory = await bridge([await agentClient(k, recorded(svc).t)]);
+    const factory = await bridgeIn(k, [await agentClient(k, recorded(svc).t)]);
 
     expect(factory.tools).toEqual(['odd_fine']);
   });
@@ -297,7 +293,7 @@ describe('what the bridge serves', () => {
       });
     }
 
-    const factory = await bridge([await agentClient(k, recorded(svc).t)], {
+    const factory = await bridgeIn(k, [await agentClient(k, recorded(svc).t)], {
       tools: 'per-capability',
     });
     const conn = await connect('2026', factory);
@@ -323,7 +319,7 @@ describe('start-up', () => {
       ) => rec.t.request(f.verb === 'HELLO' ? { ...f, budget: 60 } : f, e),
       close() {},
     };
-    const factory = await bridge([await agentClient(k, tight)]);
+    const factory = await bridgeIn(k, [await agentClient(k, tight)]);
 
     expect(rec.verbs('EXPAND').length).toBeGreaterThan(0);
     expect(factory.tools.sort()).toEqual([
@@ -368,7 +364,7 @@ describe('start-up', () => {
       },
       close() {},
     };
-    const factory = await bridge([
+    const factory = await bridgeIn(k, [
       { client: await agentClient(k, endless), url: 'test:endless' },
     ]);
 
@@ -383,7 +379,7 @@ describe('start-up', () => {
     const trust = [k.principal.public];
 
     await expect(
-      bridge([
+      bridgeIn(k, [
         {
           client: await agentClient(k, recorded(shop({ trust })).t),
           url: 'yea://one',
@@ -405,7 +401,7 @@ describe('start-up', () => {
       request: () => Promise.reject(new Error('connection refused')),
       close() {},
     };
-    const factory = await bridge([
+    const factory = await bridgeIn(k, [
       {
         client: await agentClient(k, recorded(shop({ trust })).t),
         url: 'yea://shop',

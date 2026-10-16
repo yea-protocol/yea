@@ -2,7 +2,7 @@
  * The objective's shape: `serveStdio` with a factory the SDK may call more than once, and one
  * `yea()` context. The same job behaves the same on both eras.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   approve,
   connect,
@@ -12,10 +12,6 @@ import {
   textOf,
   world,
 } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 const ch1 = { charge: 'ch_1' };
 

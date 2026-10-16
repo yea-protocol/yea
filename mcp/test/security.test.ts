@@ -9,7 +9,7 @@ import {
   McpServer,
 } from '@modelcontextprotocol/server';
 import { atLeast, MemoryStore, quantity, type Risk } from '@yea-protocol/sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { stricter } from '../src/policy.js';
 import {
   approve,
@@ -21,10 +21,6 @@ import {
   textOf,
   world,
 } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 const ch1 = { charge: 'ch_1' };
 

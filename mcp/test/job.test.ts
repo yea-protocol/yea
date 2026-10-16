@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequestStateCodec } from '@modelcontextprotocol/server';
 import { exact, quantity } from '@yea-protocol/sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   approve,
   connect,
@@ -13,10 +13,6 @@ import {
   textOf,
   world,
 } from './helpers.js';
-
-afterEach(() => {
-  delete process.env.YEA_HOME;
-});
 
 const ch1 = { charge: 'ch_1' };
 const accept = (confirm: string) => ({
