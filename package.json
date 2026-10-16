@@ -38,9 +38,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@stylistic/eslint-plugin": "5.10.0",
-    "lefthook": "2.1.16",
-    "oxlint": "1.86.0",
+    "lefthook": "2.2.1",
+    "oxlint": "1.87.0",
     "typescript6": "npm:typescript@6.0.3",
-    "vue-tsc": "3.3.12"
+    "vue-tsc": "3.3.13"
   }
 }
