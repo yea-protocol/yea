@@ -132,9 +132,10 @@ This section covers files and folders; [Code style](#code-style) covers what goe
 index.
 
 **The principal key stays on the person's side.** Only person-facing commands (`init`,
-`grant`, `install`, `approve`, `talk`) load it. Code on the agent side (a tool host, the bridge,
-a server, `yea()`) is handed a home directory and never loads the principal key from it
-([ADR-0003](docs/adr/0003-the-principal-key-never-joins-an-agent-side-home.md)).
+`install`, `grant`, `approve`, `talk`, and test-drive's person loop) create it or sign with it.
+Code on the agent side (a tool host, the bridge, a server, `yea()`) is handed the agent's side
+of the home only and never loads the principal key; test-drive's tool host is the exception
+until #299 ([ADR-0003](docs/adr/0003-the-principal-key-never-joins-an-agent-side-home.md)).
 
 **One home for shared code.**
 

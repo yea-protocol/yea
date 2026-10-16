@@ -7,12 +7,12 @@ passed to every reader, that would load any of these. `ts/src/tools/commit.ts:53
 risk: test-drive's tool host loads the principal key inside the agent's tools, so a tool host
 that can reach the key can sign for the agent.
 
-Only person-facing commands load the principal key: `init`, `grant`, `install`, `approve`,
-`talk`, and test-drive's person loop. (`whoami` and `doctor` report on it, and `examples` and
-`openapi` read its public half to trust it; none of them sign.) A home that code on the agent
-side is given holds the agent's side only: a tool host, the bridge, a server and `yea()` never
-load the principal key from it. So the home stays a directory option (`yea({ home })`,
-`bridge({ home })`), not an object with key loaders.
+Only person-facing commands create the principal key or sign with it: `init`, `install`,
+`grant`, `approve`, `talk`, and test-drive's person loop. Four more load it only to read its
+public half, and never sign: `whoami` and `doctor` report on it, and `examples` and `openapi`
+trust it. A home that code on the agent side is given holds the agent's side only: a tool host,
+the bridge, a server and `yea()` never load the principal key from it. So the home stays a
+directory option (`yea({ home })`, `bridge({ home })`), not an object with key loaders.
 
 ## Considered options
 
@@ -22,7 +22,13 @@ load the principal key from it. So the home stays a directory option (`yea({ hom
 
 ## Consequences
 
-AGENTS.md rule 3 (never sign with the principal key on an agent's behalf) holds by
-construction: code on the agent side has no way to reach the key, rather than a rule not to.
-The `/node` home exports stay as documented. Test-drive's tool host breaks this today, so it
-goes (#299): test-drive drives the bridge and approves in its own loop, as the person.
+Once #299 lands, AGENTS.md rule 3 (never sign with the principal key on an agent's behalf)
+holds by construction: code on the agent side has no way to reach the key, rather than a rule
+not to. Until then test-drive's tool host is the exception: it loads the principal key inside
+the agent's tools. #299 removes it: test-drive drives the bridge and approves in its own loop,
+as the person.
+
+The home helpers that `@yea-protocol/sdk/node` exports (`home`, `agentKey`, `loadGrants`,
+`saveGrant`, `loadConsent`, `homeConsents`) stay public, as SPEC-mcp-ts documents them. None of
+them loads the principal key, and `principalKey` is not exported from any of the SDK's entry
+points.

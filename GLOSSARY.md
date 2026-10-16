@@ -38,11 +38,6 @@ _Avoid_: used map, spend tracker
 
 ### The agent side
 
-**Tool host**:
-The module that gives an AI agent YEA tools. The bridge behind `yea mcp` is the only one. It
-never holds the principal key, so it can't sign for the agent.
-_Avoid_: harness, test-drive host
-
 **Consent round**:
 What an agent does when a commit comes back `consent_required`: check that the service's request
 names the proposal the agent was shown, get the person's consent to that proposal, and commit
@@ -61,9 +56,14 @@ _Avoid_: consent cache, consents dir
 
 **Job consent**:
 A person's consent to one job plan, given somewhere else (`yea approve`) and kept by plan hash
-in the approval store, where the job's server looks for it on the next identical call. The
+in the job's store, where the job's server looks for it on the next identical call. The
 consent store keeps the other kind: consents to one proposal, for an agent's consent round.
 _Avoid_: consents dir (for either), round consent
+
+**Tool host**:
+The module that gives an AI agent YEA tools. It is on the agent's side, so it must be handed the
+agent's side of the home only, never the principal key, and can't sign for the agent.
+_Avoid_: harness
 
 ### Jobs (the framework)
 
