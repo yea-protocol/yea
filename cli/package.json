@@ -18,7 +18,7 @@
     "@yea-protocol/sdk": "0.1.0"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": "^0.133.0"
+    "@anthropic-ai/sdk": "^0.137.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {

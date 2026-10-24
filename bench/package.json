@@ -1,1 +1,1 @@
-{ "name": "yea-bench", "private": true, "type": "module", "dependencies": { "@modelcontextprotocol/client": "2.3.1", "@modelcontextprotocol/server": "2.3.1", "@yea-protocol/mcp": "*", "@yea-protocol/sdk": "*" }, "devDependencies": { "gpt-tokenizer": "^4" } }
+{"name":"yea-bench","private":true,"type":"module","dependencies":{"@modelcontextprotocol/client":"2.3.1","@modelcontextprotocol/server":"2.3.1","@yea-protocol/mcp":"*","@yea-protocol/sdk":"*"},"devDependencies":{"gpt-tokenizer":"^4.1.0"}}
