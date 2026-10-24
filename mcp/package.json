@@ -55,13 +55,13 @@
     }
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
+    "@anthropic-ai/sdk": "^0.137.0",
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/server": "2.3.1",
     "@types/node": "^22.20.5",
     "@yea-protocol/sdk": "0.1.0",
     "typescript": "^7.0",
-    "vitest": "^5.0.4",
+    "vitest": "^5.0.5",
     "zod": "^4.6.7"
   },
   "keywords": [
