@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-fastmcp = ["fastmcp>=4.0.10,<5"]
+fastmcp = ["fastmcp>=4.1.2,<5"]
 
 [project.urls]
 Homepage = "https://yea-protocol.github.io/yea/"
@@ -43,7 +43,7 @@ module-name = "yea_mcp"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "fastmcp>=4.0.10,<5",
+    "fastmcp>=4.1.2,<5",
 ]
 
 [tool.pytest.ini_options]

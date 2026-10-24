@@ -426,7 +426,7 @@ Each gets its own test and a note in the code:
 
 - `python/mcp/` is a new distribution, `yea-mcp`, imported as `yea_mcp`.
 - It depends on `yea-sdk` and `mcp>=2.2,<3`. The FastMCP adapter is the `yea-mcp[fastmcp]`
-  extra, with `fastmcp>=4.0.10,<5`.
+  extra, with `fastmcp>=4.1.2,<5`.
 - Python ≥ 3.10, like `yea-sdk`. The SDK core stays dependency-free; the MCP SDKs are
   dependencies of `yea-mcp` only.
 
