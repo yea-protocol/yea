@@ -10,6 +10,6 @@
     "@yea-protocol/sdk": "*"
   },
   "devDependencies": {
-    "wrangler": "^4.151.3"
+    "wrangler": "^4.152.0"
   }
 }
