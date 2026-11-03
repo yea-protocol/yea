@@ -12,9 +12,13 @@ updates:
       # The types must match the oldest Node the SDK supports (ts/package.json engines).
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-  - package-ecosystem: pip
-    directory: /python
+  - package-ecosystem: uv
+    directories: [/python, /python/mcp]
     schedule: { interval: weekly }
+    # Transitive pins (authlib, dnspython, joserfc) live only in uv.lock, so update those too,
+    # and raise a pyproject range only when a new version falls outside it.
+    allow: [{ dependency-type: all }]
+    versioning-strategy: increase-if-necessary
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
