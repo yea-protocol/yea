@@ -7,16 +7,17 @@ npx @yea-protocol/cli install                  # detects your AI tools and confi
 npx @yea-protocol/cli install --target cursor --local   # one tool, this project only
 ```
 
-::: warning Unreleased: point the bridge at a clone
-`@yea-protocol/cli` isn't on npm yet, and `install` starts the bridge with `npx -y @yea-protocol/cli mcp`, which fails until it's published. Until then, run `install` from a clone, and point each tool's `yea` MCP server at the clone instead (command `node`, args `/absolute/path/to/yea/cli/bin/yea.js mcp`). For Claude Code:
+::: warning Unreleased: install from a clone
+`@yea-protocol/cli` isn't on npm yet, so `npx @yea-protocol/cli` fails until it's published. Until then, install from a clone: run there, `install` registers the clone itself (this `node` and `cli/bin/yea.js`) with each tool.
 
 ```sh
 git clone https://github.com/yea-protocol/yea && cd yea
 npm ci && npm run build
-node cli/bin/yea.js install          # an agent key, the bridge and agent instructions
-claude mcp remove -s user yea        # then point Claude Code's "yea" entry at the clone
-claude mcp add -s user yea -- node "$PWD/cli/bin/yea.js" mcp
+node cli/bin/yea.js install          # an agent key, the bridge (this clone) and agent instructions
+node cli/bin/yea.js doctor           # starts what each tool would start, to check it
 ```
+
+Add services with `node cli/bin/yea.js add <url>`, and run `npm run build` again after a `git pull`.
 :::
 
 `install` (alias: `setup`) creates an agent key and registers the bridge with each tool. For Claude Code, Codex, Gemini CLI and Cursor it also writes a short, marker-fenced `YEA` block of agent instructions, because subagents don't see MCP server instructions. Add services with `yea add <url>`; the bridge serves everything in `yea services`.
@@ -38,7 +39,7 @@ Just trying it out? `yea install --with-principal` creates the principal key loc
 
 ## Configure by hand
 
-Every client runs the same command: `npx -y @yea-protocol/cli mcp`, optionally followed by service URLs. With no URLs, it serves the services you added with `yea add`.
+The configs below run the published package, `npx -y @yea-protocol/cli mcp`, optionally followed by service URLs. With no URLs, it serves the services you added with `yea add`. That's also what `yea install` writes in project files, which others may share; elsewhere it registers the yea that ran it, with absolute paths (see the [CLI reference](/reference/cli)).
 
 ::: danger Don't auto-approve destructive tools
 Whatever the client, don't add tools marked `destructiveHint` (each capability that changes something, and `yea_undo`) to an auto-approve or "trusted" list. Your client's own confirmation is a second check on top of your signed policy. Auto-approving tools marked `readOnlyHint` is fine: they're reads by definition.

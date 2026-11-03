@@ -822,40 +822,55 @@ describe('security regressions', () => {
     }
   });
 
-  it("[U12] yea grant refuses a caveat or holder that isn't what was typed, and signs nothing", () => {
+  // Three rounds of CLI runs: init, the refusals at once, then a grant. 20 s is a backstop for a
+  // runner busy with the other test files.
+  it("[U12] yea grant refuses a caveat or holder that isn't what was typed, and signs nothing", async () => {
     // A principal key is here, so only the refusal stops the signing.
     const home = mkdtempSync(join(tmpdir(), 'yea-badgrant-'));
     const yea = (...args: string[]) =>
-      spawnSync(process.execPath, [CLI, ...args], {
-        env: { ...process.env, YEA_HOME: home, YEA_PRINCIPAL_HOME: '' },
-        encoding: 'utf8',
-      });
+      new Promise<{ status: number | null; stdout: string; stderr: string }>(
+        (resolve) => {
+          const p = spawn(process.execPath, [CLI, ...args], {
+            env: { ...process.env, YEA_HOME: home, YEA_PRINCIPAL_HOME: '' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          let stdout = '';
+          let stderr = '';
+
+          p.stdout.on('data', (d) => (stdout += d));
+          p.stderr.on('data', (d) => (stderr += d));
+          p.on('close', (status) => resolve({ status, stdout, stderr }));
+        },
+      );
     const grants = () =>
       existsSync(join(home, 'grants')) ? readdirSync(join(home, 'grants')) : [];
 
-    expect(yea('init').status).toBe(0);
+    expect((await yea('init')).status).toBe(0);
 
-    for (const args of [
-      ['--verbs', 'ASK,FOO'],
-      ['--verbs', ''],
-      ['--svc', ''],
-      ['--can', ''],
-      ['--to', 'notakey'],
-      ['--to='],
-      ['--svc', 'cal.example', 'shop.example'],
-      ['--exp', '99999999999999999999d'],
-    ]) {
-      const r = yea('grant', ...args);
+    // All refused at once: none may sign, so none waits on another.
+    const refused = await Promise.all(
+      [
+        ['--verbs', 'ASK,FOO'],
+        ['--verbs', ''],
+        ['--svc', ''],
+        ['--can', ''],
+        ['--to', 'notakey'],
+        ['--to='],
+        ['--svc', 'cal.example', 'shop.example'],
+        ['--exp', '99999999999999999999d'],
+      ].map(async (args) => ({ args, r: await yea('grant', ...args) })),
+    );
 
+    for (const { args, r } of refused) {
       expect(r.status, args.join(' ')).toBe(2);
       expect(r.stdout, args.join(' ')).toBe('');
       expect(r.stderr, args.join(' ')).toMatch(/^yea: .* for 'grant'\n/);
       expect(grants(), args.join(' ')).toEqual([]);
     }
 
-    expect(yea('grant', '--verbs', 'ask,INTENT').status).toBe(0);
+    expect((await yea('grant', '--verbs', 'ask,INTENT')).status).toBe(0);
     expect(grants()).toHaveLength(1);
-  });
+  }, 20_000);
 
   it('[U8] a risk caveat fails closed, hard, on a proposal with an unknown risk', async () => {
     const g = await P.issueGrant({
@@ -4214,5 +4229,89 @@ describe('Approval never covers content Lens cuts (#213)', () => {
 
     expect(shown).toContain('attacker@evil.test');
     expect(shown).not.toContain('…');
+  });
+});
+
+describe("yea doctor runs nothing it shouldn't (#321)", () => {
+  /** A user's home and a project folder, and doctor run in the project. */
+  function doctorIn(project: string, home: string) {
+    return spawnSync(process.execPath, [CLI, 'doctor'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        YEA_HOME: join(home, '.yea'),
+        YEA_PRINCIPAL_PUB: '',
+      },
+    });
+  }
+
+  interface Entry {
+    command: string;
+    args: string[];
+  }
+
+  /** A node command that writes its working folder to `file`. */
+  const writesCwd = (file: string): Entry => ({
+    command: process.execPath,
+    args: [
+      '-e',
+      `require('fs').writeFileSync(${JSON.stringify(file)}, process.cwd())`,
+    ],
+  });
+
+  it("doesn't start a project file's own command for yea", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'yea-home-')));
+    const project = realpathSync(mkdtempSync(join(tmpdir(), 'yea-proj-')));
+    const ran = join(project, 'ran');
+
+    mkdirSync(join(project, '.vscode'));
+    writeFileSync(
+      join(project, '.vscode', 'mcp.json'),
+      JSON.stringify({ servers: { yea: writesCwd(ran) } }),
+    );
+
+    const r = doctorIn(project, home);
+
+    expect(r.stdout).toMatch(/^! VS Code: .*doctor won't run/m);
+    expect(existsSync(ran)).toBe(false);
+  });
+
+  it.each([
+    [
+      'args that are not all strings',
+      (e: Entry) => ({ ...e, args: [...e.args, 1] }),
+    ],
+    ['an env that is not all strings', (e: Entry) => ({ ...e, env: { A: 1 } })],
+  ])('runs nothing for an entry with %s: it fails closed', (_, spoil) => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'yea-home-')));
+    const ran = join(home, 'ran');
+
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({ mcpServers: { yea: spoil(writesCwd(ran)) } }),
+    );
+
+    const r = doctorIn(home, home);
+
+    expect(r.stdout).toMatch(/^✗ Claude Code: can't read its "yea" entry: /m);
+    expect(r.status).toBe(1);
+    expect(existsSync(ran)).toBe(false);
+  });
+
+  it('starts a registered command in the home folder, not the project it runs in', () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'yea-home-')));
+    const project = realpathSync(mkdtempSync(join(tmpdir(), 'yea-proj-')));
+    const ran = join(home, 'ran');
+
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({ mcpServers: { yea: writesCwd(ran) } }),
+    );
+    doctorIn(project, home);
+
+    expect(readFileSync(ran, 'utf8')).toBe(home);
   });
 });

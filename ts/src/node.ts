@@ -1,5 +1,4 @@
-/** Node transports: TCP (yea://), TLS (yeas://), stdio, and an HTTP bridge server. */
-import { spawn } from 'node:child_process';
+/** Node transports: TCP (yea://), TLS (yeas://), stdio (in node/), and an HTTP bridge server. */
 import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
 import tls from 'node:tls';
@@ -12,6 +11,7 @@ import {
 } from './client.js';
 import { errorLine, frameId } from './frames.js';
 import { fetchHandler } from './http.js';
+import { stdioTransport } from './node/stdio.js';
 import { serveCapped } from './serve-fetch.js';
 import type { Service } from './service.js';
 
@@ -214,22 +214,7 @@ export async function transport(
   }
 
   if (url.startsWith('stdio:')) {
-    const [cmd, ...args] = url.slice(6).trim().split(/\s+/);
-    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'inherit'] });
-    const t = lines(
-      (s) => child.stdin.write(s),
-      () => child.kill(),
-    );
-
-    child.on('error', (e) => t.fail(e));
-    child.stdin.on('error', () => {
-      // EPIPE after the child exits; the 'exit' handler already failed the transport
-    });
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (c: string) => t.feed(c));
-    child.on('exit', () => t.fail(new Error('service process exited')));
-
-    return t;
+    return stdioTransport(url.slice(6));
   }
 
   const u = new URL(url);

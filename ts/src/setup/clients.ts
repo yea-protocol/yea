@@ -2,13 +2,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
+import { dropTable, readTable, writeTable } from './codex-config.js';
 import { removeBlock, writeBlock } from './instructions.js';
-import { has, jsonTarget, type Target } from './target.js';
+import { has, jsonTarget, type Scope, type Target } from './target.js';
 
 const devinDir = () =>
   join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'devin');
 const appData = () =>
   process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+const codexConfig = () => join(homedir(), '.codex', 'config.toml');
+const readText = (file: string) =>
+  existsSync(file) ? readFileSync(file, 'utf8') : '';
 const claudeDesktopConfig = () =>
   platform() === 'darwin'
     ? join(
@@ -21,6 +25,10 @@ const claudeDesktopConfig = () =>
     : platform() === 'win32'
       ? join(appData(), 'Claude', 'claude_desktop_config.json')
       : join(homedir(), '.config', 'Claude', 'claude_desktop_config.json');
+
+/** Where Codex reads agent instructions: the project's AGENTS.md with --local, else its own. */
+const codexAgents = (s: Scope) =>
+  s.local ? join(s.cwd, 'AGENTS.md') : join(homedir(), '.codex', 'AGENTS.md');
 
 export const CLIENTS: Record<string, Target> = {
   // alwaysLoad keeps the tools out of Claude Code's deferred tool search.
@@ -39,6 +47,8 @@ export const CLIENTS: Record<string, Target> = {
     name: 'Claude Desktop',
     file: claudeDesktopConfig,
     detect: () => existsSync(dirname(claudeDesktopConfig())),
+    project: () => false,
+    gui: true,
   }),
   cursor: jsonTarget({
     name: 'Cursor',
@@ -48,6 +58,7 @@ export const CLIENTS: Record<string, Target> = {
         : join(homedir(), '.cursor', 'mcp.json'),
     detect: () => existsSync(join(homedir(), '.cursor')),
     block: (s) => (s.local ? join(s.cwd, '.cursor', 'rules', 'yea.mdc') : ''),
+    gui: true,
   }),
   // Windsurf became Devin Desktop; its Cascade agent reads $XDG_CONFIG_HOME/devin/mcp_config.json. Keep the legacy path if that's what exists.
   windsurf: jsonTarget({
@@ -60,6 +71,8 @@ export const CLIENTS: Record<string, Target> = {
     detect: () =>
       existsSync(join(homedir(), '.codeium', 'windsurf')) ||
       existsSync(devinDir()),
+    project: () => false,
+    gui: true,
   }),
   gemini: jsonTarget({
     name: 'Gemini CLI',
@@ -70,77 +83,46 @@ export const CLIENTS: Record<string, Target> = {
         ? join(s.cwd, 'GEMINI.md')
         : join(homedir(), '.gemini', 'GEMINI.md'),
   }),
+  // Its config is always the project's .vscode/mcp.json.
   vscode: jsonTarget({
     name: 'VS Code',
     file: (s) => join(s.cwd, '.vscode', 'mcp.json'),
     detect: () => has('code'),
+    project: () => true,
+    gui: true,
     key: 'servers',
     extra: { type: 'stdio' },
   }),
+  // Its config is always ~/.codex/config.toml; --local only moves the instructions.
   codex: {
     name: 'Codex CLI',
     detect: () => existsSync(join(homedir(), '.codex')),
-    installed: () =>
-      existsSync(join(homedir(), '.codex', 'config.toml')) &&
-      /^\[mcp_servers\.yea\]/m.test(
-        readFileSync(join(homedir(), '.codex', 'config.toml'), 'utf8'),
-      ),
-    install: (s) => {
-      const file = join(homedir(), '.codex', 'config.toml');
-      const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
-      const out: string[] = [];
+    placement: () => ({ project: false, gui: false }),
+    registered: () => readTable(readText(codexConfig())),
+    install: (s, bridge) => {
+      const file = codexConfig();
 
-      if (!/^\[mcp_servers\.yea\]/m.test(current)) {
-        mkdirSync(dirname(file), { recursive: true });
-        writeFileSync(
-          file,
-          current +
-            `${current && !current.endsWith('\n') ? '\n' : ''}\n[mcp_servers.yea]\ncommand = "npx"\nargs = ["-y", "@yea-protocol/cli", "mcp"]\n`,
-        );
-      }
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, writeTable(readText(file), bridge));
 
-      out.push(`MCP server "yea" → ${file}`);
-      out.push(
-        `agent instructions → ${writeBlock(s.local ? join(s.cwd, 'AGENTS.md') : join(homedir(), '.codex', 'AGENTS.md'))}`,
-      );
-
-      return out;
+      return [
+        `MCP server "yea" → ${file}`,
+        `agent instructions → ${writeBlock(codexAgents(s))}`,
+      ];
     },
     uninstall: (s) => {
-      const file = join(homedir(), '.codex', 'config.toml');
+      const file = codexConfig();
+      const cur = readText(file);
+      const next = dropTable(cur);
       const out: string[] = [];
 
-      if (existsSync(file)) {
-        const cur = readFileSync(file, 'utf8');
-        // Drop the [mcp_servers.yea] table: its header line and every line up to the next table header.
-        const lines = cur.split('\n');
-        const i = lines.findIndex((l) => l.trim() === '[mcp_servers.yea]');
-        let next = cur;
-
-        if (i >= 0) {
-          let j = i + 1;
-
-          while (j < lines.length && !/^\s*\[/.test(lines[j])) {
-            j++;
-          }
-
-          next = [...lines.slice(0, i), ...lines.slice(j)]
-            .join('\n')
-            .replace(/\n{3,}/g, '\n\n');
-        }
-
-        if (next !== cur) {
-          writeFileSync(file, next);
-          out.push(`removed [mcp_servers.yea] from ${file}`);
-        }
+      if (next !== cur) {
+        writeFileSync(file, next);
+        out.push(`removed [mcp_servers.yea] from ${file}`);
       }
 
-      const agents = s.local
-        ? join(s.cwd, 'AGENTS.md')
-        : join(homedir(), '.codex', 'AGENTS.md');
-
-      if (removeBlock(agents)) {
-        out.push(`removed instructions from ${agents}`);
+      if (removeBlock(codexAgents(s))) {
+        out.push(`removed instructions from ${codexAgents(s)}`);
       }
 
       return out;

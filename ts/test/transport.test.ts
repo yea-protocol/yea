@@ -1,4 +1,7 @@
+import { readFileSync, writeFileSync } from 'node:fs';
 import { type AddressInfo, createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { calendar } from '../../examples/calendar.ts';
 import { queryBudget } from '../src/http.js';
@@ -177,3 +180,58 @@ describe('transports', async () => {
     ).toBe('bad_frame');
   });
 });
+
+describe('the stdio transport', () => {
+  /** Whether process `pid` is still running. */
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it('stops a service that ignores SIGTERM, with SIGKILL soon after close()', async () => {
+    const svc = join(tmpdir(), `yea-stubborn-${process.pid}-${Date.now()}.mjs`);
+    const pidFile = `${svc}.pid`;
+
+    writeFileSync(
+      svc,
+      // It also lets go of the test's stderr, so a regression fails rather than hangs.
+      `import { closeSync, writeFileSync } from 'node:fs';
+process.on('SIGTERM', () => {});
+writeFileSync(process.argv[2], String(process.pid));
+closeSync(2);
+setInterval(() => {}, 1000);
+`,
+    );
+
+    const c = await connect(`stdio:${process.execPath} ${svc} ${pidFile}`);
+    const pid = await until(() => Number(readFileSync(pidFile, 'utf8')));
+
+    closers.push(() => alive(pid) && process.kill(pid, 'SIGKILL'));
+    c.close();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(alive(pid)).toBe(true);
+    await until(() => !alive(pid) || undefined);
+  }, 10_000);
+});
+
+/** `f()`'s first truthy value, trying every 50 ms until it has one. */
+async function until<T>(f: () => T | undefined): Promise<T> {
+  for (;;) {
+    try {
+      const v = f();
+
+      if (v) {
+        return v;
+      }
+    } catch {
+      // not there yet
+    }
+
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}

@@ -5,6 +5,19 @@
  */
 import { CLIENTS } from './setup/clients.js';
 
+export {
+  BadEntry,
+  type BridgeCommand,
+  bridgeFor,
+  checkoutRoot,
+  describeBridge,
+  isPortableBridge,
+  launchPath,
+  runningBridge,
+  shellWord,
+  unbuilt,
+} from './setup/bridge-command.js';
+
 export { CLIENTS } from './setup/clients.js';
 export { AGENT_BLOCK } from './setup/instructions.js';
 
@@ -14,7 +27,7 @@ export {
   removeService,
 } from './setup/registry.js';
 
-export type { Scope } from './setup/target.js';
+export type { Scope, Target } from './setup/target.js';
 
 export function detectedClients(): string[] {
   return Object.entries(CLIENTS)
