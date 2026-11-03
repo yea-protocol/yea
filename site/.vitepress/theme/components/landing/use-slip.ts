@@ -2,8 +2,10 @@
  * The hero's state: which example is chosen, where its run has got to, and the slip. The page
  * paints the recorded dinner example (so it needs no JavaScript), loads the real core when the
  * browser is idle, then runs the chosen example live from the start (run-scene.ts). Once live
- * the visitor can approve, undo, start again or pick another example, and the slip says when
- * the proposal, the undo window or the example policy has run out instead of failing.
+ * the visitor can approve or decline, undo, start again or pick another example, and the slip
+ * says when the proposal, the undo window or the example policy has run out instead of failing.
+ *
+ * Its runtime imports name their `.ts` files, so the tests can run its steps under Node.
  */
 import {
   onMounted,
@@ -13,10 +15,11 @@ import {
   shallowRef,
   type UnwrapNestedRefs,
 } from 'vue';
-import { stopIfLapsed, watchDeadlines } from './deadlines';
-import { RECORDED } from './exchange';
-import { runScene } from './run-scene';
-import { SCENES, type SceneKey, type ServiceKey } from './scenes';
+import { declinedLine } from '../proposal-facts.ts';
+import { stopIfLapsed, watchDeadlines } from './deadlines.ts';
+import { RECORDED } from './exchange.ts';
+import { runScene } from './run-scene.ts';
+import { SCENES, type SceneKey, type ServiceKey } from './scenes.ts';
 import type { ServiceFactory, Session, SessionSdk, Waiting } from './session';
 import {
   type ReceiptView,
@@ -25,13 +28,13 @@ import {
   type SlipView,
   type UndoneView,
   undoneView,
-} from './slip-view';
+} from './slip-view.ts';
 import type { Progress } from './thread';
 
 /**
  * `loading` until the core is live; `unavailable` if it couldn't start at all; `checking`
- * while a run is on its way to its outcome; `expired` when something ran out; `error` when a
- * step failed.
+ * while a run is on its way to its outcome; `declined` when the visitor said no; `expired` when
+ * something ran out; `error` when a step failed.
  */
 export type Phase =
   | 'loading'
@@ -39,6 +42,7 @@ export type Phase =
   | 'checking'
   | 'waiting'
   | 'approving'
+  | 'declined'
   | 'committed'
   | 'undoing'
   | 'undone'
@@ -56,6 +60,8 @@ export interface SlipState {
   slip: ShallowRef<SlipView>;
   receipt: ShallowRef<ReceiptView | null>;
   undone: ShallowRef<UndoneView | null>;
+  /** Whether the visitor declined this run's proposal, for the thread. */
+  declined: Ref<boolean>;
   /** The live region's one line: empty until something happens. */
   status: Ref<string>;
   /** Why the slip stopped: a lapse, a failed step, or the core not starting. */
@@ -155,19 +161,28 @@ async function start(state: SlipState, attach: (l: Live) => void) {
   }
 }
 
-/** The visitor approves: sign the consent, commit, and show the receipt. */
-async function approve(state: SlipState, live: Live) {
+/**
+ * The proposal still waiting on the visitor and the session to answer it with, or null when
+ * nothing waits (or it just lapsed, which stops the slip).
+ */
+function waitingOn(state: SlipState, live: Live) {
   const w = live.waiting;
   const s = live.session;
 
-  if (
-    !w ||
-    !s ||
-    state.phase.value !== 'waiting' ||
-    stopIfLapsed(state, live)
-  ) {
+  return w && s && state.phase.value === 'waiting' && !stopIfLapsed(state, live)
+    ? { w, s }
+    : null;
+}
+
+/** The visitor approves: sign the consent, commit, and show the receipt. */
+async function approve(state: SlipState, live: Live) {
+  const on = waitingOn(state, live);
+
+  if (!on) {
     return;
   }
+
+  const { w, s } = on;
 
   const run = live.run;
 
@@ -184,6 +199,25 @@ async function approve(state: SlipState, live: Live) {
     state.phase.value = 'committed';
     state.status.value = `Approved. Receipt ${r.id}: ${scene.done} ${r.undoUntil ? `You can undo it until ${r.undoUntil}.` : "It can't be undone."}`;
   });
+}
+
+/**
+ * The visitor declines: the consent round ends with nothing signed and no second COMMIT, and
+ * the proposal is left to expire at the service. Exported for the tests.
+ */
+export async function decline(state: SlipState, live: Live) {
+  const on = waitingOn(state, live);
+
+  if (!on) {
+    return;
+  }
+
+  const { w, s } = on;
+
+  live.waiting = null;
+  state.declined.value = true;
+  state.status.value = `Declined. ${declinedLine(w.proposal.expires)}`;
+  await step(state, live, 'declined', () => s.decline(w));
 }
 
 async function undo(state: SlipState, live: Live) {
@@ -223,6 +257,7 @@ export function useSlip() {
     slip: shallowRef<SlipView>(RECORDED.slip),
     receipt: shallowRef<ReceiptView | null>(null),
     undone: shallowRef<UndoneView | null>(null),
+    declined: ref(false),
     status: ref(''),
     error: ref(''),
   };
@@ -243,6 +278,7 @@ export function useSlip() {
   return {
     ...state,
     approve: withLive(approve),
+    decline: withLive(decline),
     undo: withLive(undo),
     again: withLive(runScene),
     /** Pick an example; once the core is live it runs from the start. */

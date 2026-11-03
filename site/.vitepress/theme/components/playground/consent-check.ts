@@ -14,11 +14,15 @@ import type {
 import type { Core } from './model.ts';
 import type { ReceivedProposal } from './seen.ts';
 
-/** Where the round stands: what the human signs once they approve, or why it can't be approved. */
+/**
+ * Where the round stands: what the human signs once they approve, why it can't be approved, or
+ * that they declined, with when the proposal they left unsigned expires (unix seconds).
+ */
 export type ConsentCheck =
   | { state: 'checking' }
   | { state: 'ok'; consent: ConsentRequest }
-  | { state: 'refused'; why: string };
+  | { state: 'refused'; why: string }
+  | { state: 'declined'; expires: number };
 
 /** A round waiting on the human: what they're asked, how to answer, and how it ends. */
 export interface Waiting {

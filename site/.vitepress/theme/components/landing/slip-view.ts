@@ -6,7 +6,7 @@
  * load it under Node.
  */
 import type { Proposal, Receipt } from '@yea-protocol/sdk';
-import { type FactsKit, proposalFacts } from '../proposal-facts.ts';
+import { type FactsKit, proposalFacts, utcMinute } from '../proposal-facts.ts';
 
 export type SlipKit = FactsKit;
 
@@ -41,13 +41,6 @@ export interface UndoneView {
   id: string;
   undoes: string;
 }
-
-/** A unix time as `2026-09-29 14:00 UTC`. */
-export const utcMinute = (unix: number) =>
-  `${new Date(unix * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-
-/** A unix time as `14:00 UTC`. */
-export const utcClock = (unix: number) => utcMinute(unix).slice(11);
 
 /** Where a proposal comes from and, once known, why it waits on the person. */
 export interface SlipSource {

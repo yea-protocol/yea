@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The hero's proposal slip: the proposal the chosen example's service made. The top half is
- * what it proposes; the tear-off stub below is the consent the visitor signs, then the
- * receipt, then the undo. It arrives once the thread above it has played, and its colour
+ * what it proposes; the tear-off stub below is the consent the visitor signs or declines,
+ * then the receipt, then the undo. It arrives once the thread above it has played, and its colour
  * follows the state. Why it asks is the thread's last message, so the slip doesn't repeat it.
  */
 import { computed, useId } from 'vue';
@@ -24,6 +24,7 @@ const CHIP: Record<Exclude<Phase, 'loading'>, string> = {
   checking: 'Checking your policy…',
   waiting: 'Waiting on you',
   approving: 'Waiting on you',
+  declined: 'Declined',
   committed: '✓ Committed',
   undoing: '✓ Committed',
   undone: 'Undone',

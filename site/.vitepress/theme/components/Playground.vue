@@ -4,11 +4,11 @@
  * You play the agent (left); the right shows exactly what a model would read.
  * This file lays the parts out; they and their state live in playground/.
  */
-import { computed, ref, useId, useTemplateRef, watch } from 'vue';
+import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue';
 import ConsentCard from './playground/ConsentCard.vue';
 import HistoryList from './playground/HistoryList.vue';
 import LoadingPanes from './playground/LoadingPanes.vue';
-import { replySummary, requestSummary } from './playground/labels';
+import { statusLine } from './playground/labels';
 import { lensView } from './playground/lens-view';
 import PolicyPanel from './playground/PolicyPanel.vue';
 import PresetBar from './playground/PresetBar.vue';
@@ -45,6 +45,10 @@ const {
   consentFacts,
   consentCheck,
   approveConsent,
+  declineConsent,
+  declinedExchanges,
+  askable,
+  askAgain,
 } = usePlayground();
 
 const view = computed(() =>
@@ -52,11 +56,11 @@ const view = computed(() =>
 );
 
 // The exchange the page opens on isn't announced: the live region starts speaking at the
-// first change of the exchange on show after that.
+// first change of the exchange on show after that, or at a Decline.
 const announce = ref(false);
 
 watch(
-  current,
+  [current, declinedExchanges],
   () => {
     announce.value = opened.value;
   },
@@ -64,23 +68,34 @@ watch(
 );
 
 /**
- * One line for the live region: the exchange's number, what was sent and what came back.
- * The number makes a repeat of the same request and reply a change, so it is announced too.
+ * One line for the live region: the exchange's number, what was sent and what came back, in
+ * History's words. The number makes a repeat of the same request and reply a change, so it is
+ * announced too, and a Decline changes the line though the exchange on show stays.
  */
 const status = computed(() => {
   const x = current.value;
 
-  return announce.value && x
-    ? `${x.n}. ${requestSummary(x.request)}: ${replySummary(x.reply)}`
-    : '';
+  return announce.value && x ? statusLine(x, declinedExchanges.value) : '';
 });
 const replyHeading = useId();
+
+const replyPane = useTemplateRef<HTMLElement>('replyPane');
 
 useReplyScroll({
   count: () => log.value.length,
   enabled: () => opened.value,
-  pane: useTemplateRef<HTMLElement>('replyPane'),
+  pane: replyPane,
 });
+
+/**
+ * Ask again after a decline. The card's button goes with the exchange, so focus moves on to
+ * the new card's first button once a new proposal waits.
+ */
+async function again() {
+  await askAgain();
+  await nextTick();
+  replyPane.value?.querySelector<HTMLElement>('.consent button')?.focus();
+}
 
 function onKey(e: KeyboardEvent) {
   if (isSendShortcut(e)) {
@@ -115,11 +130,11 @@ function onKey(e: KeyboardEvent) {
         <h2 :id="replyHeading" class="visually-hidden">What the model reads</h2>
         <template v-if="current">
           <ReplyPane v-if="view" :exchange="current" :view="view" />
-          <ConsentCard v-if="consentRequest" :message="consentMessage" :service="consentRequest.service" :check="consentCheck" :facts="consentFacts" @approve="approveConsent()" />
+          <ConsentCard v-if="consentRequest" :message="consentMessage" :service="consentRequest.service" :check="consentCheck" :facts="consentFacts" :askable="askable !== null" @approve="approveConsent()" @decline="declineConsent()" @again="again()" />
           <QuickActions v-else :exchange="current" @act="act" @choose="choose" />
         </template>
 
-        <HistoryList :log="log" :active="current ? current.n : null" @select="selected = $event" />
+        <HistoryList :log="log" :active="current ? current.n : null" :declined="declinedExchanges" @select="selected = $event" />
       </section>
     </div>
 

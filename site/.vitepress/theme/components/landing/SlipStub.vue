@@ -1,12 +1,14 @@
 <script setup lang="ts">
 /**
- * The slip's tear-off stub: the consent the visitor signs (the proposal's hash and one
- * Approve button), then the receipt with Undo, then the undo; its words come from the chosen
- * example. Once the core is live, Start again is there whenever nothing is in flight. When a
+ * The slip's tear-off stub: the consent the visitor signs (the proposal's hash, Approve, and
+ * Decline beside it, each enabled only while the proposal waits on them), then the receipt
+ * with Undo, then the undo; its words come from the chosen example. Once the core is live,
+ * Start again is there whenever nothing is in flight and nothing waits on the visitor. When a
  * button is replaced by the next one, focus moves to it.
  */
 import { withBase } from 'vitepress';
 import { computed, nextTick, useTemplateRef, watch } from 'vue';
+import { declinedLine } from '../proposal-facts';
 import { noRepeat } from './keys';
 import { SCENES } from './scenes';
 import { keepDates } from './slip-view';
@@ -23,7 +25,7 @@ const scene = computed(() => SCENES[props.s.scene]);
 /** Set when the visitor presses a button, until its step ends and the next button has focus. */
 let acted = false;
 
-function press(what: 'approve' | 'undo' | 'again') {
+function press(what: 'approve' | 'decline' | 'undo' | 'again') {
   acted = true;
   void props.s[what]();
 }
@@ -83,8 +85,8 @@ watch(
       <p class="receipt">Receipt <span class="mono">{{ s.receipt?.id }}</span></p>
       <pre class="result">{{ s.receipt?.result.join('\n') }}</pre>
       <div class="row">
-        <button class="btn" type="button" :disabled="s.phase === 'undoing'" @click="press('undo')">{{ s.phase === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
-        <button class="btn quiet" type="button" :disabled="s.phase === 'undoing'" @click="press('again')">Start again</button>
+        <button class="btn" type="button" :disabled="s.phase === 'undoing'" @keydown.enter="noRepeat" @click="press('undo')">{{ s.phase === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
+        <button class="btn quiet" type="button" :disabled="s.phase === 'undoing'" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
       </div>
       <p class="fine">Undo asks {{ s.slip.service }} to reverse it; it issues a new receipt.</p>
     </template>
@@ -93,15 +95,22 @@ watch(
       <p class="line">{{ scene.undone }}</p>
       <p class="receipt">Receipt <span class="mono">{{ s.undone?.id }}</span> reverses <span class="mono">{{ s.undone?.undoes }}</span>.</p>
       <div class="row">
-        <button class="btn" type="button" @click="press('again')">Start again</button>
+        <button class="btn" type="button" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
         <a :href="withBase('/guide/mcp-typescript')">Put this in front of your own tools</a>
+      </div>
+    </template>
+
+    <template v-else-if="s.phase === 'declined'">
+      <p class="line">{{ declinedLine(s.slip.expires) }}</p>
+      <div class="row">
+        <button class="btn" type="button" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
       </div>
     </template>
 
     <template v-else-if="s.phase === 'expired' || s.phase === 'error'">
       <p :class="['line', { err: s.phase === 'error' }]">{{ s.error }}</p>
       <div class="row">
-        <button class="btn" type="button" @click="press('again')">Start again</button>
+        <button class="btn" type="button" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
       </div>
     </template>
 
@@ -110,7 +119,7 @@ watch(
       <p class="hash">{{ s.slip.hash }}</p>
       <div class="row">
         <button :class="['btn', 'consent', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
-        <button v-if="s.live && s.phase === 'waiting'" class="btn quiet" type="button" @click="press('again')">Start again</button>
+        <button :class="['btn', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('decline')">Decline</button>
       </div>
       <p v-if="s.phase === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
       <p v-else class="fine">{{ fine }}</p>

@@ -9,7 +9,7 @@ import type {
   Receipt,
   Verb,
 } from '@yea-protocol/sdk';
-import type { ServiceKey } from './model';
+import type { Exchange, ServiceKey } from './model';
 
 /** A proposal from a PROPOSALS reply. */
 export interface ReceivedProposal extends Proposal {
@@ -128,4 +128,28 @@ export function targetsOf(
     default:
       return [];
   }
+}
+
+/**
+ * The INTENT whose PROPOSALS held the proposal that `x` commits, and its place in them: where
+ * to ask again from after a decline. Null for anything else.
+ */
+export function proposedBy(
+  log: readonly Pick<Exchange, 'request' | 'reply'>[],
+  x: Pick<Exchange, 'request'>,
+): { intent: Pick<Exchange, 'request' | 'reply'>; at: number } | null {
+  const id = x.request.verb === 'COMMIT' ? x.request.proposal : null;
+
+  for (const e of [...log].reverse()) {
+    const at =
+      e.request.verb === 'INTENT' && e.reply.kind === 'PROPOSALS'
+        ? e.reply.proposals.findIndex((p) => p.id === id)
+        : -1;
+
+    if (id && at >= 0) {
+      return { intent: e, at };
+    }
+  }
+
+  return null;
 }

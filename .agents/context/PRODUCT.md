@@ -65,7 +65,9 @@ something: following a guide, checking the spec, driving the playground. One sur
 - **Light first.** The site follows the reader's OS theme. Pages are designed and reviewed in the
   light theme first, and both themes must meet WCAG AA.
 - **The landing lets the visitor say yes.** Its hero is a real proposal the visitor approves,
-  then sees the receipt, then undoes, on the real core. The page is ordered by protocol state,
+  then sees the receipt, then undoes, on the real core. They can also decline it: nothing is
+  signed and the proposal runs out, so "you decide" holds both ways (as on the playground's
+  consent card). The page is ordered by protocol state,
   shows its evidence as one chart with the caveats beside it, and offers two paths: "I have an MCP
   server" (the framework, marked unreleased) and "I'm building an agent or service".
 - **One voice in type.** A single family carries all human-facing text; machine output keeps

@@ -63,6 +63,8 @@ const consentFields = (c: ReturnType<typeof useConsent>) => ({
   consentFacts: c.facts,
   consentCheck: c.check,
   approveConsent: c.approve,
+  declineConsent: c.decline,
+  declinedExchanges: c.declined,
 });
 
 interface OpenDeps {
@@ -117,7 +119,7 @@ export function usePlayground() {
     markAuto: exchanges.markAuto,
     commit: consent.commit,
   });
-  const shortcuts = useShortcuts({ form, current, examples, send });
+  const shortcuts = useShortcuts({ form, examples, send, ...exchanges });
 
   const { failed, opened } = openOnMount({
     runtime,
@@ -143,9 +145,7 @@ export function usePlayground() {
     targets: request.targets,
     pickCapability: request.pickCapability,
     parsedParams,
-    act: shortcuts.act,
-    choose: shortcuts.choose,
-    runPreset: shortcuts.runPreset,
+    ...shortcuts,
     ...consentFields(consent),
   };
 }

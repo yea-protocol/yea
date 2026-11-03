@@ -60,9 +60,11 @@ export interface After {
   approved: { id: string; undoUntil: string | null } | null;
   /** The undo's receipt and the receipt it reverses. */
   undone: { id: string; undoes: string } | null;
+  /** When the declined proposal can no longer be committed, as `14:05 UTC`. */
+  declined: { until: string } | null;
 }
 
-const NONE: After = { approved: null, undone: null };
+const NONE: After = { approved: null, undone: null, declined: null };
 
 export function thread(p: Progress, after: After = NONE): Message[] {
   return [...lead(p), ...acted(p, after)];
@@ -120,11 +122,23 @@ function answer(scene: Scene, outcome: Outcome | null, said: string): Message {
   };
 }
 
-/** The visitor's approval and the receipt it gets, then the undo. */
+/**
+ * The visitor's approval and the receipt it gets, then the undo; or their decline, which they
+ * tell their own agent, since the protocol has no frame for it.
+ */
 function acted(p: Progress, after: After): Message[] {
   const { scene, proposals, outcome } = p;
   const out: Message[] = [];
   const r = after.approved;
+
+  if (outcome === 'asks' && after.declined) {
+    out.push({
+      from: 'You → your agent',
+      text: `You decline. Nothing is signed or sent, so ${scene.host} can't commit it after ${after.declined.until}.`,
+      wire: '',
+      tone: 'plain',
+    });
+  }
 
   if (outcome === 'asks' && r) {
     out.push(

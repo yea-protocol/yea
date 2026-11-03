@@ -2,7 +2,7 @@
  * One run of a landing example on the real core: the person signs a policy for their agent,
  * the agent sends an intent to an example service and commits the first proposal, and the
  * commit either goes through inside the policy or waits on the person, who can approve that
- * exact proposal. Either way it can then be undone.
+ * exact proposal or decline it. Either way a commit can then be undone.
  *
  * The SDK and the service come in as arguments (loaded lazily in the page, from the build in
  * the recording script), so this file has no runtime imports.
@@ -261,6 +261,20 @@ export class Session {
       lens: out.reply.lens,
       consentGrant: out.consent,
     };
+  }
+
+  /**
+   * The person declines: the round ends without signing anything or committing again, and the
+   * proposal is left to expire at the service.
+   */
+  async decline(w: Waiting): Promise<void> {
+    w.round.decide(false);
+
+    const out = await w.round.done;
+
+    if (out.kind !== 'declined') {
+      throw failure("The decline didn't end the round", out.reply);
+    }
   }
 
   async undo(receipt: string): Promise<Done> {

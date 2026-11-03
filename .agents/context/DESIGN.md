@@ -478,7 +478,9 @@ against an example service, told as a thread that ends in a permission slip.
   the real wire line (wrapping, never cut off) and a sentence on what it means. Your request to
   your agent; the agent's `→ INTENT`; the service's proposals (`← [p_…]`); the policy's answer
   (`✗ consent_required: …` in amber, or `✓ receipt …` in green). Then, as the visitor acts:
-  their approval (`→ COMMIT … + your consent grant`), the receipt, and the undo.
+  their approval (`→ COMMIT … + your consent grant`), the receipt, and the undo; or their
+  decline, which they say to their own agent ("You → your agent", no wire line: the protocol
+  has no decline frame, so nothing is sent).
 - **Playback** (`use-reveal.ts`): when a run lands with the exchange in view and the thread and
   slip side by side (on one column the thread sits above the slip, off screen, so it just
   shows; Replay still plays it), the thread plays
@@ -493,21 +495,30 @@ against an example service, told as a thread that ends in a permission slip.
   summary, the effects in mono, and three facts (uses, risk, undo window). Why it asks is the
   thread's last message, so the slip doesn't repeat it.
 - **Tear-off stub:** below a dashed perforation with a notch cut into each edge; the left notch
-  is the approval point. It holds what the person signs: the proposal's hash, one Approve button
-  and a line saying exactly what is signed.
+  is the approval point. It holds what the person signs: the proposal's hash, Approve with a
+  neutral secondary Decline beside it (each enabled only while the proposal waits on the
+  visitor, so both are disabled on the recording, while loading and without script), and a
+  line saying exactly what is signed.
 - **States.** The border and chip follow protocol state:
   - neutral "Recorded" until the core is live;
   - neutral "Checking your policy…" while a run is on its way;
   - amber "Waiting on you";
+  - neutral "Declined", where the stub says "Nothing was signed. The proposal can't be
+    committed after 14:05 UTC." (the same line as the playground's card). Declining ends the
+    consent round with nothing signed and no second COMMIT; once the proposal's time is up,
+    the slip turns "Expired";
   - green "✓ Committed" (or "✓ Went ahead", inside the policy), where the stub shows the
     receipt, its undo window and Undo;
   - neutral "Undone";
   - neutral "Expired" when the proposal, undo window or example policy runs out;
   - red for a failed step.
 
-  Once live, Start again is offered whenever nothing is in flight, and every run starts from a
-  fresh service and a freshly signed policy. Approve ignores a held Enter's repeats, so only a
-  fresh press signs.
+  Once live, Start again is offered whenever nothing is in flight and nothing waits on the
+  visitor (while it waits, Decline is the no), and every run starts from a fresh service and a
+  freshly signed policy. Every stub button (Approve, Decline, Undo, Start again) ignores a
+  held Enter's repeats. A step can settle before the key repeats, and focus has by then moved
+  to the next button, so without this one held Enter could decline and start again before the
+  declined slip is seen. Only a fresh press acts.
 - **Recording and live core.** The page paints the dinner example from a recording
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser
@@ -526,8 +537,25 @@ the consent card, and a history list with state dots).
 ### Consent Card
 The approval moment: amber 1px border on an amber-tinted fill, 12px radius, a heading ("Your
 agent needs your approval"), the proposal summary, its effects in mono, the uses/risk/undo line,
-one amber consent button ("Approve as human and commit") and a fine-print line saying exactly what is
-signed.
+one amber consent button ("Approve as human and commit") with a neutral secondary Decline beside
+it, and a fine-print line saying exactly what is signed. Decline ends the SDK's consent round
+as `declined`: nothing is signed and there's no second COMMIT. Then nothing waits on the
+person, so the card turns neutral (divider border, soft fill) and heads "You declined". It
+keeps the proposal's summary, effects and uses line, so the person can read what they
+declined, then says "Nothing was signed. The proposal can't be committed after 14:05 UTC."
+When the card's own Decline was pressed, the card keeps its height, so the history below it
+doesn't move up under the pointer and a second click lands on the card. Focus moves to the
+declined line (with the usual focus ring for a keyboard user). Picking a declined exchange in
+the history leaves focus on the history.
+
+The declined card offers one neutral secondary action, **Ask again**. It sends a fresh INTENT
+for the same request and commits the new proposal in the declined one's place, so a new
+proposal waits on the person. The declined proposal itself is never committed again, since
+that would undercut the decline. Ask again ignores the second click of a double-click, and
+focus moves to the new card's Approve. The history and the live region both call the exchange
+"declined": the history with a neutral dot, the live region with the declined line, and a
+Decline is announced although the exchange on show stays. Quick actions draw nothing when the
+reply offers no next step.
 
 ## 6. Do's and Don'ts
 

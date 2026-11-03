@@ -113,13 +113,11 @@ test('phaseTone: the hero band waits in amber, commits in green, and goes plain 
   // While a run is on its way, nothing waits on the person yet.
   assert.equal(phaseTone('checking'), 'plain');
   assert.deepEqual(tones(['committed', 'undoing']), ['green', 'green']);
-  // If the core can't start, nothing waits on anyone.
-  assert.deepEqual(tones(['unavailable', 'undone', 'expired', 'error']), [
-    'plain',
-    'plain',
-    'plain',
-    'red',
-  ]);
+  // If the core can't start, or the visitor declined, nothing waits on anyone.
+  assert.deepEqual(
+    tones(['unavailable', 'declined', 'undone', 'expired', 'error']),
+    ['plain', 'plain', 'plain', 'plain', 'red'],
+  );
 });
 
 test('useFlood: a spread cut short by the next one never settles it early', {
@@ -233,7 +231,7 @@ test('proposal facts: one wording for the slip and the consent card', {
   skip: needsCore,
 }, async () => {
   const sdk = await import('../../ts/dist/index.js');
-  const { factsLine, proposalFacts } = await import(
+  const { declinedLine, factsLine, proposalFacts, utcClock } = await import(
     '../.vitepress/theme/components/proposal-facts.ts'
   );
   const f = proposalFacts(sdk, {
@@ -254,13 +252,19 @@ test('proposal facts: one wording for the slip and the consent card', {
     }),
     "Risk high, can't be undone",
   );
+  assert.equal(utcClock(0), '00:00 UTC');
+  // Declining signs nothing; the proposal is left to run out.
+  assert.equal(
+    declinedLine(Date.UTC(2026, 10, 3, 14, 5) / 1000),
+    "Nothing was signed. The proposal can't be committed after 14:05 UTC.",
+  );
 });
 
 test('slip views: undo windows, uses, results and whole dates', {
   skip: needsCore,
 }, async () => {
   const sdk = await import('../../ts/dist/index.js');
-  const { keepDates, receiptView, slipView, spendOf, utcClock } = await import(
+  const { keepDates, receiptView, slipView, spendOf } = await import(
     `${LANDING}/slip-view.ts`
   );
   const p = {
@@ -277,7 +281,6 @@ test('slip views: undo windows, uses, results and whole dates', {
     [v.undo, v.uses, v.expires, v.service, v.hash, v.reason],
     ["can't be undone", 'nothing', 60, 's.example', 'h', ''],
   );
-  assert.equal(utcClock(0), '00:00 UTC');
   assert.equal(
     spendOf({ uses: { spend: { amount: 5395, scale: 2, unit: 'USD' } } }),
     53.95,
@@ -508,6 +511,7 @@ const heroState = (scene) =>
       slip: null,
       receipt: null,
       undone: null,
+      declined: false,
       status: '',
       error: '',
     }).map(([k, value]) => [k, { value }]),
@@ -604,6 +608,20 @@ test('thread: the visitor approval, the receipt and the undo follow the policy a
     all[5].text,
     'Order placed. It can be undone until 2026-09-30 14:00 UTC.',
   );
+
+  // A decline is the person's word to their own agent: nothing goes on the wire.
+  const no = thread(p, {
+    approved: null,
+    undone: null,
+    declined: { until: '14:05 UTC' },
+  });
+
+  assert.equal(no.length, 5);
+  assert.deepEqual(
+    [no[4].from, no[4].wire, no[4].tone],
+    ['You → your agent', '', 'plain'],
+  );
+  assert.match(no[4].text, /Nothing is signed.*after 14:05 UTC\./);
   // Inside the policy there's nothing to approve: the receipt is the policy's answer.
   assert.equal(
     thread(
@@ -714,6 +732,7 @@ test('onPhase: a run starting clears the thread, landing plays it, failing shows
   assert.equal(onPhase('loading', 'unavailable'), 'show');
   // The visitor's own steps don't replay anything.
   assert.equal(onPhase('waiting', 'approving'), null);
+  assert.equal(onPhase('waiting', 'declined'), null);
   assert.equal(onPhase('approving', 'committed'), null);
   assert.equal(onPhase('undoing', 'undone'), null);
 });
@@ -816,4 +835,98 @@ test('the recorded exchange still matches the core', {
     stable(RECORDED),
     'rerun: node site/scripts/landing-exchange.mjs',
   );
+});
+
+test('decline: the round ends declined with no second COMMIT, the slip clears its proposal and lapses to expired', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { calendar } = await import('../../ts/dist/examples/calendar.js');
+  const { runScene } = await import(`${LANDING}/run-scene.ts`);
+  const { decline } = await import(`${LANDING}/use-slip.ts`);
+  const { stopIfLapsed } = await import(`${LANDING}/deadlines.ts`);
+  const commits = [];
+  const counting = {
+    ...sdk,
+    local(svc) {
+      const t = sdk.local(svc);
+
+      return {
+        ...t,
+        request: (f, on) => {
+          if (f.verb === 'COMMIT') {
+            commits.push(f);
+          }
+
+          return t.request(f, on);
+        },
+      };
+    },
+  };
+  const live = {
+    sdk: counting,
+    services: { shop, calendar },
+    session: null,
+    waiting: null,
+    run: 0,
+  };
+  const state = heroState('dinner');
+
+  await runScene(state, live);
+  assert.equal(state.phase.value, 'waiting');
+
+  const waiting = live.waiting;
+
+  await decline(state, live);
+
+  assert.equal(state.phase.value, 'declined');
+  assert.equal(state.declined.value, true);
+  assert.equal(live.waiting, null);
+  assert.equal((await waiting.round.done).kind, 'declined');
+  assert.equal(commits.length, 1);
+  assert.match(state.status.value, /^Declined\. Nothing was signed\./);
+
+  // Once the proposal's time is up, the declined slip says so like any other lapse.
+  state.slip.value = { ...state.slip.value, expires: 0 };
+  assert.equal(stopIfLapsed(state, live), true);
+  assert.equal(state.phase.value, 'expired');
+  assert.match(state.error.value, /^This proposal expired at 00:00 UTC/);
+});
+
+test('a held Enter presses no stub button: a repeat is dropped, and every button drops it', {
+  skip,
+}, async () => {
+  const { readFileSync } = await import('node:fs');
+  const { noRepeat } = await import(`${LANDING}/keys.ts`);
+  const key = (repeat) => {
+    const e = { repeat, defaultPrevented: false };
+
+    e.preventDefault = () => {
+      e.defaultPrevented = true;
+    };
+
+    return e;
+  };
+  const held = key(true);
+  const fresh = key(false);
+
+  noRepeat(held);
+  noRepeat(fresh);
+  assert.equal(held.defaultPrevented, true);
+  assert.equal(fresh.defaultPrevented, false);
+
+  // A decline settles in milliseconds, so the key repeat lands on the Start again that takes
+  // focus after it; the same goes for every button that replaces another.
+  const stub = readFileSync(
+    new URL(`${LANDING}/SlipStub.vue`, import.meta.url),
+    'utf8',
+  );
+  const buttons = stub.match(/<button[^>]*>/g) ?? [];
+
+  assert.ok(buttons.length >= 7);
+
+  for (const b of buttons) {
+    assert.match(b, /@keydown\.enter="noRepeat"/, b);
+  }
 });
