@@ -34,6 +34,16 @@ function yea(
 
 const STACK = /^\s+at /m;
 
+/** Run every row's `yea …args` at once, each with its expected message. */
+const runAll = (rows: [string[], string][]) =>
+  Promise.all(
+    rows.map(async ([args, message]) => ({
+      args,
+      message,
+      r: await yea(args),
+    })),
+  );
+
 describe('yea --version', () => {
   it.each(['--version', '-v'])('%s prints the version', async (flag) => {
     expect(await yea([flag])).toEqual({
@@ -194,7 +204,7 @@ describe.concurrent('usage errors', () => {
   });
 
   it('a missing argument or required flag exits 2', async () => {
-    for (const [args, message] of [
+    for (const { args, message, r } of await runAll([
       [['inspect'], "missing <token> for 'inspect'"],
       [['service-id'], "missing <name> for 'service-id'"],
       [['delegate', 'pg1.x'], "missing --to <key> for 'delegate'"],
@@ -208,17 +218,15 @@ describe.concurrent('usage errors', () => {
         ['openapi', '--preset', 'nope'],
         "unknown preset nope for 'openapi'\npresets: ",
       ],
-    ]) {
-      const r = await yea(args as string[]);
-
-      expect(r.status).toBe(2);
+    ])) {
+      expect(r.status, args.join(' ')).toBe(2);
       expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
       expect(r.err).toContain('--help');
     }
   });
 
   it('a bad flag or argument value exits 2, before connecting or reading a key', async () => {
-    for (const [args, message] of [
+    for (const { args, message, r } of await runAll([
       [['grant', '--exp', '5x'], 'bad duration 5x'],
       [['grant', '--each', 'spend'], 'bad limit spend'],
       [['ask', 'yea://127.0.0.1:1', 'cal.x', 'oops'], 'expected key=value'],
@@ -242,17 +250,15 @@ describe.concurrent('usage errors', () => {
         ['uninstall', '--target', 'cursor,nope'],
         "unknown target nope for 'uninstall'\ntargets: ",
       ],
-    ]) {
-      const r = await yea(args as string[]);
-
-      expect(r.status).toBe(2);
+    ])) {
+      expect(r.status, args.join(' ')).toBe(2);
       expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
       expect(r.err).not.toContain('ECONNREFUSED');
     }
   });
 
   it("refuses an argument the command doesn't take, instead of dropping it", async () => {
-    for (const [args, message] of [
+    for (const { args, message, r } of await runAll([
       [['grant', 'x'], "unexpected argument x for 'grant'\nrun "],
       [['init', 'x'], "unexpected argument x for 'init'\nrun "],
       [['add', 'yea://a', 'yea://b'], "unexpected argument yea://b for 'add'"],
@@ -273,9 +279,7 @@ describe.concurrent('usage errors', () => {
         ['grant', '--verbs', 'ASK', 'INTENT'],
         "unexpected argument INTENT for 'grant'\n--verbs takes one value: <A,B>",
       ],
-    ]) {
-      const r = await yea(args as string[]);
-
+    ])) {
       expect(r.status, args.join(' ')).toBe(2);
       expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
     }
@@ -308,15 +312,13 @@ describe.concurrent('usage errors', () => {
   });
 
   it('a flag without its value, or a switch given one, exits 2', async () => {
-    for (const [args, message] of [
+    for (const { args, message, r } of await runAll([
       [['grant', '--to'], '--to needs a value'],
       [['grant', '--to', '--risk', 'low'], '--to needs a value'],
       [['grant', '--json=1'], 'unknown option --json'],
       [['install', '--local=yes'], '--local takes no value'],
-    ]) {
-      const r = await yea(args as string[]);
-
-      expect(r.status).toBe(2);
+    ])) {
+      expect(r.status, args.join(' ')).toBe(2);
       expect(r.err).toMatch(new RegExp(`^yea: ${message} for '`));
       expect(r.err).not.toMatch(STACK);
     }
