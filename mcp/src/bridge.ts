@@ -18,13 +18,12 @@ import { instructionsFor } from './bridge/instructions.js';
 import { passThrough } from './bridge/params.js';
 import { PendingProposals } from './bridge/pending.js';
 import type { Bridge } from './bridge/state.js';
-import type { ToolMode } from './bridge/tools/generic.js';
 import { buildTools, errorOf, utilityTools } from './bridge/tools.js';
-import type { ToolSpec } from './bridge/types.js';
+import type { ToolMode, ToolSpec } from './bridge/types.js';
 import type { Obj } from './util.js';
 
 export type { ConsentStore } from '@yea-protocol/sdk';
-export type { ToolMode } from './bridge/tools/generic.js';
+export type { ToolMode } from './bridge/types.js';
 
 const VERSION = '0.1.0';
 
@@ -105,7 +104,6 @@ export async function bridge(
   const remote = await buildTools(b, greeted, mode);
   const tools = [...remote, ...utilityTools(b, byId)];
   const instructions = instructionsFor(greeted, remote, {
-    mode,
     budget: b.budget,
     problems,
   });

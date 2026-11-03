@@ -14,7 +14,7 @@
  */
 import { withBase } from 'vitepress';
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
-import SegmentedRadio from '../playground/SegmentedRadio.vue';
+import SegmentedRadio from '../SegmentedRadio.vue';
 import { approvalPoint, layoutBox } from './anchors';
 import JunctionPaths from './JunctionPaths.vue';
 import PolicyTerms from './PolicyTerms.vue';

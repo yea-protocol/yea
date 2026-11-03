@@ -17,10 +17,10 @@ import { assignNames, genericBase, sanitize, type ToNames } from './names.js';
 import type { Bridge } from './state.js';
 import { capabilityTool } from './tools/capability.js';
 import { consentTool } from './tools/consent.js';
-import { genericTool, isGeneric, type ToolMode } from './tools/generic.js';
+import { genericTool, isGeneric } from './tools/generic.js';
 import type { Unnamed } from './tools/spec.js';
 import { expandTool, undoTool } from './tools/utility.js';
-import type { ToolSpec } from './types.js';
+import type { ToolMode, ToolSpec } from './types.js';
 
 /** In per-capability mode a service gets at most this many tools. */
 export const MAX_TOOLS_PER_SERVICE = 200;

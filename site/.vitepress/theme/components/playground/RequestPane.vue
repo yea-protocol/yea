@@ -6,8 +6,8 @@
  */
 import type { CapabilityInfo } from '@yea-protocol/sdk';
 import { computed, useId } from 'vue';
+import SegmentedRadio from '../SegmentedRadio.vue';
 import { type RequestForm, SERVICE_KEYS, SERVICES, VERBS } from './model';
-import SegmentedRadio from './SegmentedRadio.vue';
 import type { Target } from './seen';
 import { isApple, sendHint, sendKeys } from './shortcut';
 
