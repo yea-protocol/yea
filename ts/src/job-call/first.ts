@@ -36,7 +36,12 @@ async function consented(r: Round): Promise<HashedPlan | null> {
   for (const hp of r.plans) {
     const grant = await r.store.getConsent(hp.planHash);
     const check = grant
-      ? await checkJobConsent(grant, { hp, policy, now })
+      ? await checkJobConsent(grant, {
+          hp,
+          phrase: r.phraseFor(hp),
+          policy,
+          now,
+        })
       : null;
     const exp = grant && check?.ok ? consentExp(grant) : null;
 

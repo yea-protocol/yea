@@ -7,7 +7,7 @@
  * reservations, consent and undo.
  */
 
-export { checkJobConsent } from './approval/job-consent.js';
+export { checkJobConsent, consentHashOf } from './approval/job-consent.js';
 
 export {
   assertIntegers,

@@ -632,6 +632,11 @@ const phraseChecks = [
   ['a zero-width space', 'old\u200bnav', null],
   ['only a BOM, refused before the fallback', '\ufeff', null],
   ['a C1 control', 'ch_1\u0085', null],
+  ['64 characters', 'x'.repeat(64), 'x'.repeat(64)],
+  ['65 characters', 'x'.repeat(65), null],
+  ['64 emoji, counted in code points', '👍'.repeat(64), '👍'.repeat(64)],
+  ['65 emoji, counted in code points', '👍'.repeat(65), null],
+  ['edge whitespace counts toward 64', ` ${'x'.repeat(64)}`, null],
 ].map(([name, phrase, want]) => {
   let got;
 
@@ -1055,7 +1060,7 @@ const tightening = [
 
 // ---- consent codes (§6) ----
 const refundHp = await hashed('refund');
-const consentCode = jobConsentCode({
+const consentCode = await jobConsentCode({
   server: server.public,
   principal: principal.public,
   input,
@@ -1066,13 +1071,20 @@ const consentCode = jobConsentCode({
 const decoded = P.decodeConsentCode(consentCode);
 
 must(
-  'consent code hash',
+  'consent code plan hash',
   await P.planHashOf(decoded.detail.job),
   refundHp.planHash,
 );
+must(
+  'consent code hash binds the phrase',
+  decoded.hash,
+  await P.consentHashOf(refundHp.planHash, 'approve'),
+);
 
-// A stored consent may run only its own plan: a consent grant with `only` and `exp`, signed by
-// the pinned principal and issued to the server.
+// A stored consent may run only its own plan and phrase: a consent grant with `only` (their
+// consent hash) and `exp`, signed by the pinned principal and issued to the server.
+const consentPhrase = 'approve';
+const refundConsent = await P.consentHashOf(refundHp.planHash, consentPhrase);
 const consentFor = (hash, by = principal, exp = now + 600) =>
   P.issueGrant({
     principal: by,
@@ -1090,14 +1102,14 @@ const consentFor = (hash, by = principal, exp = now + 600) =>
 const consents = [];
 
 for (const [name, grant, at, want] of [
-  ['a consent for this plan', await consentFor(refundHp.planHash), now, true],
+  ['a consent for this plan', await consentFor(refundConsent), now, true],
   [
     'a consent delegated by the server key onto the policy grant',
     await P.delegateGrant(policyGrant, {
       holder: server,
       to: server.public,
       iat: now,
-      caveats: [{ only: refundHp.planHash }, { exp: now + 600 }],
+      caveats: [{ only: refundConsent }, { exp: now + 600 }],
     }),
     now,
     'not a consent for this plan',
@@ -1115,14 +1127,26 @@ for (const [name, grant, at, want] of [
     'not a consent for this plan',
   ],
   [
-    'an expired consent',
+    'a consent for this plan with another phrase',
+    await consentFor(await P.consentHashOf(refundHp.planHash, 'refund')),
+    now,
+    'not a consent for this plan',
+  ],
+  [
+    'a consent bound to the bare plan hash, without its phrase',
     await consentFor(refundHp.planHash),
+    now,
+    'not a consent for this plan',
+  ],
+  [
+    'an expired consent',
+    await consentFor(refundConsent),
     now + 600,
     'grant has expired',
   ],
   [
     'a consent from another principal',
-    await consentFor(refundHp.planHash, other),
+    await consentFor(refundConsent, other),
     now,
     'grant is issued by a principal this service does not trust',
   ],
@@ -1130,6 +1154,7 @@ for (const [name, grant, at, want] of [
 ]) {
   const r = await checkJobConsent(grant, {
     hp: { ...refundHp, plan: { ...refundHp.plan, apply: () => null } },
+    phrase: consentPhrase,
     policy: { principal: principal.public, server: server.public },
     now: at,
   });
@@ -1333,6 +1358,8 @@ export const approval = {
       risk: refundHp.risk,
       undoable: refundHp.undoable,
     },
+    phrase: consentPhrase,
+    consentHash: refundConsent,
     cases: consents,
   },
   consentCode: {

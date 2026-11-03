@@ -335,6 +335,7 @@ describe('conformance vectors', () => {
     for (const c of v.consents.cases) {
       const r = await checkJobConsent(c.grant, {
         hp: asHashed(v.consents.plan),
+        phrase: v.consents.phrase,
         policy: { principal: v.keys.principal, server: v.keys.server },
         now: c.now,
       });
@@ -372,7 +373,7 @@ describe('conformance vectors', () => {
     const cc = v.consentCode;
 
     expect(
-      jobConsentCode({
+      await jobConsentCode({
         server: cc.server,
         principal: cc.principal,
         input: cc.input,

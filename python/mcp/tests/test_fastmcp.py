@@ -179,7 +179,7 @@ async def test_the_same_2026_state_twice_runs_once(world, fm):
 
 async def test_a_signed_consent_runs_once(world, fm):
     from conftest import PRINCIPAL
-    from yea import issue_grant
+    from yea import decode_consent_code, issue_grant
 
     done = []
     sender(world, fm, done)
@@ -188,7 +188,8 @@ async def test_a_signed_consent_runs_once(world, fm):
         (code,) = r.structured_content["codes"]
         sid = world.approvals.service_id()
         await world.store.put_consent(code["planHash"], issue_grant(PRINCIPAL, sid, [
-            {"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": ["send"]}, {"only": code["planHash"]}, {"exp": 2**31}]).encode())
+            {"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": ["send"]},
+            {"only": decode_consent_code(code["code"])["hash"]}, {"exp": 2**31}]).encode())
         assert not (await c.call_tool("send", {"to": "ana"})).is_error
         assert (await c.call_tool("send", {"to": "ana"}, raise_on_error=False)).is_error
     assert done == ["ana"]

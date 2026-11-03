@@ -3,6 +3,7 @@
  * code when the client can't ask, and reading and signing one.
  */
 import {
+  consentHashOf,
   type HashedPlan,
   planHashOf,
   planPreimage,
@@ -33,8 +34,12 @@ export interface JobConsent {
 
 export const CONSENT_TTL = 600;
 
-/** A job's consent code: the unsigned pc1. consent request, carrying the whole plan to re-check. */
-export function jobConsentCode(o: {
+/**
+ * A job's consent code: the unsigned pc1. consent request, carrying the whole plan and its
+ * phrase to re-check. `proposal` is the plan hash; `hash` is the consent hash, which binds the
+ * phrase.
+ */
+export async function jobConsentCode(o: {
   server: string;
   principal: string;
   input: unknown;
@@ -42,19 +47,19 @@ export function jobConsentCode(o: {
   phrase: string;
   now: number;
   ttl?: number;
-}): string {
+}): Promise<string> {
+  const detail = {
+    job: planPreimage(o.hp.tool, o.input, o.hp.plan, o.hp.risk),
+    phrase: checkedPhrase(o.phrase),
+  };
   const consent: ConsentRequest = {
     proposal: o.hp.planHash,
-    hash: o.hp.planHash,
+    hash: await consentHashOf(o.hp.planHash, detail.phrase),
     service: o.server,
     capability: o.hp.tool,
     principal: o.principal,
     summary: o.hp.plan.summary,
     expires: o.now + (o.ttl ?? CONSENT_TTL),
-  };
-  const detail = {
-    job: planPreimage(o.hp.tool, o.input, o.hp.plan, o.hp.risk),
-    phrase: checkedPhrase(o.phrase),
   };
 
   return encodeConsentCode({ ...consent, detail });
@@ -74,9 +79,10 @@ function isJob(j: unknown): j is JobConsent['job'] {
 }
 
 /**
- * Read a job consent code for signing (§6). Everything shown or signed is checked: the plan
- * hash is recomputed from the plan, the tool must be the plan's, and it must not have expired.
- * The expiry is capped at `CONSENT_TTL` from now, whatever the code asks for.
+ * Read a job consent code for signing (§6). Everything shown or signed is checked: the phrase
+ * must be typeable, the plan hash and the consent hash are recomputed from the plan and the
+ * phrase, the tool must be the plan's, and it must not have expired. The expiry is capped at
+ * `CONSENT_TTL` from now, whatever the code asks for.
  */
 export async function readJobConsent(
   code: string,
@@ -98,14 +104,17 @@ export async function readJobConsent(
     );
   }
 
+  const phrase = checkedPhrase(d.phrase, "this consent code's phrase");
   const planHash = await planHashOf(job);
 
   if (
-    planHash !== c.hash ||
     planHash !== c.proposal ||
+    (await consentHashOf(planHash, phrase)) !== c.hash ||
     job.tool !== c.capability
   ) {
-    throw new Error("this consent code's plan doesn't match its hash");
+    throw new Error(
+      "this consent code's plan or phrase doesn't match its hash",
+    );
   }
 
   if (now >= c.expires) {
@@ -119,7 +128,7 @@ export async function readJobConsent(
   return {
     consent: { ...consent, expires: Math.min(c.expires, now + CONSENT_TTL) },
     job,
-    phrase: checkedPhrase(d.phrase, "this consent code's phrase"),
+    phrase,
     planHash,
   };
 }

@@ -56,7 +56,7 @@ describe('job call session', () => {
       throw new Error(o.kind);
     }
 
-    const instead = o.otherwise();
+    const instead = await o.otherwise();
 
     expect(instead.kind).toBe('consent-codes');
     expect(instead.why).toBe("refund can't be undone");

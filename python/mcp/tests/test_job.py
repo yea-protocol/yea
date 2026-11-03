@@ -9,7 +9,7 @@ from enum import Enum
 import mcp_types as t
 import pytest
 from pydantic import BaseModel, Field
-from yea import Plan, create, decode_grant, issue_grant, quantity
+from yea import Plan, create, decode_consent_code, decode_grant, issue_grant, quantity
 from yea.store import LedgerKey
 
 from conftest import MODES, PRINCIPAL, Person, text
@@ -103,7 +103,7 @@ async def test_a_client_that_cant_ask_gets_consent_codes_and_a_signed_consent_ru
         (code,) = r.structured_content["codes"]
         consent = issue_grant(PRINCIPAL, world.approvals.service_id(), [
             {"svc": [world.approvals.service_id()]}, {"verbs": ["COMMIT"]}, {"can": ["send"]},
-            {"only": code["planHash"]}, {"exp": 2**31}]).encode()
+            {"only": decode_consent_code(code["code"])["hash"]}, {"exp": 2**31}]).encode()
         await world.store.put_consent(code["planHash"], consent)
         assert not (await c.call_tool("send", {"to": "ana"})).is_error
         assert (await c.call_tool("send", {"to": "ana"})).is_error  # used once

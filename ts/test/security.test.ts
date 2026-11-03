@@ -1131,12 +1131,12 @@ describe('approval security (SPEC-approval)', () => {
         },
       ],
     );
-    const code = (
+    const code = async (
       over: Record<string, unknown> = {},
       job: Record<string, unknown> = {},
     ) => {
       const good = P.decodeConsentCode(
-        jobConsentCode({
+        await jobConsentCode({
           server: A.public,
           principal: B.public,
           input: { who: 'Chen' },
@@ -1157,16 +1157,22 @@ describe('approval security (SPEC-approval)', () => {
     };
 
     await expect(
-      P.readJobConsent(code({}, { summary: 'Refund 20 USD (edited)' }), now),
+      P.readJobConsent(
+        await code({}, { summary: 'Refund 20 USD (edited)' }),
+        now,
+      ),
     ).rejects.toThrow("doesn't match its hash");
     await expect(
-      P.readJobConsent(code({ capability: 'delete_customer' }), now),
+      P.readJobConsent(await code({ capability: 'delete_customer' }), now),
     ).rejects.toThrow("doesn't match its hash");
-    await expect(P.readJobConsent(code(), now + 600)).rejects.toThrow(
+    await expect(P.readJobConsent(await code(), now + 600)).rejects.toThrow(
       'expired',
     );
 
-    const long = await P.readJobConsent(code({ expires: now + 10 ** 8 }), now);
+    const long = await P.readJobConsent(
+      await code({ expires: now + 10 ** 8 }),
+      now,
+    );
 
     expect(long.consent.expires).toBe(now + P.CONSENT_TTL);
   });
@@ -1182,7 +1188,7 @@ describe('approval security (SPEC-approval)', () => {
       },
     ]);
     const j = await P.readJobConsent(
-      jobConsentCode({
+      await jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},
@@ -1201,12 +1207,13 @@ describe('approval security (SPEC-approval)', () => {
       { svc: [A.public] },
       { verbs: ['COMMIT'] },
       { can: ['refund'] },
-      { only: hp.planHash },
+      { only: await P.consentHashOf(hp.planHash, 'approve') },
       { exp: j.consent.expires },
     ]);
     expect(
       await checkJobConsent(await P.signJobConsent(B, j), {
         hp,
+        phrase: 'approve',
         policy: { principal: B.public, server: A.public },
         now,
       }),
@@ -1308,12 +1315,16 @@ describe('approval security (SPEC-approval)', () => {
     const forged = await P.delegateGrant(policy, {
       holder: A,
       to: A.public,
-      caveats: [{ only: hp.planHash }, { exp: now + 600 }],
+      caveats: [
+        { only: await P.consentHashOf(hp.planHash, 'approve') },
+        { exp: now + 600 },
+      ],
     });
 
     expect(
       await checkJobConsent(forged, {
         hp,
+        phrase: 'approve',
         policy: { principal: B.public, server: A.public },
         now,
       }),
@@ -1421,7 +1432,7 @@ describe('approval security (SPEC-approval)', () => {
       { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
     ]);
     const good = P.decodeConsentCode(
-      jobConsentCode({
+      await jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},
@@ -1437,7 +1448,7 @@ describe('approval security (SPEC-approval)', () => {
     const hash = await P.planHashOf(job);
     const bad = {
       ...good,
-      hash,
+      hash: await P.consentHashOf(hash, 'approve'),
       proposal: hash,
       detail: { ...good.detail, job },
     };
@@ -1528,13 +1539,14 @@ describe('approval security (SPEC-approval)', () => {
         now,
       });
 
-    expect(() => issue('approve\n')).toThrow('unprintable characters');
+    await expect(issue('approve\n')).rejects.toThrow('unprintable characters');
 
-    // The phrase isn't under the plan hash, so a code edited to carry one is refused on reading.
-    const good = P.decodeConsentCode(issue('approve')) as unknown as Record<
-      string,
-      unknown
-    > & { detail: Record<string, unknown> };
+    // A phrase no one could type is refused on reading, before its hash is even checked.
+    const good = P.decodeConsentCode(
+      await issue('approve'),
+    ) as unknown as Record<string, unknown> & {
+      detail: Record<string, unknown>;
+    };
     const bad = {
       ...good,
       detail: { ...good.detail, phrase: 'approve\u200b' },
@@ -1547,6 +1559,123 @@ describe('approval security (SPEC-approval)', () => {
       ),
     ).rejects.toThrow(
       'this consent code\'s phrase has unprintable characters, so no one could type it: "approve\\u{200b}"',
+    );
+  });
+
+  it('[A19] a consent code with an edited phrase is refused, and a consent for it never runs (#141)', async () => {
+    const [hp] = await P.hashPlans({ name: 'delete_branch' }, {}, [
+      {
+        summary: 'Delete branch old-nav',
+        effects: [],
+        risk: 'low',
+        apply: () => null,
+      },
+    ]);
+    const good = P.decodeConsentCode(
+      await jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: 'old-nav',
+        now,
+      }),
+    ) as unknown as Record<string, unknown> & {
+      detail: Record<string, unknown>;
+    };
+    const edited = (over: Record<string, unknown> = {}) =>
+      `pc1.${P.b64u(
+        new TextEncoder().encode(
+          P.canonical({
+            ...good,
+            ...over,
+            detail: { ...good.detail, phrase: 'approve' },
+          }),
+        ),
+      )}`;
+
+    // The phrase is under the code's hash: swapping in `approve` breaks it.
+    await expect(P.readJobConsent(edited(), now)).rejects.toThrow(
+      "doesn't match its hash",
+    );
+
+    // A forger who rehashes gets a code `yea approve` signs, but the consent binds `approve`,
+    // and the server checks it against its own phrase, so it never runs the plan.
+    const forged = await P.readJobConsent(
+      edited({ hash: await P.consentHashOf(hp.planHash, 'approve') }),
+      now,
+    );
+    const grant = await P.signJobConsent(B, forged);
+    const policy = { principal: B.public, server: A.public };
+
+    expect(
+      await checkJobConsent(grant, { hp, phrase: 'old-nav', policy, now }),
+    ).toEqual({ ok: false, why: 'not a consent for this plan' });
+
+    // A consent bound to the bare plan hash, as before #141, never counts either.
+    const bare = await P.signJobConsent(B, {
+      ...forged,
+      consent: { ...forged.consent, hash: hp.planHash },
+    });
+
+    expect(
+      await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
+    ).toEqual({ ok: false, why: 'not a consent for this plan' });
+  });
+
+  it('[A20] a phrase over 64 characters is refused, counted in code points (#141)', async () => {
+    expect(checkedPhrase('x'.repeat(64))).toBe('x'.repeat(64));
+    expect(() => checkedPhrase('x'.repeat(65))).toThrow(
+      `the approval phrase is longer than 64 characters: "${'x'.repeat(65)}"`,
+    );
+    // Code points, not UTF-16 units, so both languages count the same.
+    expect(checkedPhrase('👍'.repeat(64))).toBe('👍'.repeat(64));
+    expect(() => checkedPhrase('👍'.repeat(65))).toThrow(TypeError);
+    // Counted as the tool names it: edge whitespace counts too.
+    expect(() => checkedPhrase(` ${'x'.repeat(64)}`)).toThrow(TypeError);
+
+    const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
+      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const long = 'x'.repeat(65);
+
+    await expect(
+      jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: long,
+        now,
+      }),
+    ).rejects.toThrow('longer than 64 characters');
+
+    // A code edited to carry a long phrase, even rehashed, is refused on reading.
+    const good = P.decodeConsentCode(
+      await jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: 'approve',
+        now,
+      }),
+    ) as unknown as Record<string, unknown> & {
+      detail: Record<string, unknown>;
+    };
+    const bad = {
+      ...good,
+      hash: await P.consentHashOf(hp.planHash, long),
+      detail: { ...good.detail, phrase: long },
+    };
+
+    await expect(
+      P.readJobConsent(
+        `pc1.${P.b64u(new TextEncoder().encode(P.canonical(bad)))}`,
+        now,
+      ),
+    ).rejects.toThrow(
+      "this consent code's phrase is longer than 64 characters",
     );
   });
 });
@@ -3967,7 +4096,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
       { summary: 'Update settings', effects: [], apply: () => null },
     ]);
     const good = P.decodeConsentCode(
-      jobConsentCode({
+      await jobConsentCode({
         server: A.public,
         principal: B.public,
         input: {},
@@ -3982,7 +4111,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
     const hash = await P.planHashOf(job);
     const c = {
       ...good,
-      hash,
+      hash: await P.consentHashOf(hash, 'approve'),
       proposal: hash,
       detail: { ...good.detail, job },
     };

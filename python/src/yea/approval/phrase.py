@@ -10,6 +10,7 @@ from ..text import clip, printable
 from .plan import HashedPlan
 
 _STRIP = "\u0009\u000a\u000b\u000c\u000d  ﻿"
+MAX_PHRASE = 64  # the longest phrase a tool may name, in code points, as TypeScript counts them
 
 
 def normalize_phrase(s: str) -> str:
@@ -34,24 +35,28 @@ def _shown(phrase: str) -> str:
 
 
 def _untypeable(phrase: str) -> str | None:
+    """Why ``phrase`` can't be asked for, or None when it's typeable text (§3)."""
     if printable(phrase) != phrase:
-        return "has unprintable characters"
+        return "has unprintable characters, so no one could type it"
     # Edge whitespace is stripped when matching; inside, only a plain space can be typed.
     if any(_odd_space(c) for c in phrase.strip(_STRIP)):
-        return "has whitespace other than plain spaces inside"
+        return "has whitespace other than plain spaces inside, so no one could type it"
+    if len(phrase) > MAX_PHRASE:
+        return f"is longer than {MAX_PHRASE} characters"
     return None
 
 
 def checked_phrase(phrase: str, whose: str = "the approval phrase") -> str:
     """A tool's phrase, checked before anyone is asked (§3): it must be typeable, printable text
-    whose only inner whitespace is plain spaces, since the person is shown it escaped and could
-    never type the raw characters, so anything else is a developer error. ``whose`` names the
-    phrase in the error. Then the ``approve`` fallback applies."""
+    of at most ``MAX_PHRASE`` characters whose only inner whitespace is plain spaces, since the
+    person is shown it escaped and could never type the raw characters, so anything else is a
+    developer error. ``whose`` names the phrase in the error. Then the ``approve`` fallback
+    applies."""
     if not isinstance(phrase, str):
         raise TypeError(f"{whose} must be a string")
     why = _untypeable(phrase)
     if why:
-        raise TypeError(f'{whose} {why}, so no one could type it: "{_shown(phrase)}"')
+        raise TypeError(f'{whose} {why}: "{_shown(phrase)}"')
     return phrase if normalize_phrase(phrase) else "approve"
 
 

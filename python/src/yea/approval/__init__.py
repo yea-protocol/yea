@@ -17,6 +17,7 @@ from .consent import (
     ConsentCheck,
     check_job_consent,
     consent_for,
+    consent_hash_of,
     job_consent_code,
 )
 from .decision import Decision, decide, denied_reason, needs_approval
@@ -74,6 +75,7 @@ __all__ = [
     "CONSENT_TTL",
     "job_consent_code",
     "consent_for",
+    "consent_hash_of",
     "ConsentCheck",
     "check_job_consent",
     "reserve_all",

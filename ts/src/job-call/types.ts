@@ -75,7 +75,7 @@ export type JobCallOutcome =
       kind: 'ask';
       form: ApprovalForm;
       state: ApprovalState;
-      otherwise(): ConsentCodesOutcome;
+      otherwise(): Promise<ConsentCodesOutcome>;
     }
   | ConsentCodesOutcome
   | { kind: 'refuse'; why: string; again?: true };

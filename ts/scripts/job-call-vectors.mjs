@@ -56,7 +56,7 @@ const consentGrant = await P.issueGrant({
     { svc: [server.public] },
     { verbs: ['COMMIT'] },
     { can: ['refund'] },
-    { only: refundHp.planHash },
+    { only: await P.consentHashOf(refundHp.planHash, 'approve') },
     { exp: now + 600 },
   ],
 });
@@ -210,6 +210,13 @@ const calls = [
     name: 'a consent already consumed counts as absent, so the call asks',
     consents: { [refundHp.planHash]: consentGrant },
     before: { used: {}, consumed: [consentId] },
+    steps: [step('ask')],
+  },
+  {
+    name: 'a consent signed for another phrase counts as absent, so the call asks',
+    tool: { ...tool, phrases: { [refundHp.planHash]: 'refund Chen' } },
+    consents: { [refundHp.planHash]: consentGrant },
+    before: empty,
     steps: [step('ask')],
   },
   {
