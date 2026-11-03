@@ -302,7 +302,7 @@ describe.concurrent('yea install from a checkout', () => {
 
 describe.concurrent('yea doctor: grants', () => {
   it('"no grants" is a warning naming both ways to get one, and doctor still exits 0', async () => {
-    const u = await installed();
+    const u = await installed(fake());
     const agent = await agentOf(u);
     const d = await yea(u, ['doctor']);
 
@@ -327,6 +327,8 @@ describe.concurrent('yea doctor: grants', () => {
     expect(r.status).toBe(0);
     expect(r.out).toContain(`echo '${key}' | sudo tee /etc/yea/principal.pub`);
     expect(r.out).toContain('YEA_PRINCIPAL_PUB=/etc/yea/principal.pub');
+    // The grant is the point here, not the bridge: start the fake server instead.
+    register(join(u.home, '.claude.json'), fake());
 
     const d = await yea(u, ['doctor']);
 
@@ -336,7 +338,7 @@ describe.concurrent('yea doctor: grants', () => {
   });
 
   it('the principal-elsewhere way works: yea grant --to there, yea grant-import here', async () => {
-    const u = await installed();
+    const u = await installed(fake());
     const elsewhere = user();
 
     expect((await yea(elsewhere, ['init'])).status).toBe(0);
@@ -363,7 +365,7 @@ describe.concurrent('yea doctor: grants', () => {
   });
 
   it("a grant held by another key is a warning that says where it's re-issued", async () => {
-    const u = await installed();
+    const u = await installed(fake());
     const other = user();
 
     await yea(other, ['init']);
