@@ -125,5 +125,5 @@ See the [test drive walkthrough](/guide/test-drive) for more.
 
 ## Bridges
 
-- `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. It's in `@yea-protocol/cli`, not the SDK.
+- `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>] [--require-interaction]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. `--require-interaction`, or `YEA_REQUIRE_INTERACTION=1`, makes Claude Code prompt for every call of a tool that changes things, even in `auto` or `bypassPermissions` ([integrations](/guide/integrations#keep-the-prompt-in-auto-or-bypass-mode)). It's in `@yea-protocol/cli`, not the SDK.
 - `yea openapi [<spec|url>] [--base] [--header "K: V"] [--id] [--prefix] [--port] [--http] [--host] [--preset github|petstore]`: serve a REST API as a YEA service. See [Wrap any REST API](/guide/openapi).
