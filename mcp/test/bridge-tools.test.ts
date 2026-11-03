@@ -229,9 +229,34 @@ describe('schemas and annotations', () => {
       'preview',
       'proposal',
     ]);
-    expect(read?.description).toBe(
-      'Search the menu (shop.search at shop.example)',
-    );
+    expect(read?.description).toBe('Search the menu (shop.example)');
+  });
+
+  it('job fields are taught once, in the instructions; only preview says what it does', async () => {
+    const k = await keys();
+    const trust = [k.principal.public];
+    const { byName, factory } = await toolsOf(k, [shop({ trust })]);
+    const fields = byName.get('shop_order')?.inputSchema.properties ?? {};
+
+    expect(fields.goal).toEqual({ type: 'string' });
+    expect(fields.proposal).toEqual({ type: 'string' });
+    expect(fields.preview).toEqual({
+      type: 'boolean',
+      description: 'Only show proposals; nothing is done.',
+    });
+
+    for (const taught of [
+      '`preview: true`',
+      '`proposal: "<id>"`',
+      'same arguments',
+      '`goal`',
+      'Commit only what the user asked for.',
+      '`yea approve <code>`',
+      'yea_consent',
+      'Never split or restructure a purchase to get under a limit.',
+    ]) {
+      expect(factory.instructions).toContain(taught);
+    }
   });
 
   it('passes arguments through unchanged: the service validates and teaches', async () => {

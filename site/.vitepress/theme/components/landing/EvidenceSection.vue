@@ -36,8 +36,8 @@ const p = PAYLOAD;
           In a scripted benchmark of what each protocol sends the model, YEA sends {{ fewerOrMore(p.savedVsMinified) }}
           tokens than minified JSON ({{ fewerOrMore(p.savedVsPretty) }} than pretty-printed). Its replies are mostly smaller, but the
           bridge's tool definitions take {{ p.yeaDefs.toLocaleString('en-US') }} tokens against REST's {{ p.restDefs }}, and every turn re-reads them.
-          Until #297 that benchmark counted an older, smaller tool surface and showed a saving; shrinking the definitions is
-          <a href="https://github.com/yea-protocol/yea/issues/300">#300</a>. When REST offers the same outcome-level endpoint,
+          Until #297 that benchmark counted an older, smaller tool surface and showed a bigger saving;
+          <a href="https://github.com/yea-protocol/yea/issues/300">#300</a> then cut the definitions. When REST offers the same outcome-level endpoint,
           the reschedule row goes from {{ fewerOrMore(p.crudRescheduleSaving) }} to {{ fewerOrMore(p.outcomeEndpointSaving) }},
           so most of that row's gain is API shape.
           <a :href="withBase('/reference/benchmark')">Method and raw output</a>
