@@ -221,10 +221,12 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
   tab or any other space separator (`Zs`, such as U+00A0 or U+2003) inside it is refused.
   Anything else is a developer error, refused before the person is asked: the form shows a
   phrase escaped, and no one could be sure of typing the raw characters. The check is on the
-  phrase as the tool names it, before the `approve` fallback, and there is no fallback for it:
-  a tool that derives its phrase from service data must make it typeable and short. The job
-  call fails as a tool error, and `yea approve` refuses a consent code whose phrase isn't
-  typeable. Look-alike letters (homoglyphs, such as a Cyrillic `а` for a Latin `a`) are out of scope: they are
+  phrase as the tool names it, before the `approve` fallback, and there is no fallback for it.
+  The job call fails as a tool error, and `yea approve` refuses a consent code whose phrase
+  isn't typeable. The phrase must also be a **pure function of the plan and the input**: the
+  same plan hash always gets the same phrase. A consent binds the phrase (§6), so a phrase that
+  reads anything else (a counter, the time, a live balance, the locale) makes every consent for
+  that plan unredeemable. Look-alike letters (homoglyphs, such as a Cyrillic `а` for a Latin `a`) are out of scope: they are
   printable, so this rule can't tell them apart. The field's description shows the exact
   phrase; with several plans, the message names each plan's phrase next to it. Denied plans
   are listed apart as never allowed, and when no plan can be offered at all, there is no form:
@@ -340,7 +342,8 @@ server's service id, `capability` = the tool, `principal` = the pinned principal
 `summary`, and `expires` = now + 10 minutes. Nothing in the code is trusted until it is
 recomputed: an edited phrase no longer matches `hash`, and a code whose `hash` was recomputed
 to match an edited phrase gets a consent the server never honors, because the server checks
-it against its own phrase.
+it against its own phrase. `consentHash` applies the `approve` fallback to the phrase itself, so
+an empty or blank phrase hashes as `approve`.
 
 `yea approve <code>`:
 1. recomputes the plan hash from `job`, then the consent hash from it and the phrase, and
@@ -367,6 +370,14 @@ the pinned principal key (§2). It then consumes it with
 not by code, so a fresh code for the same plan still finds them; a consumed or expired one
 counts as absent, and the server issues fresh codes. Denied tools and plans that aren't
 recomputed are never run. An unsigned approval in the store is never accepted.
+
+A consent for another phrase is refused, but not silently. The grant check runs against the
+hash the consent binds, so a consent that is otherwise valid but binds another hash is told
+apart, as `not a consent for this phrase`. When the call then asks (a form or fresh codes), the
+reason it gives is *"a consent for this plan was signed for a different phrase; approve the new
+code — if this repeats, the code you were given may have been altered"*. The person can then
+tell a changed phrase or an edited code from a lost consent. A consumed, expired or malformed
+consent leaves no such reason.
 
 This needs `yea approve` changes (today it issues to the agent key and checks
 `proposalHash`), and a store shared by the server and the `yea` command: a local stdio server

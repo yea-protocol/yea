@@ -9,8 +9,8 @@ import pytest
 
 from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed, quantity, spend
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_key_file, check_state, choose_store, consent_for,
-    consent_hash_of, decide, checked_phrase, input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
+    OTHER_PHRASE, PHRASE_CHANGED, HashedPlan, Policy, StoredConsent, Tightening, build_form, check_job_consent,
+    check_key_file, check_state, choose_store, consent_for, consent_hash_of, decide, checked_phrase, input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
     normalize_phrase, phrase_matches, plan_hash, plan_preimage, read_tightening, reserve_all, undo_receipt,
 )
 from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id
@@ -610,8 +610,8 @@ def test_a_signed_consent_runs_its_plan_once(store):
         h = hashed(undoable=False, risk="high")  # consent is how irreversible and out-of-band plans run
         await store.put_consent(h.plan_hash, _consent(h))
         p = policy()
-        assert await consent_for([h], store, p, NOW, APPROVE) == h
-        assert await consent_for([h], store, p, NOW, APPROVE) is None  # a replayed consent runs nothing
+        assert (await consent_for([h], store, p, NOW, APPROVE)).plan == h
+        assert await consent_for([h], store, p, NOW, APPROVE) == StoredConsent()  # a replay runs nothing, silently
 
     run(go())
 
@@ -638,11 +638,31 @@ def test_consents_that_dont_count(store):
         ]
         for token in cases:
             await store.put_consent(h.plan_hash, token)
-            assert await consent_for([h], store, p, NOW, APPROVE) is None, token
+            assert (await consent_for([h], store, p, NOW, APPROVE)).plan is None, token
         await store.put_consent(h.plan_hash, _consent(h))
-        assert await consent_for([h], store, policy(deny=["delete_branch"]), NOW, APPROVE) is None  # denied never runs
-        assert await consent_for([h], store, p, NOW, lambda _: "old-nav") is None  # the tool's phrase changed
-        assert await consent_for([h], store, p, NOW, APPROVE) == h
+        assert (await consent_for([h], store, policy(deny=["delete_branch"]), NOW, APPROVE)).plan is None  # denied
+        # The tool's phrase changed: nothing runs, and the person is told why (#141).
+        assert await consent_for([h], store, p, NOW, lambda _: "old-nav") == StoredConsent(note=PHRASE_CHANGED)
+        assert (await consent_for([h], store, p, NOW, APPROVE)).plan == h
+
+    run(go())
+
+
+def test_a_consent_for_another_phrase_is_told_apart(store):
+    """[A19] A valid consent bound to another phrase (or the bare plan hash) is refused with its own
+    reason; one that isn't shaped like a consent, or has expired, is not (#141)."""
+    h, p = hashed(), policy()
+    assert check_job_consent(_consent(h), h, "old-nav", p, NOW).why == OTHER_PHRASE
+    assert check_job_consent(_consent(h, only=h.plan_hash), h, "approve", p, NOW).why == OTHER_PHRASE
+    assert check_job_consent(_consent(h, exp=NOW), h, "old-nav", p, NOW).why != OTHER_PHRASE
+    assert check_job_consent(_consent(h, exp=None), h, "old-nav", p, NOW).why == "not a consent for this plan"
+    # The `approve` fallback is part of the consent hash: a raw, empty phrase redeems it too.
+    assert consent_hash_of(h.plan_hash, " ") == consent_hash_of(h.plan_hash, "approve")
+    assert check_job_consent(_consent(h), h, "", p, NOW).ok
+
+    async def go():
+        await store.put_consent(h.plan_hash, _consent(h, exp=NOW))  # expired: absent, and silent
+        assert await consent_for([h], store, p, NOW, lambda _: "old-nav") == StoredConsent()
 
     run(go())
 
@@ -766,7 +786,9 @@ def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
         checked_phrase("x" * 100 + "\u202e")
     with pytest.raises(TypeError, match="unprintable characters"):
         job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "approve\n", NOW)
-    assert decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", NOW))["detail"]["phrase"] == "approve"
+    blank = decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", NOW))
+    assert blank["detail"]["phrase"] == "approve"
+    assert blank["hash"] == consent_hash_of(hashed().plan_hash, "approve")  # the hash binds the fallback too
 
 
 def test_a_phrase_over_64_characters_is_refused():

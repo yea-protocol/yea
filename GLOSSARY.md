@@ -61,10 +61,10 @@ consent store keeps the other kind: consents to one proposal, for an agent's con
 _Avoid_: consents dir (for either), round consent
 
 **Consent hash**:
-What a job consent binds: the plan hash and the phrase the person typed for it, hashed together
-(SPEC-approval §6). It is a job consent code's `hash` and the consent grant's `only`, so a
-consent signed for an edited phrase never runs. The plan hash, the code's `proposal`, stays
-what the job's store keeps the consent by.
+What a job consent binds: the plan hash and the phrase the tool names for it (after the
+`approve` fallback), hashed together (SPEC-approval §6). It is a job consent code's `hash` and
+the consent grant's `only`, so a consent signed for an edited phrase never runs. The plan hash,
+the code's `proposal`, stays what the job's store keeps the consent by.
 _Avoid_: phrase hash, code hash
 
 **Tool host**:

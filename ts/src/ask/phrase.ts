@@ -1,33 +1,30 @@
 /**
- * The confirmation phrase (docs/framework/SPEC-approval.md §3): how a typed
- * answer is normalized and matched, the `approve` fallback, and the rule that a phrase is typeable.
+ * The confirmation phrase (docs/framework/SPEC-approval.md §3): how a typed answer is matched,
+ * and the rule that a phrase is typeable. Its normal form and the `approve` fallback are in
+ * approval/phrase-form.ts, since a consent hash binds the phrase too.
  */
-import type { HashedPlan } from '../approval.js';
+import {
+  DEFAULT_PHRASE,
+  effectivePhrase,
+  type HashedPlan,
+  normalizePhrase,
+  PHRASE_EDGE,
+} from '../approval.js';
 import { clip, printable } from '../text.js';
+
+export { DEFAULT_PHRASE };
 
 /** The phrase a person types to approve this plan: the tool's, or `approve`. */
 export type PhraseFor = (hp: HashedPlan) => string;
 
-/** Exactly these are stripped from both ends; not trim()/strip(), which disagree. */
-const EDGE = /^[\t\n\v\f\r \u00a0\ufeff]+|[\t\n\v\f\r \u00a0\ufeff]+$/g;
-
-export const DEFAULT_PHRASE = 'approve';
-
 /** The longest phrase a tool may name, in code points (§3), so both languages count alike. */
 export const MAX_PHRASE = 64;
-
-const normalizePhrase = (s: string) =>
-  s.normalize('NFC').replace(EDGE, '').toLowerCase();
 
 /** An empty phrase never matches, so an empty or auto-filled answer can't approve. */
 export const phraseMatches = (typed: unknown, phrase: string) =>
   typeof typed === 'string' &&
   normalizePhrase(phrase) !== '' &&
   normalizePhrase(typed) === normalizePhrase(phrase);
-
-/** A phrase that is empty once normalized falls back to `approve`. */
-const effectivePhrase = (phrase: string) =>
-  normalizePhrase(phrase) === '' ? DEFAULT_PHRASE : phrase;
 
 /** Whitespace a person can't be sure of typing: a tab, or any space separator but U+0020. */
 const ODD_SPACE = /(?! )[\t\p{Zs}]/gu;
@@ -49,7 +46,7 @@ function untypeable(phrase: string): string | null {
   }
 
   // Edge whitespace is stripped when matching; inside, only a plain space can be typed.
-  if (phrase.replace(EDGE, '').match(ODD_SPACE)) {
+  if (phrase.replace(PHRASE_EDGE, '').match(ODD_SPACE)) {
     return 'has whitespace other than plain spaces inside, so no one could type it';
   }
 

@@ -3586,12 +3586,12 @@
         }
       },
       {
-        "name": "a consent for another plan",
+        "name": "a valid consent stored under this plan that binds another hash",
         "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJPVEhFUiJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJjLU9USEVSLTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldQT2dNaWhjYmlZV1E1VGhCQTBXWTFoNjFKRVA5a3FNa0RDbkFjT1d4TTBfSDRHelAySXZvaGRfQmVTRlFrcFNkZG5jQnpIQ2RPVVMtVmlVa3lSZ0FBIn1d",
         "now": 1790000000,
         "expect": {
           "ok": false,
-          "why": "not a consent for this plan"
+          "why": "not a consent for this phrase"
         }
       },
       {
@@ -3600,7 +3600,7 @@
         "now": 1790000000,
         "expect": {
           "ok": false,
-          "why": "not a consent for this plan"
+          "why": "not a consent for this phrase"
         }
       },
       {
@@ -3609,7 +3609,16 @@
         "now": 1790000000,
         "expect": {
           "ok": false,
-          "why": "not a consent for this plan"
+          "why": "not a consent for this phrase"
+        }
+      },
+      {
+        "name": "an expired consent for another phrase says it expired",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJ1Z19TRnp1N0pLS1dlRHJhRWZ2X3JwRzV1cTNhZzJGWEdVRnNmS2d6TTRjIn0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtdWdfU0Z6LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldiSTFKWWd5TERraTdXZDV0SXZWRmNMMFJKZ2pGN01wdUZsZWFZVjYwckxSNWdhbXpNNFlpZm1VRVpVWDFiSlUwdU1CYkhDeFN3dnNQQnBRM2ktNENnIn1d",
+        "now": 1790000600,
+        "expect": {
+          "ok": false,
+          "why": "grant has expired"
         }
       },
       {
@@ -3678,6 +3687,12 @@
       {
         "name": "the fallback phrase",
         "phrase": "approve",
+        "consentHash": "CnT3-vyScghKYk5Hd2MDCe31I1xjxzsbtnxpZQpjLDM",
+        "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+      },
+      {
+        "name": "no phrase, hashed as the fallback",
+        "phrase": "",
         "consentHash": "CnT3-vyScghKYk5Hd2MDCe31I1xjxzsbtnxpZQpjLDM",
         "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
       },

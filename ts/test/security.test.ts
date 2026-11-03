@@ -1610,7 +1610,37 @@ describe('approval security (SPEC-approval)', () => {
 
     expect(
       await checkJobConsent(grant, { hp, phrase: 'old-nav', policy, now }),
-    ).toEqual({ ok: false, why: 'not a consent for this plan' });
+    ).toEqual({ ok: false, why: 'not a consent for this phrase' });
+
+    // Nor is it silent: the next call asks again and says a consent was signed for another
+    // phrase, so the person can tell an edited code from a lost one.
+    const store = new P.MemoryStore();
+
+    await store.putConsent(hp.planHash, grant);
+
+    const o = await P.jobCall(
+      {
+        tool: { name: 'delete_branch', confirmWith: () => 'old-nav' },
+        input: {},
+        plan: () => [
+          {
+            summary: 'Delete branch old-nav',
+            effects: [],
+            risk: 'low',
+            apply: () => null,
+          },
+        ],
+        sub: '',
+        now,
+        policy: { ...policy, grant: null, deny: [], outOfBand: 'high' },
+        canAsk: true,
+      },
+      store,
+    );
+
+    expect(o.kind === 'ask' && o.form.message).toContain(
+      'a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered',
+    );
 
     // A consent bound to the bare plan hash, as before #141, never counts either.
     const bare = await P.signJobConsent(B, {
@@ -1620,7 +1650,13 @@ describe('approval security (SPEC-approval)', () => {
 
     expect(
       await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
-    ).toEqual({ ok: false, why: 'not a consent for this plan' });
+    ).toEqual({ ok: false, why: 'not a consent for this phrase' });
+
+    // The `approve` fallback is part of the consent hash, so a caller passing a tool's raw,
+    // empty phrase still redeems the consent the person signed for `approve`.
+    expect(await P.consentHashOf(hp.planHash, ' ')).toBe(
+      await P.consentHashOf(hp.planHash, 'approve'),
+    );
   });
 
   it('[A20] a phrase over 64 characters is refused, counted in code points (#141)', async () => {

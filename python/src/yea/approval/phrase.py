@@ -18,11 +18,16 @@ def normalize_phrase(s: str) -> str:
     return unicodedata.normalize("NFC", s).strip(_STRIP).lower()
 
 
+def effective_phrase(phrase: str) -> str:
+    """A phrase that is empty once normalized falls back to ``approve``."""
+    return phrase if normalize_phrase(phrase) else "approve"
+
+
 def phrase_of(p: HashedPlan, phrase_for: Callable[[HashedPlan], str] | None) -> str:
     """The phrase for ``p``: the tool's, or ``approve`` when it names none. A phrase that is
     empty once normalized would let an empty field approve, so it becomes ``approve`` too."""
     phrase = phrase_for(p) if phrase_for is not None else None
-    return phrase if isinstance(phrase, str) and normalize_phrase(phrase) else "approve"
+    return effective_phrase(phrase) if isinstance(phrase, str) else "approve"
 
 
 def _odd_space(c: str) -> bool:
@@ -57,7 +62,7 @@ def checked_phrase(phrase: str, whose: str = "the approval phrase") -> str:
     why = _untypeable(phrase)
     if why:
         raise TypeError(f'{whose} {why}: "{_shown(phrase)}"')
-    return phrase if normalize_phrase(phrase) else "approve"
+    return effective_phrase(phrase)
 
 
 def phrase_matches(typed: Any, phrase: str) -> bool:

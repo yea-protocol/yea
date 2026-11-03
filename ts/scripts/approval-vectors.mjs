@@ -1066,6 +1066,7 @@ const consentCodes = [];
 
 for (const [name, phrase] of [
   ['the fallback phrase', 'approve'],
+  ['no phrase, hashed as the fallback', ''],
   ['non-ASCII, inner and edge spaces', ' Löschen old-nav 👍 '],
 ]) {
   const code = await jobConsentCode({
@@ -1089,7 +1090,11 @@ for (const [name, phrase] of [
     decoded.hash,
     consentHash,
   );
-  must(`consent code phrase: ${name}`, decoded.detail.phrase, phrase);
+  must(
+    `consent code phrase: ${name}`,
+    decoded.detail.phrase,
+    phrase || DEFAULT_PHRASE,
+  );
   consentCodes.push({ name, phrase, consentHash, code });
 }
 
@@ -1133,22 +1138,28 @@ for (const [name, grant, at, want] of [
     'not a consent for this plan',
   ],
   [
-    'a consent for another plan',
+    'a valid consent stored under this plan that binds another hash',
     await consentFor('OTHER'),
     now,
-    'not a consent for this plan',
+    'not a consent for this phrase',
   ],
   [
     'a consent for this plan with another phrase',
     await consentFor(await P.consentHashOf(refundHp.planHash, 'refund')),
     now,
-    'not a consent for this plan',
+    'not a consent for this phrase',
   ],
   [
     'a consent bound to the bare plan hash, without its phrase',
     await consentFor(refundHp.planHash),
     now,
-    'not a consent for this plan',
+    'not a consent for this phrase',
+  ],
+  [
+    'an expired consent for another phrase says it expired',
+    await consentFor(await P.consentHashOf(refundHp.planHash, 'refund')),
+    now + 600,
+    'grant has expired',
   ],
   [
     'an expired consent',

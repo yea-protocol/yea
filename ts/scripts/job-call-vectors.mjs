@@ -91,6 +91,8 @@ const accept = (confirm, plan) => ({
 });
 const retry = (fromStep, answer) => ({ state: { fromStep }, answer });
 const empty = { used: {}, consumed: [] };
+/** The reason a call gives when a stored consent was signed for another phrase (§6). */
+const phraseChanged = 'consent for this plan was signed for a different phrase';
 
 const calls = [
   {
@@ -213,11 +215,14 @@ const calls = [
     steps: [step('ask')],
   },
   {
-    name: 'a consent signed for another phrase counts as absent, so the call asks',
+    name: 'a consent signed for another phrase counts as absent, and the form and codes say so',
     tool: { ...tool, phrases: { [refundHp.planHash]: 'refund Chen' } },
     consents: { [refundHp.planHash]: consentGrant },
     before: empty,
-    steps: [step('ask')],
+    steps: [
+      step('ask', { says: phraseChanged }),
+      step('consent-codes', { canAsk: false, says: phraseChanged }),
+    ],
   },
   {
     name: 'with no pinned principal key, no consent code is offered',
@@ -255,7 +260,7 @@ const calls = [
   },
 ];
 
-/** Run each call, check each step's outcome kind, and write what it did into the steps. */
+/** Run each call, check each step's outcome (its kind, and any text it `says`), and record it. */
 async function generate() {
   const out = [];
 
@@ -264,7 +269,7 @@ async function generate() {
       name: c.name,
       tool: c.tool ?? tool,
       ...(c.consents ? { consents: c.consents } : {}),
-      steps: c.steps.map(({ expect: _kind, ...facts }, i) => ({
+      steps: c.steps.map(({ expect: _kind, says: _says, ...facts }, i) => ({
         ...facts,
         ...(i === 0 ? { before: c.before } : {}),
       })),
@@ -272,9 +277,11 @@ async function generate() {
     const done = await runCall(P, spec);
 
     c.steps.forEach((s, i) => {
-      if (done[i].outcome.kind !== s.expect) {
+      const got = JSON.stringify(done[i].outcome);
+
+      if (done[i].outcome.kind !== s.expect || !got.includes(s.says ?? '')) {
         throw new Error(
-          `job call "${c.name}" step ${i + 1}: expected ${s.expect}, got ${JSON.stringify(done[i].outcome)}`,
+          `job call "${c.name}" step ${i + 1}: expected ${s.expect}, got ${got}`,
         );
       }
     });

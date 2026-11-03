@@ -2199,7 +2199,7 @@
       ]
     },
     {
-      "name": "a consent signed for another phrase counts as absent, so the call asks",
+      "name": "a consent signed for another phrase counts as absent, and the form and codes say so",
       "tool": {
         "name": "refund",
         "revert": true,
@@ -2254,7 +2254,7 @@
           "outcome": {
             "kind": "ask",
             "form": {
-              "message": "Approval needed: no signed policy lets refund run without asking.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: refund Chen",
+              "message": "Approval needed: a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: refund Chen",
               "requestedSchema": {
                 "type": "object",
                 "properties": {
@@ -2283,6 +2283,63 @@
               "round": 1,
               "exp": 1790000600
             }
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        },
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": false,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "consent-codes",
+            "why": "a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "codes": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "unavailable": null
           },
           "planned": true,
           "after": {

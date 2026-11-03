@@ -11,9 +11,9 @@ from .outcome import Outcome, Round
 async def first_round(r: Round) -> Outcome:
     """A stored consent runs its plan; else the policy decides; else ask."""
     call = r.call
-    approved = await consent_for(r.plans, r.store, call.policy, call.now, r.phrase_for)
-    if approved is not None:
-        return Outcome("run", plan=approved, how="approved")
+    stored = await consent_for(r.plans, r.store, call.policy, call.now, r.phrase_for)
+    if stored.plan is not None:
+        return Outcome("run", plan=stored.plan, how="approved")
     amounts = await spent(r.store, call.policy)
     d = decide(r.plans, call.policy, lambda k: amounts.get(k, 0), call.now)
     if d.kind == "run" and d.plan is not None:
@@ -26,4 +26,4 @@ async def first_round(r: Round) -> Outcome:
         return Outcome("refuse", d.why)
     if d.kind == "nothing":
         return Outcome("refuse", "no plans")
-    return ask(r, d.why or "approval needed", 1)
+    return ask(r, stored.note or d.why or "approval needed", 1)

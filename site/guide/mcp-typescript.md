@@ -39,7 +39,7 @@ The example's tools only touch files inside one folder, so a mistaken or hostile
 <<< ../../examples/mcp-quickstart.ts#guard
 
 - **`describe(input)`** says what the call will do: a one-line `summary` and its `effects`. It must not change anything. Its input is untyped (`Record<string, unknown>`), so convert fields with `String(...)`.
-- **`confirmWith`** names the phrase the person types, here the file's name. Without it, the phrase is `approve`. It must be typeable: a phrase with control or invisible characters, a tab or other unusual space inside, or more than 64 characters, is refused as a tool error.
+- **`confirmWith`** names the phrase the person types, here the file's name. Without it, the phrase is `approve`. It must be typeable: a phrase with control or invisible characters, a tab or other unusual space inside, or more than 64 characters, is refused as a tool error. It must depend only on the plan and the input, so the same plan always gets the same phrase: a consent from `yea approve` is bound to it.
 - **`approvals.serverOptions()`** lets YEA verify the approval state it sends round the client.
 
 Build the server in a factory. Leave out the `addMoveToTrash` line until step 4:
