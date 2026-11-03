@@ -1,0 +1,13 @@
+2026-11-03T15:02:30Z codes-v2 start: MCP_SDK_GENERATION=v2 claude --strict-mcp-config --mcp-config <scratch>/mcp-codes-v2.json
+2026-11-03T15:02:37Z codes-v2 key: Down
+2026-11-03T15:02:38Z codes-v2 key: Enter
+2026-11-03T15:02:45Z codes-v2 type: Use the files MCP server's delete_file tool to delete docs/report.pdf
+2026-11-03T15:02:45Z codes-v2 key: Enter
+2026-11-03T15:03:14Z codes-v2 approve pane start: env YEA_HOME=<scratch>/yea YEA_STORE=<scratch>/yea-codes/store yea approve <code from the tool result>
+2026-11-03T15:03:21Z codes-v2 approve pane type: notes.txt + Enter
+2026-11-03T15:03:30Z codes-v2 approve pane restart (same command)
+2026-11-03T15:03:34Z codes-v2 approve pane type: report.pdf + Enter
+2026-11-03T15:03:44Z codes-v2 type: I've approved it in my terminal. Call the delete again.
+2026-11-03T15:03:44Z codes-v2 key: Enter
+2026-11-03T15:04:51Z codes-v2 type: /exit
+2026-11-03T15:04:51Z codes-v2 key: Enter

@@ -114,25 +114,39 @@ whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
 
 ### Client support
 
-As of 2026-09-27. The framework asks in the client through MCP form elicitation. Clients
-without it get consent codes, which the person approves with `yea approve <code>` in a
-terminal.
+The framework asks in the client through MCP form elicitation. Clients without it get consent
+codes, which the person approves with `yea approve <code>` in a terminal. Each framework cell
+carries its date; the bridge column is as of the bridge's own tests. ✓ under "asks in the client" means we ran it in an interactive session: the client drew
+the form in its own UI, and the server refused a wrong phrase. ✓ under "consent codes" means
+the call returned a code, `yea approve` signed it, and the call then ran. Each ✓ links to its
+[write-up and transcripts](https://yea-protocol.github.io/yea/guide/integrations#client-runs).
 
 | Client | The bridge (`yea mcp`) | Asks in the client (framework) | Consent codes (framework) |
 |---|---|---|---|
-| Claude Code | works | not run yet; vendor docs: supported | not run yet |
-| Cursor | works | not run yet; vendor docs: supported | not run yet |
-| VS Code | works | not run yet; vendor docs: supported | not run yet |
-| Codex | works | not run yet; vendor docs: supported ¹ | not run yet |
-| Claude Desktop | works | no (vendor docs) | not run yet |
-| Gemini CLI | works | no (vendor docs) | not run yet |
-| Windsurf | works | unknown | not run yet |
+| Claude Code | works | [✓ 2026-11-03](https://yea-protocol.github.io/yea/guide/integrations#claude-code-2026-11-03), v2.1.317; needs v2.1.287 or later (vendor docs) ² | [✓ 2026-11-03](https://yea-protocol.github.io/yea/guide/integrations#claude-code-2026-11-03) |
+| Codex | works | not run; [checklist on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641) (2026-11-03); vendor docs: supported ¹ ³ | not run; checklist on #319 (2026-11-03) |
+| Gemini CLI | works | [✗ codes only, 2026-11-03](https://yea-protocol.github.io/yea/guide/integrations#codex-and-gemini-cli): v0.66.0 declares no elicitation capability (source, and [gemini-cli#28074](https://github.com/google-gemini/gemini-cli/issues/28074)) | not run; [checklist on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641) (2026-11-03) |
+| Cursor | works | not run; checklist on #319 (2026-11-03); vendor docs: supported | not run; checklist on #319 (2026-11-03) |
+| VS Code | works | not run; checklist on #319 (2026-11-03); vendor docs: supported | not run; checklist on #319 (2026-11-03) |
+| Claude Desktop | works | no (vendor docs, 2026-09-26) | not run; checklist on #319 (2026-11-03) |
+| Windsurf | works | unknown (2026-09-26) | not run; checklist on #319 (2026-11-03) |
 | MCP TypeScript SDK client (our tests) | | yes, 2026-09-27: 2026-07-28 and 2025 protocol versions | yes, 2026-09-27 |
 
+The bridge never asks in the client, in any client: it holds no principal key
+([ADR-0003](docs/adr/0003-the-principal-key-never-joins-an-agent-side-home.md)), so consent
+codes are its only way to approve ([#73](https://github.com/yea-protocol/yea/issues/73)).
 "Vendor docs" means the client's own documentation, checked 2026-09-26
 ([notes](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093)), not a run of
-ours. ¹ Codex auto-accepts forms with no fields under auto-approve
-policies, which is why YEA's form always asks for a typed phrase.
+ours. ¹ Codex auto-accepts forms with no fields under auto-approve policies, which is why YEA's
+form always asks for a typed phrase.
+
+A ✓ means the form reached a person in our run, not that only a person can answer it: the
+phrase is in the request, and some clients let software answer forms
+([#337](https://github.com/yea-protocol/yea/issues/337)). ² Claude Code: an `Elicitation` hook
+can answer the form with no dialog drawn. It declares form support on 2025-era stdio
+connections from v2.1.287 (its docs, 2026-11-03); we ran v2.1.317 on both of its MCP runtimes. ³ Codex:
+its `approval_policy` (`never`, `granular.mcp_elicitations`) decides whether a form reaches the
+person or is rejected, and an auto-reviewer may decide in the person's place.
 
 ## What changes
 
