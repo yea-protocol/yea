@@ -206,5 +206,13 @@
   {
     "text": "",
     "printable": ""
+  },
+  {
+    "text": "\\u{200b} looks escaped",
+    "printable": "\\u{200b} looks escaped"
+  },
+  {
+    "text": "back\\slash \u200b",
+    "printable": "back\\slash \\u{200b}"
   }
 ]

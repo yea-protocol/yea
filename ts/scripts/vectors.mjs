@@ -1877,6 +1877,9 @@ out(
     'ok \u2764\ufe0f \u263a\ufe0e',
     'a\u2800b',
     '',
+    // A backslash is kept, even where it spells an escape, so printable is its own fixed point.
+    '\\u{200b} looks escaped',
+    'back\\slash \u200b',
   ].map((text) => ({ text, printable: P.printable(text) })),
   { ascii: true },
 );

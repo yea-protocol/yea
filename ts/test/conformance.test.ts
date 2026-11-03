@@ -456,6 +456,8 @@ describe('conformance vectors', () => {
   it('printable', () => {
     for (const c of load('printable')) {
       expect(P.printable(c.text)).toBe(c.printable);
+      // Idempotent: it's applied over text already escaped (SPEC-approval §3).
+      expect(P.printable(c.printable)).toBe(c.printable);
     }
   });
   it('requests', () => {
