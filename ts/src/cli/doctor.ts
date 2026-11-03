@@ -17,8 +17,8 @@ import { client, installScope, LOCAL_FLAG, pinRecipe } from './shared.js';
 
 const DOCTOR_FLAGS = { local: LOCAL_FLAG } as const satisfies Flags;
 
-/** Where a grant is fixed: by the principal key, which isn't here in the recommended setup. */
-const REISSUE = 'where your principal key is';
+/** Where a grant is issued, and so fixed: by the principal key, not here in the recommended setup. */
+const WHERE_PRINCIPAL_IS = 'where your principal key is';
 
 export const cmdDoctor = command({
   summary:
@@ -63,7 +63,7 @@ async function reportPrincipal(r: Report) {
 
   if (p) {
     r.warn(
-      `principal key is readable here (${process.env.YEA_PRINCIPAL_HOME ?? home()}). Fine for trying things; for real use keep it away from agents (SECURITY.md)`,
+      `principal key is readable here (${process.env.YEA_PRINCIPAL_HOME || home()}). Fine for trying things; for real use keep it away from agents (SECURITY.md)`,
     );
   } else {
     r.ok('principal key is not on this machine (recommended)');
@@ -96,7 +96,7 @@ async function reportGrants(r: Report, a: KeyPair | null) {
   if (!grants.length) {
     r.warn(
       [
-        `no grants: your agent can read but not act. Issue one ${REISSUE}, and import it here:`,
+        `no grants: your agent can read but not act. Issue one ${WHERE_PRINCIPAL_IS}, and import it here:`,
         `    yea grant --to ${a?.public ?? '<agent key>'} …   (there)`,
         '    yea grant-import <token>   (here)',
         '  or, to try things on one machine: yea install --with-principal',
@@ -109,7 +109,7 @@ async function reportGrants(r: Report, a: KeyPair | null) {
       reportGrant(r, await inspectGrant(g), a);
     } catch {
       r.warn(
-        `a saved grant in ${home()}/grants is unreadable: re-issue it ${REISSUE}`,
+        `a saved grant in ${home()}/grants is unreadable: re-issue it ${WHERE_PRINCIPAL_IS}`,
       );
     }
   }
@@ -131,11 +131,11 @@ function reportGrant(r: Report, info: GrantInfo, a: KeyPair | null) {
 
   if (a && info.holder !== a.public) {
     r.warn(
-      `grant ${id} is held by another key, not this agent's: re-issue it ${REISSUE}, ${to}`,
+      `grant ${id} is held by another key, not this agent's: re-issue it ${WHERE_PRINCIPAL_IS}, ${to}`,
     );
   } else if (exp !== Infinity && exp <= now) {
     r.warn(
-      `grant ${id} expired ${fmtTime(exp)}: re-issue it ${REISSUE}, ${to}`,
+      `grant ${id} expired ${fmtTime(exp)}: re-issue it ${WHERE_PRINCIPAL_IS}, ${to}`,
     );
   } else {
     r.ok(

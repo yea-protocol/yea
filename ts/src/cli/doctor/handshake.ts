@@ -2,16 +2,20 @@
  * Start an MCP server as an AI tool would and send it MCP's `initialize`: newline-delimited
  * JSON-RPC over stdio, by hand, since the SDK has no dependencies (AGENTS.md rule 4).
  */
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { BridgeCommand } from '../../setup.js';
 import { isObject } from '../../util.js';
 
-/** How a start went: it answered, it failed to start or answer, or it took too long. */
+/**
+ * How a start went: it answered; its command couldn't be run at all (not there, or not
+ * executable); it ran but failed to answer; or it took too long.
+ */
 export type Launch =
   | { kind: 'started'; ms: number }
+  | { kind: 'unrunnable'; why: string }
   | { kind: 'failed'; why: string; stderr: string }
   | { kind: 'slow'; ms: number };
 
@@ -49,6 +53,16 @@ export function handshake(
     // Windows starts a bare `npx` (npx.cmd) only through a shell.
     shell: process.platform === 'win32' && !isAbsolute(b.command),
   });
+
+  return awaitAnswer(child, t0, timeoutMs);
+}
+
+/** Send `child` (started at `t0`) `initialize`, and settle on the first outcome, then stop it. */
+function awaitAnswer(
+  child: ChildProcessWithoutNullStreams,
+  t0: number,
+  timeoutMs: number,
+): Promise<Launch> {
   let stderr = '';
 
   return new Promise((resolve) => {
@@ -66,12 +80,11 @@ export function handshake(
       timeoutMs,
     );
 
-    child.stderr?.on('data', (d) => {
+    child.stderr.on('data', (d) => {
       stderr = (stderr + d).slice(-STDERR_MAX);
     });
-    child.on('error', (e) =>
-      settle({ kind: 'failed', why: e.message, stderr }),
-    );
+    // Without IPC or a signal to abort with, an 'error' before settling is a failure to spawn.
+    child.on('error', (e) => settle({ kind: 'unrunnable', why: e.message }));
     // 'close' comes after the last of stdout, so an answer just before exiting still counts.
     child.on('close', (code, signal) =>
       settle({ kind: 'failed', why: exited(code ?? signal, stderr), stderr }),
@@ -130,10 +143,10 @@ function exited(status: number | string | null, stderr: string): string {
 }
 
 /** Stop `child` and let go of it: our ends of its pipes too, which a grandchild may hold open. */
-function stop(child: ChildProcess) {
-  child.stdin?.destroy();
-  child.stdout?.destroy();
-  child.stderr?.destroy();
+function stop(child: ChildProcessWithoutNullStreams) {
+  child.stdin.destroy();
+  child.stdout.destroy();
+  child.stderr.destroy();
   child.kill();
   child.unref();
 }

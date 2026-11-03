@@ -6,14 +6,14 @@
 import { CLIENTS } from './setup/clients.js';
 
 export {
+  BadEntry,
   type BridgeCommand,
   bridgeFor,
   checkoutRoot,
   describeBridge,
-  guiPath,
-  PORTABLE_BRIDGE,
+  isPortableBridge,
+  launchPath,
   runningBridge,
-  sameBridge,
 } from './setup/bridge-command.js';
 
 export { CLIENTS } from './setup/clients.js';

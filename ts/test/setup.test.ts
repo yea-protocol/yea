@@ -12,12 +12,12 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { guiPath, PORTABLE_BRIDGE } from '../src/setup/bridge-command.js';
 import {
   type BridgeCommand,
   bridgeFor,
   CLIENTS,
-  guiPath,
-  PORTABLE_BRIDGE,
+  isPortableBridge,
   runningBridge,
 } from '../src/setup.js';
 
@@ -139,11 +139,11 @@ function checkout(): string {
   return root;
 }
 
-/** A folder holding a node and the npx beside it, as node's installers lay them out. */
-function nodeDir(): string {
+/** A folder holding a node and (unless `npx` is false) the npx beside it, as node's installers lay them out. */
+function nodeDir(npx = true): string {
   const dir = temp('yea-node-');
 
-  put(dir, { node: '', npx: '' });
+  put(dir, { node: '', ...(npx ? { npx: '' } : {}) });
 
   return dir;
 }
@@ -225,6 +225,31 @@ describe('the bridge command yea install registers', () => {
     });
   });
 
+  it('without an npx beside this node, takes the first on the PATH, as an absolute path', () => {
+    const cache = temp('yea-npm-');
+    const bin = '_npx/0123abcd/node_modules/@yea-protocol/cli/bin/yea.js';
+    const onPath = nodeDir();
+    const path = ['relative/bin', temp('yea-empty-'), onPath].join(delimiter);
+
+    put(cache, { [bin]: '' });
+
+    expect(
+      runningBridge(join(cache, bin), join(nodeDir(false), 'node'), path).bridge
+        .command,
+    ).toBe(join(onPath, 'npx'));
+  });
+
+  it('without any npx, refuses, rather than writing one no tool can start', () => {
+    const cache = temp('yea-npm-');
+    const bin = '_npx/0123abcd/node_modules/@yea-protocol/cli/bin/yea.js';
+
+    put(cache, { [bin]: '' });
+
+    expect(() =>
+      runningBridge(join(cache, bin), join(nodeDir(false), 'node'), ''),
+    ).toThrow(/no npx beside .* or on your PATH: install npm/);
+  });
+
   it("isn't fooled by another monorepo with the same layout", () => {
     const root = checkout();
 
@@ -265,6 +290,21 @@ describe('the bridge command each tool gets (bridgeFor)', () => {
       });
     },
   );
+});
+
+describe("whether an entry is yea's portable one (isPortableBridge)", () => {
+  it('is exactly the published package through a bare npx, with no env', () => {
+    expect(isPortableBridge(PORTABLE_BRIDGE)).toBe(true);
+    expect(
+      isPortableBridge({ ...PORTABLE_BRIDGE, command: '/usr/local/bin/npx' }),
+    ).toBe(false);
+    expect(
+      isPortableBridge({ ...PORTABLE_BRIDGE, args: ['-y', 'other', 'mcp'] }),
+    ).toBe(false);
+    expect(isPortableBridge({ ...PORTABLE_BRIDGE, env: { A: 'b' } })).toBe(
+      false,
+    );
+  });
 });
 
 describe('reading a registered entry back', () => {

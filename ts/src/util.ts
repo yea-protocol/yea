@@ -14,6 +14,10 @@ export const isStringList = (v: unknown): v is string[] =>
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** A JSON object whose values are all strings. */
+export const isStringRecord = (v: unknown): v is Record<string, string> =>
+  isObject(v) && Object.values(v).every((x) => typeof x === 'string');
+
 /** An error's `code`, such as Node's `ENOENT`; undefined when it has no string code. */
 export const errno = (e: unknown): string | undefined =>
   isObject(e) && typeof e.code === 'string' ? e.code : undefined;

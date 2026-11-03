@@ -24,6 +24,7 @@ It checks your node version, keys, grants and services, starts what each AI tool
 - Run `yea doctor` and look for your tool's line ("starts the bridge"). If your tool isn't listed, run `yea install --target <tool>`, or add it by hand from [Integrations](/guide/integrations).
 - In Claude Code, `claude mcp list` should show `yea`. The installer sets `alwaysLoad` so the tools aren't hidden behind deferred tool search.
 - Desktop apps opened from the Dock or a launcher don't get your shell's `PATH`, so nvm's or Homebrew's `node` isn't on it. `yea install` writes them absolute paths and a `PATH` with `node`'s folder, and `yea doctor` starts their entries without your shell's `PATH`, as they would. If you upgrade or remove that `node`, run `yea install --target <tool>` again.
+- That `PATH` replaces the app's own, so even an app that reads your shell's `PATH` (Cursor) doesn't pass it on. If a `stdio:` service you added needs more than `node` (`uv`, or Homebrew's `python3`), give its command as an absolute path.
 
 ## The tools are there, but there are no capabilities
 

@@ -96,9 +96,8 @@ export const CLIENTS: Record<string, Target> = {
   // Its config is always ~/.codex/config.toml; --local only moves the instructions.
   codex: {
     name: 'Codex CLI',
-    gui: false,
     detect: () => existsSync(join(homedir(), '.codex')),
-    project: () => false,
+    placement: () => ({ project: false, gui: false }),
     registered: () => readTable(readText(codexConfig())),
     install: (s, bridge) => {
       const file = codexConfig();

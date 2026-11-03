@@ -3,7 +3,7 @@
  * back and removed line by line, leaving the rest of the file as it was. Values are written as
  * JSON strings and arrays, which TOML reads the same way; anything else can't be read back.
  */
-import { type BridgeCommand, parseBridge } from './bridge-command.js';
+import { BadEntry, type BridgeCommand, parseBridge } from './bridge-command.js';
 
 const HEADER = '[mcp_servers.yea]';
 
@@ -83,7 +83,7 @@ export function readTable(text: string): BridgeCommand | null {
   return parseBridge(entry);
 }
 
-/** One value as `writeTable` writes it; throws for any other TOML. */
+/** One value as `writeTable` writes it; throws a BadEntry for any other TOML. */
 function parseValue(key: string, value: string): unknown {
   // An inline table of strings, `{ "K" = "v", … }`, is a JSON object once `=` is `:`.
   const json =
@@ -92,6 +92,6 @@ function parseValue(key: string, value: string): unknown {
   try {
     return JSON.parse(json);
   } catch {
-    throw new Error(`can't read its ${key}: ${value}`);
+    throw new BadEntry(`can't read its ${key}: ${value}`);
   }
 }

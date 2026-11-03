@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** yea — command line for the YEA protocol. The commands live in ./cli/, one module per group. */
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   type Command,
@@ -12,6 +12,7 @@ import {
 import { COMMANDS } from './cli/commands.js';
 import { commandHelp, usageMessage } from './cli/help.js';
 import { die } from './cli/shared.js';
+import { realPath } from './fs-util.js';
 import { home } from './home.js';
 import { printable } from './text.js';
 import { isObject } from './util.js';
@@ -219,15 +220,6 @@ function isEntry(): boolean {
     !!self &&
     [script, `${script}.js`].some((p) => realPath(p) === self)
   );
-}
-
-/** `p` with every symlink resolved, or null if there's nothing there. */
-function realPath(p: string): string | null {
-  try {
-    return realpathSync(p);
-  } catch {
-    return null;
-  }
 }
 
 if (isEntry()) {

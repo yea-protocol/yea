@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { handshake } from '../src/cli/doctor/handshake.js';
 import { launchLine } from '../src/cli/doctor/registration.js';
-import { PORTABLE_BRIDGE } from '../src/setup.js';
+import { PORTABLE_BRIDGE } from '../src/setup/bridge-command.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const REPO = fileURLToPath(new URL('../..', import.meta.url)).replace(
@@ -113,7 +113,7 @@ function configFile(out: string, tool: string): string {
 }
 
 /** Replace the `yea` entry under `key` in the JSON config `file`. */
-function register(file: string, entry: object, key = 'mcpServers') {
+function register(file: string, entry: unknown, key = 'mcpServers') {
   const cfg = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 
   mkdirSync(dirname(file), { recursive: true });
@@ -413,6 +413,66 @@ describe.concurrent('yea doctor: starting what each tool would start', () => {
     expect(d.status).toBe(1);
   });
 
+  it("a checkout entry whose node is gone ends with yea install: rebuilding wouldn't help", async () => {
+    const u = await installed();
+    const file = join(u.home, '.claude.json');
+    const entry = JSON.parse(readFileSync(file, 'utf8')).mcpServers.yea;
+
+    register(file, { ...entry, command: join(SCRATCH, 'v0.0.0', 'node') });
+
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(
+      /^✗ Claude Code: the bridge didn't start: .*ENOENT: yea install --target claude-code$/m,
+    );
+    expect(d.status).toBe(1);
+  });
+
+  it("Codex's entry that can't be read is ✗, with the install that replaces it", async () => {
+    const u = await installed(fake());
+
+    mkdirSync(join(u.home, '.codex'));
+    writeFileSync(
+      join(u.home, '.codex', 'config.toml'),
+      "[mcp_servers.yea]\ncommand = 'npx'\n",
+    );
+
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(
+      /^✗ Codex CLI: can't read its "yea" entry: .*: yea install --target codex$/m,
+    );
+    expect(d.status).toBe(1);
+  });
+
+  it("a config that isn't JSON is ✗, without an install that would fail on it too", async () => {
+    const u = await installed();
+
+    writeFileSync(join(u.home, '.claude.json'), '{ not json');
+
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(
+      /^✗ Claude Code: can't read its "yea" entry: .* isn't valid JSON; fix it or add the server by hand$/m,
+    );
+    expect(d.status).toBe(1);
+  });
+
+  it("a project file's entry that can't be read is a warning: it's the project's to fix", async () => {
+    const u = await installed(fake());
+    const project = mkdtempSync(join(SCRATCH, 'project-'));
+
+    register(join(project, '.vscode', 'mcp.json'), 'not an object', 'servers');
+
+    const d = await yea(u, ['doctor'], { cwd: project });
+
+    expect(d.out).toMatch(
+      /^! VS Code: can't read the "yea" entry in its project file, which is the project's to fix: it has no command$/m,
+    );
+    expect(d.out).not.toContain('yea install --target vscode');
+    expect(d.status).toBe(0);
+  });
+
   it('starts each distinct command once, however many tools share it', async () => {
     const log = join(SCRATCH, `starts-${Date.now()}.log`);
     const u = await installed(fake('ok', log));
@@ -443,6 +503,15 @@ describe.concurrent('the handshake', () => {
 
   it('answers', async () => {
     expect(await handshake(fake(), env)).toMatchObject({ kind: 'started' });
+  });
+
+  it("can't run its command at all", async () => {
+    expect(
+      await handshake({ command: join(SCRATCH, 'missing'), args: [] }, env),
+    ).toMatchObject({
+      kind: 'unrunnable',
+      why: expect.stringContaining('ENOENT'),
+    });
   });
 
   it('exits before answering', async () => {

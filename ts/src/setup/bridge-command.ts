@@ -2,16 +2,11 @@
  * The command an AI tool runs to start the YEA MCP bridge: the yea that ran `yea install` (a
  * checkout's bin, or the published package through npx), adapted to where it's written.
  */
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { platform } from 'node:os';
-import { delimiter, dirname, join, resolve } from 'node:path';
-import { isObject } from '../util.js';
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
+import { realPath } from '../fs-util.js';
+import { isObject, isStringList, isStringRecord } from '../util.js';
 
 /** How an MCP config starts the bridge. */
 export interface BridgeCommand {
@@ -31,6 +26,9 @@ export interface Placement {
   project: boolean;
   gui: boolean;
 }
+
+/** A "yea" entry that isn't a bridge command: unlike a config file that can't be read, `yea install` replaces it. */
+export class BadEntry extends Error {}
 
 /** The published package through whichever npx is on the PATH: the entry anyone can share. */
 export const PORTABLE_BRIDGE: BridgeCommand = {
@@ -57,15 +55,6 @@ export function guiPath(os = platform()): string | null {
   return os === 'darwin'
     ? '/usr/bin:/bin:/usr/sbin:/sbin'
     : '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
-}
-
-/** `p` with every symlink resolved, or null if there's nothing there. */
-function realPath(p: string): string | null {
-  try {
-    return realpathSync(p);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -132,27 +121,44 @@ function unbuilt(root: string): string | null {
   return null;
 }
 
-/** The npx beside `node`, as node's installers put it; the PATH's on Windows, where it's a .cmd. */
-function npxBeside(node: string): string {
-  const npx = join(dirname(node), 'npx');
+/**
+ * The npx to start the published package with: the one beside `node`, as node's installers put
+ * it, else the first on `path`. On Windows, the bare `npx`: there it's a .cmd, which starts only
+ * through a shell, and apps get the shell's PATH. Throws if there's none.
+ */
+function npxFor(node: string, path: string): string {
+  if (platform() === 'win32') {
+    return 'npx';
+  }
 
-  return platform() !== 'win32' && existsSync(npx) ? npx : 'npx';
+  const npx = [dirname(node), ...path.split(delimiter).filter(isAbsolute)]
+    .map((dir) => join(dir, 'npx'))
+    .find((f) => existsSync(f));
+
+  if (!npx) {
+    throw new Error(
+      `there's no npx beside ${node} or on your PATH: install npm, which comes with node from nodejs.org`,
+    );
+  }
+
+  return npx;
 }
 
 /**
  * The bridge command of the yea running as `node script`: this node and the checkout's bin, or
- * the published package through the npx beside this node. Both absolute, since an app may not
- * start them from a shell. Throws if the checkout isn't built.
+ * the published package through the npx beside this node (or on `path`). Both absolute, since an
+ * app may not start them from a shell. Throws if the checkout isn't built, or there's no npx.
  */
 export function runningBridge(
   script = process.argv[1] ?? '',
   node = process.execPath,
+  path = process.env.PATH ?? '',
 ): RunningBridge {
   const root = checkoutRoot(script);
 
   if (!root) {
     return {
-      bridge: { command: npxBeside(node), args: PORTABLE_BRIDGE.args },
+      bridge: { command: npxFor(node, path), args: PORTABLE_BRIDGE.args },
       checkout: null,
     };
   }
@@ -175,21 +181,35 @@ export function runningBridge(
 }
 
 /**
+ * The PATH a tool whose config is at `p` starts the bridge with, when it isn't your shell's: a
+ * desktop app's own config. A project file holds the portable bare `npx`, which needs your
+ * shell's PATH; Cursor and VS Code, the desktop apps that read project files, start servers with
+ * it when they can get it from your shell.
+ */
+export function launchPath(p: Placement): string | null {
+  return p.gui && !p.project ? guiPath() : null;
+}
+
+/**
  * The bridge command a tool gets, from the running one: the one place an entry is built. A
  * project file gets the portable entry, so no personal path is committed. A desktop app's own
  * config also gets a PATH with this node's folder first: npx and the bridge's `#!/usr/bin/env
  * node` scripts need node there, and such an app doesn't start them from a shell.
+ *
+ * That PATH replaces the app's, and a config can't add to the PATH it inherits. So a desktop app
+ * that does read your shell's PATH (Cursor) no longer passes it on, and a `stdio:` service
+ * needing more than node, such as `uv` or Homebrew's `python3`, needs an absolute path.
  */
 export function bridgeFor(
-  { project, gui }: Placement,
+  p: Placement,
   running: BridgeCommand,
   node = process.execPath,
 ): BridgeCommand {
-  if (project) {
+  if (p.project) {
     return PORTABLE_BRIDGE;
   }
 
-  const path = gui ? guiPath() : null;
+  const path = launchPath(p);
 
   if (!path) {
     return running;
@@ -208,21 +228,23 @@ export function describeBridge(b: BridgeCommand): string {
     .join(' ');
 }
 
-/** Whether `a` and `b` start the same thing the same way. */
-export const sameBridge = (a: BridgeCommand, b: BridgeCommand) =>
-  JSON.stringify([a.command, a.args, a.env ?? {}]) ===
-  JSON.stringify([b.command, b.args, b.env ?? {}]);
+/** Whether `b` is yea's portable entry, as `yea install` writes it in a project file. */
+export const isPortableBridge = (b: BridgeCommand) =>
+  b.command === PORTABLE_BRIDGE.command &&
+  b.args.length === PORTABLE_BRIDGE.args.length &&
+  b.args.every((a, i) => a === PORTABLE_BRIDGE.args[i]) &&
+  !Object.keys(b.env ?? {}).length;
 
-/** A config's "yea" entry as a bridge command; throws what's wrong with it. */
+/** A config's "yea" entry as a bridge command; throws a BadEntry saying what's wrong with it. */
 export function parseBridge(v: unknown): BridgeCommand {
   if (!isObject(v) || typeof v.command !== 'string') {
-    throw new Error('it has no command');
+    throw new BadEntry('it has no command');
   }
 
   const args = v.args ?? [];
 
-  if (!Array.isArray(args) || !args.every((a) => typeof a === 'string')) {
-    throw new Error('its args are not a list of strings');
+  if (!isStringList(args)) {
+    throw new BadEntry('its args are not a list of strings');
   }
 
   if (v.env === undefined) {
@@ -230,11 +252,8 @@ export function parseBridge(v: unknown): BridgeCommand {
   }
 
   if (!isStringRecord(v.env)) {
-    throw new Error('its env is not a table of strings');
+    throw new BadEntry('its env is not a table of strings');
   }
 
   return { command: v.command, args, env: v.env };
 }
-
-const isStringRecord = (v: unknown): v is Record<string, string> =>
-  isObject(v) && Object.values(v).every((x) => typeof x === 'string');

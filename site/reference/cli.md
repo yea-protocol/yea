@@ -44,7 +44,7 @@ Sets YEA up for your AI tools in one step (alias: `setup`):
 3. with a local principal and no grants yet, signs a starter policy: low-risk actions, up to 25.00 USD each and 100.00 USD in total, for 30 days, with anything else needing your approval;
 4. registers the MCP bridge with each detected tool (or those in `--target`) and, for Claude Code, Codex, Gemini CLI and Cursor (`--local`), writes a marker-fenced `YEA` block of agent instructions.
 
-The bridge it registers is the `yea` that's running, with absolute paths: run from a clone, this `node` and the clone's `cli/bin/yea.js` (it refuses until the clone is built: `npm run build`); otherwise the published package through the `npx` beside this `node`. Desktop apps (Claude Desktop, Cursor, VS Code, Windsurf) also get a `PATH` with `node`'s folder first, since they don't start commands from your shell. Project files (`--local`, and VS Code's `.vscode/mcp.json`) get the portable `npx -y @yea-protocol/cli mcp`, so no personal path is committed.
+The bridge it registers is the `yea` that's running, with absolute paths: run from a clone, this `node` and the clone's `cli/bin/yea.js` (it refuses until the clone is built: `npm run build`); otherwise the published package through the `npx` beside this `node` (or else the first on your `PATH`). Desktop apps' own configs (Claude Desktop, Cursor, Windsurf) also get a `PATH` with `node`'s folder first, in place of the app's, since they don't start commands from your shell. Project files (`--local`, and VS Code's `.vscode/mcp.json`) get the portable `npx -y @yea-protocol/cli mcp`, so no personal path is committed.
 
 | Flag | Meaning |
 |---|---|

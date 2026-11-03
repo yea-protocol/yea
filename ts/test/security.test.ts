@@ -4217,7 +4217,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
   });
 });
 
-describe('yea doctor runs nothing a project ships (#321)', () => {
+describe("yea doctor runs nothing it shouldn't (#321)", () => {
   /** A user's home and a project folder, and doctor run in the project. */
   function doctorIn(project: string, home: string) {
     return spawnSync(process.execPath, [CLI, 'doctor'], {
@@ -4233,8 +4233,13 @@ describe('yea doctor runs nothing a project ships (#321)', () => {
     });
   }
 
+  interface Entry {
+    command: string;
+    args: string[];
+  }
+
   /** A node command that writes its working folder to `file`. */
-  const writesCwd = (file: string) => ({
+  const writesCwd = (file: string): Entry => ({
     command: process.execPath,
     args: [
       '-e',
@@ -4256,6 +4261,28 @@ describe('yea doctor runs nothing a project ships (#321)', () => {
     const r = doctorIn(project, home);
 
     expect(r.stdout).toMatch(/^! VS Code: .*doctor won't run/m);
+    expect(existsSync(ran)).toBe(false);
+  });
+
+  it.each([
+    [
+      'args that are not all strings',
+      (e: Entry) => ({ ...e, args: [...e.args, 1] }),
+    ],
+    ['an env that is not all strings', (e: Entry) => ({ ...e, env: { A: 1 } })],
+  ])('runs nothing for an entry with %s: it fails closed', (_, spoil) => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'yea-home-')));
+    const ran = join(home, 'ran');
+
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({ mcpServers: { yea: spoil(writesCwd(ran)) } }),
+    );
+
+    const r = doctorIn(home, home);
+
+    expect(r.stdout).toMatch(/^✗ Claude Code: can't read its "yea" entry: /m);
+    expect(r.status).toBe(1);
     expect(existsSync(ran)).toBe(false);
   });
 

@@ -8,11 +8,11 @@ import {
   CLIENTS,
   describeBridge,
   detectedClients,
+  isPortableBridge,
   listServices,
   removeService,
   runningBridge,
   type Scope,
-  sameBridge,
   type Target,
 } from '../setup.js';
 import { printable } from '../text.js';
@@ -174,13 +174,14 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
 /** Register the bridge with `t`: the running command, or the portable one in a project file. */
 function installTarget(t: Target, s: Scope, running: BridgeCommand) {
   try {
-    const bridge = bridgeFor({ project: t.project(s), gui: t.gui }, running);
+    const placement = t.placement(s);
+    const bridge = bridgeFor(placement, running);
 
     for (const line of t.install(s, bridge)) {
       console.log(`✓ ${t.name}: ${line}`);
     }
 
-    if (t.project(s) && !sameBridge(bridge, running)) {
+    if (placement.project && !isPortableBridge(running)) {
       console.log(
         `  note: a project file, which others may share, so it gets the portable ${describeBridge(bridge)}`,
       );

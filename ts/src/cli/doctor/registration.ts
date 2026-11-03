@@ -4,16 +4,15 @@
  */
 import { isAbsolute } from 'node:path';
 import {
+  BadEntry,
   type BridgeCommand,
-  bridgeFor,
   CLIENTS,
   checkoutRoot,
   describeBridge,
   detectedClients,
-  guiPath,
-  PORTABLE_BRIDGE,
+  isPortableBridge,
+  launchPath,
   type Scope,
-  sameBridge,
   type Target,
 } from '../../setup.js';
 import { handshake, LAUNCH_TIMEOUT_MS, type Launch } from './handshake.js';
@@ -35,6 +34,9 @@ interface Unreadable {
   id: string;
   name: string;
   why: string;
+  project: boolean;
+  /** Whether `yea install` replaces it: the config reads, but its entry isn't a bridge command. */
+  replaceable: boolean;
 }
 
 type Found = Registered | Unreadable;
@@ -73,26 +75,43 @@ function installCommand(): string {
 
 /** Tool `t`'s entry under `s`, if it has one. */
 function find(id: string, t: Target, s: Scope): Found[] {
+  const placement = t.placement(s);
+  const at = { id, name: t.name, project: placement.project };
+
   try {
     const bridge = t.registered(s);
-    const project = t.project(s);
-    const path = t.gui && !project ? guiPath() : null;
 
-    return bridge ? [{ id, name: t.name, bridge, path, project }] : [];
+    // A project file's entry starts with your shell's PATH, VS Code's included: see launchPath.
+    return bridge ? [{ ...at, bridge, path: launchPath(placement) }] : [];
   } catch (e) {
-    return [{ id, name: t.name, why: (e as Error).message }];
+    const why = (e as Error).message;
+
+    return [{ ...at, why, replaceable: e instanceof BadEntry }];
   }
 }
 
+/** What doctor says about `f`: why it can't read it or won't start it, or how starting it went. */
 async function lineFor(f: Found, launch: Launcher): Promise<Line> {
   if ('why' in f) {
-    return [
-      '✗',
-      `${f.name}: can't read its "yea" entry: ${f.why}: yea install --target ${f.id}`,
-    ];
+    return unreadable(f);
   }
 
   return refusal(f) ?? launchLine(f, await launch(f));
+}
+
+/** What doctor says about an entry it can't read: with `yea install`, if that replaces it. */
+function unreadable(f: Unreadable): Line {
+  if (f.project) {
+    // The project ships it, and install would overwrite a file others may share.
+    return [
+      '!',
+      `${f.name}: can't read the "yea" entry in its project file, which is the project's to fix: ${f.why}`,
+    ];
+  }
+
+  const line = `${f.name}: can't read its "yea" entry: ${f.why}`;
+
+  return ['✗', f.replaceable ? `${line}: yea install --target ${f.id}` : line];
 }
 
 /** Why doctor won't start `f`, as its line; null if it will. */
@@ -105,9 +124,7 @@ function refusal(f: Registered): Line | null {
   }
 
   // A project file comes with the project: start only what yea itself writes there.
-  const ours = bridgeFor({ project: true, gui: false }, PORTABLE_BRIDGE);
-
-  if (f.project && !sameBridge(f.bridge, ours)) {
+  if (f.project && !isPortableBridge(f.bridge)) {
     return [
       '!',
       `${f.name}: its project file starts something other than yea's entry, which doctor won't run: ${describeBridge(f.bridge)}`,
@@ -122,12 +139,10 @@ function launcher(): Launcher {
   const started = new Map<string, Promise<Launch>>();
 
   return (f) => {
-    const key = JSON.stringify([
-      f.bridge.command,
-      f.bridge.args,
-      f.bridge.env ?? {},
-      f.path,
-    ]);
+    const env = Object.entries(f.bridge.env ?? {}).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    const key = JSON.stringify([f.bridge.command, f.bridge.args, env, f.path]);
     const launch = started.get(key) ?? handshake(f.bridge, launchEnv(f));
 
     started.set(key, launch);
@@ -159,10 +174,20 @@ export function launchLine(f: Registered, l: Launch): Line {
     ];
   }
 
-  const unpublished =
-    f.bridge.args.includes('@yea-protocol/cli') && /\bE404\b/.test(l.stderr);
+  if (l.kind === 'failed' && isUnpublished(f, l.stderr)) {
+    return unpublished(f);
+  }
 
-  if (unpublished && f.project) {
+  return ['✗', `${f.name}: the bridge didn't start: ${l.why}: ${fix(f, l)}`];
+}
+
+/** Whether `f` failed because npm has no copy of the published package. */
+const isUnpublished = (f: Registered, stderr: string) =>
+  f.bridge.args.includes('@yea-protocol/cli') && /\bE404\b/.test(stderr);
+
+/** What doctor says when npm has no copy of the package `f` starts. */
+function unpublished(f: Registered): Line {
+  if (f.project) {
     // Nothing fixes it here: a project file gets only the published package.
     return [
       '!',
@@ -170,15 +195,24 @@ export function launchLine(f: Registered, l: Launch): Line {
     ];
   }
 
-  const cause = unpublished
-    ? `${UNPUBLISHED}. From a clone of github.com/yea-protocol/yea: npm ci && npm run build && node cli/bin/yea.js install`
-    : `${l.why}: ${fix(f)}`;
-
-  return ['✗', `${f.name}: the bridge didn't start: ${cause}`];
+  return [
+    '✗',
+    `${f.name}: the bridge didn't start: ${UNPUBLISHED}. From a clone of github.com/yea-protocol/yea: npm ci && npm run build && node cli/bin/yea.js install`,
+  ];
 }
 
-/** The command that fixes `f` when it doesn't start: rebuild its checkout, or register it again. */
-function fix(f: Registered): string {
+/**
+ * The command that fixes `f` when it doesn't start: register it again if its command isn't
+ * there (the node it names was upgraded or removed), else rebuild its checkout, if it has one.
+ */
+function fix(f: Registered, l: Extract<Launch, { why: string }>): string {
+  if (l.kind === 'unrunnable') {
+    // A project file's is the bare npx, which install would write again: npx is what's missing.
+    return f.project
+      ? 'install node from nodejs.org, which comes with npx'
+      : `yea install --target ${f.id}`;
+  }
+
   const script = f.bridge.args[0];
   const root = script ? checkoutRoot(script) : null;
 
