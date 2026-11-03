@@ -488,7 +488,7 @@ not by what the approval is made of:
 |---|---|---|---|
 | **Form tier** | an answer to the approval form (§3), or anything else triggered from inside the chat client | the client stack returned an accepted form whose `confirm` matches the phrase of the plan it names | nothing in that stack can answer or rewrite a form: no hook, auto-reviewer, model, proxy or script, and no config the agent can edit to add one |
 | **Signed consent** | `yea approve <code>` (§6), where the principal key is | the holder of the principal key signed this exact plan | the key, and the prompt that triggers the signing, are outside everything the agent can drive: its shell, its files, and any browser it automates |
-| **Client call prompt** (conditional; not in this release, [#338](https://github.com/yea-protocol/yea/issues/338) adds it) | Claude Code's own permission prompt (v2.1.292 or later), before the call reaches the server, for a tool marked `_meta["anthropic/requiresUserInteraction"]` | whoever answered Claude Code's prompt allowed this call, with these arguments | the conditions below hold, including that no `PermissionRequest` hook answers the prompt |
+| **Client call prompt** (conditional: opt-in, [#338](https://github.com/yea-protocol/yea/issues/338)) | Claude Code's own permission prompt, before the call reaches the server, for a tool marked `_meta["anthropic/requiresUserInteraction"]` | whoever answered Claude Code's prompt allowed this call, with these arguments | the conditions below hold, including that no `PermissionRequest` hook answers the prompt |
 
 **A signature is only as strong as the step that triggered it. Anything triggered from inside
 the chat client is form tier**, whichever key signs afterwards, because a hook or a model can
@@ -498,19 +498,17 @@ all (SPEC.md §6.6, ADR-0003), and why the bridge has no in-client signing
 page ([#328](https://github.com/yea-protocol/yea/issues/328)) is form tier for an agent that can
 drive the browser it's open in.
 
-**The client call prompt is not in this release; [#338](https://github.com/yea-protocol/yea/issues/338) adds it.** No YEA tool carries
-`_meta["anthropic/requiresUserInteraction"]` today. In TypeScript, a `requireInteraction` option
-passed to `yea()` or `guard()` is ignored without a word, so nothing changes
-([#368](https://github.com/yea-protocol/yea/issues/368) makes unknown options an error); Python's `yea()` refuses the unknown keyword. #338 will
-add it as an opt-in option, off by default. With it on, Claude Code v2.1.292 or later will prompt
-for every call of an acting tool in every mode that can prompt; `dontAsk` and
+**The client call prompt** is opt-in, and off by default ([#338](https://github.com/yea-protocol/yea/issues/338)). With the `requireInteraction`
+option on, YEA's tools that act carry `_meta["anthropic/requiresUserInteraction"]`, and Claude Code
+prompts for every call of them in every mode that can prompt; `dontAsk` and
 `--permission-prompt-tool` deny the call instead
 ([MCP](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool),
 [permission modes](https://code.claude.com/docs/en/permission-modes#actions-no-mode-auto-approves)
 and [permissions](https://code.claude.com/docs/en/permissions), fetched 2026-11-03). The
-integrations guide's
-[The Claude Code call prompt](../../site/guide/integrations.md#the-claude-code-call-prompt)
-summarises it; #338 will add the recipe. Once it's there:
+integrations guide's [Keep the prompt in auto or bypass mode](../../site/guide/integrations.md#keep-the-prompt-in-auto-or-bypass-mode) is the recipe, with
+the Claude Code versions, and
+[The Claude Code call prompt](../../site/guide/integrations.md#the-claude-code-call-prompt) says
+what the prompt shows.
 - **It doesn't prove** which plan the person chose, or that the form answer is theirs: the
   server computes the plans after the call, so the choice and the phrase still come back
   through the form. It proves nothing under an Agent SDK host, whose `canUseTool` callback can
@@ -528,8 +526,8 @@ summarises it; #338 will add the recipe. Once it's there:
 - **Together with the form,** it shows that a person chose the plan only when, in addition, no
   `Elicitation` or `ElicitationResult` hook matches the server.
 - **Not yet known:** whether a `PermissionRequest` hook's `allow` skips the prompt, and whether
-  the retry of a 2026-07-28 `input_required` call draws a second prompt. Both wait for #338's
-  interactive check.
+  the retry of a 2026-07-28 `input_required` call draws a second prompt. Both wait for the
+  interactive check in [#372](https://github.com/yea-protocol/yea/issues/372).
 
 **Today's status, for servers built with the framework**, where `yea approve` must save the
 consent in the server's store:

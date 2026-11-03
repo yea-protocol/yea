@@ -103,7 +103,7 @@ The tools that change things (each intent capability, and `yea_undo`; in a frame
 - **denies the call where no one can answer:** in `claude -p`, in `dontAsk` mode, and through `--permission-prompt-tool`, whose `allow` becomes a deny. So leave it off for headless runs and CI;
 - **lets an Agent SDK app approve in code:** its `canUseTool` callback receives these calls and can allow them. Only in Claude Code's own interface does the prompt show that a person allowed the call.
 
-The cost: the prompt comes on every call, including `preview: true` and calls your policy would let through without asking. That's why it's off by default. With it on, Claude Code's permission prompt, not an in-client form, is the step that shows a person allowed this call with these arguments, not which plan they approved or that the form answer is theirs (see [#337](https://github.com/yea-protocol/yea/issues/337)).
+The cost: the prompt comes on every call, including `preview: true` and calls your policy would let through without asking. That's why it's off by default. With it on, Claude Code's permission prompt, not an in-client form, is the step that shows a person allowed this call with these arguments, not which plan they approved or that the form answer is theirs. What else can answer it is in [the Claude Code call prompt](#the-claude-code-call-prompt), and what each approval proves in the [security model](/guide/security#what-an-approval-proves).
 
 Checked in an interactive Claude Code session: pending, tracked in [#372](https://github.com/yea-protocol/yea/issues/372), with the same launcher as the [form run](https://github.com/yea-protocol/yea/tree/main/docs/client-runs/2026-11-03-claude-code).
 
@@ -278,12 +278,12 @@ A form answer proves only what the client stack attests, and MCP attests nothing
 
 #### The Claude Code call prompt
 
-Not in this release: [#338](https://github.com/yea-protocol/yea/issues/338) adds a `requireInteraction` option, opt-in and off by default, that will mark YEA's tools that act with `_meta["anthropic/requiresUserInteraction"]`. Until then no YEA tool carries it. In TypeScript, `requireInteraction` passed to `yea()` or `guard()` is ignored without a word ([#368](https://github.com/yea-protocol/yea/issues/368) makes that an error); Python's `yea()` refuses it. Once it's there, Claude Code v2.1.292 or later shows its own permission prompt for every call of a marked tool in every mode that can prompt, and `dontAsk` and `--permission-prompt-tool` deny the call instead ([MCP](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool), [permissions](https://code.claude.com/docs/en/permissions), fetched 2026-11-03).
+With `requireInteraction` on (opt-in; [Keep the prompt in auto or bypass mode](#keep-the-prompt-in-auto-or-bypass-mode) is the recipe, with the Claude Code versions), YEA's tools that act carry `_meta["anthropic/requiresUserInteraction"]`. Claude Code then shows its own permission prompt for every call of them in every mode that can prompt, and `dontAsk` and `--permission-prompt-tool` deny the call instead ([MCP](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool), [permissions](https://code.claude.com/docs/en/permissions), fetched 2026-11-03).
 
-What the prompt would show is narrower than it looks:
+What the prompt shows is narrower than it looks:
 
 - **It's about the call, not the plan.** Whoever answered allowed the call with its arguments; which plan they chose still comes back through the form.
-- **A hook may answer it.** A `PreToolUse` hook's `allow` can't skip it, but the docs don't say whether a `PermissionRequest` hook's can. Until #338's interactive check says, treat a `PermissionRequest` hook that matches the tool like an `Elicitation` hook.
+- **A hook may answer it.** A `PreToolUse` hook's `allow` can't skip it, but the docs don't say whether a `PermissionRequest` hook's can. Until the interactive check in [#372](https://github.com/yea-protocol/yea/issues/372) says, treat a `PermissionRequest` hook that matches the tool like an `Elicitation` hook.
 - **An app built on the Agent SDK can approve it in code**, through its `canUseTool` callback.
 
 What else it depends on is in the [threat model](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves).
