@@ -14,7 +14,7 @@
  */
 import { withBase } from 'vitepress';
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
-import SegmentedRadio from '../playground/SegmentedRadio.vue';
+import SegmentedRadio from '../SegmentedRadio.vue';
 import { approvalPoint, layoutBox } from './anchors';
 import JunctionPaths from './JunctionPaths.vue';
 import PolicyTerms from './PolicyTerms.vue';
@@ -117,9 +117,8 @@ const passed = computed(() =>
         </div>
         <div class="pitch">
           <p class="lede">
-            YEA (Your Explicit Approval) is an open protocol for AI agents acting on behalf of people. Services answer an
-            agent with proposals that list their effects first. Instead of an unrestricted credential, the agent carries a
-            policy the person signed; anything past its limits waits for their yes.
+            YEA (Your Explicit Approval) is an open protocol in which your agent carries a policy you signed instead of a
+            key, and anything past its limits waits for your yes.
           </p>
           <div class="actions">
             <a class="btn primary" :href="withBase('/playground')">Try it in the playground</a>

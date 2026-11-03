@@ -1,5 +1,5 @@
 /**
- * Tests for the playground's pure keyboard helpers: roving.ts's arrow-key movement (both
+ * Tests for the site's pure keyboard helpers: roving.ts's arrow-key movement (both
  * orientations, wrapping, Home and End) and shortcut.ts's send shortcut and its names.
  * They import the TypeScript sources directly, so they need Node's type stripping (22.18+);
  * on an older Node they are skipped.
@@ -7,13 +7,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const THEME = '../.vitepress/theme/components/playground';
+const COMPONENTS = '../.vitepress/theme/components';
 const skip = process.features.typescript
   ? false
   : 'needs Node with type stripping (22.18+) to import .ts';
 const load = async () => ({
-  ...(await import(`${THEME}/roving.ts`)),
-  ...(await import(`${THEME}/shortcut.ts`)),
+  ...(await import(`${COMPONENTS}/roving.ts`)),
+  ...(await import(`${COMPONENTS}/playground/shortcut.ts`)),
 });
 
 test('moveIndex: a radiogroup takes all four arrows and wraps', {

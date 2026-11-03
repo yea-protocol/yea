@@ -11,10 +11,10 @@ const START = '<!-- YEA_START -->',
 export const AGENT_BLOCK = `${START}
 ## YEA: acting for the user
 
-Each YEA capability is its own tool (for example \`shop_order\`), plus \`yea_consent\`, \`yea_undo\` and \`yea_expand\`. They act for the user under a policy they signed.
+YEA serves a tool per capability (for example \`shop_order\`), or a large service's \`_ask\` and \`_intent\` tools in generic mode, plus \`yea_consent\`, \`yea_undo\` and \`yea_expand\`. They act for the user under a policy they signed.
 - Read-only tools never change anything. Tools marked destructive do things: call one with what the user asked for. It commits at once when the user's grant allows it (a \`✓\` receipt); otherwise it returns proposals (effects, cost, risk, undo) and nothing has happened.
-- Over the grant, each proposal comes with a consent code. Ask the user to run \`yea approve <code>\` where their principal key is (the result says when to add \`--to\`) and paste the printed consent back, pass it to \`yea_consent\`, then call the same tool again with the same arguments. Never split or restructure a purchase to get under a limit.
-- \`proposal: "<id>"\` commits one of the proposals the grant allows; \`preview: true\` only shows proposals. Commit only what the user asked for.
+- Over the grant, each proposal comes with a consent code. Ask the user to run \`yea approve <code>\` where their principal key is and paste the printed consent back, pass it to \`yea_consent\`, then call the same tool again with the same arguments. Never split or restructure a purchase to get under a limit.
+- \`proposal: "<id>"\` commits one of the proposals the grant allows; \`preview: true\` only shows proposals (their ids can't be committed). Commit only what the user asked for.
 - Offer \`yea_undo\` if they change their mind within the undo window.
 ${END}
 `;

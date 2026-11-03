@@ -11,7 +11,8 @@ RUN npm ci -w @yea-protocol/sdk -w @yea-protocol/mcp -w @yea-protocol/cli --incl
 COPY ts ts
 COPY cli cli
 COPY mcp mcp
-RUN npm run build -w @yea-protocol/sdk && npm run build -w @yea-protocol/mcp && mkdir /pkgs && npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp -w @yea-protocol/cli --pack-destination /pkgs --silent
+# --ignore-scripts: ts/'s prepack syncs its npm README from the root README, which the image doesn't need.
+RUN npm run build -w @yea-protocol/sdk && npm run build -w @yea-protocol/mcp && mkdir /pkgs && npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp -w @yea-protocol/cli --pack-destination /pkgs --silent --ignore-scripts
 
 FROM node:22-alpine
 COPY --from=build /pkgs /pkgs

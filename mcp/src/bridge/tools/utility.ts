@@ -61,11 +61,8 @@ export const expandTool = (
 ): ToolSpec => ({
   name: 'yea_expand',
   description:
-    'Fetch the rest of an elided result, by its handle (EXPAND h_…).',
-  schema: object(
-    { service: str('The service id.'), handle: str('The handle, h_….') },
-    ['service', 'handle'],
-  ),
+    'Fetch the rest of an elided result: its service id and handle (h_…).',
+  schema: object({ service: str, handle: str }, ['service', 'handle']),
   annotations: READ_ANNOTATIONS,
   meta: {},
   run: withService(services, 'handle', (svc, handle) =>
@@ -87,14 +84,9 @@ async function expandCall(
 /** `yea_undo`, undoing a receipt. */
 export const undoTool = (services: Map<string, Service>): ToolSpec => ({
   name: 'yea_undo',
-  description: 'Undo a receipt within its undo window.',
-  schema: object(
-    {
-      service: str('The service id.'),
-      receipt: str('The receipt id, r_….'),
-    },
-    ['service', 'receipt'],
-  ),
+  description:
+    'Undo a receipt within its undo window: its service id and receipt id (r_…).',
+  schema: object({ service: str, receipt: str }, ['service', 'receipt']),
   annotations: UNDO_ANNOTATIONS,
   meta: {},
   run: withService(services, 'receipt', undoCall),

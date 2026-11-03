@@ -229,9 +229,34 @@ describe('schemas and annotations', () => {
       'preview',
       'proposal',
     ]);
-    expect(read?.description).toBe(
-      'Search the menu (shop.search at shop.example)',
-    );
+    expect(read?.description).toBe('Search the menu (shop.example)');
+  });
+
+  it('job fields are taught once, in the instructions; only preview says what it does', async () => {
+    const k = await keys();
+    const trust = [k.principal.public];
+    const { byName, factory } = await toolsOf(k, [shop({ trust })]);
+    const fields = byName.get('shop_order')?.inputSchema.properties ?? {};
+
+    expect(fields.goal).toEqual({ type: 'string' });
+    expect(fields.proposal).toEqual({ type: 'string' });
+    expect(fields.preview).toEqual({
+      type: 'boolean',
+      description: 'Only show proposals; nothing is done.',
+    });
+
+    for (const taught of [
+      '`preview: true`',
+      '`proposal: "<id>"`',
+      'same arguments',
+      '`goal`',
+      'Commit only what the user asked for.',
+      '`yea approve <code>`',
+      'yea_consent',
+      'Never split or restructure a purchase to get under a limit.',
+    ]) {
+      expect(factory.instructions).toContain(taught);
+    }
   });
 
   it('passes arguments through unchanged: the service validates and teaches', async () => {
@@ -525,6 +550,25 @@ describe('the generic fallback', () => {
     expect(byName.has(`yea_svc_ask_${await suffix('yea.svc', 'ask')}`)).toBe(
       true,
     );
+  });
+
+  it('the instructions follow the tools built: a service that got none lists no capabilities', async () => {
+    const k = await keys();
+    const empty = service({
+      id: 'empty.example',
+      name: 'Empty',
+      summary: 'Nothing to call yet',
+      trust: [k.principal.public],
+    });
+    const { byName, factory } = await toolsOf(k, [empty], {
+      tools: 'generic',
+    });
+
+    expect([...byName.keys()].filter((n) => !n.startsWith('yea_'))).toEqual([]);
+    expect(factory.instructions).toContain(
+      '# Empty (empty.example)\nNothing to call yet',
+    );
+    expect(factory.instructions).not.toContain('with a capability from');
   });
 });
 

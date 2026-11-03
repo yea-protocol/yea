@@ -114,25 +114,39 @@ whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
 
 ### Client support
 
-As of 2026-09-27. The framework asks in the client through MCP form elicitation. Clients
-without it get consent codes, which the person approves with `yea approve <code>` in a
-terminal.
+The framework asks in the client through MCP form elicitation. Clients without it get consent
+codes, which the person approves with `yea approve <code>` in a terminal. Each framework cell
+carries its date; the bridge column is as of the bridge's own tests. ✓ under "asks in the client" means we ran it in an interactive session: the client drew
+the form in its own UI, and the server refused a wrong phrase. ✓ under "consent codes" means
+the call returned a code, `yea approve` signed it, and the call then ran. Each ✓ links to its
+[write-up and transcripts](https://yea-protocol.github.io/yea/guide/integrations#client-runs).
 
 | Client | The bridge (`yea mcp`) | Asks in the client (framework) | Consent codes (framework) |
 |---|---|---|---|
-| Claude Code | works | not run yet; vendor docs: supported | not run yet |
-| Cursor | works | not run yet; vendor docs: supported | not run yet |
-| VS Code | works | not run yet; vendor docs: supported | not run yet |
-| Codex | works | not run yet; vendor docs: supported ¹ | not run yet |
-| Claude Desktop | works | no (vendor docs) | not run yet |
-| Gemini CLI | works | no (vendor docs) | not run yet |
-| Windsurf | works | unknown | not run yet |
+| Claude Code | works | [✓ 2026-11-03](https://yea-protocol.github.io/yea/guide/integrations#claude-code-2026-11-03), v2.1.317; needs v2.1.287 or later (vendor docs) ² | [✓ 2026-11-03](https://yea-protocol.github.io/yea/guide/integrations#claude-code-2026-11-03) |
+| Codex | works | not run; [checklist on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641) (2026-11-03); vendor docs: supported ¹ ³ | not run; checklist on #319 (2026-11-03) |
+| Gemini CLI | works | [✗ codes only, 2026-11-03](https://yea-protocol.github.io/yea/guide/integrations#codex-and-gemini-cli): v0.66.0 declares no elicitation capability (source, and [gemini-cli#28074](https://github.com/google-gemini/gemini-cli/issues/28074)) | not run; [checklist on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641) (2026-11-03) |
+| Cursor | works | not run; checklist on #319 (2026-11-03); vendor docs: supported | not run; checklist on #319 (2026-11-03) |
+| VS Code | works | not run; checklist on #319 (2026-11-03); vendor docs: supported | not run; checklist on #319 (2026-11-03) |
+| Claude Desktop | works | no (vendor docs, 2026-09-26) | not run; checklist on #319 (2026-11-03) |
+| Windsurf | works | unknown (2026-09-26) | not run; checklist on #319 (2026-11-03) |
 | MCP TypeScript SDK client (our tests) | | yes, 2026-09-27: 2026-07-28 and 2025 protocol versions | yes, 2026-09-27 |
 
+The bridge never asks in the client, in any client: it holds no principal key
+([ADR-0003](docs/adr/0003-the-principal-key-never-joins-an-agent-side-home.md)), so consent
+codes are its only way to approve ([#73](https://github.com/yea-protocol/yea/issues/73)).
 "Vendor docs" means the client's own documentation, checked 2026-09-26
 ([notes](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093)), not a run of
-ours. ¹ Codex auto-accepts forms with no fields under auto-approve
-policies, which is why YEA's form always asks for a typed phrase.
+ours. ¹ Codex auto-accepts forms with no fields under auto-approve policies, which is why YEA's
+form always asks for a typed phrase.
+
+A ✓ means the form reached a person in our run, not that only a person can answer it: the
+phrase is in the request, and some clients let software answer forms
+([#337](https://github.com/yea-protocol/yea/issues/337)). ² Claude Code: an `Elicitation` hook
+can answer the form with no dialog drawn. It declares form support on 2025-era stdio
+connections from v2.1.287 (its docs, 2026-11-03); we ran v2.1.317 on both of its MCP runtimes. ³ Codex:
+its `approval_policy` (`never`, `granular.mcp_elicitations`) decides whether a form reaches the
+person or is rejected, and an auto-reviewer may decide in the person's place.
 
 ## What changes
 
@@ -229,7 +243,7 @@ model reads. The human's taps are simulated in code. Excerpt from
 
 These numbers measure the protocol and the bridge (`yea mcp`). Servers built directly with `@yea-protocol/mcp` haven't been benchmarked.
 
-> **In live runs with a real model, YEA costs about the same as a REST-style MCP server (+3–15% per task, same success rate) while adding an enforced policy, previews and undo.** Its replies are mostly smaller than JSON, but the bridge's tool definitions are about twice a REST server's, so in a scripted benchmark it sends 21% more tokens in total ([#300](https://github.com/yea-protocol/yea/issues/300) shrinks them). When a model hands its goal straight to an intent, a reschedule takes 1 call instead of 3. We publish where it loses, too.
+> **In live runs with a real model, YEA costs about the same as a REST-style MCP server (+3–15% per task, same success rate) while adding an enforced policy, previews and undo.** Its replies are mostly smaller than JSON, but the bridge's tool definitions are about 1.5 times a REST server's, so in a scripted benchmark it sends about the same in total: 2% fewer tokens, after [#300](https://github.com/yea-protocol/yea/issues/300) cut the definitions from 1,466 tokens to 1,136. When a model hands its goal straight to an intent, a reschedule takes 1 call instead of 3. We publish where it loses, too.
 
 ### Live agents
 
@@ -263,21 +277,21 @@ The same tasks as a scripted token count (o200k), isolating what each protocol s
 
 | Task | Calls (REST → YEA) | Total input: REST minified JSON | REST pretty JSON | YEA | Saved vs minified | vs pretty |
 |---|---|---|---|---|---|---|
-| Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 3,086 | **19%** | 22% |
-| Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 3,086 | **-92%** | -89% |
-| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 4,994 | **-57%** | -37% |
-| Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 4,037 | **-17%** | 11% |
-| Skim the menu (first 30 items: REST limit=30, YEA on a second bridge at --budget 800) | 1 → 1 | 2,467 | 3,027 | 3,520 | **-43%** | -16% |
-| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 15,637 | **-21%** | -3% |
+| Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 2,426 | **36%** | 39% |
+| Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 2,426 | **-51%** | -49% |
+| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 4,004 | **-26%** | -10% |
+| Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 3,377 | **2%** | 26% |
+| Skim the menu (first 30 items: REST limit=30, YEA on a second bridge at --budget 800) | 1 → 1 | 2,467 | 3,027 | 2,860 | **-16%** | 6% |
+| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 12,667 | **2%** | 17% |
 
-- **These numbers changed in [#297](https://github.com/yea-protocol/yea/issues/297), and YEA now loses.** The benchmark used to count `yea test-drive`'s 4 generic tools (687 tokens of definitions), a surface no `yea mcp` user gets, and published 32% fewer tokens than minified REST. It now measures the bridge `yea mcp` ships, with its default options: 12 tools and its instructions, 1,466 tokens of definitions against REST's 761, re-read every turn. YEA's replies are still smaller in four of five rows (1,095 tokens against 1,919 for the full menu). The definitions are the cost, and [#300](https://github.com/yea-protocol/yea/issues/300) shrinks them.
-- Definitions count each tool's name, description and input schema, and results count the text a call returns. Counting all of `tools/list` (1,906 tokens) and `structuredContent` too, YEA sends 79% more than minified REST. [Details →](bench/RESULTS.md)
+- **These numbers changed in [#297](https://github.com/yea-protocol/yea/issues/297) and [#300](https://github.com/yea-protocol/yea/issues/300).** The benchmark used to count `yea test-drive`'s 4 generic tools (687 tokens of definitions), a surface no `yea mcp` user gets, and published 32% fewer tokens than minified REST. Since #297 it measures the bridge `yea mcp` ships, with its default options: 12 tools and its instructions, then 1,466 tokens of definitions against REST's 761, which made YEA 21% more. #300 cut the bridge's wording (not what's counted) to 1,136 tokens, and YEA now sends 2% fewer. Its replies are smaller in four of five rows (1,095 tokens against 1,919 for the full menu); the definitions, re-read every turn, are still its cost.
+- Definitions count each tool's name, description and input schema, and results count the text a call returns. Counting all of `tools/list` (1,576 tokens) and `structuredContent` too, YEA sends 55% more than minified REST. [Details →](bench/RESULTS.md)
 - Minified JSON is the fair baseline. Pretty-printed JSON is shown because many servers return it.
-- The reschedule row's saving is API design (an outcome-level intent). Against a REST server with an equivalent endpoint, YEA sends 92% more.
+- The reschedule row's saving is API design (an outcome-level intent). Against a REST server with an equivalent endpoint, YEA sends 51% more.
 - The skim row runs on a second bridge started with `--budget 800`: at the default budget the whole menu fits in one reply.
 - An early version of this benchmark had YEA *losing* on multi-step tasks. That led to [policy-gated auto-commit](SPEC.md#431-policy-gated-auto-commit) and to hoisting shared attributes in Lens.
 
-`npm run bench` reproduces the payload numbers, and `node bench/agent-eval/run.ts` the live ones.
+`npm run bench` reproduces the payload numbers, and `node bench/agent-eval/run.ts` the live ones. `npm run bench:definitions` shows where the bridge's definition tokens go, part by part.
 
 ## Tested with a real model
 
@@ -426,6 +440,7 @@ yea delegate <token> --to <sub-agent key> --verbs ASK,INTENT   # narrower author
 yea approve <pc1.code>                               # review and sign a one-time consent for one proposal
 yea examples                                          # serve the example calendar + shop locally
 yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana   # interactive: intent → pick → commit
+yea help grant                                        # any command's flags and an example
 ```
 <!-- #endregion quickstart -->
 

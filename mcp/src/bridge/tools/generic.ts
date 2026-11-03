@@ -14,13 +14,12 @@ import type { Service } from '../greet.js';
 import { clip } from '../lens.js';
 import { genericSchema } from '../params.js';
 import type { Bridge } from '../state.js';
+import type { ToolMode } from '../types.js';
 import { jobHandler, type Picked, split } from './job-handler.js';
 import { meta, type Unnamed } from './spec.js';
 
 /** Past this many capabilities, a service gets two generic tools instead (decision 1). */
 const GENERIC_PAST = 25;
-
-export type ToolMode = 'auto' | 'generic' | 'per-capability';
 
 /** Whether a service gets the two generic tools. */
 export const isGeneric = (svc: Service, mode: ToolMode) =>

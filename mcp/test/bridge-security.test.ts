@@ -270,7 +270,7 @@ describe('bridge security', () => {
 
     expect(consent.map((t) => t.name)).toHaveLength(2);
     expect(tools.find((t) => t.name === 'yea_consent')?.description).toMatch(
-      /^Hand back a consent/,
+      /^Save a pg1\. consent/,
     );
 
     for (const t of tools) {

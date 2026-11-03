@@ -51,6 +51,22 @@ npm run lint && npm run lint:style && npm run lint:structure   # the checks CI r
 
 The docs site (`site/`, built with `npm run site`) follows the design context in `.agents/context/`: PRODUCT.md for who it's for and DESIGN.md for its tokens, which you update when theme tokens change.
 
+## Changelog and releases
+
+Every package shares one version, and CHANGELOG.md's top heading tracks it:
+
+- **Between releases**, record what users will notice under `## Unreleased` at the top of
+  CHANGELOG.md, adding the heading if the top one is still the last release's.
+- **To release `x.y.z`**, open a PR that runs `npm run release:version x.y.z`, which bumps the
+  version everywhere it's written (scripts/release-versions.mjs), and renames
+  `## Unreleased` to `## vx.y.z: <a short title>`.
+- **After it merges**, push the tag `vx.y.z`. release.yml publishes only from a tag, and only once
+  `npm run release:dry-run -- vx.y.z` passes on it. That dry run needs every version, the top
+  heading and the tag to name `x.y.z`, and the packed artifacts to install and run.
+
+`npm run release:check` shows any version that disagrees. Without a tag it accepts
+`## Unreleased`. CI runs `npm run release:dry-run` on every pull request.
+
 ## Code style
 
 TypeScript and JavaScript are formatted by [Biome](https://biomejs.dev) (80 columns, single
@@ -151,7 +167,8 @@ host signs outside it, as test-drive's person loop does with the bridge
   (a note, where the job has none); then the `xJob` factory. Its helpers live in `jobs/<job>/`;
 - a service verb: one that needs collaborators or private helpers is a `<Verb>Handler` class
   holding a `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`;
-- a CLI command module: one exported `cmdX` per command, sharing `cli/shared.ts`;
+- a CLI command module: one exported `cmdX = command({ summary, usage, flags, example, run })` per
+  command, so its help sits beside its flags, sharing `cli/shared.ts`;
 - a bridge tool module: the spec, then the handler.
 
 **Tests** are named after the module they cover (`test/refund.test.ts` for
@@ -169,12 +186,21 @@ docs embed whole, generated files and the `conformance/` vectors are exempt from
 `npm run lint:structure` (`scripts/check-structure.mjs`, run in CI and before each commit)
 checks every source file for the header, the 300-line limit and the name: its case, plus a list
 of known run-together names (`servefetch`, `keyfile`, …). It also reads the relative imports
-in TS, JS and Vue files and fails on any from inside another module's folder (Python packages:
-#283). Biome covers exports:
+in TS, JS and Vue files and the imports in Python files, and fails on any from inside another
+module's folder. Python imports resolve by module name across `python/src` and `python/mcp/src`;
+a subpackage's `__init__.py` is open to its package, and a top-level package (`yea`, `yea_mcp`)
+isn't a module. A folder needs an `__init__.py` for its modules to be private: without one it only
+groups files. A module or package named with a leading `_` (`yea/_json.py`) is private to its parent
+package, top-level ones included. Literal `__import__` and `importlib.import_module` calls count as
+imports. The check reads imports only, so a part reached as an attribute of its package
+(`yea.store.files` after `import yea.store`) is the same breach, and it's caught in review. The
+Python examples (`python/examples`, `python/mcp/examples`) are read for these imports too, since
+adopters copy them. Biome covers exports:
 `noDefaultExport`, with overrides for the files a framework needs one in, and `noReExportAll`,
 off only for package index files.
 
 Files that broke a rule when the check landed are listed in the script's `RATCHET`, each with
-the issue that fixes it. The list only shrinks: the check fails when an unlisted file breaks a
+the issue that fixes it. An import is listed with the file it imports (`'private mcp/src/x/y.ts'`),
+so a listed file can't add new ones. The list only shrinks: the check fails when an unlisted file breaks a
 rule, and when a listed violation no longer occurs (fixed, renamed or deleted). Fixing one means removing its entry in
 the same PR.

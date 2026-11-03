@@ -1,0 +1,23 @@
+2026-11-03T14:58:44Z form-v2 start: MCP_SDK_GENERATION=v2 claude --strict-mcp-config --mcp-config <scratch>/mcp-form-v2.json
+2026-11-03T14:58:58Z form-v2 key: Down
+2026-11-03T14:58:59Z form-v2 key: Enter
+2026-11-03T14:59:06Z form-v2 type: Use the files MCP server's delete_file tool to delete docs/report.pdf
+2026-11-03T14:59:06Z form-v2 key: Enter
+2026-11-03T14:59:34Z form-v2 type: notes.txt
+2026-11-03T14:59:34Z form-v2 key: Down
+2026-11-03T14:59:35Z form-v2 key: Enter
+2026-11-03T14:59:37Z form-v2 type: notes.txt
+2026-11-03T14:59:38Z form-v2 key: Down
+2026-11-03T14:59:38Z form-v2 key: Enter
+2026-11-03T14:59:40Z form-v2 type: report
+2026-11-03T14:59:41Z form-v2 key: Down
+2026-11-03T14:59:42Z form-v2 key: Enter
+2026-11-03T15:00:04Z form-v2 type: Try the delete again; I'll approve it.
+2026-11-03T15:00:05Z form-v2 key: Enter
+2026-11-03T15:00:11Z form-v2 type: report.pdf
+2026-11-03T15:00:11Z form-v2 key: Down
+2026-11-03T15:00:12Z form-v2 key: Enter
+2026-11-03T15:00:27Z form-v2 key: C-o
+2026-11-03T15:00:29Z form-v2 key: C-o
+2026-11-03T15:00:41Z form-v2 type: /exit
+2026-11-03T15:00:41Z form-v2 key: Enter

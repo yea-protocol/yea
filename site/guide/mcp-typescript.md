@@ -103,7 +103,7 @@ Node 22.18 or later can run TypeScript directly, so `node server.ts` works in pl
 ```
 :::
 
-Ask the agent to delete `docs/report.pdf`. Before anything happens, the server sends the client a form (MCP form elicitation) with the plan and a field to type in. How a client shows it is up to the client; we've tested the exchange with the MCP SDK's own client, not yet in a named app. What it says is this:
+Ask the agent to delete `docs/report.pdf`. Before anything happens, the server sends the client a form (MCP form elicitation) with the plan and a field to type in. How a client shows it is up to the client. We've run it in Claude Code, which shows the first lines and folds the rest ([client runs](/guide/integrations#client-runs)), and with the MCP SDK's own client. What it says is this:
 
 ```text
 Approval needed: delete_file can't be undone.

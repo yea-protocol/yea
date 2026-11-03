@@ -18,11 +18,54 @@ import {
 } from '../setup.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
-import { client, confirm, die, installScope, type Options } from './shared.js';
+import {
+  command,
+  type Flag,
+  type Flags,
+  positional,
+  UsageError,
+  type Values,
+} from './command.js';
+import { client, confirm, die, installScope, LOCAL_FLAG } from './shared.js';
 
-export async function cmdAdd(rest: string[], o: Options) {
-  const url = rest[0] ?? die('usage: yea add <url>');
-  const c = await client(url, o);
+/** The AI tools to set up or remove. */
+const TARGET_FLAG = {
+  type: 'string',
+  value: 'tools',
+  choices: Object.keys(CLIENTS),
+  help: `only these, comma-separated: ${Object.keys(CLIENTS).join(', ')}`,
+} as const satisfies Flag;
+
+/**
+ * The AI tools `--target` names, or `fallback` without it. An unknown one is a usage error, so
+ * nothing is done for a typo.
+ */
+function targets(o: { target?: string }, fallback: string[]): string[] {
+  const names = o.target ? o.target.split(',').map((t) => t.trim()) : fallback;
+  const unknown = names.find((n) => !Object.hasOwn(CLIENTS, n));
+
+  if (unknown !== undefined) {
+    throw new UsageError(
+      `unknown target ${unknown}`,
+      `targets: ${Object.keys(CLIENTS).join(', ')}`,
+    );
+  }
+
+  return names;
+}
+
+export const cmdAdd = command({
+  summary:
+    'Check a service answers, and add it for your AI tools (restart them to pick it up).',
+  usage: 'add <url>',
+  flags: {},
+  example: 'yea add yea://127.0.0.1:7447',
+  run: add,
+});
+
+async function add(rest: string[]) {
+  const url = positional(rest, 0, 'url');
+  const c = await client(url, {});
   const b = await c.hello(400);
 
   c.close();
@@ -40,28 +83,61 @@ export async function cmdAdd(rest: string[], o: Options) {
   console.log('  restart your AI tool to pick it up');
 }
 
-export async function cmdRemove(rest: string[]) {
-  removeService(rest[0] ?? die('usage: yea remove <url>'));
-  console.log(`✓ removed ${rest[0]}`);
+export const cmdRemove = command({
+  summary: 'Remove a service from your AI tools.',
+  usage: 'remove <url>',
+  flags: {},
+  example: 'yea remove yea://127.0.0.1:7447',
+  run: remove,
+});
+
+async function remove(rest: string[]) {
+  const url = positional(rest, 0, 'url');
+
+  removeService(url);
+  console.log(`✓ removed ${url}`);
 }
 
-export async function cmdServices() {
+export const cmdServices = command({
+  summary: 'List the services added for your AI tools.',
+  usage: 'services',
+  flags: {},
+  example: 'yea services',
+  run: services,
+});
+
+async function services() {
   const s = listServices();
 
   console.log(s.length ? s.join('\n') : 'no services yet: yea add <url>');
 }
 
-export async function cmdInstall(_rest: string[], o: Options) {
-  const scope = installScope(o);
-  const names = o.target
-    ? o.target.split(',').map((t) => t.trim())
-    : detectedClients();
+const INSTALL_FLAGS = {
+  target: TARGET_FLAG,
+  local: LOCAL_FLAG,
+  'with-principal': {
+    type: 'boolean',
+    help: 'also create your principal (approval) key here, to try things quickly',
+  },
+  yes: {
+    type: 'boolean',
+    short: 'y',
+    help: "don't ask; without --with-principal, no principal key is created",
+  },
+} as const satisfies Flags;
 
-  for (const n of names) {
-    if (!CLIENTS[n]) {
-      die(`unknown target ${n}; one of: ${Object.keys(CLIENTS).join(', ')}`);
-    }
-  }
+export const cmdInstall = command({
+  summary:
+    'Set YEA up for your AI tools: an agent key, a safe default policy, the MCP bridge and agent instructions. Detects your tools (alias: setup).',
+  usage: 'install [flags]',
+  flags: INSTALL_FLAGS,
+  example: 'yea install --target claude-code,cursor',
+  run: (_args, o) => install(o),
+});
+
+async function install(o: Values<typeof INSTALL_FLAGS>) {
+  const scope = installScope(o);
+  const names = targets(o, detectedClients());
 
   const a = (await agentKey()) ?? (await agentKey(true));
 
@@ -107,7 +183,7 @@ export async function cmdInstall(_rest: string[], o: Options) {
  */
 async function installPrincipal(
   a: KeyPair,
-  o: Options,
+  o: { yes?: boolean; 'with-principal'?: boolean },
 ): Promise<KeyPair | null> {
   const existing = await principalKey();
 
@@ -158,11 +234,22 @@ async function installDefaultPolicy(p: KeyPair, a: KeyPair) {
   );
 }
 
-export async function cmdUninstall(_rest: string[], o: Options) {
+const UNINSTALL_FLAGS = {
+  target: TARGET_FLAG,
+  local: LOCAL_FLAG,
+} as const satisfies Flags;
+
+export const cmdUninstall = command({
+  summary: 'Remove YEA from your AI tools. Keys and grants are left in place.',
+  usage: 'uninstall [flags]',
+  flags: UNINSTALL_FLAGS,
+  example: 'yea uninstall --target cursor',
+  run: (_args, o) => uninstall(o),
+});
+
+async function uninstall(o: Values<typeof UNINSTALL_FLAGS>) {
   const scope = installScope(o);
-  const names = o.target
-    ? o.target.split(',').map((t) => t.trim())
-    : Object.keys(CLIENTS);
+  const names = targets(o, Object.keys(CLIENTS));
   let n = 0;
 
   for (const name of names) {
