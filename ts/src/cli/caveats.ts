@@ -1,7 +1,7 @@
 /** The caveat flags of `yea grant` and `yea delegate`, and the caveats they ask for (SPEC §6.3). */
 import type { Caveat } from '../grants.js';
-import { isRisk } from '../risk.js';
-import type { Verb } from '../types.js';
+import { isRisk, RISKS } from '../risk.js';
+import { isVerb, VERBS, type Verb } from '../types.js';
 import { isLimit, type Limit } from '../uses.js';
 import { unixNow } from '../util.js';
 import { type Flags, UsageError, type Values } from './command.js';
@@ -45,6 +45,7 @@ export const CAVEAT_FLAGS = {
   risk: {
     type: 'string',
     value: 'low|medium|high',
+    choices: RISKS,
     help: 'the highest risk allowed without asking',
   },
 } as const satisfies Flags;
@@ -60,7 +61,31 @@ function duration(s: string): number {
     /^(\d+)([smhd])$/.exec(s) ??
     bad(`bad duration ${s} (use e.g. 30m, 24h, 7d)`);
 
-  return Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's'];
+  const seconds =
+    Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's'];
+
+  // A grant's exp is canonical JSON, which holds only safe integers.
+  return Number.isSafeInteger(unixNow() + seconds)
+    ? seconds
+    : bad(`bad duration ${s} (too long)`);
+}
+
+/** `ASK,INTENT` → those verbs; an unknown or empty one is refused. */
+function verbs(s: string): Verb[] {
+  return s.split(',').map((v) => {
+    const verb = v.trim().toUpperCase();
+
+    return isVerb(verb)
+      ? verb
+      : bad(`bad verb ${JSON.stringify(v.trim())} (one of ${VERBS.join(',')})`);
+  });
+}
+
+/** A repeatable flag's values, such as --svc's; an empty one is refused. */
+function nonEmpty(flag: string, values: string[]): string[] {
+  return values.every((v) => v.trim() !== '')
+    ? values
+    : bad(`--${flag} needs a non-empty value`);
 }
 
 /** `spend=25.00USD` or `emails=20` → a limit on that measure (SPEC §6.3). */
@@ -85,20 +110,18 @@ export function caveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
   const c: Caveat[] = [];
 
   if (o.svc) {
-    c.push({ svc: o.svc });
+    c.push({ svc: nonEmpty('svc', o.svc) });
   }
 
   if (o.can) {
-    c.push({ can: o.can });
+    c.push({ can: nonEmpty('can', o.can) });
   }
 
-  if (o.verbs) {
-    c.push({
-      verbs: o.verbs.split(',').map((v) => v.trim().toUpperCase()) as Verb[],
-    });
+  if (o.verbs !== undefined) {
+    c.push({ verbs: verbs(o.verbs) });
   }
 
-  if (o.exp) {
+  if (o.exp !== undefined) {
     c.push({ exp: unixNow() + duration(o.exp) });
   }
 

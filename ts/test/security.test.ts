@@ -821,6 +821,41 @@ describe('security regressions', () => {
     }
   });
 
+  it("[U12] yea grant refuses a caveat or holder that isn't what was typed, and signs nothing", () => {
+    // A principal key is here, so only the refusal stops the signing.
+    const home = mkdtempSync(join(tmpdir(), 'yea-badgrant-'));
+    const yea = (...args: string[]) =>
+      spawnSync(process.execPath, [CLI, ...args], {
+        env: { ...process.env, YEA_HOME: home, YEA_PRINCIPAL_HOME: '' },
+        encoding: 'utf8',
+      });
+    const grants = () =>
+      existsSync(join(home, 'grants')) ? readdirSync(join(home, 'grants')) : [];
+
+    expect(yea('init').status).toBe(0);
+
+    for (const args of [
+      ['--verbs', 'ASK,FOO'],
+      ['--verbs', ''],
+      ['--svc', ''],
+      ['--can', ''],
+      ['--to', 'notakey'],
+      ['--to='],
+      ['--svc', 'cal.example', 'shop.example'],
+      ['--exp', '99999999999999999999d'],
+    ]) {
+      const r = yea('grant', ...args);
+
+      expect(r.status, args.join(' ')).toBe(2);
+      expect(r.stdout, args.join(' ')).toBe('');
+      expect(r.stderr, args.join(' ')).toMatch(/^yea: .* for 'grant'\n/);
+      expect(grants(), args.join(' ')).toEqual([]);
+    }
+
+    expect(yea('grant', '--verbs', 'ask,INTENT').status).toBe(0);
+    expect(grants()).toHaveLength(1);
+  });
+
   it('[U8] a risk caveat fails closed, hard, on a proposal with an unknown risk', async () => {
     const g = await P.issueGrant({
       principal,

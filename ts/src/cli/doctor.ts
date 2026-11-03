@@ -6,23 +6,25 @@ import { fmtTime, untrustedLens } from '../lens.js';
 import { CLIENTS, listServices } from '../setup.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
-import { command } from './command.js';
+import { command, type Flags, type Values } from './command.js';
 import { client, installScope, LOCAL_FLAG } from './shared.js';
 
 const ok = (m: string) => console.log(`✓ ${m}`);
 const warn = (m: string) => console.log(`! ${m}`);
 const bad = (m: string) => console.log(`✗ ${m}`);
 
+const DOCTOR_FLAGS = { local: LOCAL_FLAG } as const satisfies Flags;
+
 export const cmdDoctor = command({
   summary:
     'Check your node version, keys, grants, services and which AI tools YEA is registered with.',
   usage: 'doctor [flags]',
-  flags: { local: LOCAL_FLAG },
+  flags: DOCTOR_FLAGS,
   example: 'yea doctor',
   run: (_args, o) => doctor(o),
 });
 
-async function doctor(o: { local?: boolean }) {
+async function doctor(o: Values<typeof DOCTOR_FLAGS>) {
   const major = Number(process.versions.node.split('.')[0]);
 
   if (major >= 20) {

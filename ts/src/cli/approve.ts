@@ -16,25 +16,27 @@ import { effectLine, fmtDuration, fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import { fmtUses, isUses } from '../uses.js';
 import { unixNow } from '../util.js';
-import { command, positional } from './command.js';
+import { command, type Flags, positional, type Values } from './command.js';
 import { confirm, die } from './shared.js';
+
+const APPROVE_FLAGS = {
+  to: {
+    type: 'string',
+    value: 'key',
+    help: "the agent key the consent is for, if not this machine's (check its fingerprint first)",
+  },
+} as const satisfies Flags;
 
 export const cmdApprove = command({
   summary:
     "Review a proposal's real effects and sign a one-time consent for it, to paste back to the agent.",
   usage: 'approve <code> [flags]',
-  flags: {
-    to: {
-      type: 'string',
-      value: 'key',
-      help: "the agent key the consent is for, if not this machine's (check its fingerprint first)",
-    },
-  },
+  flags: APPROVE_FLAGS,
   example: 'yea approve pc1.…',
   run: approve,
 });
 
-async function approve(rest: string[], o: { to?: string }) {
+async function approve(rest: string[], o: Values<typeof APPROVE_FLAGS>) {
   const code = positional(rest, 0, 'code');
   const consent = decodeConsentCode(code);
 

@@ -32,6 +32,7 @@ import { client, confirm, die, installScope, LOCAL_FLAG } from './shared.js';
 const TARGET_FLAG = {
   type: 'string',
   value: 'tools',
+  choices: Object.keys(CLIENTS),
   help: `only these, comma-separated: ${Object.keys(CLIENTS).join(', ')}`,
 } as const satisfies Flag;
 

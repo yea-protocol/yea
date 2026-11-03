@@ -95,10 +95,8 @@ function find(name: string): Command {
     return command;
   }
 
-  const near = closest(
-    name,
-    [...COMMANDS.keys(), 'help'].filter((c) => c !== name),
-  );
+  // `help` and the top-level flags never get here, so nothing suggests what was typed.
+  const near = closest(name, [...COMMANDS.keys(), 'help']);
 
   throw new UsageError(
     `unknown command '${name}'`,
@@ -118,12 +116,7 @@ function topLevelFlagError(flag: string, argv: string[]): UsageError {
   });
   const hint = owner
     ? `flags go after the command: yea ${owner} … ${flag}`
-    : didYouMean(
-        closest(
-          flag,
-          TOP_FLAGS.filter((f) => f !== flag),
-        ),
-      );
+    : didYouMean(closest(flag, TOP_FLAGS));
 
   return new UsageError(`unknown option ${flag}`, hint);
 }

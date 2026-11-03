@@ -31,7 +31,7 @@ async function trustedPrincipals(): Promise<string[]> {
 export const cmdTestDrive = command({
   summary:
     'Watch a real Claude model use YEA live (needs an Anthropic API key; runs from @yea-protocol/cli).',
-  usage: 'test-drive ["task"] [flags]',
+  usage: 'test-drive [<task> …] [flags]',
   flags: {
     model: {
       type: 'string',
@@ -199,6 +199,7 @@ export const cmdMcp = command({
     tools: {
       type: 'string',
       value: 'generic|per-capability',
+      choices: ['generic', 'per-capability'],
       help: 'force one tool mode (default: per capability, generic past 25)',
     },
     budget: {

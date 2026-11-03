@@ -22,7 +22,7 @@ This is its own help text, generated from the source at build time:
 
 Every command has its own help: `yea <command> --help` (or `-h`, or `yea help <command>`) shows its synopsis, each flag it takes and an example. `yea --version` (or `-v`) prints the version.
 
-A mistake on the command line (an unknown command or flag, a missing argument, or a flag without its value or with a bad one) says what went wrong and what to do, suggesting the closest match when there is one, then exits with status 2 before anything runs:
+A mistake on the command line says what went wrong and what to do, suggesting the closest match when there is one, then exits with status 2 before anything runs. That covers an unknown command or flag, a missing argument or one the command doesn't take, a flag without its value, and a bad value for a caveat flag (`--svc`, `--can`, `--verbs`, `--exp`, `--each`, `--total`, `--risk`), `--to` on `grant` and `delegate`, `--target`, `--preset`, a `key=value` parameter, and `yea mcp`'s `--tools` and `--budget`:
 
 ```text
 $ yea grant --tx ed25519:…
@@ -113,7 +113,7 @@ A `key=value` value that parses as JSON is JSON. Each takes `--budget <tokens>` 
 
 ## Try it
 
-- `yea test-drive ["task"] [--model <id>]` runs a real Claude model (default `claude-opus-5`) against the example calendar and shop in your terminal, through the bridge `yea mcp` serves, with a throwaway policy. Anything outside it asks you, at the terminal, to approve its consent code (never without a terminal). Without `@anthropic-ai/sdk` installed, it re-runs itself once through npx with `@yea-protocol/cli` at the same version and the Anthropic SDK at the range it supports; npx asks before installing when you're at a terminal. `YEA_TEST_DRIVE_REEXEC` marks that run, which stops with install advice (`npm install @anthropic-ai/sdk`) rather than re-running again, as `yea` does when npx can't start. `@yea-protocol/sdk` itself has no runtime dependencies.
+- `yea test-drive [<task> …] [--model <id>]` runs a real Claude model (default `claude-opus-5`) against the example calendar and shop in your terminal, through the bridge `yea mcp` serves, with a throwaway policy. Anything outside it asks you, at the terminal, to approve its consent code (never without a terminal). Without `@anthropic-ai/sdk` installed, it re-runs itself once through npx with `@yea-protocol/cli` at the same version and the Anthropic SDK at the range it supports; npx asks before installing when you're at a terminal. `YEA_TEST_DRIVE_REEXEC` marks that run, which stops with install advice (`npm install @anthropic-ai/sdk`) rather than re-running again, as `yea` does when npx can't start. `@yea-protocol/sdk` itself has no runtime dependencies.
 - `yea demo` is a narrated, scripted run with no API key needed.
 - `yea examples [--port 7447] [--host 0.0.0.0]` serves the example calendar, shop and billing services (calendar on the port, shop on port + 2, billing on port + 4). Use `--host 0.0.0.0` inside containers.
 
@@ -122,4 +122,4 @@ See the [test drive walkthrough](/guide/test-drive) for more.
 ## Bridges
 
 - `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. It's in `@yea-protocol/cli`, not the SDK.
-- `yea openapi <spec|url> [--base] [--header "K: V"] [--id] [--prefix] [--port] [--http] [--host] [--preset github|petstore]`: serve a REST API as a YEA service. See [Wrap any REST API](/guide/openapi).
+- `yea openapi [<spec|url>] [--base] [--header "K: V"] [--id] [--prefix] [--port] [--http] [--host] [--preset github|petstore]`: serve a REST API as a YEA service. See [Wrap any REST API](/guide/openapi).

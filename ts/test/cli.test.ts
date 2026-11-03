@@ -167,7 +167,7 @@ describe.concurrent('usage errors', () => {
     );
   });
 
-  it('never suggests what was typed', async () => {
+  it('an unknown help topic with nothing close gets no suggestion', async () => {
     const r = await yea(['help', 'nope']);
 
     expect(r.status).toBe(2);
@@ -204,6 +204,17 @@ describe.concurrent('usage errors', () => {
       [['grant', '--each', 'spend'], 'bad limit spend'],
       [['ask', 'yea://127.0.0.1:1', 'cal.x', 'oops'], 'expected key=value'],
       [['service-id', '../x'], 'bad server name'],
+      [['grant', '--verbs', 'ASK,FOO'], 'bad verb "FOO" \\(one of HELLO,ASK,'],
+      [['grant', '--verbs', ''], 'bad verb ""'],
+      [['grant', '--svc', ''], '--svc needs a non-empty value'],
+      [['grant', '--can', ' '], '--can needs a non-empty value'],
+      [
+        ['grant', '--exp', '99999999999999999999d'],
+        'bad duration .* \\(too long\\)',
+      ],
+      [['grant', '--to', 'notakey'], 'bad --to "notakey": not a public key'],
+      [['grant', '--to='], 'bad --to "": not a public key'],
+      [['delegate', 'pg1.x', '--to', 'notakey'], 'bad --to "notakey"'],
       [
         ['install', '--target', 'nope'],
         "unknown target nope for 'install'\ntargets: ",
@@ -219,6 +230,43 @@ describe.concurrent('usage errors', () => {
       expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
       expect(r.err).not.toContain('ECONNREFUSED');
     }
+  });
+
+  it("refuses an argument the command doesn't take, instead of dropping it", async () => {
+    for (const [args, message] of [
+      [['grant', 'x'], "unexpected argument x for 'grant'\nrun "],
+      [['init', 'x'], "unexpected argument x for 'init'\nrun "],
+      [['add', 'yea://a', 'yea://b'], "unexpected argument yea://b for 'add'"],
+      [['inspect', 'pg1.t', 'x'], "unexpected argument x for 'inspect'"],
+      [
+        ['install', 'cursor'],
+        "unexpected argument cursor for 'install'\ndid you mean --target cursor\\?",
+      ],
+      [
+        ['grant', 'low'],
+        "unexpected argument low for 'grant'\ndid you mean --risk low\\?",
+      ],
+      [
+        ['grant', '--svc', 'cal.example', 'shop.example'],
+        "unexpected argument shop.example for 'grant'\n--svc takes one value; repeat it",
+      ],
+      [
+        ['grant', '--verbs', 'ASK', 'INTENT'],
+        "unexpected argument INTENT for 'grant'\n--verbs takes one value: <A,B>",
+      ],
+    ]) {
+      const r = await yea(args as string[]);
+
+      expect(r.status, args.join(' ')).toBe(2);
+      expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
+    }
+
+    // Commands whose usage ends in `…` take any number.
+    expect(
+      (await yea(['ask', 'yea://127.0.0.1:1', 'c', 'a=1', 'b=2'])).err,
+    ).not.toContain('unexpected argument');
+    // --help still wins.
+    expect((await yea(['init', 'x', '--help'])).status).toBe(0);
   });
 
   it('escapes control characters from argv in a usage error', async () => {
