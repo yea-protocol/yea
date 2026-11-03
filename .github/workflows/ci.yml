@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.10", "3.13"]
+        python: ["3.10", "3.11", "3.13"]   # yea-sdk supports 3.10; yea-mcp's lock needs 3.11
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -43,6 +43,7 @@ jobs:
         env:
           YEA_REQUIRE_INTEROP: "1"   # fail instead of skipping if node/ts/dist is missing
       - run: uv run --python ${{ matrix.python }} pytest -q   # yea-mcp: MCPServer and FastMCP, both eras
+        if: matrix.python != '3.10'
         working-directory: python/mcp
   site:
     runs-on: ubuntu-latest
