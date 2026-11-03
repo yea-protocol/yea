@@ -370,18 +370,24 @@ describe('conformance vectors', () => {
       );
     }
 
-    const cc = v.consentCode;
+    const cc = v.consentCodes;
 
-    expect(
-      await jobConsentCode({
-        server: cc.server,
-        principal: cc.principal,
-        input: cc.input,
-        hp: asHashed(cc.plan),
-        phrase: cc.phrase,
-        now: cc.now,
-      }),
-    ).toBe(cc.code);
+    for (const c of cc.cases) {
+      expect(await P.consentHashOf(cc.plan.planHash, c.phrase), c.name).toBe(
+        c.consentHash,
+      );
+      expect(
+        await jobConsentCode({
+          server: cc.server,
+          principal: cc.principal,
+          input: cc.input,
+          hp: asHashed(cc.plan),
+          phrase: c.phrase,
+          now: cc.now,
+        }),
+        c.name,
+      ).toBe(c.code);
+    }
   });
   it('job calls: each round of the session, with the store before and after', async () => {
     const { keys, calls } = load('job-calls');

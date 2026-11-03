@@ -112,9 +112,12 @@ def test_tightening(case):
     assert (list(t.deny), t.out_of_band, list(t.warnings)) == (want["deny"], want["outOfBand"], want["warnings"])
 
 
-def test_consent_code():
-    c = DATA["consentCode"]
-    assert job_consent_code(c["server"], c["principal"], c["input"], to_hashed(c["plan"]), c["phrase"], c["now"]) == c["code"]
+@pytest.mark.parametrize("case", cases_of("consentCodes"))
+def test_consent_code(case):
+    c = DATA["consentCodes"]
+    assert consent_hash_of(c["plan"]["planHash"], case["phrase"]) == case["consentHash"]
+    assert job_consent_code(c["server"], c["principal"], c["input"], to_hashed(c["plan"]), case["phrase"],
+                            c["now"]) == case["code"]
 
 
 async def _file_op(s: FileStore, o: dict):

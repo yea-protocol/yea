@@ -1060,26 +1060,38 @@ const tightening = [
 
 // ---- consent codes (§6) ----
 const refundHp = await hashed('refund');
-const consentCode = await jobConsentCode({
-  server: server.public,
-  principal: principal.public,
-  input,
-  hp: refundHp,
-  phrase: 'approve',
-  now,
-});
-const decoded = P.decodeConsentCode(consentCode);
+// The consent hash is where a phrase's bytes first enter a hash both languages compute: one
+// code with the fallback phrase, one with non-ASCII, inner spaces and edge spaces, kept as named.
+const consentCodes = [];
 
-must(
-  'consent code plan hash',
-  await P.planHashOf(decoded.detail.job),
-  refundHp.planHash,
-);
-must(
-  'consent code hash binds the phrase',
-  decoded.hash,
-  await P.consentHashOf(refundHp.planHash, 'approve'),
-);
+for (const [name, phrase] of [
+  ['the fallback phrase', 'approve'],
+  ['non-ASCII, inner and edge spaces', ' Löschen old-nav 👍 '],
+]) {
+  const code = await jobConsentCode({
+    server: server.public,
+    principal: principal.public,
+    input,
+    hp: refundHp,
+    phrase,
+    now,
+  });
+  const decoded = P.decodeConsentCode(code);
+  const consentHash = await P.consentHashOf(refundHp.planHash, phrase);
+
+  must(
+    `consent code plan hash: ${name}`,
+    await P.planHashOf(decoded.detail.job),
+    refundHp.planHash,
+  );
+  must(
+    `consent code hash binds the phrase: ${name}`,
+    decoded.hash,
+    consentHash,
+  );
+  must(`consent code phrase: ${name}`, decoded.detail.phrase, phrase);
+  consentCodes.push({ name, phrase, consentHash, code });
+}
 
 // A stored consent may run only its own plan and phrase: a consent grant with `only` (their
 // consent hash) and `exp`, signed by the pinned principal and issued to the server.
@@ -1362,7 +1374,7 @@ export const approval = {
     consentHash: refundConsent,
     cases: consents,
   },
-  consentCode: {
+  consentCodes: {
     server: server.public,
     principal: principal.public,
     input,
@@ -1373,9 +1385,8 @@ export const approval = {
       risk: refundHp.risk,
       undoable: refundHp.undoable,
     },
-    phrase: 'approve',
     now,
-    code: consentCode,
+    cases: consentCodes,
   },
   fileStore: {
     ops: fileOps,

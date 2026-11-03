@@ -3641,7 +3641,7 @@
       }
     ]
   },
-  "consentCode": {
+  "consentCodes": {
     "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
     "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
     "input": {
@@ -3673,9 +3673,21 @@
       "risk": "low",
       "undoable": true
     },
-    "phrase": "approve",
     "now": 1790000000,
-    "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+    "cases": [
+      {
+        "name": "the fallback phrase",
+        "phrase": "approve",
+        "consentHash": "CnT3-vyScghKYk5Hd2MDCe31I1xjxzsbtnxpZQpjLDM",
+        "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+      },
+      {
+        "name": "non-ASCII, inner and edge spaces",
+        "phrase": " Löschen old-nav 👍 ",
+        "consentHash": "KXC5qmXNNMIU4WdukItXNR9PcIHwIsXNFkMPv-1YL90",
+        "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiIgTMO2c2NoZW4gb2xkLW5hdiDwn5GNICJ9LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoiS1hDNXFtWE5OTUlVNFdkdWtJdFhOUjlQY0lId0lzWE5Ga01Qdi0xWUw5MCIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiVVBwV0x4UWNjQzVDa2pfZ2o5ZGt2YjdvdXJIYW9QeWt1SFJtOHg1Q1B5NCIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIn0"
+      }
+    ]
   },
   "fileStore": {
     "ops": [
