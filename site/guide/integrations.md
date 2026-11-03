@@ -77,6 +77,12 @@ Or in `.mcp.json` (project) or `~/.claude.json` (user):
 In `auto` and `bypassPermissions` mode, Claude Code runs tool calls without asking you, YEA's included. Your signed policy still decides what each service lets through, but Claude Code's own confirmation is gone. To keep it for the tools that change things, turn on `requireInteraction` (off by default):
 
 ```sh
+yea install --require-interaction
+```
+
+That writes `"env": { "YEA_REQUIRE_INTERACTION": "1" }` into the entry of each tool it sets up, project files included (`--local`). Run `yea install` again without the flag to turn it off: it says so when it does. To add the server by hand instead:
+
+```sh
 claude mcp add yea -e YEA_REQUIRE_INTERACTION=1 -- npx -y @yea-protocol/cli mcp
 ```
 

@@ -42,6 +42,13 @@ export const PORTABLE_BRIDGE: BridgeCommand = {
   args: ['-y', '@yea-protocol/cli', 'mcp'],
 };
 
+/**
+ * The env that has the bridge mark the tools that change things for Claude Code's prompt on every
+ * call (`yea mcp --require-interaction`). Not personal, so a project file may carry it.
+ */
+export const REQUIRE_INTERACTION_ENV: Readonly<Record<string, string>> =
+  Object.freeze({ YEA_REQUIRE_INTERACTION: '1' });
+
 /** What `npm run build` makes in a checkout, each beside the sources it's built from. */
 const BUILDS = [
   { built: 'ts/dist/cli.js', from: 'ts/src' },
@@ -203,7 +210,8 @@ export function launchPath(p: Placement): string | null {
  * The bridge command a tool gets, from the running one: the one place an entry is built. A
  * project file gets the portable entry, so no personal path is committed. A desktop app's own
  * config also gets a PATH with this node's folder first: npx and the bridge's `#!/usr/bin/env
- * node` scripts need node there, and such an app doesn't start them from a shell.
+ * node` scripts need node there, and such an app doesn't start them from a shell. With
+ * `requireInteraction`, every entry also gets `REQUIRE_INTERACTION_ENV`.
  *
  * That PATH replaces the app's, and a config can't add to the PATH it inherits. So a desktop app
  * that does read your shell's PATH (Cursor) no longer passes it on, and a `stdio:` service
@@ -212,22 +220,18 @@ export function launchPath(p: Placement): string | null {
 export function bridgeFor(
   p: Placement,
   running: BridgeCommand,
-  node = process.execPath,
+  o: { node?: string; requireInteraction?: boolean } = {},
 ): BridgeCommand {
-  if (p.project) {
-    return PORTABLE_BRIDGE;
-  }
-
-  const path = launchPath(p);
-
-  if (!path) {
-    return running;
-  }
-
-  return {
-    ...running,
-    env: { ...running.env, PATH: `${dirname(node)}${delimiter}${path}` },
+  const base = p.project ? PORTABLE_BRIDGE : running;
+  const path = p.project ? null : launchPath(p);
+  const node = o.node ?? process.execPath;
+  const env = {
+    ...base.env,
+    ...(path ? { PATH: `${dirname(node)}${delimiter}${path}` } : {}),
+    ...(o.requireInteraction ? REQUIRE_INTERACTION_ENV : {}),
   };
+
+  return Object.keys(env).length ? { ...base, env } : base;
 }
 
 /** `a` as one word of a POSIX shell command: as it is when that's safe, else single-quoted. */
@@ -239,12 +243,19 @@ export function describeBridge(b: BridgeCommand): string {
   return [b.command, ...b.args].map(shellWord).join(' ');
 }
 
-/** Whether `b` is yea's portable entry, as `yea install` writes it in a project file. */
+/**
+ * Whether `b` is yea's portable entry, as `yea install` writes it in a project file: with no env,
+ * or with `REQUIRE_INTERACTION_ENV` alone.
+ */
 export const isPortableBridge = (b: BridgeCommand) =>
   b.command === PORTABLE_BRIDGE.command &&
   b.args.length === PORTABLE_BRIDGE.args.length &&
   b.args.every((a, i) => a === PORTABLE_BRIDGE.args[i]) &&
-  !Object.keys(b.env ?? {}).length;
+  Object.entries(b.env ?? {}).every(
+    ([k, v]) =>
+      Object.hasOwn(REQUIRE_INTERACTION_ENV, k) &&
+      REQUIRE_INTERACTION_ENV[k] === v,
+  );
 
 /** A config's "yea" entry as a bridge command; throws a BadEntry saying what's wrong with it. */
 export function parseBridge(v: unknown): BridgeCommand {

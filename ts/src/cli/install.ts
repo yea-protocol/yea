@@ -120,6 +120,10 @@ const INSTALL_FLAGS = {
     type: 'boolean',
     help: 'also create your principal (approval) key here, to try things quickly',
   },
+  'require-interaction': {
+    type: 'boolean',
+    help: 'make Claude Code prompt for every call of a tool that changes things, even in auto or bypass mode (writes YEA_REQUIRE_INTERACTION=1)',
+  },
   yes: {
     type: 'boolean',
     short: 'y',
@@ -151,6 +155,14 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
     `bridge      ${describeBridge(running.bridge)}${running.checkout ? ' (this checkout)' : ''}`,
   );
 
+  const prompt = o['require-interaction'] === true;
+
+  if (prompt) {
+    console.log(
+      'prompts     Claude Code asks before every call of a tool that changes things (YEA_REQUIRE_INTERACTION=1)',
+    );
+  }
+
   if (!names.length) {
     console.log(
       `\nno AI tools detected. Pick some: ${self(`install --target ${Object.keys(CLIENTS).join(',')}`)}`,
@@ -158,7 +170,7 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   }
 
   for (const n of names) {
-    installTarget(CLIENTS[n], scope, running.bridge);
+    installTarget(CLIENTS[n], scope, running.bridge, prompt);
   }
 
   const s = listServices();
@@ -173,11 +185,33 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   );
 }
 
-/** Register the bridge with `t`: the running command, or the portable one in a project file. */
-function installTarget(t: Target, s: Scope, running: BridgeCommand) {
+/** Whether `t`'s entry under `s` asks for the prompt on every call; false if none, or unreadable. */
+function prompts(t: Target, s: Scope): boolean {
+  try {
+    const v = t.registered(s)?.env?.YEA_REQUIRE_INTERACTION;
+
+    return v === '1' || v === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Register the bridge with `t`: the running command, or the portable one in a project file, with
+ * YEA_REQUIRE_INTERACTION=1 if `prompt`. Says so if that drops the prompt an old entry asked for.
+ */
+function installTarget(
+  t: Target,
+  s: Scope,
+  running: BridgeCommand,
+  prompt: boolean,
+) {
   try {
     const placement = t.placement(s);
-    const bridge = bridgeFor(placement, running);
+    const bridge = bridgeFor(placement, running, {
+      requireInteraction: prompt,
+    });
+    const dropped = !prompt && prompts(t, s);
 
     for (const line of t.install(s, bridge)) {
       console.log(`✓ ${t.name}: ${line}`);
@@ -187,6 +221,12 @@ function installTarget(t: Target, s: Scope, running: BridgeCommand) {
     if (placement.project && !isPortableBridge(running)) {
       console.log(
         `  note: a project file, which others may share, so it gets the portable ${describeBridge(bridge)}`,
+      );
+    }
+
+    if (dropped) {
+      console.log(
+        "  note: the entry this replaced had YEA_REQUIRE_INTERACTION set, and this one doesn't. Add --require-interaction to keep it",
       );
     }
   } catch (e) {

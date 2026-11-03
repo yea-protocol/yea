@@ -17,6 +17,7 @@ import {
   BadEntry,
   guiPath,
   PORTABLE_BRIDGE,
+  REQUIRE_INTERACTION_ENV,
   shellWord,
 } from '../src/setup/bridge-command.js';
 import {
@@ -317,13 +318,45 @@ describe('the bridge command each tool gets (bridgeFor)', () => {
     "a desktop app's own config also gets a PATH with this node's folder first",
     () => {
       expect(
-        bridgeFor({ project: false, gui: true }, running, '/opt/node/bin/node'),
+        bridgeFor({ project: false, gui: true }, running, {
+          node: '/opt/node/bin/node',
+        }),
       ).toEqual({
         ...running,
         env: { PATH: `/opt/node/bin${delimiter}${guiPath()}` },
       });
     },
   );
+
+  it('with requireInteraction, every entry also gets YEA_REQUIRE_INTERACTION=1, a project file too', () => {
+    const on = { requireInteraction: true, node: '/opt/node/bin/node' };
+
+    expect(REQUIRE_INTERACTION_ENV).toEqual({ YEA_REQUIRE_INTERACTION: '1' });
+
+    for (const gui of [false, true]) {
+      const project = bridgeFor({ project: true, gui }, running, on);
+
+      expect(project).toEqual({
+        ...PORTABLE_BRIDGE,
+        env: REQUIRE_INTERACTION_ENV,
+      });
+      expect(isPortableBridge(project)).toBe(true);
+    }
+
+    expect(bridgeFor({ project: false, gui: false }, running, on)).toEqual({
+      ...running,
+      env: REQUIRE_INTERACTION_ENV,
+    });
+
+    const desktop = bridgeFor({ project: false, gui: true }, running, on);
+
+    expect(desktop.env).toMatchObject(REQUIRE_INTERACTION_ENV);
+    expect(Object.keys(desktop.env ?? {}).sort()).toEqual(
+      guiPath() === null
+        ? ['YEA_REQUIRE_INTERACTION']
+        : ['PATH', 'YEA_REQUIRE_INTERACTION'],
+    );
+  });
 });
 
 describe('a command line to paste (shellWord)', () => {
@@ -349,6 +382,15 @@ describe("whether an entry is yea's portable one (isPortableBridge)", () => {
     expect(isPortableBridge({ ...PORTABLE_BRIDGE, env: { A: 'b' } })).toBe(
       false,
     );
+  });
+
+  it('allows YEA_REQUIRE_INTERACTION=1 alone as its env, and nothing else', () => {
+    const env = (e: Record<string, string>) =>
+      isPortableBridge({ ...PORTABLE_BRIDGE, env: e });
+
+    expect(env({ YEA_REQUIRE_INTERACTION: '1' })).toBe(true);
+    expect(env({ YEA_REQUIRE_INTERACTION: '0' })).toBe(false);
+    expect(env({ YEA_REQUIRE_INTERACTION: '1', A: 'b' })).toBe(false);
   });
 });
 

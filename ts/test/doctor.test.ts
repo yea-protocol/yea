@@ -267,6 +267,59 @@ describe.concurrent('yea install from a checkout', () => {
     expect(r.out).toMatch(/note: .*npx -y @yea-protocol\/cli mcp/);
   });
 
+  it('--require-interaction writes YEA_REQUIRE_INTERACTION=1, in a project file too, and doctor starts it', async () => {
+    const u = user();
+    const project = mkdtempSync(join(SCRATCH, 'project-'));
+    const on = ['install', '--require-interaction', '--target'];
+    const own = await yea(u, [...on, 'claude-code']);
+    const local = await yea(u, [...on, 'claude-code', '--local'], {
+      cwd: project,
+    });
+    const entry = (file: string) =>
+      JSON.parse(readFileSync(file, 'utf8')).mcpServers.yea;
+
+    expect(own.out).toContain('prompts     Claude Code asks before every call');
+    expect(entry(join(u.home, '.claude.json'))).toMatchObject({
+      command: process.execPath,
+      args: [BIN, 'mcp'],
+      env: { YEA_REQUIRE_INTERACTION: '1' },
+    });
+    expect(local.status).toBe(0);
+    expect(entry(join(project, '.mcp.json'))).toMatchObject({
+      ...PORTABLE_BRIDGE,
+      env: { YEA_REQUIRE_INTERACTION: '1' },
+    });
+
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+    expect(d.status).toBe(0);
+  });
+
+  it('says so when a plain install replaces an entry that had YEA_REQUIRE_INTERACTION', async () => {
+    const u = user();
+
+    await yea(u, [
+      'install',
+      '--require-interaction',
+      '--target',
+      'claude-code',
+    ]);
+
+    const again = await yea(u, ['install', '--target', 'claude-code']);
+
+    expect(again.out).toMatch(
+      /note: the entry this replaced had YEA_REQUIRE_INTERACTION set.*--require-interaction/,
+    );
+    expect(
+      JSON.parse(readFileSync(join(u.home, '.claude.json'), 'utf8')).mcpServers
+        .yea.env,
+    ).toBeUndefined();
+    expect(
+      (await yea(u, ['install', '--target', 'claude-code'])).out,
+    ).not.toContain('YEA_REQUIRE_INTERACTION set');
+  });
+
   it('refuses a checkout whose build is older than its source, before writing anything', async () => {
     const root = mkdtempSync(join(SCRATCH, 'clone-'));
 
