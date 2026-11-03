@@ -3,8 +3,9 @@
  * The approval card for a consent_required reply: once the request checks out against the
  * proposal the agent committed, it shows exactly what the human is approving, with Approve and
  * Decline; otherwise it says why it can't be approved. Once declined, nothing waits on the
- * human, so the card turns neutral and says that nothing was signed; focus moves to that line,
- * since the Decline pressed is gone and no new exchange is announced.
+ * human, so the card turns neutral and says that nothing was signed. When it was this card's
+ * Decline that was pressed, focus moves to that line, since the button is gone; a declined
+ * exchange picked from the history leaves focus where it was.
  */
 import { computed, nextTick, useTemplateRef, watch } from 'vue';
 import { declinedLine } from '../proposal-facts';
@@ -20,12 +21,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{ approve: []; decline: [] }>();
 const said = useTemplateRef<HTMLElement>('said');
+/** Whether the Decline here was pressed since the card last changed state. */
+let pressed = false;
 const declined = computed(() =>
   props.check.state === 'declined' ? declinedLine(props.check.expires) : '',
 );
 
+function decline() {
+  pressed = true;
+  emit('decline');
+}
+
 watch(declined, async (now, before) => {
-  if (now && !before) {
+  const mine = pressed;
+
+  pressed = false;
+
+  if (now && !before && mine) {
     await nextTick();
     said.value?.focus();
   }
@@ -49,7 +61,7 @@ watch(declined, async (now, before) => {
       <p class="meta">{{ facts.meta }}. Hash checked against the proposal the agent received.</p>
       <div class="actions">
         <button type="button" class="approve" @click="emit('approve')">Approve as human and commit</button>
-        <button type="button" class="decline" @click="emit('decline')">Decline</button>
+        <button type="button" class="decline" @click="decline()">Decline</button>
       </div>
       <p class="fine">Signs a one-time grant: COMMIT of this proposal hash, at {{ service }}, until it expires. Nothing else.</p>
     </template>
@@ -69,7 +81,6 @@ watch(declined, async (now, before) => {
 .consent .meta, .consent .fine { font-size: 0.8rem; color: var(--vp-c-text-2); }
 /* Declined: nothing waits on the human any more, so the card leaves amber for the neutral fill. */
 .consent.settled { border-color: var(--vp-c-divider); background: var(--vp-c-bg-soft); }
-.consent.settled .what:focus { outline: none; }
 .actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
 .approve, .decline { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
 .approve { border: 1px solid var(--consent-bg); background: var(--consent-bg); color: var(--consent-text); }

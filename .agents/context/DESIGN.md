@@ -538,9 +538,12 @@ one amber consent button ("Approve as human and commit") with a neutral secondar
 it, and a fine-print line saying exactly what is signed. Decline ends the SDK's consent round
 as `declined`: nothing is signed and there's no second COMMIT. Then nothing waits on the
 person, so the card turns neutral (divider border, soft fill), heads "You declined" and says
-"Nothing was signed. The proposal can't be committed after 14:05 UTC."; focus moves to that
-line, the quick actions come back below it, and the history marks the exchange "declined"
-with a neutral dot.
+"Nothing was signed. The proposal can't be committed after 14:05 UTC." When it was the
+card's own Decline that was pressed, focus moves to that line (with the usual focus ring
+for a keyboard user); picking a declined exchange in the history leaves focus on the
+history. The quick actions come back below the card when the reply offers any (a
+`consent_required` reply offers none, and an empty row is never drawn), and the history marks
+the exchange "declined" with a neutral dot.
 
 ## 6. Do's and Don'ts
 

@@ -53,7 +53,10 @@ export function stopIfLapsed(state: SlipState, live: Live): boolean {
   return true;
 }
 
-/** While a proposal waits or lies declined, or an undo window is open, stop the slip when it runs out. */
+/**
+ * While a proposal waits or lies declined, or an undo window is open, stop the slip when it
+ * runs out.
+ */
 export function watchDeadlines(state: SlipState, current: () => Live | null) {
   let timer: ReturnType<typeof setTimeout> | undefined;
 

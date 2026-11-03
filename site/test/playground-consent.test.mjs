@@ -136,21 +136,21 @@ test('startRound: refuses a request that names another proposal, hash, capabilit
   assert.match(check.checkOf(tampered).why, /doesn't match its hash/);
 });
 
-test('useConsent: Decline ends the round declined, with no second COMMIT, and the card and history say so', {
-  skip,
-}, async () => {
+/**
+ * The playground's consent state over `core`, as the playground drives it: each exchange the
+ * round sends is logged, and the latest is on show. Also the client that logs them.
+ */
+async function playground({ client, principal }, core) {
   const { computed, ref, shallowRef } = await import('vue');
   const { useConsent } = await import(`${THEME}/use-consent.ts`);
-  const { sdk, client, principal, received, commits } = await setup();
   const log = ref([]);
   const consent = useConsent({
-    core: shallowRef(sdk),
+    core: shallowRef(core),
     keys: shallowRef({ principal }),
     log,
     current: computed(() => log.value[log.value.length - 1] ?? null),
     selected: ref(null),
   });
-  // The playground logs each exchange; here the one COMMIT the round sends.
   const logged = {
     ...client,
     key: client.key,
@@ -164,16 +164,60 @@ test('useConsent: Decline ends the round declined, with no second COMMIT, and th
     },
   };
 
-  await consent.commit(logged, received);
+  return { consent, logged };
+}
+
+/** The SDK, keeping each consent round's outcome as `then` makes it. */
+function roundsOf(sdk, then = (out) => out) {
+  const outcomes = [];
+  const core = {
+    ...sdk,
+    consentRound: (...a) => {
+      const done = sdk.consentRound(...a).then(then);
+
+      outcomes.push(done);
+
+      return done;
+    },
+  };
+
+  return { core, outcomes };
+}
+
+test('useConsent: Decline ends the round declined, with no second COMMIT, and the card and history say so', {
+  skip,
+}, async () => {
+  const set = await setup();
+  const { core, outcomes } = roundsOf(set.sdk);
+  const { consent, logged } = await playground(set, core);
+
+  await consent.commit(logged, set.received);
   assert.equal(consent.check.value.state, 'ok');
 
   await consent.decline();
 
+  assert.equal((await outcomes[0]).kind, 'declined');
   assert.deepEqual(consent.check.value, {
     state: 'declined',
-    expires: received.expires,
+    expires: set.received.expires,
   });
   assert.equal(consent.facts.value, null);
-  assert.deepEqual([...consent.declined.value], [[1, received.expires]]);
-  assert.equal(commits.length, 1);
+  assert.deepEqual([...consent.declined.value], [[1, set.received.expires]]);
+  assert.equal(set.commits.length, 1);
+});
+
+test("useConsent: a decline the round doesn't end declined leaves the exchange unmarked", {
+  skip,
+}, async () => {
+  const set = await setup();
+  const { core } = roundsOf(set.sdk, (out) =>
+    out.kind === 'declined' ? { kind: 'refused', why: 'stand-in' } : out,
+  );
+  const { consent, logged } = await playground(set, core);
+
+  await consent.commit(logged, set.received);
+  await consent.decline();
+
+  assert.deepEqual([...consent.declined.value], []);
+  assert.notEqual(consent.check.value.state, 'declined');
 });

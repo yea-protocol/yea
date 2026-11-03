@@ -2,9 +2,9 @@
 /**
  * The slip's tear-off stub: the consent the visitor signs (the proposal's hash, Approve, and
  * Decline beside it, each enabled only while the proposal waits on them), then the receipt
- * with Undo, then the undo; its words come from the chosen example. Once the core is live, Start again is there whenever nothing is in flight
- * and nothing waits on the visitor. When a button is replaced by the next one, focus moves to
- * it.
+ * with Undo, then the undo; its words come from the chosen example. Once the core is live,
+ * Start again is there whenever nothing is in flight and nothing waits on the visitor. When a
+ * button is replaced by the next one, focus moves to it.
  */
 import { withBase } from 'vitepress';
 import { computed, nextTick, useTemplateRef, watch } from 'vue';

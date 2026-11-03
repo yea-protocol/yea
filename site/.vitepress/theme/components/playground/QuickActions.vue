@@ -26,10 +26,18 @@ const undoable = computed(() => {
     : null;
 });
 const more = computed(() => moreOf(reply.value));
+/** Whether there is any next step to offer; with none, nothing is drawn, not an empty row. */
+const any = computed(
+  () =>
+    proposals.value.length > 0 ||
+    options.value.length > 0 ||
+    undoable.value !== null ||
+    more.value.length > 0,
+);
 </script>
 
 <template>
-  <div class="quick">
+  <div v-if="any" class="quick">
     <template v-if="reply.kind === 'PROPOSALS'">
       <button v-for="p in proposals" :key="p.id" type="button" class="pill" @click="emit('act', 'COMMIT', p.id)">Commit {{ p.id }}</button>
     </template>

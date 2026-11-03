@@ -161,19 +161,28 @@ async function start(state: SlipState, attach: (l: Live) => void) {
   }
 }
 
-/** The visitor approves: sign the consent, commit, and show the receipt. */
-async function approve(state: SlipState, live: Live) {
+/**
+ * The proposal still waiting on the visitor and the session to answer it with, or null when
+ * nothing waits (or it just lapsed, which stops the slip).
+ */
+function waitingOn(state: SlipState, live: Live) {
   const w = live.waiting;
   const s = live.session;
 
-  if (
-    !w ||
-    !s ||
-    state.phase.value !== 'waiting' ||
-    stopIfLapsed(state, live)
-  ) {
+  return w && s && state.phase.value === 'waiting' && !stopIfLapsed(state, live)
+    ? { w, s }
+    : null;
+}
+
+/** The visitor approves: sign the consent, commit, and show the receipt. */
+async function approve(state: SlipState, live: Live) {
+  const on = waitingOn(state, live);
+
+  if (!on) {
     return;
   }
+
+  const { w, s } = on;
 
   const run = live.run;
 
@@ -197,17 +206,13 @@ async function approve(state: SlipState, live: Live) {
  * the proposal is left to expire at the service. Exported for the tests.
  */
 export async function decline(state: SlipState, live: Live) {
-  const w = live.waiting;
-  const s = live.session;
+  const on = waitingOn(state, live);
 
-  if (
-    !w ||
-    !s ||
-    state.phase.value !== 'waiting' ||
-    stopIfLapsed(state, live)
-  ) {
+  if (!on) {
     return;
   }
+
+  const { w, s } = on;
 
   live.waiting = null;
   state.declined.value = true;

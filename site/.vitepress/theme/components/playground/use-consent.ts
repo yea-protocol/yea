@@ -140,48 +140,109 @@ function cardFor(o: {
   return { check, facts };
 }
 
+/** What settling the round on show needs: the round, and how the playground keeps its answer. */
+interface Settle {
+  round: ShallowRef<Round | null>;
+  here: Round | null;
+  selected: Ref<number | null>;
+  declined: ShallowRef<Declined>;
+  mark: () => void;
+}
+
 /**
- * Approve the round `r`: it signs the consent it built and commits once more, and `mark` notes
- * that COMMIT as the round's. The reply pane follows to it.
+ * Approve the round on show: it signs the consent it built and commits once more, and `mark`
+ * notes that COMMIT as the round's. The reply pane follows to it.
  */
-async function approveRound(
-  round: ShallowRef<Round | null>,
-  r: Round | null,
-  selected: Ref<number | null>,
-  mark: () => void,
-): Promise<void> {
-  const w = r?.waiting;
+async function approveRound(o: Settle): Promise<void> {
+  const w = o.here?.waiting;
 
   if (!w) {
     return;
   }
 
-  round.value = null;
-  selected.value = null;
+  o.round.value = null;
+  o.selected.value = null;
   w.decide(true);
   await w.done;
-  mark();
+  o.mark();
 }
 
 /** The exchanges the human declined, each with when its proposal expires (unix seconds). */
 export type Declined = ReadonlyMap<number, number>;
 
-/** End the round `r` with a no: nothing is signed, and its exchange is kept as declined. */
-async function declineRound(
-  round: ShallowRef<Round | null>,
-  r: Round | null,
-  declined: ShallowRef<Declined>,
-): Promise<void> {
-  const w = r?.waiting;
+/**
+ * End the round on show with a no: nothing is signed, and its exchange is kept as declined. It
+ * is marked at once, so the card doesn't pass through another state, and unmarked if the round
+ * ends some other way.
+ */
+async function declineRound(o: Settle): Promise<void> {
+  const n = o.here?.n;
+  const w = o.here?.waiting;
 
-  if (!r || !w) {
+  if (n === undefined || !w) {
     return;
   }
 
-  declined.value = new Map([...declined.value, [r.n, w.ask.proposal.expires]]);
-  round.value = null;
+  o.declined.value = new Map([
+    ...o.declined.value,
+    [n, w.ask.proposal.expires],
+  ]);
+  o.round.value = null;
   w.decide(false);
-  await w.done;
+
+  if ((await w.done).kind !== 'declined') {
+    o.declined.value = new Map([...o.declined.value].filter(([k]) => k !== n));
+  }
+}
+
+/** What a COMMIT through the round needs. */
+interface Commit {
+  core: ShallowRef<Core | null>;
+  keys: ShallowRef<Keys | null>;
+  round: ShallowRef<Round | null>;
+  starting: Ref<boolean>;
+  mark: () => number | undefined;
+}
+
+/** COMMIT `p` through the round; resolves once it waits on the human or ends. */
+async function commitRound(
+  o: Commit,
+  client: Client,
+  p: ReceivedProposal,
+  budget?: number,
+): Promise<void> {
+  const sdk = o.core.value;
+  const k = o.keys.value;
+
+  if (!sdk || !k) {
+    return;
+  }
+
+  // A new COMMIT ends the round still waiting before it.
+  o.round.value?.waiting?.decide(false);
+  o.round.value = null;
+  o.starting.value = true;
+
+  try {
+    const started = await startRound(sdk, {
+      client,
+      proposal: p,
+      principal: k.principal,
+      budget,
+    });
+    const shown = checkOf(started);
+    const n = o.mark();
+
+    if (shown && n !== undefined) {
+      o.round.value = {
+        n,
+        check: shown,
+        waiting: 'waiting' in started ? started.waiting : undefined,
+      };
+    }
+  } finally {
+    o.starting.value = false;
+  }
 }
 
 export function useConsent({
@@ -206,60 +267,24 @@ export function useConsent({
     ran,
     declined,
   });
-
-  /** COMMIT `p` through the round; resolves once it waits on the human or ends. */
-  async function commit(
-    client: Client,
-    p: ReceivedProposal,
-    budget?: number,
-  ): Promise<void> {
-    const sdk = core.value;
-    const k = keys.value;
-
-    if (!sdk || !k) {
-      return;
-    }
-
-    // A new COMMIT ends the round still waiting before it.
-    round.value?.waiting?.decide(false);
-    round.value = null;
-    starting.value = true;
-
-    try {
-      const started = await startRound(sdk, {
-        client,
-        proposal: p,
-        principal: k.principal,
-        budget,
-      });
-      const shown = checkOf(started);
-      const n = mark();
-
-      if (shown && n !== undefined) {
-        round.value = {
-          n,
-          check: shown,
-          waiting: 'waiting' in started ? started.waiting : undefined,
-        };
-      }
-    } finally {
-      starting.value = false;
-    }
-  }
-
-  /** The human approves: the round signs the consent it built and commits once more. */
-  const approve = () => approveRound(round, here.value, selected, mark);
-
-  /** The human declines: nothing is signed, and the card says when the proposal expires. */
-  const decline = () => declineRound(round, here.value, declined);
+  const settle = (): Settle => ({
+    round,
+    here: here.value,
+    selected,
+    declined,
+    mark,
+  });
 
   return {
     ...askedIn(current),
     facts,
     check,
     declined,
-    approve,
-    decline,
-    commit,
+    /** The human approves: the round signs the consent it built and commits once more. */
+    approve: () => approveRound(settle()),
+    /** The human declines: nothing is signed, and the card says when the proposal expires. */
+    decline: () => declineRound(settle()),
+    commit: (client: Client, p: ReceivedProposal, budget?: number) =>
+      commitRound({ core, keys, round, starting, mark }, client, p, budget),
   };
 }
