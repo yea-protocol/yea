@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import json
 import multiprocessing
@@ -22,7 +23,7 @@ from yea.approval import consent_hash_of
 from yea.store import FileStore
 
 from conftest import PRINCIPAL, Person, make_world, text
-from import_audit import REPO, import_audit, reachable
+from import_audit import REPO, import_audit, reachable, signers
 from yea_mcp import yea
 
 pytestmark = pytest.mark.anyio
@@ -855,6 +856,20 @@ def test_the_code_that_reads_a_form_answer_imports_only_what_is_listed():
     assert set(readers) <= set(ANSWER_PATH)
     assert Path("python/src/yea/job_call/answer.py") in {p.relative_to(REPO) for p in reachable(ANSWER_PATH)}
     assert import_audit(ANSWER_PATH, ALLOWED) == []
+
+
+def test_the_code_that_reads_a_form_answer_names_no_signer():
+    """yea_mcp, the SDK's job call session and its judge never sign, as the TypeScript twin's SIGNS
+    check. (The rest of yea, which verifies consents, holds the signers themselves.)"""
+    session = [*sorted((REPO / "python/src/yea/job_call").glob("*.py")), REPO / "python/src/yea/approval/judge.py"]
+    files = sorted({p for p in reachable(ANSWER_PATH) if p.is_relative_to(YEA_MCP)} | set(session))
+
+    assert REPO / "python/src/yea/job_call/answer.py" in files and YEA_MCP / "call/route.py" in files
+    assert {str(f.relative_to(REPO)): signers(ast.parse(f.read_text())) for f in files if
+            signers(ast.parse(f.read_text()))} == {}
+    assert signers(ast.parse("from yea import key_from_seed as k\nkey.sign(b'x')\nopen(h + '/principal.key')\n"
+                             "y.principal.key\nload_principal_key(p)\n")) == [
+        "key_from_seed", ".sign", "'/principal.key'"]
 
 
 def test_the_import_audit_names_the_file_and_the_module(tmp_path, monkeypatch):

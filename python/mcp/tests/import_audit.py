@@ -140,6 +140,28 @@ def refused(tree: ast.AST) -> list[str]:
     return [f for f in found if f is not None]
 
 
+# What signs, or loads a key to sign with: yea's signers, a ``.sign(`` call, and the principal key's file
+# (as ts/test/security.test.ts's SIGNS). ``load_principal_key`` and ``principal.key`` as an attribute are
+# the pinned *public* key, and ``KeyPair`` is also the server's key, so they aren't on it.
+SIGNERS = {"key_from_seed", "generate_key", "sign_proof", "issue_grant", "delegate_grant", "consent_grant"}
+
+
+def signers(tree: ast.AST) -> list[str]:
+    """The signing in a parsed file: a signer named, imported or called, ``.sign(…)``, or the
+    principal key's file name."""
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in SIGNERS:
+            out.append(node.id)
+        elif isinstance(node, ast.alias) and node.name.split(".")[-1] in SIGNERS:
+            out.append(node.name)
+        elif isinstance(node, ast.Attribute) and node.attr in SIGNERS | {"sign"}:
+            out.append(f".{node.attr}")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "principal.key" in node.value:
+            out.append(repr(node.value))
+    return out
+
+
 def _parse(path: Path) -> ast.AST | str:
     """A file's syntax tree, or why it doesn't parse: then the audit fails it."""
     try:
