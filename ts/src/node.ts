@@ -252,7 +252,9 @@ export {
   defaultFileStore,
   FileStore,
   homePending,
+  type PendingCode,
   PendingCodes,
+  type PendingIssuer,
   pendingCodesOf,
 } from './file-store.js';
 

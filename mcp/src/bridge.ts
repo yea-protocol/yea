@@ -115,8 +115,8 @@ export async function bridge(
   };
   const { services: greeted, problems } = await greet(services.map(asEntry));
 
-  // Codes from a bridge that ran before are for proposals no one holds now (decision 3).
-  b.pending.clearOwn(greeted);
+  // Codes from a bridge that has ended are for proposals no one holds now (decision 3).
+  b.pending.clearOrphans();
 
   const byId = new Map(greeted.map((s) => [s.id, s]));
   const remote = await buildTools(b, greeted, mode);

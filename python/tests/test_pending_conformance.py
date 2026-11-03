@@ -31,6 +31,14 @@ def test_format_and_place(tmp_path):
     assert pending_file(DATA["file"]["code"]) == DATA["file"]["text"]
 
 
+def test_a_bridges_tagged_file_reads_as_its_code(tmp_path):
+    """The bridge names its process on a second line; a writer reads the code from the first."""
+    store = PendingCodes(tmp_path / "pending")
+    store.dir.mkdir()
+    (store.dir / "taggedfile").write_text(DATA["taggedFile"]["text"])
+    assert store.put(DATA["taggedFile"]["code"], DATA["ops"][1]["now"]) == "taggedfile"
+
+
 def test_ops(tmp_path):
     """Replay the ops: the same ids by label, the same files after each, and never the agent seed."""
     store, ids = PendingCodes(tmp_path / "pending"), {}

@@ -2153,7 +2153,7 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
         expect(r.out).toMatch(/doesn't match its hash: refusing/);
         expect(r.out).not.toContain('Delete nothing');
         expect(approveIn(home, [old]).out).toContain(
-          `pending approval ${old} has expired: call the tool again for a fresh one`,
+          `pending approval ${old} (in ${join(home, 'store', 'pending')}) has expired: call the tool again for a fresh one`,
         );
         expect(approveIn(home, ['zzzzzzzzzz']).out).toContain(
           `no pending approval zzzzzzzzzz (looked in ${join(home, 'pending')} and ${join(home, 'store', 'pending')}): call the tool again for a fresh one`,

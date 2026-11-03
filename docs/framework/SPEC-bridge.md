@@ -202,9 +202,11 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
    - **A short id for each code.** The bridge writes each code to a pending file in its home,
      `<home>/pending/<id>`, in SPEC-approval's format and lifecycle (§6, Short ids). It
      removes an entry's files when it drops, replaces or commits the entry, and a proposal's
-     file when the proposal loses its code (under 2 minutes left). At start-up it removes the
-     files it wrote before, those whose code names one of its services and its agent key: no
-     restarted bridge holds their proposals (decision 3).
+     file when the proposal loses its code (under 2 minutes left). Each file's second line names
+     the process that wrote it. Every client the person installs runs its own bridge with the
+     same home, so at start-up a bridge removes only the files of bridges on this host whose
+     process has ended, since no one holds their proposals (decision 3). A running bridge's files
+     stay, and so does a file from another host, until it expires.
    - **The message** says, with `<id>` and `<code>` literally, then a line per proposal:
 
      ```
@@ -217,8 +219,8 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      `<agent key>` is the agent's public key, from the code. If any file can't be written, the
      first line names `<code>` instead, and the id lines are left out. On one machine, `yea
      approve` saves the consent where the bridge reads it, so nothing goes back through the
-     model. That's the one-machine trial, form tier (SPEC-approval §9); the recommended setup
-     keeps the principal key on another device, with `--to` and the paste-back.
+     model. That's the one-machine trial, form tier (SPEC-approval §6, Short ids); the
+     recommended setup keeps the principal key on another device, with `--to` and the paste-back.
    - A result that returns proposals for approval isn't `isError`: nothing ran, the first line
      says so, and the model may still commit one within the grant with `proposal`. The no-grants
      and many-principals results are `isError`.
@@ -352,8 +354,8 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   pending proposal, an expired one, and an overwrite of a valid consent;
 - `yea approve` requires `--to` when a code's `agent` differs from the local agent key;
 - pending files: one per code, named in the result; the same id again on a re-call; removed
-  when the entry commits, drops or is replaced, and when a proposal loses its code; the
-  bridge's own removed at start-up, another bridge's left alone; `yea approve <id>` on one
+  when the entry commits, drops or is replaced, and when a proposal loses its code; an ended
+  bridge's removed at start-up, a running one's and another host's left alone; `yea approve <id>` on one
   machine plus the same call commits, with nothing passed back through the model;
 - security:
   - the model can't approve by any argument;

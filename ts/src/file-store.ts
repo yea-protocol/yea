@@ -40,6 +40,7 @@ export {
   type PendingCode,
   PendingCodes,
   type PendingConsent,
+  type PendingIssuer,
   pendingFile,
 } from './file-store/pending.js';
 

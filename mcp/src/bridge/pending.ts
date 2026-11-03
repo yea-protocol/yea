@@ -4,9 +4,14 @@
  * the `bridge()` closure for the life of the process, not in a server instance. Each code shown
  * also has a pending file in the home (step 6), which goes when its code or entry does.
  */
+import { hostname } from 'node:os';
 import { type Proposal, sha256 } from '@yea-protocol/sdk';
-import type { PendingCodes } from '@yea-protocol/sdk/node';
-import { errorMessage, warnOnce } from '../util.js';
+import type {
+  PendingCode,
+  PendingCodes,
+  PendingIssuer,
+} from '@yea-protocol/sdk/node';
+import { errno, errorMessage, warnOnce } from '../util.js';
 
 /** At most this many entries; the oldest is dropped first. */
 export const MAX_PENDING = 256;
@@ -61,6 +66,34 @@ export async function pendingKey(
 /** Whether a proposal has enough time left to hand out a code for it: approved, then committed. */
 export const approvable = (p: Proposal, now: number) =>
   p.expires - now >= MIN_LEFT;
+
+/**
+ * This process, as its pending files name it. Every client runs its own bridge with the same
+ * home, so the files say whose they are: a bridge starting up removes only those of bridges
+ * that have ended.
+ */
+const THIS_PROCESS: PendingIssuer = { host: hostname(), pid: process.pid };
+
+/** Whether process `pid` on this host is still running (EPERM: it is, as another user). */
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+
+    return true;
+  } catch (e) {
+    return errno(e) === 'EPERM';
+  }
+}
+
+/**
+ * Whether a pending file is a bridge's whose process has ended: no one holds its proposals, so
+ * its codes could never commit (decision 3). A server's file names no process, and a file from
+ * another host can't be judged here: both stay.
+ */
+const orphaned = (e: PendingCode) =>
+  e.issuer !== null &&
+  e.issuer.host === THIS_PROCESS.host &&
+  !running(e.issuer.pid);
 
 /** Whether a proposal hasn't expired: an approval already saved can still commit it. */
 const alive = (p: Proposal, now: number) => p.expires > now;
@@ -157,7 +190,10 @@ export class PendingProposals {
     }
 
     try {
-      return codes.map((c) => ({ ...c, id: files.put(c.code, now) }));
+      return codes.map((c) => ({
+        ...c,
+        id: files.put(c.code, now, THIS_PROCESS),
+      }));
     } catch (e) {
       warnOnce(
         `can't write a pending file, so no short ids: ${errorMessage(e)}`,
@@ -167,18 +203,9 @@ export class PendingProposals {
     }
   }
 
-  /**
-   * At start-up: remove the files a bridge with this agent key wrote before for these services.
-   * No proposal of theirs is held here, so their codes could never commit (decision 3).
-   */
-  clearOwn(services: { id: string; agent: string | null }[]) {
-    const mine = new Set(
-      services.flatMap((s) => (s.agent ? [`${s.id}\0${s.agent}`] : [])),
-    );
-
-    this.quietly(() =>
-      this.files?.clear((c) => mine.has(`${c.service}\0${String(c.agent)}`)),
-    );
+  /** At start-up: remove the files of bridges that have ended, never a running bridge's. */
+  clearOrphans() {
+    this.quietly(() => this.files?.clear(orphaned));
   }
 
   /** Every live entry, oldest first. */

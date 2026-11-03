@@ -479,6 +479,9 @@ describe('conformance vectors', () => {
     expect(PENDING_ID.source).toBe(v.readId);
     expect(newPendingId()).toMatch(new RegExp(v.writtenId));
     expect(pendingFile(v.file.code)).toBe(v.file.text);
+    expect(pendingFile(v.taggedFile.code, v.taggedFile.issuer)).toBe(
+      v.taggedFile.text,
+    );
 
     const dir = join(root, 'ops');
     const store = new PendingCodes(dir);
@@ -514,6 +517,9 @@ describe('conformance vectors', () => {
       expect(Object.values(files).join('')).not.toContain(v.agentSeed);
     }
 
+    // A tagged file reads as its code, whoever wrote it.
+    writeFileSync(join(dir, 'taggedfile'), v.taggedFile.text);
+    expect(store.read('taggedfile')).toBe(v.taggedFile.code);
     writeFileSync(join(dir, 'abcdefghij'), 'x'.repeat(v.maxBytes));
     expect(store.read('abcdefghij')).toBe('x'.repeat(v.maxBytes));
     writeFileSync(join(dir, 'abcdefghij'), 'x'.repeat(v.maxBytes + 1));

@@ -32,7 +32,7 @@ const AGAIN =
 
 /**
  * The code stored under `id`, or why there is none to approve: not an id, no such file (and
- * where it looked), a file it won't read, or a code that has expired.
+ * where it looked), a file it won't read, or a code that has expired (and where it is).
  */
 export function pendingCode(
   id: string,
@@ -55,7 +55,7 @@ export function pendingCode(
 
     if (code !== null) {
       return expired(code, now)
-        ? { why: `pending approval ${id} has expired: ${AGAIN}` }
+        ? { why: `pending approval ${id} (in ${p.dir}) has expired: ${AGAIN}` }
         : { code };
     }
   }

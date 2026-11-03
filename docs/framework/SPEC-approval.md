@@ -403,8 +403,11 @@ A result names ids only when every one of its files was written; otherwise it gi
 alone, and approving works as before.
 
 **The format**, pinned by `conformance/pending.json`:
-- The file is the `pc1.` code verbatim, on one line (`<code>\n`). It holds nothing else: no
-  field `yea approve` would trust, and never a key or seed.
+- The file's first line is the `pc1.` code verbatim. A server's file is that line alone
+  (`<code>\n`). The bridge's adds a second naming the process that wrote it,
+  `{"host":"<host name>","pid":<pid>}` in canonical JSON, for its start-up cleanup (SPEC-bridge
+  step 6). `yea approve` reads the first line only. A file holds nothing else: no field
+  `yea approve` would trust, and never a key or seed.
 - `<id>` is 10 random characters of lowercase base32 (`a`–`z`, `2`–`7`), made by the issuer. An
   id never starts with `-`, so the command line never reads one as a flag.
 - The directory is created `0700` and the file `0600`, written to a temp file and renamed (§8).
@@ -420,7 +423,8 @@ alone, and approving works as before.
 - Every write also removes the files whose codes have expired.
 - A plan that runs removes its files, whether it ran on its own, from the form or with a consent.
 - The bridge removes an entry's files when it drops, replaces or commits the entry, or when a
-  proposal loses its code, and at start-up removes the files it wrote before (SPEC-bridge).
+  proposal loses its code. At start-up it removes the files of bridges on this host whose
+  process has ended, never a running bridge's (SPEC-bridge step 6).
 
 **`yea approve` with no argument** lists the pending codes in the home's `pending/`, then the
 store's (`<home>` is `YEA_HOME`, else `~/.yea`; the store as above): for each, its id, its
@@ -437,13 +441,13 @@ are left out.
    check above, the plan in full, the phrase, and where the consent is saved. Nothing in the
    file is trusted that a pasted code isn't.
 
-An id it can't find, or whose code has expired, is refused with where it looked and *call the
-tool again for a fresh one*.
+An id it can't find is refused with where it looked, and one whose code has expired with where
+it is, both saying *call the tool again for a fresh one*.
 
 **Short ids are a one-account convenience**, for trying YEA on one machine. There they are
-form tier: the agent runs as the same OS user, so it can run `yea approve` itself, and a
-terminal isn't a person ([§9, What an approval proves](#what-an-approval-proves)). Another OS
-user or device keeps the whole code.
+what [#337](https://github.com/yea-protocol/yea/issues/337) calls form tier: the agent runs as
+the same OS user, so it can run `yea approve` itself, and a terminal isn't a person
+([§9](#9-security)). Another OS user or device keeps the whole code.
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
 and checks it against that plan's consent hash, recomputed from the plan and the phrase the
@@ -682,6 +686,7 @@ ts/src/approval.ts        plan hash, policy decision, reservations, undo
 ts/src/ask.ts             form builder, state payload, answer check, consent codes
 ts/src/store.ts           ApprovalStore, MemoryStore, FileStore
 ts/src/cli/approve.ts     yea approve for job consent codes, and for pending ids
+ts/src/cli/pending.ts     where yea approve looks for a pending id (the home, then the store), and the listing
 ts/src/file-store/pending.ts  pending files (§6, Short ids)
 ts/test/approval.test.ts  unit tests + the shared conformance cases
 python/src/yea/job_call/, approval/, store/, python/tests/test_approval.py   the same, for Python

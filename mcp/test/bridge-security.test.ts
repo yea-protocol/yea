@@ -3,8 +3,9 @@
  * bridge's "never sign a consent that doesn't match the proposal shown", moved here from
  * ts/test/security.test.ts.
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   b64u,
@@ -331,7 +332,15 @@ describe('bridge security', () => {
       readFileSync(join(dir, f), 'utf8'),
     );
 
-    expect(files.sort()).toEqual(codes.map((c) => `${c.code}\n`).sort());
+    // The code, then the process that wrote it: nothing `yea approve` reads but the code.
+    expect(files.sort()).toEqual(
+      codes
+        .map(
+          (c) =>
+            `${c.code}\n{"host":${JSON.stringify(hostname())},"pid":${process.pid}}\n`,
+        )
+        .sort(),
+    );
 
     for (const text of files) {
       expect(text).not.toContain(k.agent.seed);

@@ -8,7 +8,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { jobConsentCode } from '../dist/ask.js';
-import { PENDING_ID, PendingCodes } from '../dist/file-store.js';
+import { PENDING_ID, PendingCodes, pendingFile } from '../dist/file-store.js';
 import * as P from '../dist/index.js';
 
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
@@ -149,6 +149,17 @@ for (const [i, o] of ops.entries()) {
 
 rmSync(dir, { recursive: true });
 
+// The bridge's files name the process that wrote them on a second line, which `yea approve`
+// never reads; a server's have none.
+const issuer = { host: 'host.example', pid: 4242 };
+const tagged = pendingFile(codes.bridge, issuer);
+
+must(
+  'tagged file',
+  tagged,
+  `${codes.bridge}\n{"host":"host.example","pid":4242}\n`,
+);
+
 export const pending = {
   // Where each issuer writes, and what `yea approve <id>` accepts.
   dirs: { server: '<store>/pending', bridge: '<home>/pending' },
@@ -157,6 +168,8 @@ export const pending = {
   maxBytes: 65536,
   // The file for a code is exactly this: the code, then a newline.
   file: { code: codes.plan, text: `${codes.plan}\n` },
+  // A bridge's file: the same, then the process that wrote it, as canonical JSON.
+  taggedFile: { code: codes.bridge, issuer, text: tagged },
   // Never in any file: the bridge's code names this agent, whose seed is this.
   agentSeed: agent.seed,
   codes,

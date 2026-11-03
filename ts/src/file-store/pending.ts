@@ -1,11 +1,13 @@
 /**
  * Pending files (docs/framework/SPEC-approval.md §6, Short ids): each consent code an issuer
  * hands out, written under a short id where `yea approve <id>` on the same account finds it.
- * A file is the code on one line and nothing else, so `yea approve` trusts nothing in it that a
- * pasted code isn't.
+ * A file is the code on its first line, so `yea approve` trusts nothing in it that a pasted
+ * code isn't. The bridge adds a second line naming the process that wrote it, which only its
+ * start-up cleanup reads.
  */
 import { closeSync, fstatSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { canonical } from '../canonical.js';
 import { decodeConsentCode } from '../consent.js';
 import { openNoFollow, readCapped } from '../key-file.js';
 import type { ConsentRequest } from '../types.js';
@@ -15,11 +17,19 @@ import { writeAtomic } from './files.js';
 /** What a pending code says: the consent request it carries, and the agent it names, if any. */
 export type PendingConsent = ConsentRequest & { agent?: unknown };
 
-/** A pending code as read back: its id, the code, and what the code says. */
+/** The process that wrote a pending file: its host's name and its pid. */
+export interface PendingIssuer {
+  host: string;
+  pid: number;
+}
+
+/** A pending code as read back: its id, the code, what the code says, and who wrote it. */
 export interface PendingCode {
   id: string;
   code: string;
   consent: PendingConsent;
+  /** Null for a file without the second line: a server's, which names no process. */
+  issuer: PendingIssuer | null;
 }
 
 /** The ids `yea approve <id>` accepts, matched whole: never a path, and no prefix search. */
@@ -37,8 +47,14 @@ export function newPendingId(): string {
   return Array.from(bytes, (b) => ALPHABET[b & 31]).join('');
 }
 
-/** What a pending file holds for `code`: the code verbatim, on one line. */
-export const pendingFile = (code: string) => `${code}\n`;
+/**
+ * What a pending file holds for `code`: the code verbatim, on one line, then, if given, the
+ * process that wrote it as canonical JSON on a second.
+ */
+export const pendingFile = (code: string, issuer?: PendingIssuer) =>
+  issuer
+    ? `${code}\n${canonical({ host: issuer.host, pid: issuer.pid })}\n`
+    : `${code}\n`;
 
 /**
  * The text of the pending file at `path`, or null if there is none. It's opened without
@@ -77,6 +93,21 @@ function readPendingFile(path: string): string | null {
 /** The code in a pending file's text: its first line. */
 const firstLine = (text: string) => text.split('\n', 1)[0].trim();
 
+/** The process a pending file's second line names, or null if it names none it can read. */
+function issuerOf(text: string): PendingIssuer | null {
+  try {
+    const v = JSON.parse(text.split('\n')[1] ?? '') as Partial<PendingIssuer>;
+
+    return typeof v.host === 'string' &&
+      typeof v.pid === 'number' &&
+      Number.isSafeInteger(v.pid)
+      ? { host: v.host, pid: v.pid }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The pending codes in one directory: `<store>/pending` for a server, `<home>/pending` for the bridge. */
 export class PendingCodes {
   readonly dir: string;
@@ -90,7 +121,7 @@ export class PendingCodes {
    * rewritten under its id, so an id handed out earlier still works; other files for the pair,
    * and every file whose code has expired, are removed.
    */
-  put(code: string, now: number): string {
+  put(code: string, now: number, issuer?: PendingIssuer): string {
     const c = decodeConsentCode(code);
     const all = this.entries();
     const same = all.filter((e) => samePair(e.consent, c));
@@ -102,7 +133,7 @@ export class PendingCodes {
       }
     }
 
-    writeAtomic(join(this.dir, kept), pendingFile(code));
+    writeAtomic(join(this.dir, kept), pendingFile(code, issuer));
 
     return kept;
   }
@@ -116,10 +147,10 @@ export class PendingCodes {
     }
   }
 
-  /** Remove every file `mine` says this issuer wrote (the bridge, at start-up). */
-  clear(mine: (c: PendingConsent) => boolean) {
+  /** Remove every file `stale` picks (the bridge's, at start-up: those of bridges that ended). */
+  clear(stale: (e: PendingCode) => boolean) {
     for (const e of this.entries()) {
-      if (mine(e.consent)) {
+      if (stale(e)) {
         this.remove(e.id);
       }
     }
@@ -150,13 +181,28 @@ export class PendingCodes {
   private entries(): PendingCode[] {
     return this.ids().flatMap((id) => {
       try {
-        const code = this.read(id);
-
-        return code ? [{ id, code, consent: decodeConsentCode(code) }] : [];
+        return this.entry(id) ?? [];
       } catch {
         return [];
       }
     });
+  }
+
+  /** The file under `id` as a pending code, or null if it's gone or empty; throws if it isn't one. */
+  private entry(id: string): PendingCode | null {
+    const text = readPendingFile(join(this.dir, id));
+    const code = text === null ? '' : firstLine(text);
+
+    if (text === null || !code) {
+      return null;
+    }
+
+    return {
+      id,
+      code,
+      consent: decodeConsentCode(code),
+      issuer: issuerOf(text),
+    };
   }
 
   private ids(): string[] {

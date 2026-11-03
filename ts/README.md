@@ -127,7 +127,8 @@ server's account, since a key on another OS user
 ### Client support
 
 The framework asks in the client through MCP form elicitation. Clients without it get consent
-codes, which the person approves with `yea approve <code>` in a terminal. Each framework cell
+codes, which the person approves with `yea approve <code>` in a terminal outside the chat (on
+the server's own account, by the short id that comes with each). Each framework cell
 carries its date; the bridge column is as of the bridge's own tests. ✓ under "asks in the client" means we ran it in an interactive session: the client drew
 the form in its own UI, and the server refused a wrong phrase. ✓ under "consent codes" means
 the call returned a code, `yea approve` signed it, and the call then ran. Each ✓ links to its
@@ -457,6 +458,7 @@ yea grant --svc cal.example.com --svc shop.example \
 yea inspect <token>                                   # read any grant chain
 yea delegate <token> --to <sub-agent key> --verbs ASK,INTENT   # narrower authority for a sub-agent
 yea approve <pc1.code>                               # review and sign a one-time consent for one proposal
+yea approve [<id>]                                    # on one account: list pending approvals, or review one by its short id
 yea examples                                          # serve the example calendar + shop locally
 yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana   # interactive: intent → pick → commit
 yea help grant                                        # any command's flags and an example
@@ -588,6 +590,13 @@ To try things quickly on one machine, use `yea install --with-principal`. Be awa
 an agent with shell access (Claude Code has it) could then read the key. Pair `--each` with
 `--total`: a per-action limit alone can be dodged by splitting a purchase, and `--total`
 bounds the sum.
+
+On one machine, each consent code also comes with a short id: run `yea approve <id>` in a
+terminal outside the chat, and the consent is saved where the bridge reads it, so nothing goes
+back through the chat. That's part of the trial setup, for the same reason: an agent that runs
+as you could run `yea approve` too ([rule one](https://yea-protocol.github.io/yea/guide/security#rule-one-keep-the-principal-key-away-from-the-agent)). With the principal key on another
+device, as recommended, run `yea approve <code> --to <agent key>` there and paste the consent
+back.
 <!-- #endregion claude-code -->
 
 ## How it compares

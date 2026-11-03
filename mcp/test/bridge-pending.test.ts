@@ -1,12 +1,13 @@
 // The bridge's pending files (SPEC-bridge step 6; SPEC-approval §6, Short ids): a short id per
 // code, `yea approve <id>` on one machine with nothing passed back, and the files' lifecycle.
+import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import {
   approveConsentCode,
   consentCode,
   decodeConsentCode,
-  keyPair,
   unixNow,
 } from '@yea-protocol/sdk';
 import { homePending, saveGrant } from '@yea-protocol/sdk/node';
@@ -21,6 +22,16 @@ import {
   proposalsOf,
 } from './bridge-helpers.js';
 import { connect, textOf } from './helpers.js';
+
+/** This process, as the bridge's pending files name it. */
+const HERE = { host: hostname(), pid: process.pid };
+
+/** A bridge's pending file for `code`: the code, then this process as canonical JSON. */
+const bridgeFile = (code: string) =>
+  `${code}\n{"host":${JSON.stringify(HERE.host)},"pid":${HERE.pid}}\n`;
+
+/** A process that has ended: its pid, for a file a bridge left behind. */
+const endedPid = () => spawnSync(process.execPath, ['-e', '']).pid ?? 0;
 
 /** The structured codes of a result, with their ids. */
 const codesOf = (r: { structuredContent?: unknown }) =>
@@ -72,8 +83,9 @@ describe('the bridge’s pending files', () => {
         ...codes.map((c) => `  code for [${c.proposal}]: ${c.code}`),
       ].join('\n'),
     );
+    // Each file is the code, then this process: the bridge that holds its proposal.
     expect(pendingFiles(k)).toEqual(
-      Object.fromEntries(codes.map((c) => [c.id, `${c.code}\n`])),
+      Object.fromEntries(codes.map((c) => [c.id, bridgeFile(c.code)])),
     );
 
     // Called again before approval: the same ids, so the one passed on still works.
@@ -106,22 +118,36 @@ describe('the bridge’s pending files', () => {
     expect(pendingFiles(k)).toEqual({});
   });
 
-  it('at start-up, a bridge removes the files it wrote before, and leaves others alone', async () => {
+  it("at start-up, a bridge removes an ended bridge's files, and leaves a running one's", async () => {
     const k = await keys();
+    // A running bridge: every client starts its own, with the same home.
     const { conn } = await bridged(k);
-    const [code] = codesOf(await conn.call(BIG_ORDER, 'shop_order'));
-    const c = decodeConsentCode(code.code);
-    const other = await keyPair();
-    // Another agent's code at the same service: not this bridge's to remove.
-    const foreign = consentCode({ ...c, proposal: 'p_theirs' }, c.detail, {
-      agent: other.public,
+    const live = codesOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const c = decodeConsentCode(live[0].code);
+    const pending = homePending(k.home);
+    const code = (proposal: string) =>
+      consentCode({ ...c, proposal }, c.detail, { agent: c.agent as string });
+    const now = unixNow();
+    const ended = pending.put(code('p_ended'), now, {
+      host: HERE.host,
+      pid: endedPid(),
     });
-    const theirs = homePending(k.home).put(foreign, unixNow());
+    // Kept: a process on another host can't be checked from here, and a server names none.
+    const elsewhere = pending.put(code('p_elsewhere'), now, {
+      host: `not-${HERE.host}`,
+      pid: endedPid(),
+    });
+    const server = pending.put(code('p_server'), now);
 
-    const ex = await examples(k);
+    await connect('2026', await bridgeIn(k, (await examples(k)).clients));
 
-    await connect('2026', await bridgeIn(k, ex.clients));
+    expect(Object.keys(pendingFiles(k)).sort()).toEqual(
+      [...live.map((l) => l.id), elsewhere, server].sort(),
+    );
+    expect(pendingFiles(k)).not.toHaveProperty(ended);
 
-    expect(Object.keys(pendingFiles(k))).toEqual([theirs]);
+    // The running bridge's ids still work: approve one, and its next call commits.
+    await approveHere(k, live[0].id ?? '');
+    expect(textOf(await conn.call(BIG_ORDER, 'shop_order'))).toContain('✓');
   });
 });
