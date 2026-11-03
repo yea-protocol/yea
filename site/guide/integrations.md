@@ -215,7 +215,7 @@ When a commit needs the human's approval, the tool returns a consent code for `y
 A server built with [`@yea-protocol/mcp`](/guide/mcp-typescript) or [`yea-mcp`](/guide/mcp-python) doesn't go through the bridge: it's an ordinary MCP server, and you register it with each client the way you register any other. What YEA adds is in its environment and in the client's support for forms.
 
 - **Its environment:** whatever the server itself needs (the guides' `files` example needs `FILES_ROOT`, the folder its tools may change, and refuses to start without it), plus YEA's: `YEA_PRINCIPAL_PUB`, the path of a file holding the pinned principal public key (one the server's user can't change), and `YEA_POLICY`, the signed policy (a `pg1.` token, or the absolute path of a file holding one). Without `YEA_POLICY` every job asks; without `YEA_PRINCIPAL_PUB` no consent code is issued either, so only clients with forms can approve. Client config files don't expand `~`, so use full paths.
-- **Approval in the client:** a client with MCP form elicitation shows the plan and a field to type the phrase. A client without it gets a consent code, and the person runs `yea approve <code>`. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run, and [Client runs](#client-runs) shows how.
+- **Approval in the client:** a client with MCP form elicitation shows the plan and a field to type the phrase, though a person isn't the only thing that can answer it ([who can](#who-can-answer-a-form)). A client without it gets a consent code, and the person runs `yea approve <code>`. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run, and [Client runs](#client-runs) shows how.
 
 For example, in **Claude Code**:
 
@@ -247,11 +247,38 @@ In **Cursor** (`.cursor/mcp.json`) and other clients that use an `mcpServers` ob
 
 VS Code (`.vscode/mcp.json`) uses a top-level `servers` key with the same fields, plus `"type": "stdio"`. The server prints its id on stderr at start-up (`yea: service id ed25519:… (name files)`), which is what `yea grant --to` needs. Each guide's step 5 walks through the whole setup.
 
+### Who can answer a form
+
+A form answer proves only what the client stack attests, and MCP attests nothing about a person ([what an approval proves](/guide/security#what-an-approval-proves)). Any client, SDK host, proxy or gateway that declares form support can answer a form. The phrase is in the request, so anything that reads the form can type it: a typed phrase stops a client that accepts empty forms, not a script or a model. The notes below are examples from the clients we know, not a list of safe ones, and each cites the vendor's page with the date we read it. For a tool whose approval must be signed, mark it `risk: 'high'`, and it gets consent codes instead of a form.
+
+**Claude Code** ([hooks](https://code.claude.com/docs/en/hooks) and [permission modes](https://code.claude.com/docs/en/permission-modes), fetched 2026-11-03):
+
+- **Two hook events reach a form.** An `Elicitation` hook can answer it for you: the server gets the hook's answer, and no dialog appears. An `ElicitationResult` hook runs after you answer, and its answer replaces yours. It runs when you decline or cancel too, so it can turn a decline into an accept.
+- **Hooks come from many places:** user, project and local settings, managed policy, a plugin's `hooks/hooks.json`, and the frontmatter of skills and subagents. A hook's matcher is the MCP server's name, and an empty or `*` matcher matches every server, yours included.
+- **Hooks reload live.** An edit to a settings file takes effect without a restart, so a check at the start of a session doesn't cover the rest of it.
+- **The permission mode decides whether the agent can add a hook.** `.claude/`, `.mcp.json` and `.claude.json` are protected paths: writes to them ask you in `default` and `acceptEdits` mode, go to the classifier in `auto`, and are allowed in `bypassPermissions`.
+- **What holds:** for an organization, managed settings with `allowManagedHooksOnly`, which blocks user, project, local and plugin hooks; for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings (`"disableAllHooks": true` in your user settings doesn't, because a project's `false` wins over it); and not running a server with YEA approval in `bypassPermissions`.
+- **Our run:** [Claude Code, 2026-11-03](#claude-code-2026-11-03) shows the form as Claude Code draws it, and what could have answered instead.
+- **Its own permission prompt:** [the Claude Code call prompt](#the-claude-code-call-prompt), below.
+
+**Codex** ([config reference](https://learn.chatgpt.com/docs/config-file/config-reference), fetched 2026-11-03). Its `approval_policy` decides whether a form reaches the person or is rejected, and a rejected form fails closed: [Codex and Gemini CLI](#codex-and-gemini-cli) has the settings. What might answer one instead:
+
+- `approvals_reviewer = "auto_review"` hands "eligible approval prompts" to a reviewer subagent. The reference doesn't say whether a form is one. Write-ups say the reviewer can answer forms: unconfirmed (third-party).
+- Our [earlier notes](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093) (2026-09-26) say Codex accepts a form with no fields under auto-approve policies. Its reference doesn't say so: unconfirmed. YEA's form always has a field to type in.
+
+**Gemini CLI** declares no form support, so it gets consent codes, never a form ([Codex and Gemini CLI](#codex-and-gemini-cli)).
+
+**Any client:** a proxy or gateway between the client and the server, or an app built on an MCP SDK, can answer forms in code. Our own tests do, with the MCP SDK's client.
+
+#### The Claude Code call prompt
+
+With the `requireInteraction` option on (opt-in, and off by default; [#338](https://github.com/yea-protocol/yea/issues/338) adds it and its recipe), Claude Code shows its own permission prompt for every call of a YEA tool that acts, in every permission mode ([permission modes](https://code.claude.com/docs/en/permission-modes#actions-no-mode-auto-approves), fetched 2026-11-03). It shows that a person allowed the call with its arguments, not which plan they chose in the form, and it proves nothing under an Agent SDK host, whose `canUseTool` callback can approve in code. What else it depends on is in the [threat model](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves).
+
 ## Client runs
 
 The evidence behind the [client table](https://github.com/yea-protocol/yea#client-support). A run counts for "asks in the client" only if it's interactive and the client draws the form. `claude -p` cancels a form (Claude Code's docs), and Codex under `approval_policy = "never"` rejects one (its config reference). The tool then reports "not approved", just as if a person had declined, so a transcript where no dialog was drawn proves nothing about the form. What `codex exec` does with a form, and whether its automatic review can answer one, is on the [checklist on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641).
 
-A form that reaches a person is one check, not proof that only a person can answer it: the phrase is in the request, and some clients let software answer forms ([#337](https://github.com/yea-protocol/yea/issues/337)). So each run names what in that client can answer a form without a person.
+A form that reaches a person is one check, not proof that only a person can answer it: the phrase is in the request, and some clients let software answer forms ([who can answer a form](#who-can-answer-a-form), and [what an approval proves](/guide/security#what-an-approval-proves)). So each run names what in that client can answer a form without a person.
 
 ### Claude Code, 2026-11-03
 
@@ -262,7 +289,7 @@ A form that reaches a person is one check, not proof that only a person can answ
 | Repo | commit `8719326`; `@yea-protocol/mcp` 0.1.0, `@modelcontextprotocol/server` 2.3.1, zod 4.6.7, Node 22.18.0 |
 | Server | [`examples/mcp-quickstart.ts`](https://github.com/yea-protocol/yea/blob/main/examples/mcp-quickstart.ts)'s `createServer`, started by a launcher that logs the negotiated revision, behind a proxy that logs every JSON-RPC line and the server's stderr |
 | Registered with | `claude --strict-mcp-config --mcp-config <file>`, so nothing was written to the Claude Code MCP config |
-| Answers a form without a person | an [`Elicitation` hook](https://code.claude.com/docs/en/hooks#elicitation), which answers with no dialog drawn. None was configured for these runs |
+| Answers a form without a person | an [`Elicitation` hook](https://code.claude.com/docs/en/hooks#elicitation), which answers with no dialog drawn, or an [`ElicitationResult` hook](https://code.claude.com/docs/en/hooks#elicitationresult), which can rewrite the person's answer or turn a decline into an accept ([who can answer a form](#who-can-answer-a-form)). The runs record no `Elicitation` hook; they don't record `ElicitationResult` hooks |
 
 What happened (the same on both runtimes unless a bullet says otherwise):
 
@@ -283,7 +310,7 @@ Not run by us yet (2026-11-03): each needs a vendor sign-in and model credit, so
 
 Gemini CLI can't show the form. Version 0.66.0's MCP client registers only the `roots` capability (`connectToMcpServer` in its bundle), so the framework gives it consent codes. Its tracker agrees: [#28074](https://github.com/google-gemini/gemini-cli/issues/28074) (no elicitation capability) was closed as not planned, the pull request implementing it ([#28089](https://github.com/google-gemini/gemini-cli/pull/28089)) closed unmerged, and [#22249](https://github.com/google-gemini/gemini-cli/issues/22249) reports *Method not found* with elicitation tools.
 
-Codex documents form elicitation, and its `approval_policy` decides whether a form reaches the person. Under `never`, the setting its reference gives for non-interactive runs, Codex never asks, so a form is rejected. Under `granular`, a form is rejected unless `mcp_elicitations = true`. Its reference also says `approvals_reviewer = "auto_review"` hands eligible approval prompts to a reviewer subagent; whether a form counts as one isn't stated there, only in third-party write-ups.
+Codex documents form elicitation, and its `approval_policy` decides whether a form reaches the person. Under `never`, the setting its reference gives for non-interactive runs, Codex never asks, so a form is rejected. Under `granular`, a form is rejected unless `mcp_elicitations = true`. Its reference also says `approvals_reviewer = "auto_review"` hands eligible approval prompts to a reviewer subagent; whether a form counts as one isn't stated there, and the write-ups that say so are unconfirmed (third-party).
 
 ### Claude Desktop, Cursor, VS Code and Windsurf
 

@@ -67,7 +67,7 @@ def add_delete_file(server: MCPServer, approvals: Approvals, root: str) -> None:
             raise ValueError(f"{path} is not a regular file")
         return {"summary": f"Delete {path}", "effects": [{"op": "delete", "target": f"file/{path}"}]}
 
-    # One call: now it shows its plan and asks the person before it runs.
+    # One call: now it shows its plan and waits for approval before it runs.
     approvals.guard(server, "delete_file", describe=describe,
                     # The person types the file's name to approve.
                     confirm_with=lambda plan, args: Path(str(args.get("path"))).name)

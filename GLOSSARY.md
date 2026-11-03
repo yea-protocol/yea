@@ -18,6 +18,20 @@ A person's decision on a job's plan, given in the client or somewhere else (`yea
 approval given somewhere else reaches the job as a consent.
 _Avoid_: consent (for the job's policy decision)
 
+**Form tier**:
+An approval produced inside the chat client: an answer to the approval form whose typed phrase
+matches the plan's, or anything else that answer triggers, a signature included. It proves only
+what the client stack attests, and MCP attests nothing about a person, so hooks, models or
+scripts may have answered (SPEC-approval §9).
+_Avoid_: verified approval, in-client consent
+
+**Signed consent**:
+The approval tier above the form: a consent signed with the principal key outside the chat
+client, by `yea approve`. It proves the key's holder signed that exact plan, and that a person
+acted only when the key and the prompt that triggers the signing are both out of the agent's
+reach.
+_Avoid_: strong approval (unqualified)
+
 ### The service side
 
 **Verified request**:

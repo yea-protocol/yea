@@ -7,8 +7,9 @@
  * shows the proposals, hands out consent codes for `yea approve`, relays the signed consent,
  * and commits.
  *
- * TODO(#73): `--approve-here` (typed approval in the client, signed with a principal key on this
- * machine) waits for James (decision 4). Nothing here loads a principal key or signs anything.
+ * It never asks in the client and never signs: nothing here loads a principal key, because an
+ * approval triggered from inside the chat client is form tier, whichever key signs it (decision
+ * 4; SPEC-approval §9).
  */
 import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
 import { Client, type ConsentStore, unixNow } from '@yea-protocol/sdk';

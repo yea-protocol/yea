@@ -4,8 +4,11 @@ YEA's approval for Python MCP servers, on the official `mcp` SDK (`MCPServer`) o
 tool returns plans instead of acting:
 
 - **Within the person's signed policy**, the first plan runs and the call returns a receipt.
-- **Outside it**, the person sees the plans in their client and types a phrase to approve one.
-- **When the client can't ask**, the call returns consent codes for `yea approve`.
+- **Outside it**, the client shows the plans in a form, and an answer with the plan's phrase approves
+  one. A form is only as trustworthy as the client that draws it
+  ([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
+- **When the client can't ask**, or the plan is `high` risk, the call returns consent codes for
+  `yea approve`.
 - **Afterwards**, anything reversible can be undone with the `undo` tool.
 
 ```python

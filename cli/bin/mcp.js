@@ -42,15 +42,9 @@ function requireInteraction(flag) {
 /**
  * The command's options, checked; throws a `UsageError` for a bad value. `yea` has already
  * refused unknown flags.
- * @param {{ tools?: string, budget?: string, 'approve-here'?: boolean }} o the flags
+ * @param {{ tools?: string, budget?: string }} o the flags
  */
 function check(o) {
-  // TODO(#73): --approve-here (typed approval in the client, signed with a principal key on
-  // this machine) waits for James (SPEC-bridge decision 4). Until then approvals use codes.
-  if (o['approve-here']) {
-    die('yea mcp: --approve-here is not available yet (#73); approve with `yea approve <code>`');
-  }
-
   if (o.tools !== undefined && !MODES.includes(o.tools)) {
     throw new UsageError(`--tools must be one of ${MODES.join(', ')}`);
   }
@@ -72,8 +66,8 @@ function check(o) {
 /**
  * Connect to each service and serve the bridge over stdio until stdin closes.
  * @param {string[]} urls the services; none means those added with `yea add`
- * @param {{ tools?: string, budget?: string, name?: string, 'require-interaction'?: boolean,
- *   'approve-here'?: boolean }} o the flags, parsed by `yea` against `mcp`'s declaration in the SDK (cli/launch.ts)
+ * @param {{ tools?: string, budget?: string, name?: string, 'require-interaction'?: boolean }} o
+ *   the flags, parsed by `yea` against `mcp`'s declaration in the SDK (cli/launch.ts)
  */
 export async function runMcp(urls, o) {
   const budget = check(o);

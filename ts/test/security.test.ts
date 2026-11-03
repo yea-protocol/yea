@@ -19,7 +19,7 @@ import {
 import { createServer } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { shop } from '../../examples/shop.ts';
@@ -1777,6 +1777,183 @@ describe('approval security (SPEC-approval)', () => {
     expect(phraseMatches(typed, 'approve')).toBe(false);
     expect(phraseMatches(`${bom}Approve${nbsp}`, 'approve')).toBe(true);
     expect(performance.now() - start).toBeLessThan(500);
+  });
+});
+
+// AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer
+// a form, so anything a form answer triggers is form tier, whichever key signs it. No code path
+// may sign with the principal key in response to one. Nothing does today; these keep it so.
+describe('a form answer never triggers a signature (rule 3, #337)', () => {
+  const repo = fileURLToPath(new URL('../..', import.meta.url));
+  /** What signs, or loads a key to sign with (as in mcp/test/bridge-security.test.ts). */
+  const SIGNS =
+    /principalKey|consentGrant|issueGrant|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign/;
+  const plan = (summary: string) => ({
+    summary,
+    effects: [],
+    risk: 'low' as const,
+    apply: () => null,
+  });
+  const policy = { ...askingCall().policy, principal: B.public };
+  /** A call with two plans, so every answer names one, and a pinned principal, so codes issue. */
+  const call = (over: Partial<P.JobCall> = {}) =>
+    askingCall({
+      plan: () => [plan('Refund'), plan('Refund twice')],
+      policy,
+      ...over,
+    });
+  const accept = (plan: string, confirm: string): P.ApprovalAnswer => ({
+    action: 'accept',
+    content: { plan, confirm },
+  });
+  /** Every kind of answer, each to a fresh form, and the outcome it gets. */
+  const ANSWERS: {
+    answer: (offered: string[]) => P.ApprovalAnswer;
+    retry?: Partial<P.JobCall>;
+    outcome: P.JobCallOutcome['kind'];
+  }[] = [
+    { answer: ([p]) => accept(p, 'approve'), outcome: 'run' },
+    { answer: ([p]) => accept(p, 'yes'), outcome: 'ask' },
+    { answer: () => accept('never-offered', 'approve'), outcome: 'refuse' },
+    { answer: () => ({ action: 'decline' }), outcome: 'refuse' },
+    { answer: () => ({ action: 'cancel' }), outcome: 'refuse' },
+    {
+      answer: ([p]) => accept(p, 'approve'),
+      retry: { plan: () => [plan('Refund, changed')] },
+      outcome: 'ask',
+    },
+    {
+      answer: ([p]) => accept(p, 'approve'),
+      retry: { policy: { ...policy, outOfBand: 'low' } },
+      outcome: 'consent-codes',
+    },
+  ];
+
+  /** The files a relative import reaches from `starts`, `.js` specifiers read as `.ts`. */
+  function reachable(starts: string[]): string[] {
+    const seen = new Set<string>();
+    const queue = [...starts];
+
+    for (let f = queue.pop(); f !== undefined; f = queue.pop()) {
+      if (!seen.has(f)) {
+        seen.add(f);
+
+        for (const m of readFileSync(f, 'utf8').matchAll(
+          /from '(\.\.?\/[^']+)\.js'/g,
+        )) {
+          queue.push(join(dirname(f), `${m[1]}.ts`));
+        }
+      }
+    }
+
+    return [...seen].sort();
+  }
+
+  /** Every production source file of the SDK, the MCP package, the CLI's bin and the connectors. */
+  function productionSources(): string[] {
+    const connectors = readdirSync(join(repo, 'connectors')).map((c) =>
+      join('connectors', c, 'src'),
+    );
+
+    return ['ts/src', 'mcp/src', 'cli/bin', ...connectors]
+      .filter((dir) => existsSync(join(repo, dir)))
+      .flatMap((dir) =>
+        readdirSync(join(repo, dir), { recursive: true, encoding: 'utf8' })
+          .filter((f) => /\.(ts|js|mjs)$/.test(f))
+          .map((f) => join(repo, dir, f)),
+      );
+  }
+
+  /** A principal key in YEA_HOME and YEA_PRINCIPAL_HOME, as on a one-account machine. */
+  function principalAtHand() {
+    const dirs = [tmp(), tmp()];
+
+    for (const d of dirs) {
+      writeFileSync(join(d, 'principal.key'), B.seed, { mode: 0o600 });
+    }
+
+    vi.stubEnv('YEA_HOME', dirs[0]);
+    vi.stubEnv('YEA_PRINCIPAL_HOME', dirs[1]);
+
+    return dirs;
+  }
+
+  it('[R3] no answer to a form signs or saves a consent, even with the principal key at hand', async () => {
+    const homes = principalAtHand();
+    const opened: string[] = [];
+    const store = new FileStore(tmp());
+    const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
+    const saves = vi.spyOn(store, 'putConsent');
+
+    fsHook.beforeOpen = (path) => opened.push(path);
+
+    try {
+      for (const a of ANSWERS) {
+        const asked = await P.jobCall(call(), store);
+
+        if (asked.kind !== 'ask') {
+          throw new Error(`expected a form, got ${asked.kind}`);
+        }
+
+        const retry = {
+          state: asked.state,
+          answer: a.answer(asked.state.plans),
+        };
+        const o = await P.jobCall(call(a.retry), store, retry);
+
+        expect(o.kind).toBe(a.outcome);
+
+        if (o.kind === 'consent-codes') {
+          expect(o.codes).toHaveLength(1);
+        }
+
+        // The same state sent again is refused, whatever it said.
+        expect((await P.jobCall(call(a.retry), store, retry)).kind).toBe(
+          'refuse',
+        );
+      }
+
+      expect(signs).not.toHaveBeenCalled();
+      expect(saves).not.toHaveBeenCalled();
+      expect(opened.filter((f) => homes.some((h) => f.startsWith(h)))).toEqual(
+        [],
+      );
+
+      // The spy does see a signature when one is made.
+      await P.sign(B.seed, 'x');
+      expect(signs).toHaveBeenCalledTimes(1);
+    } finally {
+      fsHook.beforeOpen = null;
+      signs.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('[R3] the code that reads a form answer names no signer', () => {
+    const readers = productionSources().filter((f) =>
+      /inputResponses|elicitInput|elicitation\/create/.test(
+        readFileSync(f, 'utf8'),
+      ),
+    );
+
+    // The framework's job tools are the only place an answer enters; a new one belongs here.
+    expect(readers).toEqual([join(repo, 'mcp/src/call/round.ts')]);
+
+    const jobCallFiles = readdirSync(join(repo, 'ts/src/job-call')).map((f) =>
+      join(repo, 'ts/src/job-call', f),
+    );
+    const answerPath = [
+      ...reachable([join(repo, 'mcp/src/index.ts')]),
+      join(repo, 'ts/src/job-call.ts'),
+      ...jobCallFiles,
+      join(repo, 'ts/src/ask/judge.ts'),
+    ];
+
+    expect(answerPath).toContain(readers[0]);
+
+    for (const f of answerPath) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+    }
   });
 });
 

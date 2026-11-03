@@ -19,9 +19,11 @@ A developer marks a tool as a job, for example `reschedule`, `send_email`, `dele
   somewhere else.
 - **Afterwards**, anything reversible can be undone within its window.
 
-The model can't approve anything on the person's behalf, and a replayed or stale approval
+Nothing the model passes to a tool counts as an approval, and a replayed or stale approval
 never runs anything. Both hold only as far as the principal key, the principal's public key
-and the store are out of the agent's reach (§9).
+and the store are out of the agent's reach. What an approval proves about the person depends on
+the step that produced it: a form answer is only as trustworthy as the client that draws it
+([§9, What an approval proves](#what-an-approval-proves)).
 
 **Approval is about what an action does.** A plan is judged on which tool it belongs to, how
 risky it is, whether it can be undone, and what it uses up. What it uses is the protocol's
@@ -251,7 +253,7 @@ plan hash covers. The rule and its edge cases are pinned in the conformance case
 
 A bare accept or an empty form never counts: some clients auto-accept forms that have no
 fields. This proves the form was filled in, not that a person read it. That is the level form
-mode can give.
+mode can give, the form tier ([§9](#what-an-approval-proves)).
 
 ### 4. The state that goes round the client
 
@@ -465,6 +467,88 @@ removed after `exp`.
 
 ## 9. Security
 
+### What an approval proves
+
+This is the threat model for approvals. The guides and the security guide link here rather
+than restate it.
+
+**A form answer proves only what the client stack attests, and MCP attests nothing about a
+person.** An elicitation result carries no evidence of who answered it. Any client, SDK host,
+proxy or gateway that declares form support can answer a form, as our own tests do with the
+MCP SDK's client. The phrase doesn't change that: it's printed in the request (§3), so anything
+that reads the form can type it. The phrase only stops a client that accepts empty forms.
+What can answer a form in the clients we know is in the integrations guide,
+[Who can answer a form](../../site/guide/integrations.md#who-can-answer-a-form). Those notes are
+examples, not a list of safe clients.
+
+**The tiers.** An approval is judged by what the agent can reach at the step that produces it,
+not by what the approval is made of:
+
+| Tier | The step that produces it | It proves | It proves a person acted only if |
+|---|---|---|---|
+| **Form tier** | an answer to the approval form (§3), or anything else triggered from inside the chat client | the client stack returned an accepted form whose `confirm` matches the phrase of the plan it names | nothing in that stack can answer or rewrite a form: no hook, auto-reviewer, model, proxy or script, and no config the agent can edit to add one |
+| **Signed consent** | `yea approve <code>` (§6), where the principal key is | the holder of the principal key signed this exact plan | the key, and the prompt that triggers the signing, are outside everything the agent can drive: its shell, its files, and any browser it automates |
+| **Client call prompt** (conditional) | Claude Code's own permission prompt, before the call reaches the server, for a tool marked `requiresUserInteraction` | a person allowed this call, with these arguments | the conditions below hold |
+
+**A signature is only as strong as the step that triggered it. Anything triggered from inside
+the chat client is form tier**, whichever key signs afterwards, because a hook or a model can
+supply the answer that triggers it. So no tool host signs with the principal key in response to
+a form answer (SPEC.md §6.6, ADR-0003), and the bridge never signs at all
+([SPEC-bridge](SPEC-bridge.md), decision 4). The same rule holds outside the chat: an approval
+page ([#328](https://github.com/yea-protocol/yea/issues/328)) is form tier for an agent that can
+drive the browser it's open in.
+
+**The client call prompt** is opt-in, and off by default
+([#338](https://github.com/yea-protocol/yea/issues/338)). With the `requireInteraction` option
+on, Claude Code prompts for every call of an acting tool, in every permission mode
+([permission modes](https://code.claude.com/docs/en/permission-modes#actions-no-mode-auto-approves),
+fetched 2026-11-03). The integrations guide's
+[The Claude Code call prompt](../../site/guide/integrations.md#the-claude-code-call-prompt)
+summarises it; #338 adds the recipe, with the minimum Claude Code version and the cases that
+deny the call.
+- **It doesn't prove** which plan the person chose, or that the form answer is theirs: the
+  server computes the plans after the call, so the choice and the phrase still come back
+  through the form. It proves nothing under an Agent SDK host, whose `canUseTool` callback can
+  approve in code, and nothing when the option is off.
+- **It depends on the option staying on.** Set by the server's author in code, it holds unless
+  the agent can edit the server's source. Set by the person in the server's MCP entry
+  (`.mcp.json` or `~/.claude.json`), it's in files that `bypassPermissions` lets the agent
+  write without asking, and that `auto` leaves to its classifier.
+- **Together with the form,** it shows that a person chose the plan only when, in addition, no
+  `Elicitation` or `ElicitationResult` hook matches the server.
+- **Not yet known:** whether the retry of a 2026-07-28 `input_required` call draws a second
+  prompt. That waits for #338's interactive check.
+
+**Today's status, for servers built with the framework**, where `yea approve` must save the
+consent in the server's store:
+- **The key on the server's account:** best effort. An agent that runs as that user can read
+  the key, or run `yea approve` itself: the command checks for a terminal, and a terminal isn't
+  a person.
+- **The key on another OS user:** blocked. The store's directories and files are private to
+  the server's user (§8), so `yea approve` run as another user can't save the consent there
+  ([#358](https://github.com/yea-protocol/yea/issues/358)).
+- **The key on another device:** not possible yet
+  ([#328](https://github.com/yea-protocol/yea/issues/328)).
+
+The bridge's consent codes already work with the key on another device, because `yea approve`
+there prints the consent and the person pastes it back (SPEC-bridge).
+
+**Choosing the tier.**
+- **The author chooses it per tool.** A tool or plan at `risk: 'high'` is never offered in the
+  form; it gets consent codes, whatever the person's settings say (the floor, §2). The Stripe
+  connector does this in live mode: its refunds, immediate cancellations and immediate plan
+  changes are `high` ([SPEC-connector-stripe](SPEC-connector-stripe.md)). The cost is a
+  pinned principal key and a store `yea approve` can reach (§2, §6): without them, a `high`
+  plan can't be approved at all.
+- **The person can lower `outOfBand`.** It's a risk level, not a list of tools:
+  `{ "outOfBand": "medium" }` sends medium and high plans out of band. Like every unsigned
+  rule, it's best effort (§2): an agent that can write `~/.yea` can remove it.
+- **The defaults leave most tools on the form tier.** A guarded tool's default risk is `medium`
+  and `outOfBand` defaults to `high`, so the quickstart's irreversible `delete_file` is
+  approved in the form.
+
+### What else must hold
+
 - **The key file check fails closed.** The plugin refuses the pinned key when it runs as root
   (root can write anything) and on platforms where it can't check file ownership.
 - **Keep the agent away from three things.** The principal key (or it signs for itself), the
@@ -486,7 +570,7 @@ removed after `exp`.
 |---|---|
 | Job tool call | `INTENT` with `auto`, then `COMMIT` of `plans[0]` |
 | `preview: true` | `INTENT` without commit |
-| Approval form and typed confirmation | Consent bound to one plan (the role of a consent grant) |
+| Approval form and typed confirmation | Plays a consent grant's role for one plan, unsigned: the form tier (§9) |
 | Consent code and `yea approve` | A `pc1.` consent request, then a `pg1.` consent grant signed by the principal |
 | Signed policy | A grant signed by the principal, with its caveats; unsigned config can only tighten |
 | `undo(receipt)` | `UNDO` |
@@ -580,6 +664,8 @@ export function decide(
     never runs; a phrase over 64 characters is refused;
   - an irreversible plan never auto-runs, whatever the grant says;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
+  - no answer to the form, whatever it is, makes a signature or saves a consent, even with a
+    principal key on the machine, and the code that reads an answer names no signer (§9);
   - a `deny`ed tool never runs, even with approval;
   - deleting the unsigned policy file returns to the defaults, never to something looser;
   - undo refuses outside its window, for another principal, a second time, for an id that
