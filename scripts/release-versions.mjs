@@ -4,7 +4,8 @@
  * plugin, the citation, the lockfiles, the versions the code reports, and
  * CHANGELOG's top heading. `set <x.y.z>` bumps them all in one step (all but
  * CHANGELOG, whose new section a person writes); `check` fails when any
- * disagrees with @yea-protocol/sdk's.
+ * disagrees with @yea-protocol/sdk's and, given the tag a release pushes,
+ * when it isn't `v` and that version.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -156,6 +157,13 @@ export function disagreements(root, expected = currentVersion(root)) {
   });
 }
 
+/** A line when `tag` isn't the one a release of `version` pushes. */
+export function tagProblems(tag, version) {
+  return tag === `v${version}`
+    ? []
+    : [`tag ${tag} isn't v${version}, the version every package holds`];
+}
+
 /** The places `set` bumps. */
 const BUMPED = SITES.filter(({ bump = true }) => bump);
 
@@ -213,18 +221,39 @@ function report(problems, heading) {
   return problems.length === 0;
 }
 
-/** The command: `check`, or `set <x.y.z>`. */
-function main([command, version], root) {
-  if (command === 'check') {
-    if (report(disagreements(root), 'Versions disagree:')) {
-      console.log(`Every version is ${currentVersion(root)}.`);
-    }
-  } else if (command === 'set' && VERSION.test(version ?? '')) {
+/** `set <version>`: bumps, then says what's left; a refusal says why. */
+function set(root, version) {
+  try {
     setVersion(root, version);
-    console.log(`Set every version to ${version}.`);
-    note(disagreements(root, version), 'Still to do by hand:');
+  } catch (error) {
+    return report([error.message], `Can't set ${version}:`);
+  }
+
+  console.log(`Set every version to ${version}.`);
+  note(disagreements(root, version), 'Still to do by hand:');
+}
+
+/** `check [<tag>]`: every version agrees, and with the tag, if one is given. */
+function check(root, tag) {
+  const version = currentVersion(root);
+  const problems = [
+    ...disagreements(root, version),
+    ...(tag ? tagProblems(tag, version) : []),
+  ];
+
+  if (report(problems, 'Versions disagree:')) {
+    console.log(`Every version is ${version}.`);
+  }
+}
+
+/** The command: `check [<tag>]`, or `set <x.y.z>`. */
+function main([command, arg], root) {
+  if (command === 'check') {
+    check(root, arg);
+  } else if (command === 'set' && arg) {
+    set(root, arg);
   } else {
-    report(['release-versions.mjs check | set <x.y.z>'], 'Usage:');
+    report(['release-versions.mjs check [<tag>] | set <x.y.z>'], 'Usage:');
   }
 }
 

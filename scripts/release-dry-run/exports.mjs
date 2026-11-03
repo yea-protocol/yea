@@ -36,11 +36,19 @@ function targetFiles(target) {
   return Object.values(target).flatMap(targetFiles);
 }
 
-/** The package at `dir`: its name and its entries, each with its files. */
+/**
+ * The package at `dir`: its name and its entries, each with its files. A
+ * library without `exports` would pass every check with nothing to check, so
+ * that throws.
+ */
 function entriesOf(dir) {
-  const { name, exports = {} } = JSON.parse(
+  const { name, exports } = JSON.parse(
     readFileSync(join(dir, 'package.json'), 'utf8'),
   );
+
+  if (exports === undefined) {
+    throw new Error(`${name} has no exports`);
+  }
 
   return Object.entries(subpaths(exports)).map(([subpath, target]) => ({
     specifier: subpath === '.' ? name : `${name}${subpath.slice(1)}`,

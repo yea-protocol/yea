@@ -3,6 +3,7 @@
  * every place but CHANGELOG, and `disagreements` names a place left behind.
  */
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +14,7 @@ import {
   disagreements,
   SITES,
   setVersion,
+  tagProblems,
 } from './release-versions.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -99,4 +101,24 @@ test('setVersion refuses anything but x.y.z', () => {
   for (const bad of ['0.2', 'v0.2.0', '0.2.0-rc.1', '']) {
     assert.throws(() => setVersion(copyOfSites(), bad), /release version/);
   }
+});
+
+test('a release tag must be v and the version', () => {
+  assert.deepEqual(tagProblems('v0.2.0', '0.2.0'), []);
+  assert.deepEqual(tagProblems('v0.2.0', '0.1.0'), [
+    "tag v0.2.0 isn't v0.1.0, the version every package holds",
+  ]);
+  assert.equal(tagProblems('0.1.0', '0.1.0').length, 1);
+});
+
+test('set says why it refuses a version', () => {
+  const script = fileURLToPath(
+    new URL('release-versions.mjs', import.meta.url),
+  );
+  const run = spawnSync(process.execPath, [script, 'set', '0.2'], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /"0\.2" isn't a release version \(x\.y\.z\)/);
 });

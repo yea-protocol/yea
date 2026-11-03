@@ -12,7 +12,18 @@ permissions:
   id-token: write
   attestations: write
 jobs:
+  # Nothing publishes unless every version agrees, CHANGELOG's top section is this release's,
+  # and a pushed tag is v<version>.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm run release:check -- "$TAG"
+        env: { TAG: "${{ github.ref_type == 'tag' && github.ref_name || '' }}" }
   npm:
+    needs: [check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -34,6 +45,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: { name: npm, path: "npm-dist/*.tgz" }
   pypi:
+    needs: [check]
     runs-on: ubuntu-latest
     environment: pypi
     steps:

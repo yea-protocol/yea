@@ -1,6 +1,7 @@
 /**
  * Tests for release-dry-run.mjs's checks that run without packing: a broken
- * `exports` path fails the exports check, and the `initialize` probe tells a
+ * `exports` path or a missing `exports` fails the exports check, a file left
+ * out of a tarball fails the tarball check, and the `initialize` probe tells a
  * server that answers from one that errs, exits or hangs.
  */
 import assert from 'node:assert/strict';
@@ -10,6 +11,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { exportProblems } from './release-dry-run/exports.mjs';
 import { initialize } from './release-dry-run/mcp-initialize.mjs';
+import { unpackedFiles } from './release-dry-run/tarball.mjs';
 
 /** A project with package `fixture` installed, whose `exports` is `exports`. */
 function projectWith(exports) {
@@ -25,6 +27,21 @@ function projectWith(exports) {
   writeFileSync(join(dir, 'index.d.ts'), 'export declare const ok: true;\n');
 
   return app;
+}
+
+/** A workspace at a temp folder whose `files` are `files`, with dist/a.js and dist/sub/b.js. */
+function workspaceWith(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'yea-tarball-'));
+
+  mkdirSync(join(dir, 'dist', 'sub'), { recursive: true });
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'w', files }),
+  );
+  writeFileSync(join(dir, 'dist', 'a.js'), '');
+  writeFileSync(join(dir, 'dist', 'sub', 'b.js'), '');
+
+  return dir;
 }
 
 /** A server that runs `body` on each stdin line, as `node -e` code. */
@@ -70,6 +87,30 @@ test('a missing types file fails even though the code loads', () => {
 
   assert.deepEqual(exportProblems(app, 'fixture'), [
     "fixture: ./index.d.mts isn't in the package",
+  ]);
+});
+
+test('a package without exports fails', () => {
+  assert.throws(
+    () => exportProblems(projectWith(undefined), 'fixture'),
+    /fixture has no exports/,
+  );
+});
+
+test('a tarball with every file under its files folders passes', () => {
+  const dir = workspaceWith(['dist', 'README.md']);
+
+  assert.deepEqual(
+    unpackedFiles(dir, ['dist/a.js', 'dist/sub/b.js', 'package.json']),
+    [],
+  );
+});
+
+test('a file a tarball left out is named', () => {
+  const dir = workspaceWith(['dist']);
+
+  assert.deepEqual(unpackedFiles(dir, ['dist/a.js', 'package.json']), [
+    "w: dist/sub/b.js isn't in the tarball",
   ]);
 });
 
