@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { handshake } from '../src/cli/doctor/handshake.js';
 import { launchLine } from '../src/cli/doctor/registration.js';
-import { PORTABLE_BRIDGE } from '../src/setup/bridge-command.js';
+import { self } from '../src/cli/shared.js';
+import { PORTABLE_BRIDGE, shellWord } from '../src/setup/bridge-command.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const REPO = fileURLToPath(new URL('../..', import.meta.url)).replace(
@@ -24,6 +25,15 @@ const REPO = fileURLToPath(new URL('../..', import.meta.url)).replace(
   '',
 );
 const BIN = join(REPO, 'cli', 'bin', 'yea.js');
+/** `yea` as install and doctor name it, run from this checkout. */
+const SELF = `node ${shellWord(BIN)}`;
+
+/** `s`, matched literally in a regular expression. */
+const literal = (s: string) => s.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+
+/** A whole line of output: `text` as a pattern, with `self` for how yea is named. */
+const lineOf = (text: string) =>
+  new RegExp(`^${text.replaceAll('<self>', literal(SELF))}$`, 'm');
 const SCRATCH = realpathSync(mkdtempSync(join(tmpdir(), 'yea-doctor-')));
 
 /**
@@ -154,6 +164,49 @@ const fake = (mode = 'ok', log?: string) => ({
   args: [FAKE, mode, ...(log ? [log] : [])],
 });
 
+/**
+ * A yea clone in a folder named `name`, whose bin is the script `bin`: unbuilt, built after its
+ * last source change, or built before it (`stale`).
+ */
+function clone(
+  bin: string,
+  build: 'none' | 'fresh' | 'stale',
+  name = 'clone',
+): string {
+  const root = join(mkdtempSync(join(SCRATCH, 'clones-')), name);
+  const files: Record<string, string> = {
+    'package.json': '{"name":"yea-monorepo"}',
+    'cli/package.json': '{"type":"module"}',
+    'cli/bin/yea.js': bin,
+    'ts/src/cli.ts': '',
+    'mcp/src/bridge.ts': '',
+    ...(build === 'none'
+      ? {}
+      : { 'ts/dist/cli.js': '', 'mcp/dist/bridge.js': '' }),
+  };
+
+  for (const [f, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, f)), { recursive: true });
+    writeFileSync(join(root, f), text);
+  }
+
+  const built = Date.now() / 1000 + (build === 'stale' ? -100 : 100);
+
+  for (const f of ['ts/dist/cli.js', 'mcp/dist/bridge.js']) {
+    if (existsSync(join(root, f))) {
+      utimesSync(join(root, f), built, built);
+    }
+  }
+
+  return root;
+}
+
+/** The entry `yea install` writes for clone `root`, from this node. */
+const cloneEntry = (root: string) => ({
+  command: process.execPath,
+  args: [join(root, 'cli', 'bin', 'yea.js'), 'mcp'],
+});
+
 describe.concurrent('yea install from a checkout', () => {
   it("registers this node and the checkout's bin, says so, and doctor starts it", async () => {
     const u = user();
@@ -239,7 +292,9 @@ describe.concurrent('yea install from a checkout', () => {
     });
 
     expect(r.status).toBe(1);
-    expect(r.err).toContain('run `npm run build` first');
+    expect(r.err).toContain(
+      `Build it first: cd ${shellWord(root)} && npm run build`,
+    );
     expect(existsSync(join(u.home, '.claude.json'))).toBe(false);
     expect(existsSync(join(u.home, '.yea', 'agent.key'))).toBe(false);
   });
@@ -253,8 +308,8 @@ describe.concurrent('yea doctor: grants', () => {
 
     expect(d.out).toMatch(/^! no grants: your agent can read but not act/m);
     expect(d.out).toContain(`yea grant --to ${agent}`);
-    expect(d.out).toContain('yea grant-import <token>');
-    expect(d.out).toContain('yea install --with-principal');
+    expect(d.out).toContain(`${SELF} grant-import <token>`);
+    expect(d.out).toContain(`${SELF} install --with-principal`);
     expect(d.out).not.toContain('✗');
     expect(d.status).toBe(0);
   });
@@ -321,7 +376,7 @@ describe.concurrent('yea doctor: grants', () => {
     const d = await yea(u, ['doctor']);
 
     expect(d.out).toMatch(
-      /^! grant \w+ is held by another key.*where your principal key is/m,
+      /^! grant [\w-]+ is held by another key.*where your principal key is/m,
     );
     expect(d.status).toBe(0);
   });
@@ -338,9 +393,44 @@ describe.concurrent('yea doctor: services and the pinned key', () => {
 
     const d = await yea(u, ['doctor']);
 
-    expect(d.out).toMatch(/^! yea:\/\/127\.0\.0\.1:9: .*yea remove/m);
+    expect(d.out).toMatch(
+      lineOf(
+        '! yea://127\\.0\\.0\\.1:9: .*: start it, or <self> remove yea://127\\.0\\.0\\.1:9',
+      ),
+    );
     expect(d.status).toBe(0);
   });
+
+  it("a service that never answers HELLO is a warning, and doesn't keep doctor waiting", async () => {
+    const u = await installed(fake());
+    const svc = join(SCRATCH, `silent-svc-${Date.now()}.mjs`);
+    const pid = `${svc}.pid`;
+
+    // It never reads, ignores SIGTERM, and lets go of doctor's stderr, which the test waits on.
+    writeFileSync(
+      svc,
+      `import { closeSync, writeFileSync } from 'node:fs';
+writeFileSync(process.argv[2], String(process.pid));
+closeSync(2);
+process.on('SIGTERM', () => {});
+setInterval(() => {}, 1000);
+`,
+    );
+    writeFileSync(
+      join(u.home, '.yea', 'services.json'),
+      JSON.stringify([`stdio:${process.execPath} ${svc} ${pid}`]),
+    );
+
+    const t0 = Date.now();
+    const d = await yea(u, ['doctor']);
+
+    process.kill(Number(readFileSync(pid, 'utf8')), 'SIGKILL');
+    expect(d.out).toMatch(
+      /^! stdio:.*: no answer within 5 s\. the bridge starts without it/m,
+    );
+    expect(d.status).toBe(0);
+    expect(Date.now() - t0).toBeLessThan(15_000);
+  }, 20_000);
 
   it("YEA_PRINCIPAL_PUB naming a file that can't be trusted is a warning with the pin recipe", async () => {
     const u = await installed(fake());
@@ -365,7 +455,9 @@ describe.concurrent('yea doctor: starting what each tool would start', () => {
     const d = await yea(u, ['doctor']);
 
     expect(d.out).toMatch(
-      /^✗ Claude Code: the bridge didn't start: .*ENOENT.*: yea install --target claude-code$/m,
+      lineOf(
+        "✗ Claude Code: the bridge didn't start: .*ENOENT.*: <self> install --target claude-code",
+      ),
     );
     expect(d.status).toBe(1);
   });
@@ -382,35 +474,56 @@ describe.concurrent('yea doctor: starting what each tool would start', () => {
     const d = await yea(u, ['doctor'], { env: { PATH: '/usr/bin:/bin' } });
 
     expect(d.out).toMatch(
-      /^✗ Claude Desktop starts "node" without your shell's PATH.*: yea install --target claude-desktop$/m,
+      lineOf(
+        `✗ Claude Desktop starts "node" without your shell's PATH.*: <self> install --target claude-desktop`,
+      ),
     );
     expect(d.status).toBe(1);
   });
 
-  it("a checkout entry that doesn't start ends with the checkout's build command", async () => {
-    const root = mkdtempSync(join(SCRATCH, 'clone-'));
-
-    mkdirSync(join(root, 'ts', 'src'), { recursive: true });
-    mkdirSync(join(root, 'cli', 'bin'), { recursive: true });
-    writeFileSync(join(root, 'package.json'), '{"name":"yea-monorepo"}');
-    writeFileSync(
-      join(root, 'cli', 'bin', 'yea.js'),
+  it("an unbuilt checkout's entry that doesn't start ends with its build command, quoted", async () => {
+    const root = clone(
       "import '@yea-protocol/not-installed';\n",
+      'none',
+      'my clone',
     );
-
-    const u = await installed({
-      command: process.execPath,
-      args: [join(root, 'cli', 'bin', 'yea.js'), 'mcp'],
-    });
+    const u = await installed(cloneEntry(root));
     const d = await yea(u, ['doctor']);
 
     expect(d.out).toMatch(
-      new RegExp(
-        `^✗ Claude Code: the bridge didn't start: .*: cd ${root.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')} && npm ci && npm run build$`,
-        'm',
+      lineOf(
+        `✗ Claude Code: the bridge didn't start: .*: its checkout isn't built \\(ts/dist/cli\\.js is missing\\): cd ${literal(`'${root}'`)} && npm ci && npm run build`,
       ),
     );
     expect(d.status).toBe(1);
+  });
+
+  it("a built checkout's entry that doesn't start ends with yea install: a rebuild changes nothing", async () => {
+    const root = clone('process.exit(1);\n', 'fresh');
+    const u = await installed(cloneEntry(root));
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(
+      lineOf(
+        "✗ Claude Code: the bridge didn't start: it exited \\(1\\) before answering: <self> install --target claude-code",
+      ),
+    );
+    expect(d.out).not.toContain('npm run build');
+    expect(d.status).toBe(1);
+  });
+
+  it('a checkout entry that starts an old build is ✓, then a warning to rebuild it', async () => {
+    const root = clone(readFileSync(FAKE, 'utf8'), 'stale');
+    const u = await installed(cloneEntry(root));
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+    expect(d.out).toMatch(
+      lineOf(
+        `! Claude Code starts an old build \\(ts/dist/cli\\.js is older than ts/src\\): cd ${literal(root)} && npm run build`,
+      ),
+    );
+    expect(d.status).toBe(0);
   });
 
   it("a checkout entry whose node is gone ends with yea install: rebuilding wouldn't help", async () => {
@@ -423,7 +536,9 @@ describe.concurrent('yea doctor: starting what each tool would start', () => {
     const d = await yea(u, ['doctor']);
 
     expect(d.out).toMatch(
-      /^✗ Claude Code: the bridge didn't start: .*ENOENT: yea install --target claude-code$/m,
+      lineOf(
+        "✗ Claude Code: the bridge didn't start: .*ENOENT: <self> install --target claude-code",
+      ),
     );
     expect(d.status).toBe(1);
   });
@@ -440,7 +555,9 @@ describe.concurrent('yea doctor: starting what each tool would start', () => {
     const d = await yea(u, ['doctor']);
 
     expect(d.out).toMatch(
-      /^✗ Codex CLI: can't read its "yea" entry: .*: yea install --target codex$/m,
+      lineOf(
+        `✗ Codex CLI: can't read its "yea" entry: .*: <self> install --target codex`,
+      ),
     );
     expect(d.status).toBe(1);
   });
@@ -493,7 +610,9 @@ describe.concurrent('yea doctor: starting what each tool would start', () => {
 
     const d = await yea(u, ['doctor']);
 
-    expect(d.out).toMatch(/^✗ not registered with any AI tool: yea install/m);
+    expect(d.out).toMatch(
+      lineOf('✗ not registered with any AI tool: <self> install.*'),
+    );
     expect(d.status).toBe(1);
   });
 });
@@ -550,6 +669,19 @@ describe('what doctor says about a launch', () => {
     ]);
   });
 
+  it("a slow entry that doesn't download anything points at its services instead", () => {
+    const [mark, text] = launchLine(
+      { ...at, bridge: { command: process.execPath, args: [BIN, 'mcp'] } },
+      { kind: 'slow', ms: 60_000 },
+    );
+
+    expect(mark).toBe('!');
+    expect(text).not.toContain('download');
+    expect(text).toMatch(
+      /a service it connects to may not be answering: .* services$/,
+    );
+  });
+
   it('an npx entry for a package npm has no copy of says so, and points at a checkout', () => {
     const [mark, text] = launchLine(
       { ...at, bridge: PORTABLE_BRIDGE },
@@ -566,5 +698,67 @@ describe('what doctor says about a launch', () => {
     expect(text).toMatch(
       /npm ci && npm run build && node cli\/bin\/yea\.js install$/,
     );
+  });
+});
+
+describe('how install and doctor name yea', () => {
+  it('as yea, run from the published package', () => {
+    expect(
+      self(
+        'doctor',
+        '/usr/local/lib/node_modules/@yea-protocol/cli/bin/yea.js',
+      ),
+    ).toBe('yea doctor');
+  });
+
+  it("as node and the clone's bin, quoted, run from a clone", () => {
+    const root = clone('', 'fresh', "it's mine");
+
+    expect(self('doctor', join(root, 'cli', 'bin', 'yea.js'))).toBe(
+      `node '${root.replaceAll("'", "'\\''")}/cli/bin/yea.js' doctor`,
+    );
+  });
+
+  it('in every command it suggests that runs here, from this checkout', async () => {
+    const u = user();
+    const r = await yea(u, ['install', '--target', 'claude-code']);
+    const d = await yea(u, ['doctor']);
+    const agent = await agentOf(u);
+    const shown = (out: string) =>
+      out
+        .replaceAll(shellWord(process.execPath), '<node>')
+        .replaceAll(SELF, '<self>')
+        .replaceAll(shellWord(BIN), '<bin>')
+        .replaceAll(u.home, '<home>')
+        .replaceAll(agent, '<agent>')
+        .replaceAll(agent.slice(0, 24), '<agent>')
+        .replace(/node \d+\.\d+\.\d+/, 'node <version>')
+        .replace(/\(\d+ ms\)/, '(<n> ms)');
+
+    expect(shown(r.out)).toMatchInlineSnapshot(`
+      "agent key   <agent> (<home>/.yea)
+      principal   not on this machine (recommended). On the device that holds it, run:
+                    yea grant --to <agent> --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d
+                  and save the token here with: <self> grant-import <token>   (or re-run with --with-principal to try things quickly)
+      bridge      <node> <bin> mcp (this checkout)
+      ✓ Claude Code: MCP server "yea" → <home>/.claude.json
+      ✓ Claude Code: agent instructions → <home>/.claude/CLAUDE.md
+
+      next: add a service with \`<self> add <url>\`, or try the examples: \`<self> examples\`, then \`<self> add yea://127.0.0.1:7447\`
+      restart your AI tool, then ask it to do something. Check anything with: <self> doctor
+      "
+    `);
+    expect(shown(d.out)).toMatchInlineSnapshot(`
+      "✓ node <version>
+      ✓ agent key <agent>…
+      ✓ principal key is not on this machine (recommended)
+      ! no grants: your agent can read but not act. Issue one where your principal key is, and import it here:
+          yea grant --to <agent> …   (there)
+          <self> grant-import <token>   (here)
+        or, to try things on one machine: <self> install --with-principal
+      ! no services: <self> add <url>
+      ✓ Claude Code starts the bridge (<n> ms): <node> <bin> mcp
+      "
+    `);
   });
 });

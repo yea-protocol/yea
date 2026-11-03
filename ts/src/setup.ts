@@ -14,6 +14,8 @@ export {
   isPortableBridge,
   launchPath,
   runningBridge,
+  shellWord,
+  unbuilt,
 } from './setup/bridge-command.js';
 
 export { CLIENTS } from './setup/clients.js';

@@ -6,7 +6,7 @@ import type { KeyPair } from '../../crypto.js';
 import { type Caveat, inspectGrant, issueGrant } from '../../grants.js';
 import { loadGrants, principalKey, saveGrant } from '../../home.js';
 import { unixNow } from '../../util.js';
-import { confirm, pinRecipe } from '../shared.js';
+import { confirm, pinRecipe, self } from '../shared.js';
 
 /**
  * Find or (when asked) create the principal key here, and sign the agent a starter policy with
@@ -50,7 +50,7 @@ async function principalHere(
 
   if (!create) {
     console.log(
-      `principal   not on this machine (recommended). On the device that holds it, run:\n              yea grant --to ${a.public} --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d\n            and save the token here with: yea grant-import <token>   (or re-run with --with-principal to try things quickly)`,
+      `principal   not on this machine (recommended). On the device that holds it, run:\n              yea grant --to ${a.public} --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d\n            and save the token here with: ${self('grant-import <token>')}   (or re-run with --with-principal to try things quickly)`,
     );
 
     return null;
@@ -88,6 +88,6 @@ async function installDefaultPolicy(p: KeyPair, a: KeyPair) {
 
   saveGrant(token, 'grants', (await inspectGrant(token)).id.slice(0, 16));
   console.log(
-    'policy      low-risk actions, ≤ 25.00 USD each, ≤ 100.00 USD total, 30 days. Anything else asks you. (change: yea grant …)',
+    `policy      low-risk actions, ≤ 25.00 USD each, ≤ 100.00 USD total, 30 days. Anything else asks you. (change: ${self('grant …')})`,
   );
 }

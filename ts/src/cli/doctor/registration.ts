@@ -13,8 +13,11 @@ import {
   isPortableBridge,
   launchPath,
   type Scope,
+  shellWord,
   type Target,
+  unbuilt,
 } from '../../setup.js';
+import { self } from '../shared.js';
 import { handshake, LAUNCH_TIMEOUT_MS, type Launch } from './handshake.js';
 import type { Mark, Report } from './report.js';
 
@@ -59,9 +62,9 @@ export async function checkRegistrations(r: Report, s: Scope): Promise<void> {
 
   const launch = launcher();
   // Every start is under way before the first is awaited.
-  const lines = await Promise.all(found.map((f) => lineFor(f, launch)));
+  const lines = await Promise.all(found.map((f) => linesFor(f, launch)));
 
-  for (const line of lines) {
+  for (const line of lines.flat()) {
     r.line(...line);
   }
 }
@@ -69,8 +72,8 @@ export async function checkRegistrations(r: Report, s: Scope): Promise<void> {
 /** `yea install`, naming the tools when it would find none by itself. */
 function installCommand(): string {
   return detectedClients().length
-    ? 'yea install'
-    : `yea install --target <tool> (${Object.keys(CLIENTS).join(', ')})`;
+    ? self('install')
+    : self(`install --target <tool> (${Object.keys(CLIENTS).join(', ')})`);
 }
 
 /** Tool `t`'s entry under `s`, if it has one. */
@@ -90,13 +93,45 @@ function find(id: string, t: Target, s: Scope): Found[] {
   }
 }
 
-/** What doctor says about `f`: why it can't read it or won't start it, or how starting it went. */
-async function lineFor(f: Found, launch: Launcher): Promise<Line> {
+/**
+ * What doctor says about `f`: why it can't read it or won't start it, or how starting it went,
+ * and whether what started is an old build.
+ */
+async function linesFor(f: Found, launch: Launcher): Promise<Line[]> {
   if ('why' in f) {
-    return unreadable(f);
+    return [unreadable(f)];
   }
 
-  return refusal(f) ?? launchLine(f, await launch(f));
+  const refused = refusal(f);
+
+  if (refused) {
+    return [refused];
+  }
+
+  const l = await launch(f);
+  const stale = l.kind === 'started' ? staleBuild(f) : null;
+
+  return [launchLine(f, l), ...(stale ? [stale] : [])];
+}
+
+/** The checkout `f` runs the bin of, if it does. */
+function checkoutOf(f: Registered): string | null {
+  const script = f.bridge.args[0];
+
+  return script && isAbsolute(script) ? checkoutRoot(script) : null;
+}
+
+/** A warning when `f` starts a checkout's build that's older than its source: after a git pull. */
+function staleBuild(f: Registered): Line | null {
+  const root = checkoutOf(f);
+  const why = root ? unbuilt(root) : null;
+
+  return root && why
+    ? [
+        '!',
+        `${f.name} starts an old build (${why}): cd ${shellWord(root)} && npm run build`,
+      ]
+    : null;
 }
 
 /** What doctor says about an entry it can't read: with `yea install`, if that replaces it. */
@@ -111,7 +146,10 @@ function unreadable(f: Unreadable): Line {
 
   const line = `${f.name}: can't read its "yea" entry: ${f.why}`;
 
-  return ['✗', f.replaceable ? `${line}: yea install --target ${f.id}` : line];
+  return [
+    '✗',
+    f.replaceable ? `${line}: ${self(`install --target ${f.id}`)}` : line,
+  ];
 }
 
 /** Why doctor won't start `f`, as its line; null if it will. */
@@ -119,7 +157,7 @@ function refusal(f: Registered): Line | null {
   if (f.path && !isAbsolute(f.bridge.command)) {
     return [
       '✗',
-      `${f.name} starts "${f.bridge.command}" without your shell's PATH, so it may not find it: yea install --target ${f.id}`,
+      `${f.name} starts "${f.bridge.command}" without your shell's PATH, so it may not find it: ${self(`install --target ${f.id}`)}`,
     ];
   }
 
@@ -168,9 +206,13 @@ export function launchLine(f: Registered, l: Launch): Line {
   }
 
   if (l.kind === 'slow') {
+    const after = `no answer within ${LAUNCH_TIMEOUT_MS / 1000} s`;
+
     return [
       '!',
-      `${f.name}: no answer within ${LAUNCH_TIMEOUT_MS / 1000} s (first runs download the bridge): run yea doctor again`,
+      startsPublished(f)
+        ? `${f.name}: ${after} (first runs download the bridge): run ${self('doctor')} again`
+        : `${f.name}: ${after}: a service it connects to may not be answering: ${self('services')}`,
     ];
   }
 
@@ -181,9 +223,13 @@ export function launchLine(f: Registered, l: Launch): Line {
   return ['✗', `${f.name}: the bridge didn't start: ${l.why}: ${fix(f, l)}`];
 }
 
+/** Whether `f` starts the published package, through npx. */
+const startsPublished = (f: Registered) =>
+  f.bridge.args.includes('@yea-protocol/cli');
+
 /** Whether `f` failed because npm has no copy of the published package. */
 const isUnpublished = (f: Registered, stderr: string) =>
-  f.bridge.args.includes('@yea-protocol/cli') && /\bE404\b/.test(stderr);
+  startsPublished(f) && /\bE404\b/.test(stderr);
 
 /** What doctor says when npm has no copy of the package `f` starts. */
 function unpublished(f: Registered): Line {
@@ -202,21 +248,19 @@ function unpublished(f: Registered): Line {
 }
 
 /**
- * The command that fixes `f` when it doesn't start: register it again if its command isn't
- * there (the node it names was upgraded or removed), else rebuild its checkout, if it has one.
+ * The command that fixes `f` when it doesn't start: rebuild its checkout if that's what's wrong,
+ * else register it again, which names the node and checkout running doctor.
  */
 function fix(f: Registered, l: Extract<Launch, { why: string }>): string {
-  if (l.kind === 'unrunnable') {
+  if (l.kind === 'unrunnable' && f.project) {
     // A project file's is the bare npx, which install would write again: npx is what's missing.
-    return f.project
-      ? 'install node from nodejs.org, which comes with npx'
-      : `yea install --target ${f.id}`;
+    return 'install node from nodejs.org, which comes with npx';
   }
 
-  const script = f.bridge.args[0];
-  const root = script ? checkoutRoot(script) : null;
+  const root = l.kind === 'failed' ? checkoutOf(f) : null;
+  const why = root ? unbuilt(root) : null;
 
-  return root
-    ? `cd ${root} && npm ci && npm run build`
-    : `yea install --target ${f.id}`;
+  return root && why
+    ? `its checkout isn't built (${why}): cd ${shellWord(root)} && npm ci && npm run build`
+    : self(`install --target ${f.id}`);
 }

@@ -2,7 +2,13 @@
  * The command an AI tool runs to start the YEA MCP bridge: the yea that ran `yea install` (a
  * checkout's bin, or the published package through npx), adapted to where it's written.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import { platform } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { realPath } from '../fs-util.js';
@@ -86,7 +92,10 @@ function isMonorepo(root: string): boolean {
   }
 }
 
-/** The newest modification time of any file under `dir`, or 0 if it has none. */
+/**
+ * The newest modification time of any file under `dir`, or 0 if it has none. A link counts as
+ * itself, so one that leads nowhere is no error.
+ */
 function newest(dir: string): number {
   let latest = 0;
 
@@ -95,7 +104,7 @@ function newest(dir: string): number {
 
     latest = Math.max(
       latest,
-      e.isDirectory() ? newest(path) : statSync(path).mtimeMs,
+      e.isDirectory() ? newest(path) : lstatSync(path).mtimeMs,
     );
   }
 
@@ -103,7 +112,7 @@ function newest(dir: string): number {
 }
 
 /** Why the checkout at `root` can't serve the bridge as it is: a build missing or older than its source. */
-function unbuilt(root: string): string | null {
+export function unbuilt(root: string): string | null {
   for (const { built, from } of BUILDS) {
     const file = join(root, built);
 
@@ -167,7 +176,7 @@ export function runningBridge(
 
   if (why) {
     throw new Error(
-      `this checkout isn't built (${why}): run \`npm run build\` first, in ${root}`,
+      `this checkout isn't built (${why}). Build it first: cd ${shellWord(root)} && npm run build`,
     );
   }
 
@@ -221,11 +230,13 @@ export function bridgeFor(
   };
 }
 
-/** `b` as a command line, for people to read. */
+/** `a` as one word of a POSIX shell command: as it is when that's safe, else single-quoted. */
+export const shellWord = (a: string) =>
+  /^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replaceAll("'", `'\\''`)}'`;
+
+/** `b` as a command line, for people to read and to paste. */
 export function describeBridge(b: BridgeCommand): string {
-  return [b.command, ...b.args]
-    .map((a) => (/[\s"'\\]/.test(a) ? JSON.stringify(a) : a))
-    .join(' ');
+  return [b.command, ...b.args].map(shellWord).join(' ');
 }
 
 /** Whether `b` is yea's portable entry, as `yea install` writes it in a project file. */

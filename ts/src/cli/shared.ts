@@ -1,11 +1,13 @@
 /**
- * What every `yea` command group uses: `die`, a client and its flags, a terminal prompt and the
- * install scope.
+ * What every `yea` command group uses: `die`, a client and its flags, a terminal prompt, the
+ * install scope, and how to name `yea` in advice.
  */
+import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import type { Client } from '../client.js';
 import { agentKey, loadGrants } from '../home.js';
 import { connect } from '../node.js';
+import { checkoutRoot, shellWord } from '../setup.js';
 import type { Flag, Flags, Values } from './command.js';
 
 /** The flags of a command that connects to a service, read by `client`. */
@@ -27,6 +29,19 @@ export const LOCAL_FLAG = {
   type: 'boolean',
   help: "this project's files instead of your user-level ones",
 } as const satisfies Flag;
+
+/**
+ * `yea <args>` as you'd type it here: from a clone, `node <clone>/cli/bin/yea.js <args>`, since
+ * then there's no `yea` on your PATH; else `yea <args>`. For a command that runs on this machine.
+ */
+export function self(args: string, script = process.argv[1] ?? ''): string {
+  const root = checkoutRoot(script);
+  const yea = root
+    ? `node ${shellWord(join(root, 'cli', 'bin', 'yea.js'))}`
+    : 'yea';
+
+  return `${yea} ${args}`;
+}
 
 /** Print `msg` on stderr and exit with status 1. */
 export function die(msg: string): never {

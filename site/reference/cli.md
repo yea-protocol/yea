@@ -67,7 +67,7 @@ Removes the bridge and the `YEA` instruction blocks from each tool (or those in 
 
 Checks what an AI tool needs to start YEA: your node version, the agent key, and each tool's registration (with `--local`, in this project's files). It starts each registered bridge the way that tool would (a desktop app without your shell's `PATH`) and checks it answers MCP's `initialize`. Any of these failing is ✗ with the command that fixes it, and makes it exit 1.
 
-Then it reports, as warnings that say where each is fixed: **whether the principal key is readable on this machine** (agents could read it too), each grant's scope, expiry and holder, each service's reachability, and the pinned principal key in `YEA_PRINCIPAL_PUB`, if that's set. See [Troubleshooting](/guide/troubleshooting).
+Then it reports, as warnings that say where each is fixed: a clone's build that's older than its source (after a `git pull`), **whether the principal key is readable on this machine** (agents could read it too), each grant's scope, expiry and holder, whether each service answers `HELLO` within 5 s, and the pinned principal key in `YEA_PRINCIPAL_PUB`, if that's set. Run from a clone, its advice names `yea` as `node <clone>/cli/bin/yea.js`. See [Troubleshooting](/guide/troubleshooting).
 
 ## Identity and policy
 

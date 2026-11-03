@@ -1,5 +1,6 @@
 import {
   existsSync,
+  lutimesSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,7 +13,12 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { guiPath, PORTABLE_BRIDGE } from '../src/setup/bridge-command.js';
+import {
+  BadEntry,
+  guiPath,
+  PORTABLE_BRIDGE,
+  shellWord,
+} from '../src/setup/bridge-command.js';
 import {
   type BridgeCommand,
   bridgeFor,
@@ -177,7 +183,7 @@ describe('the bridge command yea install registers', () => {
     rmSync(join(root, build));
 
     expect(() => runningBridge(join(root, 'cli/bin/yea.js'), 'node')).toThrow(
-      /run `npm run build` first/,
+      /Build it first: cd .* && npm run build$/,
     );
   });
 
@@ -189,7 +195,7 @@ describe('the bridge command yea install registers', () => {
       age(join(root, source), 1);
 
       expect(() => runningBridge(join(root, 'cli/bin/yea.js'), 'node')).toThrow(
-        /run `npm run build` first/,
+        /Build it first: cd .* && npm run build$/,
       );
     },
   );
@@ -250,6 +256,34 @@ describe('the bridge command yea install registers', () => {
     ).toThrow(/no npx beside .* or on your PATH: install npm/);
   });
 
+  it('names the checkout in its refusal as a shell word: a folder with a space still works', () => {
+    const root = join(temp('yea-spaced-'), 'my yea');
+
+    put(root, {
+      'package.json': '{"name":"yea-monorepo"}',
+      'cli/bin/yea.js': '',
+      'ts/src/cli.ts': '',
+    });
+
+    expect(() => runningBridge(join(root, 'cli/bin/yea.js'), 'node')).toThrow(
+      `cd '${root}' && npm run build`,
+    );
+  });
+
+  it('a link that leads nowhere in the source is no error', () => {
+    const root = checkout();
+
+    const link = join(root, 'ts/src/dangling.ts');
+    const before = Date.now() / 1000 - 100;
+
+    symlinkSync(join(root, 'nowhere'), link);
+    lutimesSync(link, before, before);
+
+    expect(runningBridge(join(root, 'cli/bin/yea.js'), 'node').checkout).toBe(
+      root,
+    );
+  });
+
   it("isn't fooled by another monorepo with the same layout", () => {
     const root = checkout();
 
@@ -292,6 +326,17 @@ describe('the bridge command each tool gets (bridgeFor)', () => {
   );
 });
 
+describe('a command line to paste (shellWord)', () => {
+  it('leaves a plain word as it is, and single-quotes anything else', () => {
+    expect(shellWord('/opt/node/bin/node')).toBe('/opt/node/bin/node');
+    expect(shellWord('-y')).toBe('-y');
+    expect(shellWord('/src/my yea')).toBe("'/src/my yea'");
+    expect(shellWord('$HOME/`x`')).toBe("'$HOME/`x`'");
+    expect(shellWord("it's")).toBe("'it'\\''s'");
+    expect(shellWord('')).toBe("''");
+  });
+});
+
 describe("whether an entry is yea's portable one (isPortableBridge)", () => {
   it('is exactly the published package through a bare npx, with no env', () => {
     expect(isPortableBridge(PORTABLE_BRIDGE)).toBe(true);
@@ -306,6 +351,25 @@ describe("whether an entry is yea's portable one (isPortableBridge)", () => {
     );
   });
 });
+
+/**
+ * The tables `toml` declares, in order, each name without its quotes and spaces. TOML forbids
+ * declaring one twice, so a name repeated here is a file Codex can't load.
+ */
+function tomlTables(toml: string): string[] {
+  return toml.split('\n').flatMap((line) => {
+    const m = /^\s*\[\s*([^[\]]+?)\s*\]\s*(?:#.*)?$/.exec(line);
+
+    return m
+      ? [
+          m[1]
+            .split('.')
+            .map((k) => k.trim().replace(/^(["'])(.*)\1$/, '$2'))
+            .join('.'),
+        ]
+      : [];
+  });
+}
 
 describe('reading a registered entry back', () => {
   let home: string;
@@ -369,4 +433,75 @@ describe('reading a registered entry back', () => {
 
     expect(CLIENTS.codex.registered(scope())).toEqual(PORTABLE_BRIDGE);
   });
+
+  it.each([
+    ['spaced', '[ mcp_servers . yea ]'],
+    ['commented', '[mcp_servers.yea]  # added by hand'],
+    ['quoted', '[mcp_servers."yea"]'],
+  ])(
+    'Codex: a %s header is the same table, and installing replaces it',
+    (_, header) => {
+      const toml = join(home, '.codex', 'config.toml');
+
+      put(home, {
+        '.codex/config.toml': `[model]\nname = "x"\n\n${header}\ncommand = "npx"\nargs = ["-y", "@yea-protocol/cli", "mcp"]\n\n[tui]\na = 1\n`,
+      });
+
+      expect(CLIENTS.codex.registered(scope())).toEqual(PORTABLE_BRIDGE);
+
+      CLIENTS.codex.install(scope(), checkoutBridge);
+
+      const text = readFileSync(toml, 'utf8');
+
+      expect(tomlTables(text)).toEqual(['model', 'tui', 'mcp_servers.yea']);
+      expect(CLIENTS.codex.registered(scope())).toEqual(checkoutBridge);
+    },
+  );
+
+  it("Codex: installing drops the old entry's sub-tables, such as its env", () => {
+    const toml = join(home, '.codex', 'config.toml');
+
+    put(home, {
+      '.codex/config.toml':
+        '[mcp_servers.yea]\ncommand = "npx"\n\n[mcp_servers.yea.env]\nFOO = "bar"\n\n[tui]\na = 1\n',
+    });
+    CLIENTS.codex.install(scope(), PORTABLE_BRIDGE);
+
+    const text = readFileSync(toml, 'utf8');
+
+    expect(tomlTables(text)).toEqual(['tui', 'mcp_servers.yea']);
+    expect(text).not.toContain('FOO');
+  });
+
+  it('Codex: sub-tables without the table are an entry with no command, which installing replaces', () => {
+    put(home, { '.codex/config.toml': '[mcp_servers.yea.env]\nFOO = "bar"\n' });
+
+    expect(() => CLIENTS.codex.registered(scope())).toThrow(BadEntry);
+
+    CLIENTS.codex.install(scope(), PORTABLE_BRIDGE);
+
+    expect(CLIENTS.codex.registered(scope())).toEqual(PORTABLE_BRIDGE);
+  });
+
+  it.each([
+    ['a key of [mcp_servers]', '[mcp_servers]\nyea = { command = "npx" }\n'],
+    ['a dotted key', 'mcp_servers.yea.command = "npx"\n'],
+    ['an array of tables', '[[mcp_servers.yea]]\ncommand = "npx"\n'],
+  ])(
+    "Codex: the server defined as %s isn't read or written over",
+    (_, defined) => {
+      const toml = join(home, '.codex', 'config.toml');
+
+      put(home, { '.codex/config.toml': defined });
+
+      const read = () => CLIENTS.codex.registered(scope());
+
+      expect(read).toThrow(/in a way yea can't replace/);
+      expect(read).not.toThrow(BadEntry);
+      expect(() => CLIENTS.codex.install(scope(), PORTABLE_BRIDGE)).toThrow(
+        /in a way yea can't replace/,
+      );
+      expect(readFileSync(toml, 'utf8')).toBe(defined);
+    },
+  );
 });

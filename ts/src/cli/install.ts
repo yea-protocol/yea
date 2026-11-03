@@ -25,7 +25,7 @@ import {
   type Values,
 } from './command.js';
 import { installPrincipal } from './install/principal.js';
-import { client, die, installScope, LOCAL_FLAG } from './shared.js';
+import { client, die, installScope, LOCAL_FLAG, self } from './shared.js';
 
 /** The AI tools to set up or remove. */
 const TARGET_FLAG = {
@@ -108,7 +108,9 @@ export const cmdServices = command({
 async function services() {
   const s = listServices();
 
-  console.log(s.length ? s.join('\n') : 'no services yet: yea add <url>');
+  console.log(
+    s.length ? s.join('\n') : `no services yet: ${self('add <url>')}`,
+  );
 }
 
 const INSTALL_FLAGS = {
@@ -151,7 +153,7 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
 
   if (!names.length) {
     console.log(
-      `\nno AI tools detected. Pick some: yea install --target ${Object.keys(CLIENTS).join(',')}`,
+      `\nno AI tools detected. Pick some: ${self(`install --target ${Object.keys(CLIENTS).join(',')}`)}`,
     );
   }
 
@@ -164,10 +166,10 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   console.log(
     s.length
       ? `\nservices    ${s.join(', ')}`
-      : '\nnext: add a service with `yea add <url>`, or try the examples: `yea examples`, then `yea add yea://127.0.0.1:7447`',
+      : `\nnext: add a service with \`${self('add <url>')}\`, or try the examples: \`${self('examples')}\`, then \`${self('add yea://127.0.0.1:7447')}\``,
   );
   console.log(
-    'restart your AI tool, then ask it to do something. Check anything with: yea doctor',
+    `restart your AI tool, then ask it to do something. Check anything with: ${self('doctor')}`,
   );
 }
 
@@ -181,6 +183,7 @@ function installTarget(t: Target, s: Scope, running: BridgeCommand) {
       console.log(`✓ ${t.name}: ${line}`);
     }
 
+    // On Windows, the running bridge is the portable one when yea came from npm.
     if (placement.project && !isPortableBridge(running)) {
       console.log(
         `  note: a project file, which others may share, so it gets the portable ${describeBridge(bridge)}`,
