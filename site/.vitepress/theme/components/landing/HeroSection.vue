@@ -15,6 +15,7 @@
 import { withBase } from 'vitepress';
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
 import SegmentedRadio from '../SegmentedRadio.vue';
+import { utcClock } from '../proposal-facts';
 import { approvalPoint, layoutBox } from './anchors';
 import JunctionPaths from './JunctionPaths.vue';
 import PolicyTerms from './PolicyTerms.vue';
@@ -39,6 +40,7 @@ const messages = computed(() =>
       ? { id: s.receipt.id, undoUntil: s.receipt.undoUntil }
       : null,
     undone: s.undone,
+    declined: s.declined ? { until: utcClock(s.slip.expires) } : null,
   }),
 );
 const { reveal, playing, landed, ready, replay, skip } = useReveal(

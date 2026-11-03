@@ -256,7 +256,7 @@ test('proposal facts: one wording for the slip and the consent card', {
   // Declining signs nothing; the proposal is left to run out.
   assert.equal(
     declinedLine(Date.UTC(2026, 10, 3, 14, 5) / 1000),
-    'Nothing was signed. The proposal expires at 14:05 UTC.',
+    "Nothing was signed. The proposal can't be committed after 14:05 UTC.",
   );
 });
 
@@ -511,6 +511,7 @@ const heroState = (scene) =>
       slip: null,
       receipt: null,
       undone: null,
+      declined: false,
       status: '',
       error: '',
     }).map(([k, value]) => [k, { value }]),
@@ -607,6 +608,20 @@ test('thread: the visitor approval, the receipt and the undo follow the policy a
     all[5].text,
     'Order placed. It can be undone until 2026-09-30 14:00 UTC.',
   );
+
+  // A decline is the person's word to their own agent: nothing goes on the wire.
+  const no = thread(p, {
+    approved: null,
+    undone: null,
+    declined: { until: '14:05 UTC' },
+  });
+
+  assert.equal(no.length, 5);
+  assert.deepEqual(
+    [no[4].from, no[4].wire, no[4].tone],
+    ['You → your agent', '', 'plain'],
+  );
+  assert.match(no[4].text, /Nothing is signed.*after 14:05 UTC\./);
   // Inside the policy there's nothing to approve: the receipt is the policy's answer.
   assert.equal(
     thread(
@@ -820,4 +835,61 @@ test('the recorded exchange still matches the core', {
     stable(RECORDED),
     'rerun: node site/scripts/landing-exchange.mjs',
   );
+});
+
+test('decline: the round ends declined with no second COMMIT, the slip clears its proposal and lapses to expired', {
+  skip: needsCore,
+}, async () => {
+  const sdk = await import('../../ts/dist/index.js');
+  const { shop } = await import('../../ts/dist/examples/shop.js');
+  const { calendar } = await import('../../ts/dist/examples/calendar.js');
+  const { runScene } = await import(`${LANDING}/run-scene.ts`);
+  const { decline } = await import(`${LANDING}/use-slip.ts`);
+  const { stopIfLapsed } = await import(`${LANDING}/deadlines.ts`);
+  const commits = [];
+  const counting = {
+    ...sdk,
+    local(svc) {
+      const t = sdk.local(svc);
+
+      return {
+        ...t,
+        request: (f, on) => {
+          if (f.verb === 'COMMIT') {
+            commits.push(f);
+          }
+
+          return t.request(f, on);
+        },
+      };
+    },
+  };
+  const live = {
+    sdk: counting,
+    services: { shop, calendar },
+    session: null,
+    waiting: null,
+    run: 0,
+  };
+  const state = heroState('dinner');
+
+  await runScene(state, live);
+  assert.equal(state.phase.value, 'waiting');
+
+  const waiting = live.waiting;
+
+  await decline(state, live);
+
+  assert.equal(state.phase.value, 'declined');
+  assert.equal(state.declined.value, true);
+  assert.equal(live.waiting, null);
+  assert.equal((await waiting.round.done).kind, 'declined');
+  assert.equal(commits.length, 1);
+  assert.match(state.status.value, /^Declined\. Nothing was signed\./);
+
+  // Once the proposal's time is up, the declined slip says so like any other lapse.
+  state.slip.value = { ...state.slip.value, expires: 0 };
+  assert.equal(stopIfLapsed(state, live), true);
+  assert.equal(state.phase.value, 'expired');
+  assert.match(state.error.value, /^This proposal expired at 00:00 UTC/);
 });

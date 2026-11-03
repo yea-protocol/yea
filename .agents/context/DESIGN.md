@@ -478,7 +478,9 @@ against an example service, told as a thread that ends in a permission slip.
   the real wire line (wrapping, never cut off) and a sentence on what it means. Your request to
   your agent; the agent's `→ INTENT`; the service's proposals (`← [p_…]`); the policy's answer
   (`✗ consent_required: …` in amber, or `✓ receipt …` in green). Then, as the visitor acts:
-  their approval (`→ COMMIT … + your consent grant`), the receipt, and the undo.
+  their approval (`→ COMMIT … + your consent grant`), the receipt, and the undo; or their
+  decline, which they say to their own agent ("You → your agent", no wire line: the protocol
+  has no decline frame, so nothing is sent).
 - **Playback** (`use-reveal.ts`): when a run lands with the exchange in view and the thread and
   slip side by side (on one column the thread sits above the slip, off screen, so it just
   shows; Replay still plays it), the thread plays
@@ -494,13 +496,17 @@ against an example service, told as a thread that ends in a permission slip.
   thread's last message, so the slip doesn't repeat it.
 - **Tear-off stub:** below a dashed perforation with a notch cut into each edge; the left notch
   is the approval point. It holds what the person signs: the proposal's hash, Approve with a
-  neutral secondary Decline beside it, and a line saying exactly what is signed.
+  neutral secondary Decline beside it (each enabled only while the proposal waits on the
+  visitor, so both are disabled on the recording, while loading and without script), and a
+  line saying exactly what is signed.
 - **States.** The border and chip follow protocol state:
   - neutral "Recorded" until the core is live;
   - neutral "Checking your policy…" while a run is on its way;
   - amber "Waiting on you";
-  - neutral "Declined", where the stub says "Nothing was signed. The proposal expires at
-    14:05 UTC." (the same line as the playground's card);
+  - neutral "Declined", where the stub says "Nothing was signed. The proposal can't be
+    committed after 14:05 UTC." (the same line as the playground's card). Declining ends the
+    consent round with nothing signed and no second COMMIT; once the proposal's time is up,
+    the slip turns "Expired";
   - green "✓ Committed" (or "✓ Went ahead", inside the policy), where the stub shows the
     receipt, its undo window and Undo;
   - neutral "Undone";
@@ -529,9 +535,12 @@ the consent card, and a history list with state dots).
 The approval moment: amber 1px border on an amber-tinted fill, 12px radius, a heading ("Your
 agent needs your approval"), the proposal summary, its effects in mono, the uses/risk/undo line,
 one amber consent button ("Approve as human and commit") with a neutral secondary Decline beside
-it, and a fine-print line saying exactly what is signed. Once declined, nothing waits on the
+it, and a fine-print line saying exactly what is signed. Decline ends the SDK's consent round
+as `declined`: nothing is signed and there's no second COMMIT. Then nothing waits on the
 person, so the card turns neutral (divider border, soft fill), heads "You declined" and says
-"Nothing was signed. The proposal expires at 14:05 UTC."; focus moves to that line.
+"Nothing was signed. The proposal can't be committed after 14:05 UTC."; focus moves to that
+line, the quick actions come back below it, and the history marks the exchange "declined"
+with a neutral dot.
 
 ## 6. Do's and Don'ts
 

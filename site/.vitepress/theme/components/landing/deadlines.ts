@@ -1,11 +1,13 @@
 /**
- * The slip's deadlines: while a proposal waits on the person, or a receipt's undo window is
- * open, the slip says when it (or the example policy) has run out, before a step would fail
- * and on a timer.
+ * The slip's deadlines: while a proposal waits on the person or lies declined, or a receipt's
+ * undo window is open, the slip says when it (or the example policy) has run out, before a
+ * step would fail and on a timer.
+ *
+ * Its runtime imports name their `.ts` files, so the tests can run it under Node.
  */
 import { watch } from 'vue';
-import { utcClock } from '../proposal-facts';
-import { type Lapse, lapsed, lapseText } from './expiry';
+import { utcClock } from '../proposal-facts.ts';
+import { type Lapse, lapsed, lapseText } from './expiry.ts';
 import type { Live, SlipState } from './use-slip';
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -14,6 +16,11 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 function deadline(state: SlipState, live: Live): [Lapse, number] | null {
   if (state.phase.value === 'waiting' && live.waiting) {
     return ['proposal', live.waiting.proposal.expires];
+  }
+
+  // Declined, the proposal is no longer held, but the slip still shows it until it expires.
+  if (state.phase.value === 'declined') {
+    return ['proposal', state.slip.value.expires];
   }
 
   const until = state.receipt.value?.until;
@@ -46,7 +53,7 @@ export function stopIfLapsed(state: SlipState, live: Live): boolean {
   return true;
 }
 
-/** While a proposal waits or an undo window is open, stop the slip when it runs out. */
+/** While a proposal waits or lies declined, or an undo window is open, stop the slip when it runs out. */
 export function watchDeadlines(state: SlipState, current: () => Live | null) {
   let timer: ReturnType<typeof setTimeout> | undefined;
 

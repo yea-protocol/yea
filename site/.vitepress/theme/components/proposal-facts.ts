@@ -64,8 +64,8 @@ export const utcMinute = (unix: number) =>
 export const utcClock = (unix: number) => utcMinute(unix).slice(11);
 
 /**
- * What the person reads once they decline: nothing was signed, and the proposal is left to
- * run out at `expires` (unix seconds).
+ * What the person reads once they decline: nothing was signed, and the proposal, left to run
+ * out, can't be committed after `expires` (unix seconds).
  */
 export const declinedLine = (expires: number) =>
-  `Nothing was signed. The proposal expires at ${utcClock(expires)}.`;
+  `Nothing was signed. The proposal can't be committed after ${utcClock(expires)}.`;

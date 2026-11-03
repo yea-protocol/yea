@@ -62,7 +62,7 @@ async function setup(edit = (r) => r) {
   const start = (proposal = received) =>
     check.startRound(sdk, { client, proposal, principal });
 
-  return { check, received, commits, start };
+  return { sdk, check, client, principal, received, commits, start };
 }
 
 /** The service's consent request, with `patch` applied. */
@@ -134,4 +134,46 @@ test('startRound: refuses a request that names another proposal, hash, capabilit
   const tampered = await start({ ...received, summary: '1 roll' });
 
   assert.match(check.checkOf(tampered).why, /doesn't match its hash/);
+});
+
+test('useConsent: Decline ends the round declined, with no second COMMIT, and the card and history say so', {
+  skip,
+}, async () => {
+  const { computed, ref, shallowRef } = await import('vue');
+  const { useConsent } = await import(`${THEME}/use-consent.ts`);
+  const { sdk, client, principal, received, commits } = await setup();
+  const log = ref([]);
+  const consent = useConsent({
+    core: shallowRef(sdk),
+    keys: shallowRef({ principal }),
+    log,
+    current: computed(() => log.value[log.value.length - 1] ?? null),
+    selected: ref(null),
+  });
+  // The playground logs each exchange; here the one COMMIT the round sends.
+  const logged = {
+    ...client,
+    key: client.key,
+    audience: () => client.audience(),
+    commit: async (p, o) => {
+      const reply = await client.commit(p, o);
+
+      log.value = [...log.value, { n: log.value.length + 1, reply }];
+
+      return reply;
+    },
+  };
+
+  await consent.commit(logged, received);
+  assert.equal(consent.check.value.state, 'ok');
+
+  await consent.decline();
+
+  assert.deepEqual(consent.check.value, {
+    state: 'declined',
+    expires: received.expires,
+  });
+  assert.equal(consent.facts.value, null);
+  assert.deepEqual([...consent.declined.value], [[1, received.expires]]);
+  assert.equal(commits.length, 1);
 });

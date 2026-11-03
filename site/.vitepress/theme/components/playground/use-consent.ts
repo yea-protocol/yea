@@ -3,7 +3,10 @@
  * service asks the human, the round checks its request against the proposal the agent received
  * and waits here; the card shows that proposal, and approving signs the consent the round built
  * from it, never the service's request, and lets the round commit once more. Declining signs
- * nothing and ends the round; the proposal is left to expire.
+ * nothing and ends the round with no second COMMIT; the proposal is left to expire, and the
+ * card and the history say the exchange was declined.
+ *
+ * Its runtime imports name their `.ts` files, so the tests can run it under Node.
  */
 import type { Client, ConsentRequest } from '@yea-protocol/sdk';
 import {
@@ -14,13 +17,13 @@ import {
   type ShallowRef,
   shallowRef,
 } from 'vue';
-import { factsLine, proposalFacts } from '../proposal-facts';
+import { factsLine, proposalFacts } from '../proposal-facts.ts';
 import {
   type ConsentCheck,
   checkOf,
   startRound,
   type Waiting,
-} from './consent-check';
+} from './consent-check.ts';
 import type { Core, Exchange, Keys } from './model';
 import type { ReceivedProposal } from './seen';
 
@@ -101,11 +104,18 @@ function cardFor(o: {
   here: ComputedRef<Round | null>;
   starting: Ref<boolean>;
   ran: Ref<ReadonlySet<number>>;
+  declined: Ref<Declined>;
 }) {
   const { core, here } = o;
   const check = computed((): ConsentCheck => {
     if (here.value) {
       return here.value.check;
+    }
+
+    const expires = o.declined.value.get(o.current.value?.n ?? -1);
+
+    if (expires !== undefined) {
+      return { state: 'declined', expires };
     }
 
     if (o.starting.value) {
@@ -130,10 +140,37 @@ function cardFor(o: {
   return { check, facts };
 }
 
-/** End the round `r` with a no: nothing is signed, and it shows as declined until it expires. */
+/**
+ * Approve the round `r`: it signs the consent it built and commits once more, and `mark` notes
+ * that COMMIT as the round's. The reply pane follows to it.
+ */
+async function approveRound(
+  round: ShallowRef<Round | null>,
+  r: Round | null,
+  selected: Ref<number | null>,
+  mark: () => void,
+): Promise<void> {
+  const w = r?.waiting;
+
+  if (!w) {
+    return;
+  }
+
+  round.value = null;
+  selected.value = null;
+  w.decide(true);
+  await w.done;
+  mark();
+}
+
+/** The exchanges the human declined, each with when its proposal expires (unix seconds). */
+export type Declined = ReadonlyMap<number, number>;
+
+/** End the round `r` with a no: nothing is signed, and its exchange is kept as declined. */
 async function declineRound(
   round: ShallowRef<Round | null>,
   r: Round | null,
+  declined: ShallowRef<Declined>,
 ): Promise<void> {
   const w = r?.waiting;
 
@@ -141,10 +178,8 @@ async function declineRound(
     return;
   }
 
-  round.value = {
-    n: r.n,
-    check: { state: 'declined', expires: w.ask.proposal.expires },
-  };
+  declined.value = new Map([...declined.value, [r.n, w.ask.proposal.expires]]);
+  round.value = null;
   w.decide(false);
   await w.done;
 }
@@ -162,7 +197,15 @@ export function useConsent({
     round.value && round.value.n === current.value?.n ? round.value : null,
   );
   const { ran, mark } = roundExchanges(log);
-  const { check, facts } = cardFor({ core, current, here, starting, ran });
+  const declined = shallowRef<Declined>(new Map());
+  const { check, facts } = cardFor({
+    core,
+    current,
+    here,
+    starting,
+    ran,
+    declined,
+  });
 
   /** COMMIT `p` through the round; resolves once it waits on the human or ends. */
   async function commit(
@@ -205,22 +248,18 @@ export function useConsent({
   }
 
   /** The human approves: the round signs the consent it built and commits once more. */
-  async function approve(): Promise<void> {
-    const w = here.value?.waiting;
-
-    if (!w) {
-      return;
-    }
-
-    round.value = null;
-    selected.value = null;
-    w.decide(true);
-    await w.done;
-    mark();
-  }
+  const approve = () => approveRound(round, here.value, selected, mark);
 
   /** The human declines: nothing is signed, and the card says when the proposal expires. */
-  const decline = () => declineRound(round, here.value);
+  const decline = () => declineRound(round, here.value, declined);
 
-  return { ...askedIn(current), facts, check, approve, decline, commit };
+  return {
+    ...askedIn(current),
+    facts,
+    check,
+    declined,
+    approve,
+    decline,
+    commit,
+  };
 }

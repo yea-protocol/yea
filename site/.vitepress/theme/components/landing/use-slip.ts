@@ -4,6 +4,8 @@
  * browser is idle, then runs the chosen example live from the start (run-scene.ts). Once live
  * the visitor can approve or decline, undo, start again or pick another example, and the slip
  * says when the proposal, the undo window or the example policy has run out instead of failing.
+ *
+ * Its runtime imports name their `.ts` files, so the tests can run its steps under Node.
  */
 import {
   onMounted,
@@ -13,11 +15,11 @@ import {
   shallowRef,
   type UnwrapNestedRefs,
 } from 'vue';
-import { declinedLine } from '../proposal-facts';
-import { stopIfLapsed, watchDeadlines } from './deadlines';
-import { RECORDED } from './exchange';
-import { runScene } from './run-scene';
-import { SCENES, type SceneKey, type ServiceKey } from './scenes';
+import { declinedLine } from '../proposal-facts.ts';
+import { stopIfLapsed, watchDeadlines } from './deadlines.ts';
+import { RECORDED } from './exchange.ts';
+import { runScene } from './run-scene.ts';
+import { SCENES, type SceneKey, type ServiceKey } from './scenes.ts';
 import type { ServiceFactory, Session, SessionSdk, Waiting } from './session';
 import {
   type ReceiptView,
@@ -26,7 +28,7 @@ import {
   type SlipView,
   type UndoneView,
   undoneView,
-} from './slip-view';
+} from './slip-view.ts';
 import type { Progress } from './thread';
 
 /**
@@ -58,6 +60,8 @@ export interface SlipState {
   slip: ShallowRef<SlipView>;
   receipt: ShallowRef<ReceiptView | null>;
   undone: ShallowRef<UndoneView | null>;
+  /** Whether the visitor declined this run's proposal, for the thread. */
+  declined: Ref<boolean>;
   /** The live region's one line: empty until something happens. */
   status: Ref<string>;
   /** Why the slip stopped: a lapse, a failed step, or the core not starting. */
@@ -189,19 +193,26 @@ async function approve(state: SlipState, live: Live) {
 }
 
 /**
- * The visitor declines: nothing is signed or sent, and the proposal is left to expire at the
- * service. Declining is never a step that can fail, so it needs no `step`.
+ * The visitor declines: the consent round ends with nothing signed and no second COMMIT, and
+ * the proposal is left to expire at the service. Exported for the tests.
  */
-async function decline(state: SlipState, live: Live) {
+export async function decline(state: SlipState, live: Live) {
   const w = live.waiting;
+  const s = live.session;
 
-  if (!w || state.phase.value !== 'waiting' || stopIfLapsed(state, live)) {
+  if (
+    !w ||
+    !s ||
+    state.phase.value !== 'waiting' ||
+    stopIfLapsed(state, live)
+  ) {
     return;
   }
 
   live.waiting = null;
-  state.phase.value = 'declined';
+  state.declined.value = true;
   state.status.value = `Declined. ${declinedLine(w.proposal.expires)}`;
+  await step(state, live, 'declined', () => s.decline(w));
 }
 
 async function undo(state: SlipState, live: Live) {
@@ -241,6 +252,7 @@ export function useSlip() {
     slip: shallowRef<SlipView>(RECORDED.slip),
     receipt: shallowRef<ReceiptView | null>(null),
     undone: shallowRef<UndoneView | null>(null),
+    declined: ref(false),
     status: ref(''),
     error: ref(''),
   };

@@ -1,10 +1,18 @@
 <script setup lang="ts">
-/** Every exchange so far, newest first; pick one to show it in the reply pane. */
+/**
+ * Every exchange so far, newest first; pick one to show it in the reply pane. A consent request
+ * the human declined is marked declined, in neutral, since it no longer waits on them.
+ */
 import { computed } from 'vue';
 import { replySummary, requestSummary, toneOf } from './labels';
 import type { Exchange } from './model';
+import type { Declined } from './use-consent';
 
-const props = defineProps<{ log: Exchange[]; active: number | null }>();
+const props = defineProps<{
+  log: Exchange[];
+  active: number | null;
+  declined: Declined;
+}>();
 const emit = defineEmits<{ select: [n: number] }>();
 
 const newestFirst = computed(() => [...props.log].reverse());
@@ -14,9 +22,9 @@ const newestFirst = computed(() => [...props.log].reverse());
   <ol class="history" aria-label="History">
     <li v-for="x in newestFirst" :key="x.n">
       <button type="button" :class="{ on: x.n === active }" :aria-current="x.n === active ? 'true' : undefined" @click="emit('select', x.n)">
-        <span :class="['dot', toneOf(x.reply)]" />
+        <span :class="['dot', declined.has(x.n) ? 'plain' : toneOf(x.reply)]" />
         <span class="h-req">{{ requestSummary(x.request) }}</span>
-        <span class="h-rep">{{ replySummary(x.reply) }}</span>
+        <span class="h-rep">{{ declined.has(x.n) ? 'declined' : replySummary(x.reply) }}</span>
         <span class="h-ms">{{ x.ms.toFixed(1) }} ms</span>
       </button>
     </li>

@@ -75,6 +75,7 @@ async function lead(state: SlipState, live: Live, run: number) {
   live.waiting = null;
   state.receipt.value = null;
   state.undone.value = null;
+  state.declined.value = false;
   state.error.value = '';
   state.progress.value = blank;
   state.phase.value = 'checking';

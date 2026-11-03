@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The slip's tear-off stub: the consent the visitor signs (the proposal's hash, Approve, and
- * Decline beside it), then the receipt with Undo, then the undo; its words come from the
- * chosen example. Once the core is live, Start again is there whenever nothing is in flight
+ * Decline beside it, each enabled only while the proposal waits on them), then the receipt
+ * with Undo, then the undo; its words come from the chosen example. Once the core is live, Start again is there whenever nothing is in flight
  * and nothing waits on the visitor. When a button is replaced by the next one, focus moves to
  * it.
  */
@@ -119,7 +119,7 @@ watch(
       <p class="hash">{{ s.slip.hash }}</p>
       <div class="row">
         <button :class="['btn', 'consent', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
-        <button v-if="s.live && s.phase === 'waiting'" class="btn" type="button" @click="press('decline')">Decline</button>
+        <button :class="['btn', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @click="press('decline')">Decline</button>
       </div>
       <p v-if="s.phase === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
       <p v-else class="fine">{{ fine }}</p>
