@@ -63,6 +63,7 @@ const consentFields = (c: ReturnType<typeof useConsent>) => ({
   consentFacts: c.facts,
   consentCheck: c.check,
   approveConsent: c.approve,
+  declineConsent: c.decline,
 });
 
 interface OpenDeps {

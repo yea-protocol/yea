@@ -45,6 +45,7 @@ const {
   consentFacts,
   consentCheck,
   approveConsent,
+  declineConsent,
 } = usePlayground();
 
 const view = computed(() =>
@@ -115,7 +116,7 @@ function onKey(e: KeyboardEvent) {
         <h2 :id="replyHeading" class="visually-hidden">What the model reads</h2>
         <template v-if="current">
           <ReplyPane v-if="view" :exchange="current" :view="view" />
-          <ConsentCard v-if="consentRequest" :message="consentMessage" :service="consentRequest.service" :check="consentCheck" :facts="consentFacts" @approve="approveConsent()" />
+          <ConsentCard v-if="consentRequest" :message="consentMessage" :service="consentRequest.service" :check="consentCheck" :facts="consentFacts" @approve="approveConsent()" @decline="declineConsent()" />
           <QuickActions v-else :exchange="current" @act="act" @choose="choose" />
         </template>
 

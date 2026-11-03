@@ -493,21 +493,23 @@ against an example service, told as a thread that ends in a permission slip.
   summary, the effects in mono, and three facts (uses, risk, undo window). Why it asks is the
   thread's last message, so the slip doesn't repeat it.
 - **Tear-off stub:** below a dashed perforation with a notch cut into each edge; the left notch
-  is the approval point. It holds what the person signs: the proposal's hash, one Approve button
-  and a line saying exactly what is signed.
+  is the approval point. It holds what the person signs: the proposal's hash, Approve with a
+  neutral secondary Decline beside it, and a line saying exactly what is signed.
 - **States.** The border and chip follow protocol state:
   - neutral "Recorded" until the core is live;
   - neutral "Checking your policy…" while a run is on its way;
   - amber "Waiting on you";
+  - neutral "Declined", where the stub says "Nothing was signed. The proposal expires at
+    14:05 UTC." (the same line as the playground's card);
   - green "✓ Committed" (or "✓ Went ahead", inside the policy), where the stub shows the
     receipt, its undo window and Undo;
   - neutral "Undone";
   - neutral "Expired" when the proposal, undo window or example policy runs out;
   - red for a failed step.
 
-  Once live, Start again is offered whenever nothing is in flight, and every run starts from a
-  fresh service and a freshly signed policy. Approve ignores a held Enter's repeats, so only a
-  fresh press signs.
+  Once live, Start again is offered whenever nothing is in flight and nothing waits on the
+  visitor (while it waits, Decline is the no), and every run starts from a fresh service and a
+  freshly signed policy. Approve ignores a held Enter's repeats, so only a fresh press signs.
 - **Recording and live core.** The page paints the dinner example from a recording
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser
@@ -526,8 +528,10 @@ the consent card, and a history list with state dots).
 ### Consent Card
 The approval moment: amber 1px border on an amber-tinted fill, 12px radius, a heading ("Your
 agent needs your approval"), the proposal summary, its effects in mono, the uses/risk/undo line,
-one amber consent button ("Approve as human and commit") and a fine-print line saying exactly what is
-signed.
+one amber consent button ("Approve as human and commit") with a neutral secondary Decline beside
+it, and a fine-print line saying exactly what is signed. Once declined, nothing waits on the
+person, so the card turns neutral (divider border, soft fill), heads "You declined" and says
+"Nothing was signed. The proposal expires at 14:05 UTC."; focus moves to that line.
 
 ## 6. Do's and Don'ts
 

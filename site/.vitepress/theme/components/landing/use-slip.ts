@@ -2,8 +2,8 @@
  * The hero's state: which example is chosen, where its run has got to, and the slip. The page
  * paints the recorded dinner example (so it needs no JavaScript), loads the real core when the
  * browser is idle, then runs the chosen example live from the start (run-scene.ts). Once live
- * the visitor can approve, undo, start again or pick another example, and the slip says when
- * the proposal, the undo window or the example policy has run out instead of failing.
+ * the visitor can approve or decline, undo, start again or pick another example, and the slip
+ * says when the proposal, the undo window or the example policy has run out instead of failing.
  */
 import {
   onMounted,
@@ -13,6 +13,7 @@ import {
   shallowRef,
   type UnwrapNestedRefs,
 } from 'vue';
+import { declinedLine } from '../proposal-facts';
 import { stopIfLapsed, watchDeadlines } from './deadlines';
 import { RECORDED } from './exchange';
 import { runScene } from './run-scene';
@@ -30,8 +31,8 @@ import type { Progress } from './thread';
 
 /**
  * `loading` until the core is live; `unavailable` if it couldn't start at all; `checking`
- * while a run is on its way to its outcome; `expired` when something ran out; `error` when a
- * step failed.
+ * while a run is on its way to its outcome; `declined` when the visitor said no; `expired` when
+ * something ran out; `error` when a step failed.
  */
 export type Phase =
   | 'loading'
@@ -39,6 +40,7 @@ export type Phase =
   | 'checking'
   | 'waiting'
   | 'approving'
+  | 'declined'
   | 'committed'
   | 'undoing'
   | 'undone'
@@ -186,6 +188,22 @@ async function approve(state: SlipState, live: Live) {
   });
 }
 
+/**
+ * The visitor declines: nothing is signed or sent, and the proposal is left to expire at the
+ * service. Declining is never a step that can fail, so it needs no `step`.
+ */
+async function decline(state: SlipState, live: Live) {
+  const w = live.waiting;
+
+  if (!w || state.phase.value !== 'waiting' || stopIfLapsed(state, live)) {
+    return;
+  }
+
+  live.waiting = null;
+  state.phase.value = 'declined';
+  state.status.value = `Declined. ${declinedLine(w.proposal.expires)}`;
+}
+
 async function undo(state: SlipState, live: Live) {
   const r = state.receipt.value;
   const s = live.session;
@@ -243,6 +261,7 @@ export function useSlip() {
   return {
     ...state,
     approve: withLive(approve),
+    decline: withLive(decline),
     undo: withLive(undo),
     again: withLive(runScene),
     /** Pick an example; once the core is live it runs from the start. */

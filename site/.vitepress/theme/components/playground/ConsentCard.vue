@@ -1,24 +1,44 @@
 <script setup lang="ts">
 /**
  * The approval card for a consent_required reply: once the request checks out against the
- * proposal the agent committed, it shows exactly what the human is approving, with one button;
- * otherwise it says why it can't be approved.
+ * proposal the agent committed, it shows exactly what the human is approving, with Approve and
+ * Decline; otherwise it says why it can't be approved. Once declined, nothing waits on the
+ * human, so the card turns neutral and says that nothing was signed; focus moves to that line,
+ * since the Decline pressed is gone and no new exchange is announced.
  */
+import { computed, nextTick, useTemplateRef, watch } from 'vue';
+import { declinedLine } from '../proposal-facts';
 import type { ConsentCheck } from './consent-check';
 import type { ConsentFacts } from './use-consent';
 
-defineProps<{
+const props = defineProps<{
   message: string;
   service: string;
   check: ConsentCheck;
   facts: ConsentFacts | null;
 }>();
 
-const emit = defineEmits<{ approve: [] }>();
+const emit = defineEmits<{ approve: []; decline: [] }>();
+const said = useTemplateRef<HTMLElement>('said');
+const declined = computed(() =>
+  props.check.state === 'declined' ? declinedLine(props.check.expires) : '',
+);
+
+watch(declined, async (now, before) => {
+  if (now && !before) {
+    await nextTick();
+    said.value?.focus();
+  }
+});
 </script>
 
 <template>
-  <div class="consent" role="region" aria-label="Approval needed">
+  <div v-if="declined" class="consent settled" role="region" aria-label="Declined">
+    <h3>You declined</h3>
+    <p class="reason">{{ message }}</p>
+    <p ref="said" class="what" tabindex="-1">{{ declined }}</p>
+  </div>
+  <div v-else class="consent" role="region" aria-label="Approval needed">
     <h3>Your agent needs your approval</h3>
     <p class="reason">{{ message }}</p>
     <template v-if="facts && check.state === 'ok'">
@@ -29,6 +49,7 @@ const emit = defineEmits<{ approve: [] }>();
       <p class="meta">{{ facts.meta }}. Hash checked against the proposal the agent received.</p>
       <div class="actions">
         <button type="button" class="approve" @click="emit('approve')">Approve as human and commit</button>
+        <button type="button" class="decline" @click="emit('decline')">Decline</button>
       </div>
       <p class="fine">Signs a one-time grant: COMMIT of this proposal hash, at {{ service }}, until it expires. Nothing else.</p>
     </template>
@@ -46,11 +67,18 @@ const emit = defineEmits<{ approve: [] }>();
 .consent ul { margin: 8px 0; padding-left: 18px; font-size: 0.84rem; }
 /* The small print is text-2 so it reads comfortably at 0.8rem on the amber tint. */
 .consent .meta, .consent .fine { font-size: 0.8rem; color: var(--vp-c-text-2); }
-.actions { margin-top: 12px; }
-.approve { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 8px; border: 0; background: var(--consent-bg); color: var(--consent-text); cursor: pointer; }
-.approve:hover { background: var(--consent-hover-bg); }
+/* Declined: nothing waits on the human any more, so the card leaves amber for the neutral fill. */
+.consent.settled { border-color: var(--vp-c-divider); background: var(--vp-c-bg-soft); }
+.consent.settled .what:focus { outline: none; }
+.actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
+.approve, .decline { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+.approve { border: 1px solid var(--consent-bg); background: var(--consent-bg); color: var(--consent-text); }
+.approve:hover { background: var(--consent-hover-bg); border-color: var(--consent-hover-bg); }
+/* Decline is the neutral secondary: no amber, since it signs nothing. */
+.decline { border: 1px solid var(--vp-c-border); background: transparent; color: var(--vp-c-text-1); }
+.decline:hover { border-color: var(--vp-c-text-3); }
 
 @media (max-width: 640px), (pointer: coarse) {
-  .approve { min-height: 44px; }
+  .approve, .decline { min-height: 44px; }
 }
 </style>

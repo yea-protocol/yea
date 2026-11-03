@@ -9,9 +9,9 @@ export type Tone = 'amber' | 'green' | 'red' | 'plain';
 
 /**
  * The hero band's tone for each slip phase. The page first paints the recorded proposal,
- * which is waiting on the person, so loading is amber too; if the core can't start, nothing
- * waits on anyone, and the band is plain. While a run is on its way, and while its thread
- * plays, nothing waits yet, so it's plain too.
+ * which is waiting on the person, so loading is amber too; if the core can't start, or the
+ * visitor declined, nothing waits on anyone, and the band is plain. While a run is on its way,
+ * and while its thread plays, nothing waits yet, so it's plain too.
  */
 const PHASE_TONE: Record<Phase, Tone> = {
   loading: 'amber',
@@ -19,6 +19,7 @@ const PHASE_TONE: Record<Phase, Tone> = {
   checking: 'plain',
   waiting: 'amber',
   approving: 'amber',
+  declined: 'plain',
   committed: 'green',
   undoing: 'green',
   undone: 'plain',

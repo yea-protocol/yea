@@ -113,13 +113,11 @@ test('phaseTone: the hero band waits in amber, commits in green, and goes plain 
   // While a run is on its way, nothing waits on the person yet.
   assert.equal(phaseTone('checking'), 'plain');
   assert.deepEqual(tones(['committed', 'undoing']), ['green', 'green']);
-  // If the core can't start, nothing waits on anyone.
-  assert.deepEqual(tones(['unavailable', 'undone', 'expired', 'error']), [
-    'plain',
-    'plain',
-    'plain',
-    'red',
-  ]);
+  // If the core can't start, or the visitor declined, nothing waits on anyone.
+  assert.deepEqual(
+    tones(['unavailable', 'declined', 'undone', 'expired', 'error']),
+    ['plain', 'plain', 'plain', 'plain', 'red'],
+  );
 });
 
 test('useFlood: a spread cut short by the next one never settles it early', {
@@ -233,7 +231,7 @@ test('proposal facts: one wording for the slip and the consent card', {
   skip: needsCore,
 }, async () => {
   const sdk = await import('../../ts/dist/index.js');
-  const { factsLine, proposalFacts } = await import(
+  const { declinedLine, factsLine, proposalFacts, utcClock } = await import(
     '../.vitepress/theme/components/proposal-facts.ts'
   );
   const f = proposalFacts(sdk, {
@@ -254,13 +252,19 @@ test('proposal facts: one wording for the slip and the consent card', {
     }),
     "Risk high, can't be undone",
   );
+  assert.equal(utcClock(0), '00:00 UTC');
+  // Declining signs nothing; the proposal is left to run out.
+  assert.equal(
+    declinedLine(Date.UTC(2026, 10, 3, 14, 5) / 1000),
+    'Nothing was signed. The proposal expires at 14:05 UTC.',
+  );
 });
 
 test('slip views: undo windows, uses, results and whole dates', {
   skip: needsCore,
 }, async () => {
   const sdk = await import('../../ts/dist/index.js');
-  const { keepDates, receiptView, slipView, spendOf, utcClock } = await import(
+  const { keepDates, receiptView, slipView, spendOf } = await import(
     `${LANDING}/slip-view.ts`
   );
   const p = {
@@ -277,7 +281,6 @@ test('slip views: undo windows, uses, results and whole dates', {
     [v.undo, v.uses, v.expires, v.service, v.hash, v.reason],
     ["can't be undone", 'nothing', 60, 's.example', 'h', ''],
   );
-  assert.equal(utcClock(0), '00:00 UTC');
   assert.equal(
     spendOf({ uses: { spend: { amount: 5395, scale: 2, unit: 'USD' } } }),
     53.95,
@@ -714,6 +717,7 @@ test('onPhase: a run starting clears the thread, landing plays it, failing shows
   assert.equal(onPhase('loading', 'unavailable'), 'show');
   // The visitor's own steps don't replay anything.
   assert.equal(onPhase('waiting', 'approving'), null);
+  assert.equal(onPhase('waiting', 'declined'), null);
   assert.equal(onPhase('approving', 'committed'), null);
   assert.equal(onPhase('undoing', 'undone'), null);
 });

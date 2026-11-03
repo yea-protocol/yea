@@ -2,7 +2,8 @@
  * Consent: every COMMIT goes through the SDK's consent round (consent-check.ts). When the
  * service asks the human, the round checks its request against the proposal the agent received
  * and waits here; the card shows that proposal, and approving signs the consent the round built
- * from it, never the service's request, and lets the round commit once more.
+ * from it, never the service's request, and lets the round commit once more. Declining signs
+ * nothing and ends the round; the proposal is left to expire.
  */
 import type { Client, ConsentRequest } from '@yea-protocol/sdk';
 import {
@@ -129,6 +130,25 @@ function cardFor(o: {
   return { check, facts };
 }
 
+/** End the round `r` with a no: nothing is signed, and it shows as declined until it expires. */
+async function declineRound(
+  round: ShallowRef<Round | null>,
+  r: Round | null,
+): Promise<void> {
+  const w = r?.waiting;
+
+  if (!r || !w) {
+    return;
+  }
+
+  round.value = {
+    n: r.n,
+    check: { state: 'declined', expires: w.ask.proposal.expires },
+  };
+  w.decide(false);
+  await w.done;
+}
+
 export function useConsent({
   core,
   keys,
@@ -199,5 +219,8 @@ export function useConsent({
     mark();
   }
 
-  return { ...askedIn(current), facts, check, approve, commit };
+  /** The human declines: nothing is signed, and the card says when the proposal expires. */
+  const decline = () => declineRound(round, here.value);
+
+  return { ...askedIn(current), facts, check, approve, decline, commit };
 }

@@ -4,8 +4,8 @@
  * and on a timer.
  */
 import { watch } from 'vue';
+import { utcClock } from '../proposal-facts';
 import { type Lapse, lapsed, lapseText } from './expiry';
-import { utcClock } from './slip-view';
 import type { Live, SlipState } from './use-slip';
 
 const nowSec = () => Math.floor(Date.now() / 1000);

@@ -55,3 +55,17 @@ export function factsLine(f: ProposalFacts): string {
 
   return text[0].toUpperCase() + text.slice(1);
 }
+
+/** A unix time as `2026-09-29 14:00 UTC`. */
+export const utcMinute = (unix: number) =>
+  `${new Date(unix * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+
+/** A unix time as `14:00 UTC`. */
+export const utcClock = (unix: number) => utcMinute(unix).slice(11);
+
+/**
+ * What the person reads once they decline: nothing was signed, and the proposal is left to
+ * run out at `expires` (unix seconds).
+ */
+export const declinedLine = (expires: number) =>
+  `Nothing was signed. The proposal expires at ${utcClock(expires)}.`;

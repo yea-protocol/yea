@@ -3,8 +3,8 @@
  * The hero: why the protocol matters in one sentence, then a real exchange the visitor watches and
  * takes part in, on the core running in the page. They pick an example (an order over the policy's
  * limit, a meeting cancellation over its risk ceiling, or a meeting move inside it); its
- * thread plays message by message (use-reveal.ts), then the slip arrives to approve, undo or
- * start again.
+ * thread plays message by message (use-reveal.ts), then the slip arrives to approve or
+ * decline, undo, or start again.
  *
  * Behind it, the junction paths (JunctionPaths.vue) converge on the approval point at the
  * slip's perforation. The exchange's field takes a wash of the slip's state (tone.ts) once it
