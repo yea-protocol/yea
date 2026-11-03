@@ -5,11 +5,13 @@
  * same way the round does it.
  */
 
+import { CONSENT_TTL } from '../ask.js';
 import { consentRecipient, decodeConsentCode } from '../consent.js';
 import type { Approver, ConsentAsk } from '../consent-round.js';
 import { sha256 } from '../crypto.js';
 import { fmtTime } from '../lens.js';
 import { printable } from '../text.js';
+import { unixNow } from '../util.js';
 import { checkConsentRequest, consentFrom, consentLines } from './check.js';
 import { grantMismatch } from './grant.js';
 
@@ -42,13 +44,22 @@ async function recipientOf(
   };
 }
 
-/** The ask for a consent code, or why it can't be approved. */
-async function askForCode(o: {
+/** What approving a code needs: the code, whose it must be, and where it's being approved. */
+interface CodeApproval {
   code: string;
+  /** The principal's public key: the code must name it. */
   principal: string;
   localAgent: string | null;
   to?: string;
-}): Promise<ConsentAsk | Refusal> {
+  /** The time, in seconds; now by default. */
+  now?: number;
+}
+
+/**
+ * The ask for a consent code, or why it can't be approved. The consent expires when the code
+ * and its proposal do, and no more than `CONSENT_TTL` from now, as a job consent (SPEC-bridge).
+ */
+async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
   let c: ReturnType<typeof decodeConsentCode>;
 
   try {
@@ -80,7 +91,11 @@ async function askForCode(o: {
     return { ok: false, why: `this consent code can't be approved: ${why}` };
   }
 
-  const request = consentFrom(c, c.detail);
+  const from = consentFrom(c, c.detail);
+  const request = {
+    ...from,
+    expires: Math.min(from.expires, (o.now ?? unixNow()) + CONSENT_TTL),
+  };
 
   return {
     request,
@@ -100,15 +115,9 @@ async function askForCode(o: {
  * (SPEC-bridge), ask the approver, and check the grant it signs. A code the approver hands on
  * again, or declines, is not approved.
  */
-export async function approveCode(o: {
-  code: string;
-  principal: string;
-  localAgent: string | null;
-  to?: string;
-  approver: Approver;
-}): Promise<
-  { ok: true; grant: string; agent: string; hash: string } | Refusal
-> {
+export async function approveCode(
+  o: CodeApproval & { approver: Approver },
+): Promise<{ ok: true; grant: string; agent: string; hash: string } | Refusal> {
   const ask = await askForCode(o);
 
   if ('ok' in ask) {

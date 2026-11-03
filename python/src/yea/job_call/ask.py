@@ -23,11 +23,18 @@ def ask(r: Round, why: str, round: int) -> Outcome:
     return Outcome("ask", form=form, state=state, otherwise=lambda: consent_codes(r, why, r.plans))
 
 
+def no_principal(why: str | None) -> str:
+    """Why no consent counts without a pinned key, for the model to pass on: it names ``yea doctor``,
+    which changes no keys, never a command that makes one (§6)."""
+    detail = f" ({why})" if why else ""
+    return f"no principal key is pinned{detail}: run `yea doctor` in a terminal outside this chat; it says how to pin one"
+
+
 def consent_codes(r: Round, why: str, plans: list[HashedPlan]) -> Outcome:
     """Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6)."""
     call = r.call
     if not call.policy.principal:
-        return Outcome("consent-codes", why, plans, unavailable=call.unpinned or "no principal key is pinned")
+        return Outcome("consent-codes", why, plans, unavailable=no_principal(call.unpinned))
     if is_memory_store(r.store):
         return Outcome("consent-codes", why, plans, unavailable=MEMORY_NO_CONSENT)
     codes = [{"planHash": hp.plan_hash,

@@ -322,6 +322,23 @@ describe('bridge security', () => {
     }
   });
 
+  it('a pending file is the code and nothing else: never a seed (SPEC-approval §6)', async () => {
+    const k = await keys();
+    const { conn } = await bridged(k);
+    const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const dir = join(k.home, 'pending');
+    const files = readdirSync(dir).map((f) =>
+      readFileSync(join(dir, f), 'utf8'),
+    );
+
+    expect(files.sort()).toEqual(codes.map((c) => `${c.code}\n`).sort());
+
+    for (const text of files) {
+      expect(text).not.toContain(k.agent.seed);
+      expect(text).not.toContain(k.principal.seed);
+    }
+  });
+
   it('service text is cut between code points, never inside a surrogate pair', () => {
     const cut = clip(`${'a'.repeat(8)}😀 and more`, 10);
 

@@ -1,7 +1,8 @@
 /**
  * The approval store on disk (docs/framework/SPEC-approval.md §8), shared by TypeScript and
  * Python servers and the `yea` command. Node only; exported from `@yea-protocol/sdk/node`. The
- * file operations and the lock live in file-store/; this file holds the store.
+ * file operations, the lock and the pending files (§6, Short ids) live in file-store/; this file
+ * holds the store.
  */
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -13,6 +14,7 @@ import {
   writeAtomic,
 } from './file-store/files.js';
 import { acquire } from './file-store/lock.js';
+import { PendingCodes } from './file-store/pending.js';
 import { home } from './home.js';
 import type {
   ApprovalStore,
@@ -32,7 +34,18 @@ interface LedgerFile {
 const ledgerTotal = (l: LedgerFile) =>
   Object.values(l.reserved).reduce((a, b) => a + BigInt(b), BigInt(l.settled));
 
+export {
+  newPendingId,
+  PENDING_ID,
+  type PendingCode,
+  PendingCodes,
+  type PendingConsent,
+  pendingFile,
+} from './file-store/pending.js';
+
 export class FileStore implements ApprovalStore {
+  /** The brand `pendingCodesOf` reads, as `isMemoryStore` reads MemoryStore's. */
+  readonly yeaStore = 'file' as const;
   readonly root: string;
 
   constructor(root = join(home(), 'store')) {
@@ -214,6 +227,23 @@ export class FileStore implements ApprovalStore {
  */
 export const defaultFileStore = () =>
   new FileStore(process.env.YEA_STORE || undefined);
+
+/** The pending files the bridge writes in the home `dir` (default: `home()`), `<home>/pending`. */
+export const homePending = (dir = home()) =>
+  new PendingCodes(join(dir, 'pending'));
+
+/**
+ * The pending files beside a FileStore's consents (SPEC-approval §6, Short ids), or null for
+ * any other store. By its brand rather than `instanceof`, so a second copy of the SDK still
+ * counts.
+ */
+export function pendingCodesOf(s: unknown): PendingCodes | null {
+  const f = s as { yeaStore?: unknown; root?: unknown } | null;
+
+  return f?.yeaStore === 'file' && typeof f.root === 'string'
+    ? new PendingCodes(join(f.root, 'pending'))
+    : null;
+}
 
 /** Names are b64url ids, receipt ids or measure names; anything else is refused. */
 function safeName(s: string): string {

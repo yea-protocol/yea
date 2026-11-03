@@ -167,6 +167,25 @@ async def test_a_memory_store_says_why_no_consent_code_and_what_to_do(tmp_path):
                            "client that can show approval forms, or run the server with a FileStore") in text(r)
 
 
+async def test_no_pinned_key_says_to_run_yea_doctor_and_never_names_a_command_that_makes_a_key(tmp_path, monkeypatch):
+    """The same words as mcp-ts (SPEC-approval §6). The model reads them, so they name `yea doctor`,
+    which changes no keys: an agent told to run `yea init` could make a principal key itself."""
+    monkeypatch.setenv("YEA_PRINCIPAL_PUB", "")  # the subject: no pinned key, whatever the shell has
+    y = yea(home=tmp_path, name="p", transport="stdio", store=FileStore(tmp_path / "store"), server_key=tmp_path / "p")
+    srv = MCPServer("p", request_state_security=y.request_state_security())
+
+    @y.job(srv, risk="low")
+    async def move(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: None)]
+
+    async with Client(srv, mode="auto") as c:  # a client that can't show forms
+        r = await c.call_tool("move", {"event": "e1"})
+    assert r.is_error and r.structured_content["codes"] == []
+    assert ("No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run "
+            "`yea doctor` in a terminal outside this chat; it says how to pin one.") in text(r)
+    assert "--with-principal" not in text(r) and "yea init" not in text(r)
+
+
 def test_a_fresh_yea_home_is_private_under_a_group_umask(tmp_path):
     """Under umask 002 (the default for users with their own group on Debian and Ubuntu) every
     directory created on first run is 0700, as Node's recursive mkdir makes it, so the parent

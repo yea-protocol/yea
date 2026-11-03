@@ -74,6 +74,7 @@ export async function pendingCall(
   }
 
   return proposalsResult(
+    b,
     { ...entry, proposals: coded },
     'still waiting for approval',
     expiringNote(entry.proposals.length - coded.length, 'pending'),
@@ -152,7 +153,7 @@ async function commitPending(
     ]);
   }
 
-  return needsConsent(entry, p, out);
+  return needsConsent(b, entry, p, out);
 }
 
 /**
@@ -161,6 +162,7 @@ async function commitPending(
  * from the service's consent request (the round's code takes the principal from that request).
  */
 function needsConsent(
+  b: Bridge,
   entry: Pending,
   p: Proposal,
   out: RoundOutcome,
@@ -177,6 +179,7 @@ function needsConsent(
       : [];
 
   return proposalsResult(
+    b,
     { ...entry, proposals: [p] },
     `${printable(out.reply.message)}: this needs the user's approval`,
     mismatch,

@@ -13,7 +13,7 @@ export const AGENT_BLOCK = `${START}
 
 YEA serves a tool per capability (for example \`shop_order\`), or a large service's \`_ask\` and \`_intent\` tools in generic mode, plus \`yea_consent\`, \`yea_undo\` and \`yea_expand\`. They act for the user under a policy they signed.
 - Read-only tools never change anything. Tools marked destructive do things: call one with what the user asked for. It commits at once when the user's grant allows it (a \`✓\` receipt); otherwise it returns proposals (effects, cost, risk, undo) and nothing has happened.
-- Over the grant, each proposal comes with a consent code. Ask the user to run \`yea approve <code>\` where their principal key is and paste the printed consent back, pass it to \`yea_consent\`, then call the same tool again with the same arguments. Never split or restructure a purchase to get under a limit.
+- Over the grant, each proposal comes with a consent code. Ask the user to run the result's \`yea approve\` line in a terminal outside this chat (it needs a person, not you), then call the same tool again with the same arguments. If they paste a consent back, pass it to \`yea_consent\` first. Never split or restructure a purchase to get under a limit.
 - \`proposal: "<id>"\` commits one of the proposals the grant allows; \`preview: true\` only shows proposals (their ids can't be committed). Commit only what the user asked for.
 - Offer \`yea_undo\` if they change their mind within the undo window.
 ${END}

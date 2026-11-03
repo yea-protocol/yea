@@ -248,7 +248,13 @@ export async function connect(
   return new Client(await transport(url, { tls: opts.tls }), opts);
 }
 
-export { defaultFileStore, FileStore } from './file-store.js';
+export {
+  defaultFileStore,
+  FileStore,
+  homePending,
+  PendingCodes,
+  pendingCodesOf,
+} from './file-store.js';
 
 export {
   agentKey,

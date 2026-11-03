@@ -42,6 +42,7 @@ import {
   connect,
   FileStore,
   listen,
+  PendingCodes,
   readPinnedKey,
   readPrivateFile,
   readServerSeed,
@@ -1242,6 +1243,30 @@ describe('approval security (SPEC-approval)', () => {
     expect(long.consent.expires).toBe(now + P.CONSENT_TTL);
   });
 
+  it("[A22] yea approve caps a protocol consent's expiry at 10 minutes from now, as for a job's", async () => {
+    // The signed grant is checked on the real clock, so this test runs on it too.
+    const at = P.unixNow();
+    const agent = await P.keyPair();
+    const code = await protocolCode({
+      principal: B.public,
+      agent: agent.public,
+      expires: at + 10 ** 8,
+    });
+    const r = await approveCode({
+      code,
+      principal: B.public,
+      localAgent: agent.public,
+      now: at,
+      approver: P.signer(B, async () => true),
+    });
+
+    expect(r).toMatchObject({ ok: true });
+
+    const g = await P.inspectGrant(r.ok ? r.grant : '');
+
+    expect(g.blocks[0].caveats).toContainEqual({ exp: at + P.CONSENT_TTL });
+  });
+
   it('[A7] a job consent is signed by the principal, to the server, for that one plan', async () => {
     const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
       {
@@ -1981,6 +2006,247 @@ function yeaDo(args: string[], home: string) {
 // Every caller (`yea do`, test-drive, `yea approve`, the bridge, the site) goes through the
 // consent round (consent-round.ts). These run it with a fake approver against the pay service,
 // through a transport that edits its replies as a lying service would; [C6] also runs `yea do`.
+/** A bridge's protocol code for a proposal with a good hash, naming `agent`; `over` edits it. */
+async function protocolCode(o: {
+  principal: string;
+  agent: string;
+  expires: number;
+  summary?: string;
+}) {
+  const p = {
+    id: 'p_1',
+    capability: 'shop.order',
+    summary: o.summary ?? 'Order 1 meal',
+    effects: [],
+    risk: 'low' as const,
+    undo: null,
+    expires: o.expires,
+  };
+  const proposal = { ...p, hash: await P.proposalHash(p) };
+
+  return P.consentCode(
+    {
+      proposal: proposal.id,
+      hash: proposal.hash,
+      service: 'shop.example',
+      capability: proposal.capability,
+      principal: o.principal,
+      summary: proposal.summary,
+      expires: proposal.expires,
+    },
+    proposal as unknown as P.Proposal,
+    { agent: o.agent },
+  );
+}
+
+/** A job code for a plan the person can't confirm without a terminal. */
+async function jobCodeAt(at: number, summary = 'Delete a.txt') {
+  const [hp] = await P.hashPlans({ name: 'delete_file' }, { path: 'a.txt' }, [
+    { summary, effects: [], risk: 'medium', apply: () => null },
+  ]);
+
+  return jobConsentCode({
+    server: A.public,
+    principal: B.public,
+    input: { path: 'a.txt' },
+    hp,
+    phrase: 'approve',
+    now: at,
+  });
+}
+
+/** A home with the principal key (and, if given, an agent key), its store at `<home>/store`. */
+function approverHome(agent?: P.KeyPair) {
+  const home = mkdtempSync(join(tmpdir(), 'yea-pending-'));
+
+  writeFileSync(join(home, 'principal.key'), B.seed);
+
+  if (agent) {
+    writeFileSync(join(home, 'agent.key'), agent.seed);
+  }
+
+  return home;
+}
+
+/** `yea approve` in `home`, with no terminal: what it printed, and how it exited. */
+function approveIn(home: string, args: string[]) {
+  const r = spawnSync(process.execPath, [CLI, 'approve', ...args], {
+    env: {
+      ...process.env,
+      YEA_HOME: home,
+      YEA_PRINCIPAL_HOME: '',
+      YEA_STORE: '',
+    },
+    input: '',
+    encoding: 'utf8',
+  });
+
+  return { status: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
+  it('[A23] an id outside the pattern never reaches a path, and there is no prefix search', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yea-pending-'));
+    const pending = new PendingCodes(dir);
+
+    writeFileSync(join(dir, 'abcdefghij'), 'pc1.x\n');
+
+    for (const id of [
+      '../abcdefghij',
+      'abc/defghij',
+      'abcdefg',
+      '',
+      'a'.repeat(33),
+    ]) {
+      expect(() => pending.read(id), id).toThrow('not a pending id');
+    }
+
+    expect(pending.read('abcdefgh')).toBeNull();
+    expect(pending.read('abcdefghij')).toBe('pc1.x');
+  });
+
+  it('[A24] a symlinked, oversize or non-regular pending file is refused, not followed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yea-pending-'));
+    const pending = new PendingCodes(dir);
+    const elsewhere = join(dir, '..', `${Date.now()}-target`);
+
+    writeFileSync(elsewhere, 'pc1.x\n');
+    symlinkSync(elsewhere, join(dir, 'linkedlink'));
+    writeFileSync(join(dir, 'oversizeds'), 'x'.repeat(64 * 1024 + 1));
+    mkdirSync(join(dir, 'adirectory'));
+
+    expect(() => pending.read('linkedlink')).toThrow('symlink');
+    expect(() => pending.read('oversizeds')).toThrow('larger than 64 KiB');
+    expect(() => pending.read('adirectory')).toThrow('not a regular file');
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    '[A25] a pending file whose plan or hash was edited is refused, and an expired or missing id says to call again',
+    async () => {
+      const home = approverHome();
+      const store = new PendingCodes(join(home, 'store', 'pending'));
+      const c = P.decodeConsentCode(await jobCodeAt(P.unixNow()));
+      const edited = `pc1.${P.b64u(
+        new TextEncoder().encode(
+          P.canonical({
+            ...c,
+            detail: {
+              ...(c.detail as unknown as Record<string, unknown>),
+              job: {
+                ...(c.detail as unknown as { job: object }).job,
+                summary: 'Delete nothing',
+              },
+            },
+          }),
+        ),
+      )}`;
+      const tampered = store.put(edited, P.unixNow());
+      const old = store.put(
+        await jobCodeAt(P.unixNow() - 700, 'Delete b.txt'),
+        P.unixNow() - 700,
+      );
+
+      try {
+        const r = approveIn(home, [tampered]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toMatch(/doesn't match its hash: refusing/);
+        expect(r.out).not.toContain('Delete nothing');
+        expect(approveIn(home, [old]).out).toContain(
+          `pending approval ${old} has expired: call the tool again for a fresh one`,
+        );
+        expect(approveIn(home, ['zzzzzzzzzz']).out).toContain(
+          `no pending approval zzzzzzzzzz (looked in ${join(home, 'pending')} and ${join(home, 'store', 'pending')}): call the tool again for a fresh one`,
+        );
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A26] a pending file naming another agent still needs --to, and with no terminal nothing is signed',
+    async () => {
+      const mine = await P.keyPair();
+      const other = await P.keyPair();
+      const home = approverHome(mine);
+      const pending = new PendingCodes(join(home, 'pending'));
+      const theirs = pending.put(
+        await protocolCode({
+          principal: B.public,
+          agent: other.public,
+          expires: P.unixNow() + 900,
+        }),
+        P.unixNow(),
+      );
+      const job = new PendingCodes(join(home, 'store', 'pending')).put(
+        await jobCodeAt(P.unixNow()),
+        P.unixNow(),
+      );
+
+      try {
+        const r = approveIn(home, [theirs]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toMatch(/pass --to <key> to say which/);
+        expect(r.out).not.toContain('Order 1 meal');
+
+        const t = approveIn(home, [job]);
+
+        expect(t.status).toBe(1);
+        expect(t.out).toContain('Delete a.txt');
+        expect(t.out).toContain(
+          '✗ approval needs an interactive terminal: a person has to confirm, so run it in a separate terminal window, not through the agent',
+        );
+        expect(readdirSync(home)).not.toContain('consents');
+        expect(existsSync(join(home, 'store', 'consents'))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A27] the listing escapes service text and leaves out what has expired',
+    async () => {
+      const home = approverHome();
+      const pending = new PendingCodes(join(home, 'pending'));
+      const shown = pending.put(
+        await protocolCode({
+          principal: B.public,
+          agent: B.public,
+          expires: P.unixNow() + 900,
+          summary: 'Order\n  ✓ approved\u202e',
+        }),
+        P.unixNow(),
+      );
+      const gone = new PendingCodes(join(home, 'store', 'pending')).put(
+        await jobCodeAt(P.unixNow() - 700),
+        P.unixNow() - 700,
+      );
+
+      try {
+        const r = approveIn(home, []);
+
+        expect(r.status).toBe(0);
+        expect(r.out).toContain(
+          `  ${shown} · shop.order · Order\\u{a}  ✓ approved\\u{202e} · at shop.example`,
+        );
+        expect(r.out).not.toContain('\u202e');
+        expect(r.out).not.toContain(gone);
+        expect(r.out.split('\n').filter((l) => l.includes('✓'))).toHaveLength(
+          1,
+        );
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+});
+
 describe('consent requests (SPEC.md §6.6)', () => {
   type Edit = (r: P.FinalReply) => P.FinalReply;
 

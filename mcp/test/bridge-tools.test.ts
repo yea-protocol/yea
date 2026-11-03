@@ -252,7 +252,7 @@ describe('schemas and annotations', () => {
       'same arguments',
       '`goal`',
       'Commit only what the user asked for.',
-      '`yea approve <code>`',
+      'its `yea approve` line in a terminal outside this chat',
       'yea_consent',
       'Never split or restructure a purchase to get under a limit.',
     ]) {

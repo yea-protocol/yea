@@ -338,7 +338,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       const first = await conn.call(input, 'refund');
 
       expect(first.isError).toBe(true);
-      expect(textOf(first)).toMatch(/Ask the user to run `yea approve <code>`/);
+      expect(textOf(first)).toMatch(/Ask the user to run `yea approve <id>`/);
       expect(w.stripe.writes()).toEqual([]);
 
       const { codes } = first.structuredContent as {
