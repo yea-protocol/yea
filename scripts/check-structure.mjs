@@ -7,7 +7,13 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  pythonHeader,
+  scriptHeader,
+  vueHeader,
+} from './check-structure/headers.mjs';
 import { privateFolders } from './check-structure/private-folders.mjs';
+import { privatePackages } from './check-structure/private-packages.mjs';
 
 /** The most lines a source file may have. */
 export const MAX_LINES = 300;
@@ -28,6 +34,9 @@ export const ROOTS = [
   'bench',
 ];
 
+/** Python examples, read only for imports into a package's private modules: adopters copy them. */
+export const EXAMPLES = ['python/examples', 'python/mcp/examples'];
+
 /** Exempt from the length rule: benchmarks, and the conformance vector generators (mostly data). */
 export const LENGTH_EXEMPT = [
   'bench/',
@@ -36,15 +45,39 @@ export const LENGTH_EXEMPT = [
 ];
 
 /**
- * Today's violations, by file: each rule listed here is known and tolerated
- * until the PR that fixes it, which also removes the entry. The check fails
- * when a listed violation no longer occurs.
+ * Today's violations, by file: each entry listed here is known and tolerated
+ * until the PR that fixes it, which also removes it. An entry is a rule, or
+ * for `private` the rule and the file imported, so a listed file can't add a
+ * new private import. The check fails when a listed violation no longer occurs.
  */
 export const RATCHET = {
   // Imports from inside another module's folder (ADR-0001): #284.
-  'mcp/src/bridge.ts': ['private'],
-  'mcp/src/bridge/instructions.ts': ['private'],
-  'site/.vitepress/theme/components/landing/HeroSection.vue': ['private'],
+  'mcp/src/bridge.ts': ['private mcp/src/bridge/tools/generic.ts'],
+  'mcp/src/bridge/instructions.ts': ['private mcp/src/bridge/tools/generic.ts'],
+  'site/.vitepress/theme/components/landing/HeroSection.vue': [
+    'private site/.vitepress/theme/components/playground/SegmentedRadio.vue',
+  ],
+  // The same in Python, and imports of another package's _ modules: #336.
+  'python/mcp/src/yea_mcp/__init__.py': [
+    'private python/src/yea/store/files.py',
+  ],
+  'python/mcp/src/yea_mcp/server_key.py': [
+    'private python/src/yea/_json.py',
+    'private python/src/yea/store/files.py',
+  ],
+  'python/src/yea/approval/plan.py': ['private python/src/yea/lens/depth.py'],
+  'python/src/yea/approve.py': ['private python/src/yea/lens/depth.py'],
+  'python/src/yea/job_call/__init__.py': [
+    'private python/src/yea/approval/decision.py',
+  ],
+  'python/src/yea/job_call/answer.py': [
+    'private python/src/yea/approval/decision.py',
+  ],
+  'python/src/yea/job_call/ask.py': [
+    'private python/src/yea/approval/decision.py',
+  ],
+  'python/src/yea/text.py': ['private python/src/yea/lens/depth.py'],
+  'python/src/yea/transport.py': ['private python/src/yea/service/util.py'],
 };
 
 /** Run-together names, since renamed to kebab-case (#108); they may not come back. */
@@ -57,10 +90,6 @@ const SKIP_PATHS = new Set(
 const SKIP_NAMES = new Set(['node_modules', 'dist', '__pycache__', '.venv']);
 
 const TEST_FILE = /(\.(test|spec)\.[a-z]+|^test_.*\.py|^conftest\.py)$/;
-const DECLARATION =
-  /^(export|function|async|const|let|var|class|interface|type|enum|abstract|declare)\b/;
-const DOCSTRING = /^[rRuU]?("""|''')/;
-const PY_PREAMBLE = /^(#.*|\s*)$/;
 const HEADER =
   'no /** */ file header; one directly above a declaration is its JSDoc';
 
@@ -88,41 +117,6 @@ const KINDS = [
     missing: 'no module docstring',
   },
 ];
-
-/**
- * True when TS/JS source opens (after any shebang) with a `/**` comment that
- * isn't directly above a declaration.
- */
-export function scriptHeader(text) {
-  const body = text.replace(/^#!.*\n/, '').trimStart();
-  const end = body.indexOf('*/');
-
-  if (!body.startsWith('/**') || end < 0) {
-    return false;
-  }
-
-  const [rest, next = ''] = body.slice(end + 2).split('\n');
-  const following = rest.trim() === '' ? next : rest.trim();
-
-  return !DECLARATION.test(following);
-}
-
-/** True when a Vue file's first `<script>` opens with a file header. */
-export function vueHeader(text) {
-  const script = /<script\b[^>]*>/i.exec(text);
-
-  return (
-    script !== null && scriptHeader(text.slice(script.index + script[0].length))
-  );
-}
-
-/** True when a module's first statement is its docstring. */
-export function pythonHeader(text) {
-  const lines = text.split('\n');
-  const start = lines.findIndex((line) => !PY_PREAMBLE.test(line));
-
-  return start >= 0 && DOCSTRING.test(lines[start]);
-}
 
 /** The number of lines, not counting the final newline. */
 export function lineCount(text) {
@@ -215,31 +209,46 @@ export function expand(root, pattern) {
     .filter((dir) => existsSync(`${root}/${dir}`));
 }
 
-/** The violations in the source folder `dir`: each file's, then its imports'. */
-function checkRoot(root, dir) {
-  const files = new Map(
-    walk(root, dir).map((path) => [
-      path,
-      readFileSync(`${root}/${path}`, 'utf8'),
-    ]),
-  );
+/** The source folder `dir` as `{ dir, files }`, its files a Map of path to text. */
+function readRoot(root, dir) {
+  const read = (path) => [path, readFileSync(`${root}/${path}`, 'utf8')];
 
+  return { dir, files: new Map(walk(root, dir).map(read)) };
+}
+
+/** The violations in one source folder: each file's, then its relative imports'. */
+function checkRoot({ dir, files }) {
   return [
     ...[...files].flatMap(([path, text]) => checkFile(path, text)),
     ...privateFolders(dir, files),
   ];
 }
 
-/** Every violation under `roots`, sorted, with paths relative to `root`. */
-export function findViolations(root, roots = ROOTS) {
-  return roots
+/** The source folders `patterns` name under `root`, read. */
+function readRoots(root, patterns) {
+  return patterns
     .flatMap((pattern) => expand(root, pattern))
-    .flatMap((dir) => checkRoot(root, dir))
-    .sort((a, b) =>
-      `${a.path} ${a.rule} ${a.detail}`.localeCompare(
-        `${b.path} ${b.rule} ${b.detail}`,
-      ),
-    );
+    .map((dir) => readRoot(root, dir));
+}
+
+/**
+ * Every violation under `roots`, and in the imports of `examples`, sorted,
+ * with paths relative to `root`.
+ */
+export function findViolations(root, roots = ROOTS, examples = EXAMPLES) {
+  const sources = readRoots(root, roots);
+  const found = [
+    ...sources.flatMap(checkRoot),
+    ...privatePackages(sources, readRoots(root, examples)),
+  ];
+  const key = (v) => `${v.path} ${v.rule} ${v.detail}`;
+
+  return found.sort((a, b) => key(a).localeCompare(key(b)));
+}
+
+/** A violation's ratchet entry: its rule, then the file imported, if any. */
+function ratchetEntry(v) {
+  return v.target === undefined ? v.rule : `${v.rule} ${v.target}`;
 }
 
 /**
@@ -247,11 +256,13 @@ export function findViolations(root, roots = ROOTS) {
  * `fixed` ratchet entries that no longer occur (fixed, renamed or removed).
  */
 export function compare(violations, ratchet) {
-  const listed = (v) => (ratchet[v.path] ?? []).includes(v.rule);
-  const occurs = (path, rule) =>
-    violations.some((v) => v.path === path && v.rule === rule);
-  const fixed = Object.entries(ratchet).flatMap(([path, rules]) =>
-    rules.filter((rule) => !occurs(path, rule)).map((rule) => ({ path, rule })),
+  const listed = (v) => (ratchet[v.path] ?? []).includes(ratchetEntry(v));
+  const occurs = (path, entry) =>
+    violations.some((v) => v.path === path && ratchetEntry(v) === entry);
+  const fixed = Object.entries(ratchet).flatMap(([path, entries]) =>
+    entries
+      .filter((entry) => !occurs(path, entry))
+      .map((rule) => ({ path, rule })),
   );
 
   return { unlisted: violations.filter((v) => !listed(v)), fixed };

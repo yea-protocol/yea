@@ -19,3 +19,12 @@ to export its parts.
 A private folder doesn't make an interface small on its own. Today's `approval.ts`, `ask.ts` and
 `grants.ts` keep their folders private yet re-export almost every part, which is how the ordering
 rules leaked into their callers. Depth comes from what an entry file chooses to export.
+
+The rule applies to Python packages in the same way (#283): a package's `__init__.py` is its entry
+file and its other modules are the private files, so each subpackage of `yea` or `yea_mcp` is a
+public module, and only its own modules may import its parts. A top-level package stands for its
+source root, as `src/` does in TS, so it isn't a module itself. A leading `_` keeps Python's own
+convention: a module or package named `_x` is private to its parent package, whatever that parent
+is, so `yea/_json.py` is for `yea`'s modules alone. The check reads imports, so a part reached as
+an attribute of its package (`yea.store.files` after `import yea.store`) is the same breach, and
+it's caught in review.
