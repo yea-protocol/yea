@@ -1,6 +1,6 @@
 /** The `yea` command line: --version, per-command help, and usage errors (#320). */
-import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +41,25 @@ describe('yea --version', () => {
       out: `${VERSION}\n`,
       err: '',
     });
+  });
+
+  it('reads it from package.json when it runs, so a release bump carries through', () => {
+    const pkg = mkdtempSync(join(tmpdir(), 'yea-version-'));
+
+    cpSync(
+      fileURLToPath(new URL('../dist', import.meta.url)),
+      join(pkg, 'dist'),
+      {
+        recursive: true,
+      },
+    );
+    writeFileSync(join(pkg, 'package.json'), '{"version":"9.8.7-test"}');
+
+    const r = spawnSync(process.execPath, [join(pkg, 'dist', 'cli.js'), '-v'], {
+      encoding: 'utf8',
+    });
+
+    expect(r.stdout).toBe('9.8.7-test\n');
   });
 });
 
