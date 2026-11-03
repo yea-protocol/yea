@@ -86,9 +86,9 @@ The tools that change things (each intent capability, and `yea_undo`; in a frame
 
 - **prompts on every call, in every mode.** There's no "don't ask again", and allow rules, `PreToolUse` hooks that return `allow`, and mods don't skip the prompt;
 - **denies the call where no one can answer:** in `claude -p`, in `dontAsk` mode, and through `--permission-prompt-tool`, whose `allow` becomes a deny. So leave it off for headless runs and CI;
-- **lets an Agent SDK app approve in code:** its `canUseTool` callback receives these calls and can allow them. The prompt proves a person answered only in Claude Code's own interface.
+- **lets an Agent SDK app approve in code:** its `canUseTool` callback receives these calls and can allow them. Only in Claude Code's own interface does the prompt show that a person allowed the call.
 
-The cost: the prompt comes on every call, including `preview: true` and calls your policy would let through without asking. That's why it's off by default. With it on, Claude Code's permission prompt, not an in-client form, is the step that shows a person acted (see [#337](https://github.com/yea-protocol/yea/issues/337)).
+The cost: the prompt comes on every call, including `preview: true` and calls your policy would let through without asking. That's why it's off by default. With it on, Claude Code's permission prompt, not an in-client form, is the step that shows a person allowed this call with these arguments, not which plan they approved or that the form answer is theirs (see [#337](https://github.com/yea-protocol/yea/issues/337)).
 
 Checked in an interactive Claude Code session: pending, to be recorded with the client checks in [#326](https://github.com/yea-protocol/yea/issues/326).
 
