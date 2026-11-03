@@ -1507,6 +1507,31 @@
       "name": "a C1 control",
       "phrase": "ch_1",
       "expect": null
+    },
+    {
+      "name": "64 characters",
+      "phrase": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expect": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "65 characters",
+      "phrase": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expect": null
+    },
+    {
+      "name": "64 emoji, counted in code points",
+      "phrase": "👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍",
+      "expect": "👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍"
+    },
+    {
+      "name": "65 emoji, counted in code points",
+      "phrase": "👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍",
+      "expect": null
+    },
+    {
+      "name": "edge whitespace counts toward 64",
+      "phrase": " xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expect": null
     }
   ],
   "forms": [
@@ -3530,19 +3555,21 @@
       "risk": "low",
       "undoable": true
     },
+    "phrase": "approve",
+    "consentHash": "CnT3-vyScghKYk5Hd2MDCe31I1xjxzsbtnxpZQpjLDM",
     "cases": [
       {
         "name": "a consent for this plan",
-        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkZmbm05enNJTkRuNHhBa0FJMjdJc0FRX3J2U1I4VXloOEs5ZXZ1N05Cd1VrWUUyaUE0X3ItOGhqdElxWlgwencyd0RDV2Ixc0tlRHZ5YWdrUVAtRkJBIn1d",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIn0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtQ25UMy12LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6ImxtT0tPTkM0X054WFlTVGJTME44dGpLU2NOS0RJWkY1QldNQ3d4VFV5Z0puUkwzVlcyZ3B1eGtaMTdJeEozRktTczJDYUZEODR1M3daNmFGcXA4NUFnIn1d",
         "now": 1790000000,
         "expect": {
           "ok": true,
-          "id": "gvvqI6rkJ3xhEeTpcLzWL4455Mh74zt8J002A9QKV-s"
+          "id": "ujDldKM01W63CVYbuuSxXTuKQrbMWhlubxrXA8_nArw"
         }
       },
       {
         "name": "a consent delegated by the server key onto the policy grant",
-        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9LHsicCI6eyJjYXZlYXRzIjpbeyJvbmx5IjoiVVBwV0x4UWNjQzVDa2pfZ2o5ZGt2YjdvdXJIYW9QeWt1SFJtOHg1Q1B5NCJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwicHJldiI6ImNSdnlWdUZTRHZGbVhWR3ZNQU9ySktxR29qVzdrdk43THhIdVViZE5RRzgiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6Ik5FdkdyRF9iSlRmbXItNmFTUlhnNnBNTFJ4aHREdGg2SFdqaDRyNm51UWFJUlhrNlBRZV83RG5ULW5oNkVOLWJ1VXB2S2ZsMDNCSmhkS0VFNkZEV0RRIn1d",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9LHsicCI6eyJjYXZlYXRzIjpbeyJvbmx5IjoiQ25UMy12eVNjZ2hLWWs1SGQyTURDZTMxSTF4anh6c2J0bnhwWlFwakxETSJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwicHJldiI6ImNSdnlWdUZTRHZGbVhWR3ZNQU9ySktxR29qVzdrdk43THhIdVViZE5RRzgiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6ImZCYUNmSlctUEdVNkJOWDAzd1g1SUVzemxmNlBSWGxENDhnY1h0RXBSX1hSQnJUTG1hRzF4UlprMXFveElqX3NoMzFFSE9OdTFPSE9YSVNhc3ZmN0FBIn1d",
         "now": 1790000000,
         "expect": {
           "ok": false,
@@ -3559,17 +3586,44 @@
         }
       },
       {
-        "name": "a consent for another plan",
+        "name": "a valid consent stored under this plan that binds another hash",
         "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJPVEhFUiJ9LHsiZXhwIjoxNzkwMDAwNjAwfV0sImlhdCI6MTc5MDAwMDAwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJjLU9USEVSLTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldQT2dNaWhjYmlZV1E1VGhCQTBXWTFoNjFKRVA5a3FNa0RDbkFjT1d4TTBfSDRHelAySXZvaGRfQmVTRlFrcFNkZG5jQnpIQ2RPVVMtVmlVa3lSZ0FBIn1d",
         "now": 1790000000,
         "expect": {
           "ok": false,
-          "why": "not a consent for this plan"
+          "why": "not a consent for this phrase"
+        }
+      },
+      {
+        "name": "a consent for this plan with another phrase",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJ1Z19TRnp1N0pLS1dlRHJhRWZ2X3JwRzV1cTNhZzJGWEdVRnNmS2d6TTRjIn0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtdWdfU0Z6LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldiSTFKWWd5TERraTdXZDV0SXZWRmNMMFJKZ2pGN01wdUZsZWFZVjYwckxSNWdhbXpNNFlpZm1VRVpVWDFiSlUwdU1CYkhDeFN3dnNQQnBRM2ktNENnIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this phrase"
+        }
+      },
+      {
+        "name": "a consent bound to the bare plan hash, without its phrase",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkZmbm05enNJTkRuNHhBa0FJMjdJc0FRX3J2U1I4VXloOEs5ZXZ1N05Cd1VrWUUyaUE0X3ItOGhqdElxWlgwencyd0RDV2Ixc0tlRHZ5YWdrUVAtRkJBIn1d",
+        "now": 1790000000,
+        "expect": {
+          "ok": false,
+          "why": "not a consent for this phrase"
+        }
+      },
+      {
+        "name": "an expired consent for another phrase says it expired",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJ1Z19TRnp1N0pLS1dlRHJhRWZ2X3JwRzV1cTNhZzJGWEdVRnNmS2d6TTRjIn0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtdWdfU0Z6LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IldiSTFKWWd5TERraTdXZDV0SXZWRmNMMFJKZ2pGN01wdUZsZWFZVjYwckxSNWdhbXpNNFlpZm1VRVpVWDFiSlUwdU1CYkhDeFN3dnNQQnBRM2ktNENnIn1d",
+        "now": 1790000600,
+        "expect": {
+          "ok": false,
+          "why": "grant has expired"
         }
       },
       {
         "name": "an expired consent",
-        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkZmbm05enNJTkRuNHhBa0FJMjdJc0FRX3J2U1I4VXloOEs5ZXZ1N05Cd1VrWUUyaUE0X3ItOGhqdElxWlgwencyd0RDV2Ixc0tlRHZ5YWdrUVAtRkJBIn1d",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIn0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImMtQ25UMy12LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6ImxtT0tPTkM0X054WFlTVGJTME44dGpLU2NOS0RJWkY1QldNQ3d4VFV5Z0puUkwzVlcyZ3B1eGtaMTdJeEozRktTczJDYUZEODR1M3daNmFGcXA4NUFnIn1d",
         "now": 1790000600,
         "expect": {
           "ok": false,
@@ -3578,7 +3632,7 @@
       },
       {
         "name": "a consent from another principal",
-        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvZGZfeDZ6aEZGWGVzMWFfdVFGUldWbzNYeUo0SkNHT2dWWHZIcjBueGMiLCJub25jZSI6ImMtVVBwV0x4LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6InZmZ050VmtRMHlxUlg0QmhzeEdsdllCTURBUmxPZEZtSnJ2X2tWU1hCMF9VM1A2cm5LbkJvR1hwVU91WVdQN2dObElsaHhyQlE0SWpocVUxTFF3NkNnIn1d",
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIn0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvZGZfeDZ6aEZGWGVzMWFfdVFGUldWbzNYeUo0SkNHT2dWWHZIcjBueGMiLCJub25jZSI6ImMtQ25UMy12LTE3OTAwMDA2MDAiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6InQzc1ZORHZCWVhwSkhRQWR2TUVXRzV6U0Z1UGtrTDhkbHpTeG80dHMyWU9fTWUtOElDdEQ1VjZxUmxDZmdrS0JqQk5XMjhsR3A3dGpZcnVYUHFjNkRnIn1d",
         "now": 1790000000,
         "expect": {
           "ok": false,
@@ -3596,7 +3650,7 @@
       }
     ]
   },
-  "consentCode": {
+  "consentCodes": {
     "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
     "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
     "input": {
@@ -3628,9 +3682,27 @@
       "risk": "low",
       "undoable": true
     },
-    "phrase": "approve",
     "now": 1790000000,
-    "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0IiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+    "cases": [
+      {
+        "name": "the fallback phrase",
+        "phrase": "approve",
+        "consentHash": "CnT3-vyScghKYk5Hd2MDCe31I1xjxzsbtnxpZQpjLDM",
+        "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+      },
+      {
+        "name": "no phrase, hashed as the fallback",
+        "phrase": "",
+        "consentHash": "CnT3-vyScghKYk5Hd2MDCe31I1xjxzsbtnxpZQpjLDM",
+        "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiJhcHByb3ZlIn0sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJDblQzLXZ5U2NnaEtZazVIZDJNRENlMzFJMXhqeHpzYnRueHBaUXBqTERNIiwicHJpbmNpcGFsIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3IiwicHJvcG9zYWwiOiJVUHBXTHhRY2NDNUNral9najlka3ZiN291ckhhb1B5a3VIUm04eDVDUHk0Iiwic2VydmljZSI6ImVkMjU1MTk6Ym5vYzNTbXd0NF9ST3ZURldZX3Y5TzhxbHhadVBLYnk1UHY4ellCUVdfRSIsInN1bW1hcnkiOiJSZWZ1bmQgMzAuMDAgVVNEIHRvIENoZW4ifQ"
+      },
+      {
+        "name": "non-ASCII, inner and edge spaces",
+        "phrase": " Löschen old-nav 👍 ",
+        "consentHash": "KXC5qmXNNMIU4WdukItXNR9PcIHwIsXNFkMPv-1YL90",
+        "code": "pc1.eyJjYXBhYmlsaXR5IjoicmVmdW5kIiwiZGV0YWlsIjp7ImpvYiI6eyJlZmZlY3RzIjpbeyJkZXRhaWwiOiIzMC4wMCBVU0QgdG8gY2FyZCDigKLigKI0MiIsIm9wIjoiY3JlYXRlIiwidGFyZ2V0IjoicmVmdW5kIn1dLCJpbnB1dCI6eyJuIjoyLCJ3aG8iOiJDaGVuIn0sInJpc2siOiJsb3ciLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIiwidG9vbCI6InJlZnVuZCIsInVuZG9XaW5kb3ciOjYwLCJ1c2VzIjp7InNwZW5kIjp7ImFtb3VudCI6MzAwMCwic2NhbGUiOjIsInVuaXQiOiJVU0QifX19LCJwaHJhc2UiOiIgTMO2c2NoZW4gb2xkLW5hdiDwn5GNICJ9LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoiS1hDNXFtWE5OTUlVNFdkdWtJdFhOUjlQY0lId0lzWE5Ga01Qdi0xWUw5MCIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiVVBwV0x4UWNjQzVDa2pfZ2o5ZGt2YjdvdXJIYW9QeWt1SFJtOHg1Q1B5NCIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiUmVmdW5kIDMwLjAwIFVTRCB0byBDaGVuIn0"
+      }
+    ]
   },
   "fileStore": {
     "ops": [

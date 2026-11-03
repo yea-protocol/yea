@@ -11,6 +11,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
 from yea import Plan, create, issue_grant
+from yea.approval import consent_hash_of
 from yea.store import FileStore
 
 from conftest import PRINCIPAL, Person, text
@@ -19,9 +20,11 @@ from yea_mcp import yea
 pytestmark = pytest.mark.anyio
 
 
-def consent_for(world, tool, plan_hash):
+def consent_for(world, tool, plan_hash, phrase="approve"):
+    """A consent as ``yea approve`` signs it: bound to the plan and the phrase typed for it."""
     sid = world.approvals.service_id()
-    return issue_grant(PRINCIPAL, sid, [{"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": [tool]}, {"only": plan_hash},
+    only = consent_hash_of(plan_hash, phrase)
+    return issue_grant(PRINCIPAL, sid, [{"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": [tool]}, {"only": only},
                                         {"exp": 2**31}]).encode()
 
 

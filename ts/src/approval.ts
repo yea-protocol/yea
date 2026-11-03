@@ -7,7 +7,18 @@
  * reservations, consent and undo.
  */
 
-export { checkJobConsent } from './approval/job-consent.js';
+export {
+  checkJobConsent,
+  consentHashOf,
+  OTHER_PHRASE,
+} from './approval/job-consent.js';
+
+export {
+  DEFAULT_PHRASE,
+  effectivePhrase,
+  normalizePhrase,
+  stripPhraseEdge,
+} from './approval/phrase-form.js';
 
 export {
   assertIntegers,

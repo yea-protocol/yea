@@ -128,7 +128,7 @@ Registers a job tool. `config`:
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
 | `revert({ input, planHash, result }, ctx)` | Optional. With it, plans that set `undoWindow` are undoable. |
-| `confirmWith(plan, input)` | Optional. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. |
+| `confirmWith(plan, input)` | Optional. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
 `JobPlan` is the SDK core's: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`, `data?`
 and `apply()`. `apply` runs at most once per approval, and only after the plan is allowed.
@@ -292,11 +292,14 @@ step 11 for a `run`.
      means the codec isn't installed; an object without `yea` is another tool's state
      (possible with `yea({ codec })`).
 6. **Consents.** For each plan, in order:
-   - look up `store.getConsent(planHash)`, and check it with `checkJobConsent`;
+   - look up `store.getConsent(planHash)`, and check it with
+     `checkJobConsent(grant, { hp, phrase, policy, now })`, where `phrase` is the plan's checked
+     phrase (`confirmWith`'s, through `checkedPhrase`, so after the `approve` fallback);
    - `consumeOnce(<grant id>, <the consent grant's exp caveat>)`;
    - the first that passes runs that plan (step 11).
 
-   A consent that is consumed, expired or failing counts as absent.
+   A consent that is consumed, expired or failing counts as absent. One refused as `not a
+   consent for this phrase` gives the ask its reason instead of the policy's (SPEC-approval §6).
 7. **Decide.** `decide(plans, policy, used, now)`, with `used` reading the store and `now` the
    call time in seconds.
    - `run`: `reserveAll`, then step 11. If `reserveAll` returns null, ask (step 8), with why

@@ -215,15 +215,18 @@ The request is a form-mode elicitation. Forms allow only flat fields, so:
   `confirmWith(plan, input): string`, the way GitHub asks you to type a repository's name
   before deleting it: the branch name, the recipient, the amount as written in the summary.
   If the tool names none, or names one that is empty once normalized, the phrase is
-  `approve`. A phrase must be typeable: printable text (`printable(phrase) === phrase`) whose
-  only inner whitespace is plain spaces. Once the edge set below is stripped, a tab or any
-  other space separator (`Zs`, such as U+00A0 or U+2003) inside it is refused. Anything else
-  is a developer error, refused before the person is asked: the form shows a phrase escaped,
-  and no one could be sure of typing the raw characters. The check is on the phrase as the
-  tool names it, before the `approve` fallback, and there is no fallback for it: a tool that
-  derives its phrase from service data must make it typeable. The job call fails as a tool
-  error, and `yea approve` refuses a consent code whose phrase isn't typeable. Look-alike
-  letters (homoglyphs, such as a Cyrillic `а` for a Latin `a`) are out of scope: they are
+  `approve`. A phrase must be typeable: printable text (`printable(phrase) === phrase`) of at
+  most **64 characters** (Unicode code points, counted as the tool names it, edge whitespace
+  included) whose only inner whitespace is plain spaces. Once the edge set below is stripped, a
+  tab or any other space separator (`Zs`, such as U+00A0 or U+2003) inside it is refused.
+  Anything else is a developer error, refused before the person is asked: the form shows a
+  phrase escaped, and no one could be sure of typing the raw characters. The check is on the
+  phrase as the tool names it, before the `approve` fallback, and there is no fallback for it.
+  The job call fails as a tool error, and `yea approve` refuses a consent code whose phrase
+  isn't typeable. The phrase must also be a **pure function of the plan and the input**: the
+  same plan hash always gets the same phrase. A consent binds the phrase (§6), so a phrase that
+  reads anything else (a counter, the time, a live balance, the locale) makes every consent for
+  that plan unredeemable. Look-alike letters (homoglyphs, such as a Cyrillic `а` for a Latin `a`) are out of scope: they are
   printable, so this rule can't tell them apart. The field's description shows the exact
   phrase; with several plans, the message names each plan's phrase next to it. Denied plans
   are listed apart as never allowed, and when no plan can be offered at all, there is no form:
@@ -325,28 +328,41 @@ chosen plan at or above `outOfBand`, then returns an error result with:
 - the line: *Ask the user to run `yea approve <code>` in their terminal, then call again.*
 
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
-plan's details. For a job, its fields are `proposal` and `hash` = the plan hash, `service` =
-the server's service id, `capability` = the tool, `principal` = the pinned principal key,
-`summary`, and `expires` = now + 10 minutes. Its `detail` is `{ job, phrase }`: `job` is the
-full plan-hash preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`,
-`undoWindow`), and `phrase` is what the person types. Nothing outside `job` is trusted: the
-phrase only checks that the person read the plan.
+plan's details. For a job, its `detail` is `{ job, phrase }`: `job` is the full plan-hash
+preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, `undoWindow`), and `phrase`
+is what the person types, after the `approve` fallback (§3). The **consent preimage** binds
+that phrase to the plan, whose hash already covers `job`:
+
+```
+consentHash = b64url(sha256(canonical({ plan: planHash, phrase })))
+```
+
+The code's fields are `proposal` = the plan hash, `hash` = the consent hash, `service` = the
+server's service id, `capability` = the tool, `principal` = the pinned principal key,
+`summary`, and `expires` = now + 10 minutes. Nothing in the code is trusted until it is
+recomputed: an edited phrase no longer matches `hash`, and a code whose `hash` was recomputed
+to match an edited phrase gets a consent the server never honors, because the server checks
+it against its own phrase. `consentHash` applies the `approve` fallback to the phrase itself, so
+an empty or blank phrase hashes as `approve`.
 
 `yea approve <code>`:
-1. recomputes the plan hash from the preimage, and refuses if it doesn't equal the code's
-   `hash` and `proposal`, if the code's `capability` isn't the plan's `tool`, or if the code
-   has expired; it caps `expires` at 10 minutes from now, whatever the code says;
+1. recomputes the plan hash from `job`, then the consent hash from it and the phrase, and
+   refuses if they don't equal the code's `proposal` and `hash`, if the phrase isn't typeable
+   (§3, so one over 64 characters is refused), if the code's `capability` isn't the plan's
+   `tool`, or if the code has expired; it caps `expires` at 10 minutes from now, whatever the
+   code says;
 2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
    and invisible filler characters are shown as `\u{…}` escapes, so the text can't rewrite
    what the person reads;
 3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
-   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: planHash}, {exp}]`, and
+   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`, and
    saves it in the store under the plan hash (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`).
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
-and checks it: it must be a single root block that itself carries `only` = that plan hash
+and checks it against that plan's consent hash, recomputed from the plan and the phrase the
+tool names now: it must be a single root block that itself carries `only` = that consent hash
 and an `exp` (so neither a copied policy grant nor a block the server's key appended to one
 ever counts), and pass the grant check as a `COMMIT` of the tool at this server, signed by
 the pinned principal key (§2). It then consumes it with
@@ -354,6 +370,14 @@ the pinned principal key (§2). It then consumes it with
 not by code, so a fresh code for the same plan still finds them; a consumed or expired one
 counts as absent, and the server issues fresh codes. Denied tools and plans that aren't
 recomputed are never run. An unsigned approval in the store is never accepted.
+
+A consent for another phrase is refused, but not silently. The grant check runs against the
+hash the consent binds, so a consent that is otherwise valid but binds another hash is told
+apart, as `not a consent for this phrase`. When the call then asks (a form or fresh codes), the
+reason it gives is *"a consent for this plan was signed for a different phrase; approve the new
+code — if this repeats, the code you were given may have been altered"*. The person can then
+tell a changed phrase or an edited code from a lost consent. A consumed, expired or malformed
+consent leaves no such reason.
 
 This needs `yea approve` changes (today it issues to the agent key and checks
 `proposalHash`), and a store shared by the server and the `yea` command: a local stdio server
@@ -532,8 +556,9 @@ export function decide(
   reservation. The store is not a MemoryStore, so consent codes are issued. They cover a denied
   tool, a run inside the policy, asking then answering, a wrong phrase three times, a replayed
   state, a declined answer, a state for other input or past its expiry, plans that changed, a
-  chosen plan now out of band, a consent code consumed twice, a limit that fills up between
-  decide and reserve, no pinned principal, a clarification and no plans.
+  chosen plan now out of band, a consent code consumed twice, a consent signed for another
+  phrase, a limit that fills up between decide and reserve, no pinned principal, a
+  clarification and no plans.
 - **Conformance cases** (`conformance/approval.json`). Given plans, a policy and a ledger, both
   languages agree on:
   - the decision, and the reason text;
@@ -551,6 +576,8 @@ export function decide(
 - **Security tests** in `ts/test/security.test.ts` and its Python counterpart:
   - an unsigned approval is rejected, and an unsigned policy can't loosen the defaults;
   - a consent for one plan can't run another, and a replayed state or consent runs nothing;
+  - a consent code with an edited phrase is refused, and a consent signed for an edited phrase
+    never runs; a phrase over 64 characters is refused;
   - an irreversible plan never auto-runs, whatever the grant says;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - a `deny`ed tool never runs, even with approval;
@@ -604,7 +631,8 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
    and approved plans don't count against them (§5). `deny` covers what must never run.
 2. **The person types a phrase the tool names for each plan** (the branch name, the
    recipient, the amount as written), or `approve` when it names none. Phrases are text only
-   in v0.
+   in v0, at most 64 characters, and a consent code's phrase is bound by its consent hash (§6),
+   adopted 2026-11-03 (#141).
 3. **Remote servers.** Local, signed `yea approve` is enough for v0. Url-mode pages come
    later.
 4. **Undo doesn't ask** within its window.

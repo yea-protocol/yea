@@ -10,6 +10,7 @@ from ..text import clip, printable
 from .plan import HashedPlan
 
 _STRIP = "\u0009\u000a\u000b\u000c\u000d  ﻿"
+MAX_PHRASE = 64  # the longest phrase a tool may name, in code points, as TypeScript counts them
 
 
 def normalize_phrase(s: str) -> str:
@@ -17,11 +18,16 @@ def normalize_phrase(s: str) -> str:
     return unicodedata.normalize("NFC", s).strip(_STRIP).lower()
 
 
+def effective_phrase(phrase: str) -> str:
+    """A phrase that is empty once normalized falls back to ``approve``."""
+    return phrase if normalize_phrase(phrase) else "approve"
+
+
 def phrase_of(p: HashedPlan, phrase_for: Callable[[HashedPlan], str] | None) -> str:
     """The phrase for ``p``: the tool's, or ``approve`` when it names none. A phrase that is
     empty once normalized would let an empty field approve, so it becomes ``approve`` too."""
     phrase = phrase_for(p) if phrase_for is not None else None
-    return phrase if isinstance(phrase, str) and normalize_phrase(phrase) else "approve"
+    return effective_phrase(phrase) if isinstance(phrase, str) else "approve"
 
 
 def _odd_space(c: str) -> bool:
@@ -34,25 +40,29 @@ def _shown(phrase: str) -> str:
 
 
 def _untypeable(phrase: str) -> str | None:
+    """Why ``phrase`` can't be asked for, or None when it's typeable text (§3)."""
     if printable(phrase) != phrase:
-        return "has unprintable characters"
+        return "has unprintable characters, so no one could type it"
     # Edge whitespace is stripped when matching; inside, only a plain space can be typed.
     if any(_odd_space(c) for c in phrase.strip(_STRIP)):
-        return "has whitespace other than plain spaces inside"
+        return "has whitespace other than plain spaces inside, so no one could type it"
+    if len(phrase) > MAX_PHRASE:
+        return f"is longer than {MAX_PHRASE} characters"
     return None
 
 
 def checked_phrase(phrase: str, whose: str = "the approval phrase") -> str:
     """A tool's phrase, checked before anyone is asked (§3): it must be typeable, printable text
-    whose only inner whitespace is plain spaces, since the person is shown it escaped and could
-    never type the raw characters, so anything else is a developer error. ``whose`` names the
-    phrase in the error. Then the ``approve`` fallback applies."""
+    of at most ``MAX_PHRASE`` characters whose only inner whitespace is plain spaces, since the
+    person is shown it escaped and could never type the raw characters, so anything else is a
+    developer error. ``whose`` names the phrase in the error. Then the ``approve`` fallback
+    applies."""
     if not isinstance(phrase, str):
         raise TypeError(f"{whose} must be a string")
     why = _untypeable(phrase)
     if why:
-        raise TypeError(f'{whose} {why}, so no one could type it: "{_shown(phrase)}"')
-    return phrase if normalize_phrase(phrase) else "approve"
+        raise TypeError(f'{whose} {why}: "{_shown(phrase)}"')
+    return effective_phrase(phrase)
 
 
 def phrase_matches(typed: Any, phrase: str) -> bool:

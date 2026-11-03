@@ -148,7 +148,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
-| `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. |
+| `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,
 `data`). For a job, `apply` takes no arguments and may be async; it runs at most once per
@@ -264,9 +264,13 @@ again, with the clock, the policy and the plans as they are then.
      steps 1–3;
    - anything else refuses the call before the session runs: nothing runs, the plan function
      included, and for a denied tool the refusal names the state, not the deny list.
-6. **Consents.** For each plan, in order: `store.get_consent(planHash)`, `check_job_consent`,
-   then `consume_once(<grant id>, <its exp>)`; the first that passes runs that plan (step 11).
-   `consent_for` does this.
+6. **Consents.** For each plan, in order: `store.get_consent(planHash)`,
+   `check_job_consent(token, plan, phrase, policy, now)` with `phrase` the plan's checked phrase
+   (`confirm_with`'s, through `checked_phrase`, so after the `approve` fallback), then
+   `consume_once(<grant id>, <its exp>)`; the first that passes runs that plan (step 11).
+   `consent_for` does this. It returns a `StoredConsent`: the plan it runs, or a `note` when a
+   consent was refused as `not a consent for this phrase`, which becomes the ask's reason
+   instead of the policy's (SPEC-approval §6).
 7. **Decide.** `decide(plans, policy, used, now)`, with `used` from `spent(store, policy)` and
    `now` the call time.
    - `run`: `reserve_all`, then step 11. If it returns `None`, ask (step 8), with why "a limit

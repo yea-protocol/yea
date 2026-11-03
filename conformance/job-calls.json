@@ -1983,7 +1983,7 @@
         "revert": true
       },
       "consents": {
-        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJTcFdYM0poSTJQQXhqTmNkUlV6SnZSNlQ1M2hrekllMV9Day1BNFJBeDQ0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJFU1RYbFJQZjllRUtvdDEzQVZBbXpIcXdkRFZhQzdIM20zQ2loQUtldG5zYnVQUGRwcjVjaHlMZWFkTWRXQ1A2aHlZSlZQajlhTW4tczBtUlNfOVVDdyJ9XQ"
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ"
       },
       "steps": [
         {
@@ -2036,7 +2036,7 @@
           "after": {
             "used": {},
             "consumed": [
-              "lGJ8u0tVYVo5GdCXNiQEdOGbL9I0DBsEkm3PpL4vA1k"
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
             ]
           }
         },
@@ -2079,7 +2079,7 @@
           "before": {
             "used": {},
             "consumed": [
-              "lGJ8u0tVYVo5GdCXNiQEdOGbL9I0DBsEkm3PpL4vA1k"
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
             ]
           },
           "outcome": {
@@ -2097,7 +2097,7 @@
           "after": {
             "used": {},
             "consumed": [
-              "lGJ8u0tVYVo5GdCXNiQEdOGbL9I0DBsEkm3PpL4vA1k"
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
             ]
           }
         }
@@ -2110,7 +2110,7 @@
         "revert": true
       },
       "consents": {
-        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJTcFdYM0poSTJQQXhqTmNkUlV6SnZSNlQ1M2hrekllMV9Day1BNFJBeDQ0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJFU1RYbFJQZjllRUtvdDEzQVZBbXpIcXdkRFZhQzdIM20zQ2loQUtldG5zYnVQUGRwcjVjaHlMZWFkTWRXQ1A2aHlZSlZQajlhTW4tczBtUlNfOVVDdyJ9XQ"
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ"
       },
       "steps": [
         {
@@ -2152,7 +2152,7 @@
           "before": {
             "used": {},
             "consumed": [
-              "lGJ8u0tVYVo5GdCXNiQEdOGbL9I0DBsEkm3PpL4vA1k"
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
             ]
           },
           "outcome": {
@@ -2192,8 +2192,159 @@
           "after": {
             "used": {},
             "consumed": [
-              "lGJ8u0tVYVo5GdCXNiQEdOGbL9I0DBsEkm3PpL4vA1k"
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
             ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a consent signed for another phrase counts as absent, and the form and codes say so",
+      "tool": {
+        "name": "refund",
+        "revert": true,
+        "phrases": {
+          "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "refund Chen"
+        }
+      },
+      "consents": {
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ"
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "ask",
+            "form": {
+              "message": "Approval needed: a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: refund Chen",
+              "requestedSchema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "string",
+                    "title": "Confirm",
+                    "description": "Type \"refund Chen\" to approve."
+                  }
+                },
+                "required": [
+                  "confirm"
+                ]
+              },
+              "offered": [
+                "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+              ]
+            },
+            "state": {
+              "v": 1,
+              "tool": "refund",
+              "inputHash": "884scU20cL4vsbzkrPdV8x9tq6xKMD-EZNO57bZcRBM",
+              "sub": "",
+              "plans": [
+                "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+              ],
+              "round": 1,
+              "exp": 1790000600
+            }
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        },
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": false,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "consent-codes",
+            "why": "a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "codes": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "unavailable": null
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
           }
         }
       ]
@@ -2205,7 +2356,7 @@
         "revert": true
       },
       "consents": {
-        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJTcFdYM0poSTJQQXhqTmNkUlV6SnZSNlQ1M2hrekllMV9Day1BNFJBeDQ0In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJFU1RYbFJQZjllRUtvdDEzQVZBbXpIcXdkRFZhQzdIM20zQ2loQUtldG5zYnVQUGRwcjVjaHlMZWFkTWRXQ1A2aHlZSlZQajlhTW4tczBtUlNfOVVDdyJ9XQ"
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ"
       },
       "steps": [
         {

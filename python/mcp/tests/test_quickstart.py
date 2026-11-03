@@ -12,7 +12,7 @@ from conftest import MODES, PRINCIPAL, Person, text
 from yea_mcp import yea
 
 from mcp import Client
-from yea import issue_grant
+from yea import decode_consent_code, issue_grant
 from yea.store import FileStore
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
@@ -90,7 +90,8 @@ async def test_step_6_a_client_that_cant_ask_gets_a_code_and_a_consent_runs_once
         (code,) = r.structured_content["codes"]
         sid = files["approvals"].service_id()
         await files["store"].put_consent(code["planHash"], issue_grant(PRINCIPAL, sid, [
-            {"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": ["delete_file"]}, {"only": code["planHash"]},
+            {"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": ["delete_file"]},
+            {"only": decode_consent_code(code["code"])["hash"]},
             {"exp": 2**31}]).encode())
         ok = await c.call_tool("delete_file", {"path": "docs/report.pdf"})
         assert not ok.is_error and not files["report"].exists()

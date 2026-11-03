@@ -44,11 +44,11 @@ export async function ask(
 }
 
 /** Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6). */
-export function consentCodes(
+export async function consentCodes(
   r: Round,
   why: string,
   plans: HashedPlan[],
-): ConsentCodesOutcome {
+): Promise<ConsentCodesOutcome> {
   const { call } = r;
   const base = { kind: 'consent-codes' as const, why, plans, codes: [] };
 
@@ -63,19 +63,21 @@ export function consentCodes(
     return { ...base, unavailable: MEMORY_NO_CONSENT };
   }
 
-  const codes = plans
-    .filter((hp) => ruledOut(hp, call.policy)?.kind !== 'denied')
-    .map((hp) => ({
-      planHash: hp.planHash,
-      code: jobConsentCode({
-        server: call.policy.server,
-        principal: call.policy.principal,
-        input: call.input,
-        hp,
-        phrase: r.phraseFor(hp),
-        now: call.now,
-      }),
-    }));
+  const codes = await Promise.all(
+    plans
+      .filter((hp) => ruledOut(hp, call.policy)?.kind !== 'denied')
+      .map(async (hp) => ({
+        planHash: hp.planHash,
+        code: await jobConsentCode({
+          server: call.policy.server,
+          principal: call.policy.principal,
+          input: call.input,
+          hp,
+          phrase: r.phraseFor(hp),
+          now: call.now,
+        }),
+      })),
+  );
 
   return { ...base, codes, unavailable: null };
 }

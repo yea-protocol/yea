@@ -6,6 +6,7 @@ import {
   checkJobConsent,
   decide,
   type HashedPlan,
+  OTHER_PHRASE,
   reserveAll,
 } from '../approval.js';
 import { decodeGrant } from '../grants.js';
@@ -23,38 +24,68 @@ function consentExp(grant: string): number | null {
 }
 
 /**
- * The first plan with a valid, unused consent from `yea approve`, consumed by its grant id. One
- * that is consumed, expired or failing counts as absent (§6).
+ * What the person is told when a stored consent was signed, validly, for a different phrase (§6):
+ * the tool's phrase changed, or the code they approved was edited.
  */
-async function consented(r: Round): Promise<HashedPlan | null> {
-  const { policy, now } = r.call;
+const PHRASE_CHANGED =
+  'a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered';
 
-  if (!policy.principal) {
-    return null;
+/** A plan's stored consent, checked against the phrase the tool names now; null if none. */
+async function storedConsent(r: Round, hp: HashedPlan) {
+  const { policy, now } = r.call;
+  const grant = await r.store.getConsent(hp.planHash);
+
+  return grant
+    ? {
+        grant,
+        check: await checkJobConsent(grant, {
+          hp,
+          phrase: r.phraseFor(hp),
+          policy,
+          now,
+        }),
+      }
+    : null;
+}
+
+/**
+ * The first plan with a valid, unused consent from `yea approve`, consumed by its grant id. One
+ * that is consumed, expired or failing counts as absent (§6), but one signed for a different
+ * phrase leaves a note for the person, so a changed phrase or an edited code isn't silent.
+ */
+async function consented(
+  r: Round,
+): Promise<{ plan: HashedPlan | null; note: string | null }> {
+  let note: string | null = null;
+
+  if (!r.call.policy.principal) {
+    return { plan: null, note };
   }
 
   for (const hp of r.plans) {
-    const grant = await r.store.getConsent(hp.planHash);
-    const check = grant
-      ? await checkJobConsent(grant, { hp, policy, now })
-      : null;
-    const exp = grant && check?.ok ? consentExp(grant) : null;
+    const stored = await storedConsent(r, hp);
+    const check = stored?.check;
+    const exp = stored && check?.ok ? consentExp(stored.grant) : null;
 
     if (
       check?.ok &&
       exp !== null &&
       (await r.store.consumeOnce(check.id, exp))
     ) {
-      return hp;
+      return { plan: hp, note: null };
+    }
+
+    if (check && !check.ok && check.why === OTHER_PHRASE) {
+      note ??= PHRASE_CHANGED;
     }
   }
 
-  return null;
+  return { plan: null, note };
 }
 
 /** A first round: a stored consent runs its plan; else the policy decides; else ask. */
 export async function firstRound(r: Round): Promise<JobCallOutcome> {
-  const approved = await consented(r);
+  const { plan: approved, note } = await consented(r);
 
   if (approved) {
     return { kind: 'run', plan: approved, held: [], how: 'approved' };
@@ -78,6 +109,6 @@ export async function firstRound(r: Round): Promise<JobCallOutcome> {
       return { kind: 'refuse', why: 'no plans' };
     case 'ask':
     case 'out-of-band':
-      return ask(r, d.why, 1);
+      return ask(r, note ?? d.why, 1);
   }
 }

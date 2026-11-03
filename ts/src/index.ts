@@ -6,6 +6,7 @@
  */
 
 export {
+  consentHashOf,
   type HashedPlan,
   hashPlans,
   isReceiptId,

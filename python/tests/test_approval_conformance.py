@@ -7,7 +7,7 @@ from conftest import CONFORMANCE, load_vectors
 
 from yea import Plan, decode_grant, key_from_seed
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_job_consent, checked_phrase, undo_receipt, check_state, decide, job_consent_code, judge_answer,
+    HashedPlan, Policy, Tightening, build_form, check_job_consent, checked_phrase, consent_hash_of, undo_receipt, check_state, decide, job_consent_code, judge_answer,
     load_policy,
     phrase_matches, plan_hash, read_tightening,
 )
@@ -112,9 +112,12 @@ def test_tightening(case):
     assert (list(t.deny), t.out_of_band, list(t.warnings)) == (want["deny"], want["outOfBand"], want["warnings"])
 
 
-def test_consent_code():
-    c = DATA["consentCode"]
-    assert job_consent_code(c["server"], c["principal"], c["input"], to_hashed(c["plan"]), c["phrase"], c["now"]) == c["code"]
+@pytest.mark.parametrize("case", cases_of("consentCodes"))
+def test_consent_code(case):
+    c = DATA["consentCodes"]
+    assert consent_hash_of(c["plan"]["planHash"], case["phrase"]) == case["consentHash"]
+    assert job_consent_code(c["server"], c["principal"], c["input"], to_hashed(c["plan"]), case["phrase"],
+                            c["now"]) == case["code"]
 
 
 async def _file_op(s: FileStore, o: dict):
@@ -150,7 +153,8 @@ def test_file_store(tmp_path):
 def test_job_consents(case):
     c = DATA["consents"]
     policy = load_policy(None, DATA["keys"]["server"], DATA["keys"]["principal"], Tightening())
-    got = check_job_consent(case["grant"], to_hashed(c["plan"]), policy, case["now"])
+    assert consent_hash_of(c["plan"]["planHash"], c["phrase"]) == c["consentHash"]
+    got = check_job_consent(case["grant"], to_hashed(c["plan"]), c["phrase"], policy, case["now"])
     want = case["expect"]
     assert got.ok is want["ok"]
     assert (got.id if got.ok else got.why) == (want["id"] if want["ok"] else want["why"])
