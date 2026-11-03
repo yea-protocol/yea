@@ -1,7 +1,7 @@
 // #106: without @anthropic-ai/sdk, `yea test-drive` re-runs itself through npx with the CLI
 // package (the one with the `yea` bin) and the SDK, once. The `yea` bin and the built
-// @yea-protocol/mcp beside it are copied somewhere @anthropic-ai/sdk can't be resolved from, and
-// a stub `npx` on PATH records how it was called.
+// @yea-protocol/mcp and @yea-protocol/sdk beside it are copied somewhere @anthropic-ai/sdk can't
+// be resolved from, and a stub `npx` on PATH records how it was called.
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
@@ -38,10 +38,10 @@ afterEach(() => {
 });
 
 /**
- * A copy of the `yea` bin and the built @yea-protocol/mcp, with no node_modules above them, and
- * a `bin` directory for PATH. With `npxExit`, the directory holds a stub npx that records its
- * arguments, one per line, and the guard's value, then exits with that code; without it, there
- * is no npx at all.
+ * A copy of the `yea` bin and the built @yea-protocol/mcp and @yea-protocol/sdk (which parses
+ * the command line), with no node_modules above them, and a `bin` directory for PATH. With
+ * `npxExit`, the directory holds a stub npx that records its arguments, one per line, and the
+ * guard's value, then exits with that code; without it, there is no npx at all.
  */
 function sandbox(npxExit?: number) {
   const root = mkdtempSync(join(tmpdir(), 'yea-reexec-'));
@@ -49,12 +49,15 @@ function sandbox(npxExit?: number) {
   const bin = join(root, 'bin');
 
   const mcp = join(pkg, 'node_modules', '@yea-protocol', 'mcp');
+  const sdk = join(pkg, 'node_modules', '@yea-protocol', 'sdk');
 
   roots.push(root);
   cpSync(join(REPO, 'cli', 'bin'), join(pkg, 'bin'), { recursive: true });
   copyFileSync(join(REPO, 'cli', 'package.json'), join(pkg, 'package.json'));
   cpSync(join(REPO, 'mcp', 'dist'), join(mcp, 'dist'), { recursive: true });
   copyFileSync(join(REPO, 'mcp', 'package.json'), join(mcp, 'package.json'));
+  cpSync(join(REPO, 'ts', 'dist'), join(sdk, 'dist'), { recursive: true });
+  copyFileSync(join(REPO, 'ts', 'package.json'), join(sdk, 'package.json'));
   mkdirSync(bin);
 
   if (npxExit !== undefined) {

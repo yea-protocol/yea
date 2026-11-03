@@ -4,7 +4,8 @@
  */
 import type { Risk } from './types.js';
 
-const RISKS: readonly Risk[] = ['low', 'medium', 'high'];
+/** The risk levels, lowest first. */
+export const RISKS: readonly Risk[] = ['low', 'medium', 'high'];
 
 export const isRisk = (v: unknown): v is Risk => RISKS.includes(v as Risk);
 

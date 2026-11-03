@@ -4,7 +4,7 @@
  */
 import { hasLoneSurrogate } from '../../canonical.js';
 import { fix, YeaError } from '../../errors.js';
-import type { Proof } from '../../types.js';
+import { type Proof, VERBS } from '../../types.js';
 import { isObject, positiveInt } from '../../util.js';
 
 interface Base {
@@ -44,8 +44,6 @@ export type ParsedRequest =
       Signed & { verb: 'COMMIT'; proposal: string | null; hash: string | null })
   | (Base & Signed & { verb: 'UNDO'; receipt: string | null })
   | (Base & { verb: 'EXPAND'; handle: string | null; proof: Proof | null });
-
-const VERBS = ['HELLO', 'ASK', 'INTENT', 'COMMIT', 'UNDO', 'EXPAND'];
 
 /**
  * Read a request frame; throws `bad_frame` or `invalid_params` when the frame alone is wrong. A

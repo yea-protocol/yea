@@ -426,6 +426,7 @@ yea delegate <token> --to <sub-agent key> --verbs ASK,INTENT   # narrower author
 yea approve <pc1.code>                               # review and sign a one-time consent for one proposal
 yea examples                                          # serve the example calendar + shop locally
 yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana   # interactive: intent → pick → commit
+yea help grant                                        # any command's flags and an example
 ```
 <!-- #endregion quickstart -->
 
