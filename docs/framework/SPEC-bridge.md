@@ -61,6 +61,20 @@ On start, the bridge sends `HELLO` to each service with a large budget. It `EXPA
   - A name that still clashes after its suffix (with another tool, or a utility) isn't served,
     and stderr says so. Nothing is ever shadowed.
   - `_meta['dev.yea/service']` and `_meta['dev.yea/capability']` carry the real names.
+- **Prompt on every call, opt-in.** With the `requireInteraction` option (`yea mcp
+  --require-interaction`, or `YEA_REQUIRE_INTERACTION=1` for a plugin or `.mcp.json` whose
+  arguments are fixed), every tool marked `destructiveHint` (each intent's tool, a generic
+  `_intent` tool and `yea_undo`) also carries `_meta['anthropic/requiresUserInteraction']:
+  true`. Reads, `yea_expand` and `yea_consent` never do. Claude Code then prompts for every
+  call of those tools in any permission mode, and denies them where no person can answer
+  (`claude -p`). It's off by default: it would prompt for previews and for what the agent's
+  grant lets through. `YEA_REQUIRE_INTERACTION` takes `1`, `true`, `0`, `false` or empty;
+  anything else refuses to start. That one set (`REQUIRE_INTERACTION_VALUES` in the SDK's
+  `ts/src/setup/require-interaction.ts`) is what `yea mcp`, `yea install` and `yea doctor` all
+  read. The plugin's entry passes the variable on as `${YEA_REQUIRE_INTERACTION:-}`, so an unset
+  variable is empty, which reads as off. `yea doctor` counts that entry as yea's own, and
+  expands the reference from its own environment, as Claude Code does. It names a refused value
+  in that environment once, up front.
 - **Service ids must be unique.** Two URLs whose `BRIEF`s claim the same `service.id` make the
   bridge refuse to start, naming both. The id is self-declared, and it's what proofs and
   consents bind to.
@@ -245,7 +259,7 @@ one exact proposal at one service, and still needs the agent key's proof.
 
 - **Code.** The bridge becomes `mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`,
   with `bridge(clients, options)` returning a server factory. Its options are `tools`,
-  `budget`, `home`, `consents`, `tighten` and `now`. `home` is the agent's home directory
+  `budget`, `home`, `consents`, `tighten`, `requireInteraction` and `now`. `home` is the agent's home directory
   (default `YEA_HOME`, else `~/.yea`), resolved once when `bridge()` is called: `policy.json`
   is re-read from it on every call, and the default `consents` store is its `consents`
   directory (`homeConsents(home)`). The principal key is never read from it, so two bridges
@@ -310,6 +324,8 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
 - tools are built from `HELLO` with `EXPAND`ed `more`: names, suffixes on collision, the
   reserved `yea_` prefix, schemas (including `any`, `[{…}]` and enum arrays), annotations,
   and a refused `goal`/`preview` param;
+- with `requireInteraction`, and only then, Claude Code's prompt key is on every intent tool
+  (per-capability and generic) and `yea_undo`, and on no read;
 - duplicate service ids refuse to start;
 - the per-service generic fallback past 25 capabilities;
 - a call the agent's grant allows auto-commits in one call;

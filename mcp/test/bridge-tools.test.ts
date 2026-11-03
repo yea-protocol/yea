@@ -23,6 +23,7 @@ import {
   sortedJson,
 } from '../src/bridge/pending.js';
 import { MAX_TOOLS_PER_SERVICE } from '../src/bridge/tools.js';
+import type { BridgeOptions } from '../src/bridge.js';
 import {
   agentClient,
   bridgeIn,
@@ -75,7 +76,7 @@ function lab(k: Keys, id = 'lab.example') {
     });
 }
 
-async function toolsOf(k: Keys, services: Service[], o = {}) {
+async function toolsOf(k: Keys, services: Service[], o: BridgeOptions = {}) {
   const clients = await Promise.all(
     services.map(async (s, i) => ({
       client: await agentClient(k, recorded(s).t, [EACH_40]),
@@ -269,6 +270,53 @@ describe('schemas and annotations', () => {
     expect(textOf(r)).toMatch(
       /^✗ invalid_params: `max_cal` must be an integer/,
     );
+  });
+
+  it('with requireInteraction, the tools that change things, and no read, ask Claude Code to prompt', async () => {
+    const k = await keys();
+    const trust = [k.principal.public];
+    const listed = async (o: BridgeOptions) => {
+      const { tools } = await toolsOf(k, [shop({ trust })], o);
+      const names = (ts: typeof tools) => ts.map((t) => t.name).sort();
+
+      return {
+        names: names(tools),
+        prompted: names(
+          tools.filter(
+            (t) => t._meta?.['anthropic/requiresUserInteraction'] === true,
+          ),
+        ),
+      };
+    };
+    const on = { requireInteraction: true };
+    const perCapability = await listed(on);
+    const generic = await listed({ ...on, tools: 'generic' });
+
+    expect((await listed({})).prompted).toEqual([]);
+    // Every tool each mode lists, so the ones without the key are named too: the reads,
+    // the generic ask, yea_expand and yea_consent.
+    expect(perCapability.names).toEqual([
+      'shop_order',
+      'shop_orders',
+      'shop_search',
+      'shop_tip',
+      'yea_consent',
+      'yea_expand',
+      'yea_undo',
+    ]);
+    expect(perCapability.prompted).toEqual([
+      'shop_order',
+      'shop_tip',
+      'yea_undo',
+    ]);
+    expect(generic.names).toEqual([
+      'shop_example_ask',
+      'shop_example_intent',
+      'yea_consent',
+      'yea_expand',
+      'yea_undo',
+    ]);
+    expect(generic.prompted).toEqual(['shop_example_intent', 'yea_undo']);
   });
 });
 

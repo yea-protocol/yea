@@ -6,11 +6,17 @@ import {
   type CallToolResult,
   fromJsonSchema,
   type McpServer,
+  type RegisteredTool,
   type ServerContext,
 } from '@modelcontextprotocol/server';
 import { isReceiptId, printable, undoJob, unixNow } from '@yea-protocol/sdk';
 import { callerOf, isPartial, type RevertFn, type Yea } from './call.js';
-import { errorResult, textResult, UNDO_ANNOTATIONS } from './result.js';
+import {
+  errorResult,
+  REQUIRE_INTERACTION,
+  textResult,
+  UNDO_ANNOTATIONS,
+} from './result.js';
 import { errorMessage, registryOf } from './util.js';
 
 /** Throw before registering anything if the server has an `undo` tool that isn't ours. */
@@ -33,32 +39,54 @@ const RECEIPT_SCHEMA = fromJsonSchema<{ receipt: string }>({
   required: ['receipt'],
 });
 
-/** The `undo` tool, registered once per server, the first time a job with `revert` is added. */
+/** A server's `undo` tool: the reverts it runs, and its registration, for `promptUndo`. */
+export interface UndoTool {
+  reverts: Map<string, RevertFn>;
+  tool: RegisteredTool;
+}
+
+/**
+ * The `undo` tool, registered once per server, the first time a job with `revert` is added. It
+ * carries Claude Code's prompt-on-every-call key if `prompt`: `yea()`'s setting, or a job's.
+ */
 export function registerUndo(
   y: Yea,
   server: McpServer,
-  all: WeakMap<McpServer, Map<string, RevertFn>>,
+  all: WeakMap<McpServer, UndoTool>,
+  prompt: boolean,
 ): Map<string, RevertFn> {
   const known = all.get(server);
 
   if (known) {
-    return known;
+    return known.reverts;
   }
 
   const reverts = new Map<string, RevertFn>();
-
-  all.set(server, reverts);
-  server.registerTool(
+  const tool = server.registerTool(
     'undo',
     {
       description: 'Undo a job by its receipt id, within its undo window.',
       inputSchema: RECEIPT_SCHEMA,
       annotations: UNDO_ANNOTATIONS,
+      ...(prompt ? { _meta: REQUIRE_INTERACTION } : {}),
     },
     (args, ctx) => undoCall(y, reverts, args.receipt, ctx),
   );
 
+  all.set(server, { reverts, tool });
+
   return reverts;
+}
+
+/**
+ * Give `server`'s `undo`, if it has one yet, the prompt-on-every-call key: a job with the key
+ * makes undoing on its server prompt too, since undoing acts as well (fails closed).
+ */
+export function promptUndo(
+  server: McpServer,
+  all: WeakMap<McpServer, UndoTool>,
+) {
+  all.get(server)?.tool.update({ _meta: { ...REQUIRE_INTERACTION } });
 }
 
 /** `undo({ receipt })`: the core's `undoJob`, for this server's receipts and tools only. */

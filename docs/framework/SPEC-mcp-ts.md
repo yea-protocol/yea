@@ -76,6 +76,7 @@ while keys, store and codec live in the one `yea()` context.
 | `codec` | created from `stateKey` | An existing `createRequestStateCodec` result, for a server that already uses one. |
 | `stateKey` | random per process | The ≥ 32-byte codec key. A shared key only makes sense with a shared store (see below). |
 | `sub` | stdio: `() => ''`; HTTP: required | Who is calling. Used for the state binding and for undo. |
+| `requireInteraction` | `false` | Mark every tool that acts (job, guarded and `undo`) with Claude Code's prompt-on-every-call key, under Results. A `job()`'s own setting wins for that tool, and one that's on marks `undo` too. |
 
 **Start-up refusals.** `yea()` throws, so nothing is served, when:
 
@@ -126,6 +127,7 @@ Registers a job tool. `config`:
 | `title`, `description`, `annotations` | As in `registerTool`. Annotation defaults are under Results. |
 | `inputSchema` | A Standard Schema that exposes JSON Schema (`~standard.jsonSchema`): zod ≥ 4.2, ArkType, Valibot, or `fromJsonSchema`. Its root must be a plain object without a `preview` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
+| `requireInteraction` | Optional. `yea()`'s `requireInteraction`, for this tool alone. On, it also marks the server's `undo`, whenever `undo` is registered. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
 | `revert({ input, planHash, result }, ctx)` | Optional. With it, plans that set `undoWindow` are undoable. |
 | `confirmWith(plan, input)` | Optional. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
@@ -410,6 +412,14 @@ whether the request carries an envelope, which a 2025 client can spoof:
 - **Risk metadata.** Each job tool's `_meta['dev.yea/job']` is `{ risk, undoable }`, where
   `undoable` means the tool has `revert`. When SEP-2793 (Tool Risk Metadata) is accepted, the
   same data also goes in its fields. Until then we don't pre-empt its names.
+- **Prompt on every call.** With `requireInteraction`, each tool that acts (a job, a guarded
+  tool, `undo`) also carries `_meta['anthropic/requiresUserInteraction']: true`, merged with a
+  guarded tool's own `_meta`. No read carries it. `undo` carries it if `yea()`'s setting is on
+  or any job on its server has its own on, since undoing acts too (it fails closed); a job
+  registered after `undo` updates `undo`'s listing. Claude Code then draws its permission prompt
+  on every call of the tool, even in `auto` or `bypassPermissions`, and denies the call where
+  no person can answer (`claude -p`, `dontAsk`). It's off by default: the key prompts for
+  previews and in-policy calls too, which the signed policy exists to let through.
 
 ## The SDK-dependent seams
 
@@ -445,7 +455,8 @@ These rely on SDK behaviour we don't control, so each gets its own test and a no
 ## Code layout
 
 ```
-mcp/src/index.ts           yea(), job(), and the public exports
+mcp/src/index.ts           yea() and the public exports
+mcp/src/job.ts             job(): its config, and registering a job tool
 mcp/src/guard.ts           guard(): wrapping a registered tool
 mcp/src/undo.ts            the undo tool
 mcp/src/call.ts            the guarded callback: the session's facts in, its outcome out as a result
@@ -457,7 +468,7 @@ mcp/src/client.ts          can the client ask, per era
 mcp/src/server-key.ts      the server's name and key
 mcp/src/policy.ts          pinned principal, policy and tightening loading
 mcp/src/render.ts          Lens text and structuredContent for plans, receipts and codes
-mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk metadata
+mcp/src/result.ts          tool results, refusals and annotations, shared with the bridge; job risk and prompt metadata
 mcp/src/http.ts            the Streamable HTTP front end: token, Host and Origin checks, body cap (`./http`)
 mcp/src/http-node.ts       its Node server, on the SDK's serveFetch (`./http/node`)
 mcp/src/util.ts            small internal helpers (isObject, errorMessage, warnOnce, errno, registryOf)
@@ -479,6 +490,9 @@ can't elicit. For each:
 - `preview: true` runs nothing and stores nothing, and a denied tool doesn't even preview;
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
   from another server sharing the store;
+- the listing carries Claude Code's prompt key on exactly the job, guarded and `undo` tools,
+  and on no read, only with `requireInteraction`; a `job()`'s own setting wins for that tool,
+  and one that's on marks `undo` too, before or after `undo` is registered;
 - `guard` wraps an existing tool. The original callback runs only once approved, its result
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
 - the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;

@@ -4,7 +4,12 @@
  */
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { bridge } from '@yea-protocol/mcp/bridge';
-import { die, UsageError } from '@yea-protocol/sdk/cli';
+import {
+  die,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
+  UsageError,
+} from '@yea-protocol/sdk/cli';
 import {
   agentKey,
   connect,
@@ -13,6 +18,26 @@ import {
 } from '@yea-protocol/sdk/node';
 
 const MODES = ['generic', 'per-capability'];
+
+/**
+ * Whether the tools that change things carry Claude Code's prompt-on-every-call key: the flag,
+ * or `YEA_REQUIRE_INTERACTION`, for a plugin or `.mcp.json` whose arguments are fixed.
+ * @param {boolean | undefined} flag `--require-interaction`
+ */
+function requireInteraction(flag) {
+  const env = process.env.YEA_REQUIRE_INTERACTION;
+  const on = requiresInteraction(env);
+
+  if (on === null) {
+    const values = Object.keys(REQUIRE_INTERACTION_VALUES).filter(Boolean);
+
+    die(
+      `yea mcp: YEA_REQUIRE_INTERACTION must be ${values.join(', ')} or empty, not ${JSON.stringify(env)}`,
+    );
+  }
+
+  return flag === true || on === true;
+}
 
 /**
  * The command's options, checked; throws a `UsageError` for a bad value. `yea` has already
@@ -47,11 +72,12 @@ function check(o) {
 /**
  * Connect to each service and serve the bridge over stdio until stdin closes.
  * @param {string[]} urls the services; none means those added with `yea add`
- * @param {{ tools?: string, budget?: string, name?: string, 'approve-here'?: boolean }} o
- *   the flags, parsed by `yea` against `mcp`'s declaration in the SDK (cli/launch.ts)
+ * @param {{ tools?: string, budget?: string, name?: string, 'require-interaction'?: boolean,
+ *   'approve-here'?: boolean }} o the flags, parsed by `yea` against `mcp`'s declaration in the SDK (cli/launch.ts)
  */
 export async function runMcp(urls, o) {
   const budget = check(o);
+  const prompt = requireInteraction(o['require-interaction']);
   const agent = await agentKey();
   // Grants only: the bridge reads each consent from ~/.yea/consents for the proposal it commits.
   const grants = loadGrants('grants');
@@ -78,7 +104,11 @@ export async function runMcp(urls, o) {
   };
 
   try {
-    const factory = await bridge(clients, { tools: o.tools, budget });
+    const factory = await bridge(clients, {
+      tools: o.tools,
+      budget,
+      requireInteraction: prompt,
+    });
 
     serveStdio(factory);
     process.stdin.once('end', close);

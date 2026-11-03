@@ -120,6 +120,10 @@ const INSTALL_FLAGS = {
     type: 'boolean',
     help: 'also create your principal (approval) key here, to try things quickly',
   },
+  'require-interaction': {
+    type: 'boolean',
+    help: 'make Claude Code prompt for every call of a tool that changes things, even in auto or bypass mode (writes YEA_REQUIRE_INTERACTION=1)',
+  },
   yes: {
     type: 'boolean',
     short: 'y',
@@ -151,6 +155,14 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
     `bridge      ${describeBridge(running.bridge)}${running.checkout ? ' (this checkout)' : ''}`,
   );
 
+  const prompt = o['require-interaction'] === true;
+
+  if (prompt) {
+    console.log(
+      'prompts     Claude Code asks before every call of a tool that changes things (YEA_REQUIRE_INTERACTION=1)',
+    );
+  }
+
   if (!names.length) {
     console.log(
       `\nno AI tools detected. Pick some: ${self(`install --target ${Object.keys(CLIENTS).join(',')}`)}`,
@@ -158,7 +170,7 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   }
 
   for (const n of names) {
-    installTarget(CLIENTS[n], scope, running.bridge);
+    installTarget(CLIENTS[n], scope, running.bridge, prompt);
   }
 
   const s = listServices();
@@ -173,11 +185,48 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   );
 }
 
-/** Register the bridge with `t`: the running command, or the portable one in a project file. */
-function installTarget(t: Target, s: Scope, running: BridgeCommand) {
+/** The env keys `t`'s entry under `s` sets that `bridge` doesn't; none if there's no entry, or it can't be read. */
+function droppedEnv(t: Target, s: Scope, bridge: BridgeCommand): string[] {
+  try {
+    const kept = bridge.env ?? {};
+
+    return Object.keys(t.registered(s)?.env ?? {}).filter(
+      (k) => !Object.hasOwn(kept, k),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** The warning, before it's written, that replacing an entry drops the env `keys` it set. */
+function dropWarning(name: string, keys: string[]): string {
+  const prompt = keys.includes('YEA_REQUIRE_INTERACTION')
+    ? "; add --require-interaction for Claude Code's prompt on every call"
+    : '';
+
+  return `! ${name}: the entry this replaces sets ${keys.join(', ')}, which the new one won't${prompt}`;
+}
+
+/**
+ * Register the bridge with `t`: the running command, or the portable one in a project file, with
+ * YEA_REQUIRE_INTERACTION=1 if `prompt`. First says what env of the old entry that drops.
+ */
+function installTarget(
+  t: Target,
+  s: Scope,
+  running: BridgeCommand,
+  prompt: boolean,
+) {
   try {
     const placement = t.placement(s);
-    const bridge = bridgeFor(placement, running);
+    const bridge = bridgeFor(placement, running, {
+      requireInteraction: prompt,
+    });
+    const dropped = droppedEnv(t, s, bridge);
+
+    if (dropped.length) {
+      console.log(dropWarning(t.name, dropped));
+    }
 
     for (const line of t.install(s, bridge)) {
       console.log(`✓ ${t.name}: ${line}`);

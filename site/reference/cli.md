@@ -51,6 +51,7 @@ The bridge it registers is the `yea` that's running, with absolute paths: run fr
 | `--target a,b` | Only these tools: `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini` |
 | `--local` | Write project files (`.mcp.json`, `.cursor/mcp.json`, `CLAUDE.md`, `AGENTS.md` …) instead of user-level ones |
 | `--with-principal` | Also create a principal key on this machine, for trying things out. For real use, issue the grant on another device and `yea grant-import` it |
+| `--require-interaction` | Write `YEA_REQUIRE_INTERACTION=1` into each entry, project files included, so Claude Code prompts for every call of a tool that changes things, even in `auto` or `bypassPermissions` ([integrations](/guide/integrations#keep-the-prompt-in-auto-or-bypass-mode)). Without it, `yea install` writes no such env, and says so when it replaces an entry that had it |
 | `-y`, `--yes` | Don't ask. Without `--with-principal`, no principal key is created |
 
 It never auto-approves YEA's tools in any client. Exactly what gets written where is on the [integrations](/guide/integrations) page.
@@ -125,5 +126,5 @@ See the [test drive walkthrough](/guide/test-drive) for more.
 
 ## Bridges
 
-- `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. It's in `@yea-protocol/cli`, not the SDK.
+- `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>] [--require-interaction]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. `--require-interaction`, or `YEA_REQUIRE_INTERACTION=1`, makes Claude Code prompt for every call of a tool that changes things, even in `auto` or `bypassPermissions` ([integrations](/guide/integrations#keep-the-prompt-in-auto-or-bypass-mode)). It's in `@yea-protocol/cli`, not the SDK.
 - `yea openapi [<spec|url>] [--base] [--header "K: V"] [--id] [--prefix] [--port] [--http] [--host] [--preset github|petstore]`: serve a REST API as a YEA service. See [Wrap any REST API](/guide/openapi).

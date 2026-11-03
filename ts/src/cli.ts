@@ -20,6 +20,7 @@ import { closest } from './validate.js';
 
 export { UsageError } from './cli/command.js';
 export { die } from './cli/shared.js';
+export { REQUIRE_INTERACTION_VALUES, requiresInteraction } from './setup.js';
 
 /** A command's run function, given to `run` to use in place of the SDK's own. */
 export type Runner = Command['run'];

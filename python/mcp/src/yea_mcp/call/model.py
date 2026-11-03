@@ -30,6 +30,7 @@ class Yea:
     home: Path  # where policy.json is read on every call; resolved once by yea()
     service_id: str
     sub: Callable[[Any], str]
+    require_interaction: bool = False  # the default for job tools, and what undo gets
 
 
 def _unadapted(*_: Any) -> Any:

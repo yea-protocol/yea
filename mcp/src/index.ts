@@ -12,32 +12,28 @@ import {
   type RequestStateCodec,
   type ServerContext,
   type StandardSchemaWithJSON,
-  type ToolAnnotations,
 } from '@modelcontextprotocol/server';
 import {
   type ApprovalStore,
-  type Clarification,
-  type HashedPlan,
   isMemoryStore,
-  type JobPlan,
   keyPair,
   MemoryStore,
   type Risk,
 } from '@yea-protocol/sdk';
 import { FileStore, home, serverKeyPath } from '@yea-protocol/sdk/node';
-import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
+import type { RevertFn, Yea } from './call.js';
 import { type GuardConfig, guardTool } from './guard.js';
+import { type JobConfig, registerJob } from './job.js';
 import { pinnedPrincipal } from './policy.js';
-import { jobAnnotations, jobMeta } from './result.js';
-import { previewSchema, takePreview } from './schema.js';
 import { checkName, loadServerSeed } from './server-key.js';
-import { registerUndo, undoFree } from './undo.js';
+import { promptUndo, registerUndo, type UndoTool, undoFree } from './undo.js';
 import { errorMessage, warnOnce } from './util.js';
 
 export type { RevertFn, RevertInput } from './call.js';
 export { PartialApplyError } from './call.js';
 
 export type { Described, GuardConfig } from './guard.js';
+export type { JobConfig } from './job.js';
 
 export { errorResult, textResult } from './result.js';
 
@@ -70,33 +66,12 @@ export interface YeaOptions {
   stateKey?: Uint8Array | string;
   /** Who is calling. stdio: `() => ''`. HTTP: required, from the transport's authentication. */
   sub?: (ctx: ServerContext) => string;
-}
-
-export interface JobConfig<S extends StandardSchemaWithJSON> {
-  title?: string;
-  description?: string;
-  annotations?: ToolAnnotations;
-  inputSchema: S;
-  /** The tool's default plan risk; a plan's own `risk` wins. Default `medium`. */
-  risk?: Risk;
-  /** Must not change anything: it runs on preview, on every retry, and under the legacy shim. */
-  plan(
-    input: StandardSchemaWithJSON.InferOutput<S>,
-    ctx: ServerContext,
-  ): JobPlan[] | Clarification | Promise<JobPlan[] | Clarification>;
-  revert?(
-    r: {
-      input: StandardSchemaWithJSON.InferOutput<S>;
-      planHash: string;
-      result: unknown;
-    },
-    ctx: ServerContext,
-  ): unknown;
-  /** The phrase the person types; `approve` if absent or empty. */
-  confirmWith?(
-    plan: HashedPlan,
-    input: StandardSchemaWithJSON.InferOutput<S>,
-  ): string;
+  /**
+   * Mark job tools, guarded tools and `undo` with `_meta['anthropic/requiresUserInteraction']`:
+   * Claude Code then prompts for every call, even in `auto` or `bypassPermissions`, and denies
+   * them in `claude -p`. For people who auto-approve tools. Default false.
+   */
+  requireInteraction?: boolean;
 }
 
 export interface Approvals {
@@ -204,6 +179,7 @@ export function yea(o: YeaOptions): Approvals {
 
       return id;
     },
+    requireInteraction: o.requireInteraction ?? false,
   };
 
   logServiceId(y, o.name);
@@ -223,14 +199,18 @@ function logServiceId(y: Yea, name: string) {
 }
 
 function approvalsFor(y: Yea): Approvals {
-  const undo = new WeakMap<McpServer, Map<string, RevertFn>>();
+  const undo = new WeakMap<McpServer, UndoTool>();
+  // Servers with a job whose own requireInteraction is on: their undo prompts too.
+  const prompting = new WeakSet<McpServer>();
   const addRevert = (
     server: McpServer,
     name: string,
     revert: RevertFn | undefined,
   ) => {
     if (revert) {
-      registerUndo(y, server, undo).set(name, revert);
+      const prompt = y.requireInteraction || prompting.has(server);
+
+      registerUndo(y, server, undo, prompt).set(name, revert);
     }
   };
 
@@ -243,6 +223,11 @@ function approvalsFor(y: Yea): Approvals {
       }
 
       const tool = registerJob(y, server, name, config);
+
+      if (config.requireInteraction === true) {
+        prompting.add(server);
+        promptUndo(server, undo);
+      }
 
       addRevert(server, name, config.revert as RevertFn | undefined);
 
@@ -260,40 +245,4 @@ function approvalsFor(y: Yea): Approvals {
       return tool;
     },
   };
-}
-
-function registerJob<S extends StandardSchemaWithJSON>(
-  y: Yea,
-  server: McpServer,
-  name: string,
-  config: JobConfig<S>,
-): RegisteredTool {
-  const schema = previewSchema(config.inputSchema);
-  const def: JobDef = {
-    name,
-    risk: config.risk,
-    plan: async (input, ctx) =>
-      config.plan(input as StandardSchemaWithJSON.InferOutput<S>, ctx),
-    revert: config.revert as RevertFn | undefined,
-    confirmWith: config.confirmWith as JobDef['confirmWith'],
-    guarded: false,
-  };
-
-  return server.registerTool(
-    name,
-    {
-      ...(config.title === undefined ? {} : { title: config.title }),
-      ...(config.description === undefined
-        ? {}
-        : { description: config.description }),
-      inputSchema: schema,
-      annotations: jobAnnotations(config.annotations),
-      _meta: jobMeta(config.risk, config.revert !== undefined),
-    },
-    (args: unknown, ctx: ServerContext) => {
-      const { input, preview } = takePreview(args);
-
-      return runJob({ y, server, job: def, input, ctx }, preview);
-    },
-  );
 }

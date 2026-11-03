@@ -133,7 +133,11 @@ export function guardTool(
     annotations: jobAnnotations(tool.annotations),
     _meta: {
       ...tool._meta,
-      ...jobMeta(config.risk, config.revert !== undefined),
+      ...jobMeta(
+        config.risk,
+        config.revert !== undefined,
+        y.requireInteraction,
+      ),
     },
   });
 

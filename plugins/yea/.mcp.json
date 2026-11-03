@@ -1,5 +1,11 @@
 {
   "mcpServers": {
-    "yea": { "type": "stdio", "command": "npx", "args": ["-y", "@yea-protocol/cli", "mcp"], "alwaysLoad": true }
+    "yea": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@yea-protocol/cli", "mcp"],
+      "env": { "YEA_REQUIRE_INTERACTION": "${YEA_REQUIRE_INTERACTION:-}" },
+      "alwaysLoad": true
+    }
   }
 }

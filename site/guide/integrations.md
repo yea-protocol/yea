@@ -42,7 +42,7 @@ Just trying it out? `yea install --with-principal` creates the principal key loc
 The configs below run the published package, `npx -y @yea-protocol/cli mcp`, optionally followed by service URLs. With no URLs, it serves the services you added with `yea add`. That's also what `yea install` writes in project files, which others may share; elsewhere it registers the yea that ran it, with absolute paths (see the [CLI reference](/reference/cli)).
 
 ::: danger Don't auto-approve destructive tools
-Whatever the client, don't add tools marked `destructiveHint` (each capability that changes something, and `yea_undo`) to an auto-approve or "trusted" list. Your client's own confirmation is a second check on top of your signed policy. Auto-approving tools marked `readOnlyHint` is fine: they're reads by definition.
+Whatever the client, don't add tools marked `destructiveHint` (each capability that changes something, and `yea_undo`) to an auto-approve or "trusted" list. Your client's own confirmation is a second check on top of your signed policy. Auto-approving tools marked `readOnlyHint` is fine: they're reads by definition. If you run Claude Code in `auto` or `bypassPermissions`, [keep its prompt for them](#keep-the-prompt-in-auto-or-bypass-mode).
 :::
 
 ### Claude Code
@@ -71,6 +71,41 @@ Or in `.mcp.json` (project) or `~/.claude.json` (user):
 ```
 
 `alwaysLoad` keeps the YEA tools out of Claude Code's deferred tool search, so the model sees them from the first turn.
+
+#### Keep the prompt in auto or bypass mode
+
+In `auto` and `bypassPermissions` mode, Claude Code runs tool calls without asking you, YEA's included. Your signed policy still decides what each service lets through, but Claude Code's own confirmation is gone. To keep it for the tools that change things, turn on `requireInteraction` (off by default):
+
+```sh
+yea install --require-interaction
+```
+
+That writes `"env": { "YEA_REQUIRE_INTERACTION": "1" }` into the entry of each tool it sets up, project files included (`--local`). Run `yea install` again without the flag to turn it off: it says so when it does. To add the server by hand instead:
+
+```sh
+claude mcp add yea -e YEA_REQUIRE_INTERACTION=1 -- npx -y @yea-protocol/cli mcp
+```
+
+In your own `.mcp.json` or `~/.claude.json`, write the value itself: `"env": { "YEA_REQUIRE_INTERACTION": "1" }`. The plugin's entry, which you don't edit, passes on the variable from the environment Claude Code starts in, so export it first:
+
+```sh
+export YEA_REQUIRE_INTERACTION=1   # in your shell profile, or before `claude`
+claude
+```
+
+That's why the plugin's entry reads `"YEA_REQUIRE_INTERACTION": "${YEA_REQUIRE_INTERACTION:-}"`: Claude Code expands it from its environment, and the `:-` gives an unset variable an empty default, which is off. Without the default, an unset variable would reach the bridge as the literal `${YEA_REQUIRE_INTERACTION}`, and the bridge would refuse to start. From a shell, `yea mcp --require-interaction` does the same.
+
+The bridge takes `1`, `true`, `0`, `false` or empty. Any other value, such as `yes`, stops it from starting, so nothing is silently left off: `claude mcp list` and `/mcp` show the server as failed, and `yea doctor` names the value. A server built with the framework takes `yea({ …, requireInteraction: true })` in TypeScript, or `yea(…, require_interaction=True)` in Python, and a single `job()` can set its own.
+
+The tools that change things (each intent capability, and `yea_undo`; in a framework server, each job, guarded tool and `undo`) then carry `_meta["anthropic/requiresUserInteraction"]`. Reads, `yea_expand` and `yea_consent` don't. For a tool with that key, Claude Code v2.1.199 or later (v2.1.246 for the prompt without a "don't ask again" option; v2.1.292 for mods not skipping it), per the [Agent SDK permissions page](https://code.claude.com/docs/en/agent-sdk/permissions) as of 2026-11-03:
+
+- **prompts on every call, in every mode.** There's no "don't ask again", and allow rules, `PreToolUse` hooks that return `allow`, and mods don't skip the prompt;
+- **denies the call where no one can answer:** in `claude -p`, in `dontAsk` mode, and through `--permission-prompt-tool`, whose `allow` becomes a deny. So leave it off for headless runs and CI;
+- **lets an Agent SDK app approve in code:** its `canUseTool` callback receives these calls and can allow them. Only in Claude Code's own interface does the prompt show that a person allowed the call.
+
+The cost: the prompt comes on every call, including `preview: true` and calls your policy would let through without asking. That's why it's off by default. With it on, Claude Code's permission prompt, not an in-client form, is the step that shows a person allowed this call with these arguments, not which plan they approved or that the form answer is theirs (see [#337](https://github.com/yea-protocol/yea/issues/337)).
+
+Checked in an interactive Claude Code session: pending, tracked in [#372](https://github.com/yea-protocol/yea/issues/372), with the same launcher as the [form run](https://github.com/yea-protocol/yea/tree/main/docs/client-runs/2026-11-03-claude-code).
 
 ### Claude Desktop
 

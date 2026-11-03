@@ -17,13 +17,19 @@ import {
   BadEntry,
   guiPath,
   PORTABLE_BRIDGE,
+  parseBridge,
   shellWord,
 } from '../src/setup/bridge-command.js';
 import {
   type BridgeCommand,
   bridgeFor,
   CLIENTS,
+  expandInteraction,
   isPortableBridge,
+  REQUIRE_INTERACTION_ENV,
+  REQUIRE_INTERACTION_REFERENCE,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
   runningBridge,
 } from '../src/setup.js';
 
@@ -317,13 +323,45 @@ describe('the bridge command each tool gets (bridgeFor)', () => {
     "a desktop app's own config also gets a PATH with this node's folder first",
     () => {
       expect(
-        bridgeFor({ project: false, gui: true }, running, '/opt/node/bin/node'),
+        bridgeFor({ project: false, gui: true }, running, {
+          node: '/opt/node/bin/node',
+        }),
       ).toEqual({
         ...running,
         env: { PATH: `/opt/node/bin${delimiter}${guiPath()}` },
       });
     },
   );
+
+  it('with requireInteraction, every entry also gets YEA_REQUIRE_INTERACTION=1, a project file too', () => {
+    const on = { requireInteraction: true, node: '/opt/node/bin/node' };
+
+    expect(REQUIRE_INTERACTION_ENV).toEqual({ YEA_REQUIRE_INTERACTION: '1' });
+
+    for (const gui of [false, true]) {
+      const project = bridgeFor({ project: true, gui }, running, on);
+
+      expect(project).toEqual({
+        ...PORTABLE_BRIDGE,
+        env: REQUIRE_INTERACTION_ENV,
+      });
+      expect(isPortableBridge(project)).toBe(true);
+    }
+
+    expect(bridgeFor({ project: false, gui: false }, running, on)).toEqual({
+      ...running,
+      env: REQUIRE_INTERACTION_ENV,
+    });
+
+    const desktop = bridgeFor({ project: false, gui: true }, running, on);
+
+    expect(desktop.env).toMatchObject(REQUIRE_INTERACTION_ENV);
+    expect(Object.keys(desktop.env ?? {}).sort()).toEqual(
+      guiPath() === null
+        ? ['YEA_REQUIRE_INTERACTION']
+        : ['PATH', 'YEA_REQUIRE_INTERACTION'],
+    );
+  });
 });
 
 describe('a command line to paste (shellWord)', () => {
@@ -349,6 +387,86 @@ describe("whether an entry is yea's portable one (isPortableBridge)", () => {
     expect(isPortableBridge({ ...PORTABLE_BRIDGE, env: { A: 'b' } })).toBe(
       false,
     );
+  });
+
+  it('allows YEA_REQUIRE_INTERACTION alone as its env, set to one of its values', () => {
+    const env = (e: Record<string, string>) =>
+      isPortableBridge({ ...PORTABLE_BRIDGE, env: e });
+
+    for (const v of ['1', 'true', '0', 'false', '']) {
+      expect(env({ YEA_REQUIRE_INTERACTION: v })).toBe(true);
+    }
+
+    expect(
+      env({ YEA_REQUIRE_INTERACTION: REQUIRE_INTERACTION_REFERENCE }),
+    ).toBe(true);
+    expect(env({ YEA_REQUIRE_INTERACTION: 'yes' })).toBe(false);
+    expect(env({ YEA_REQUIRE_INTERACTION: '1', A: 'b' })).toBe(false);
+  });
+});
+
+describe("the Claude Code plugin's entry", () => {
+  it('is the portable one, and passes on YEA_REQUIRE_INTERACTION with an empty default', () => {
+    const file = new URL('../../plugins/yea/.mcp.json', import.meta.url);
+    const entry = parseBridge(
+      JSON.parse(readFileSync(file, 'utf8')).mcpServers.yea,
+    );
+
+    // Without `:-`, an unset variable would reach the bridge as the literal `${…}`, which it refuses.
+    expect(REQUIRE_INTERACTION_REFERENCE).toBe(
+      ['$', '{YEA_REQUIRE_INTERACTION:-}'].join(''),
+    );
+    expect(entry).toEqual({
+      ...PORTABLE_BRIDGE,
+      env: { YEA_REQUIRE_INTERACTION: REQUIRE_INTERACTION_REFERENCE },
+    });
+    expect(isPortableBridge(entry)).toBe(true);
+  });
+});
+
+describe("the plugin's reference, expanded as Claude Code does (expandInteraction)", () => {
+  it("is the environment's value, empty when unset; any other value is as it is", () => {
+    const ref = REQUIRE_INTERACTION_REFERENCE;
+
+    expect(expandInteraction(ref, {})).toBe('');
+    expect(expandInteraction(ref, { YEA_REQUIRE_INTERACTION: '1' })).toBe('1');
+    expect(expandInteraction(ref, { YEA_REQUIRE_INTERACTION: 'yes' })).toBe(
+      'yes',
+    );
+    expect(expandInteraction('0', { YEA_REQUIRE_INTERACTION: '1' })).toBe('0');
+    expect(expandInteraction(undefined, { YEA_REQUIRE_INTERACTION: '1' })).toBe(
+      undefined,
+    );
+    expect(requiresInteraction(expandInteraction(ref, {}))).toBe(false);
+  });
+});
+
+describe("YEA_REQUIRE_INTERACTION's values (requiresInteraction)", () => {
+  it('reads 1 and true as on; 0, false, empty and unset as off; anything else as none', () => {
+    expect(['1', 'true'].map(requiresInteraction)).toEqual([true, true]);
+    expect(['0', 'false', '', undefined].map(requiresInteraction)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+
+    // The last: a `${…}` reference with no default that Claude Code left unexpanded.
+    const unexpanded = ['$', '{YEA_REQUIRE_INTERACTION}'].join('');
+
+    expect(['yes', 'TRUE', ' 1', unexpanded].map(requiresInteraction)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(REQUIRE_INTERACTION_VALUES).toEqual({
+      '1': true,
+      true: true,
+      '0': false,
+      false: false,
+      '': false,
+    });
   });
 });
 

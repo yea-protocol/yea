@@ -77,7 +77,7 @@ class GuardMiddleware:
             props = tool.setdefault("inputSchema", {"type": "object"}).setdefault("properties", {})
             props.setdefault("preview", {"type": "boolean", "default": False})
             tool["annotations"] = {**job_annotations(), **(tool.get("annotations") or {})}
-            tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(g.risk, g.revert is not None)}
+            tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(g.risk, g.revert is not None, self.y.require_interaction)}
         return out
 
     async def _call(self, ctx: Any, params: dict, call_next: Callable[[Any], Any]) -> Any:

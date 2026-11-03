@@ -14,25 +14,37 @@ from yea.store import is_receipt_id
 from yea.text import printable
 
 from .call import Yea, _maybe, caller_of, is_partial
-from .result import error_result
+from .result import REQUIRE_INTERACTION, error_result, interaction_meta
 from .util import fastmcp_of
 
 UNDO_DESCRIPTION = "Undo a job by its receipt id, within its undo window."
 UNDO_ANNOTATIONS = t.ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True)
 
 
-def add_undo_tool(y: Yea, server: Any) -> dict[str, Callable[..., Any]]:
-    """Register ``undo`` on ``server``; returns the tool-to-revert map it reads, for jobs to add to."""
+def add_undo_tool(y: Yea, server: Any, prompt: bool) -> dict[str, Callable[..., Any]]:
+    """Register ``undo`` on ``server``; returns the tool-to-revert map it reads, for jobs to add to. It
+    carries Claude Code's prompt-on-every-call key if ``prompt``: ``yea()``'s setting, or a job's."""
     reverts: dict[str, Callable[..., Any]] = {}
 
     async def undo(receipt: str, ctx: Context) -> t.CallToolResult:
         return await undo_call(y, reverts, receipt, ctx)
 
+    meta = interaction_meta(prompt)
     if (fm := fastmcp_of(server)) is not None:
-        fm.add_undo(server, lambda receipt, ctx: undo_call(y, reverts, receipt, ctx))
+        fm.add_undo(server, lambda receipt, ctx: undo_call(y, reverts, receipt, ctx), meta)
     else:
-        server.add_tool(undo, name="undo", description=UNDO_DESCRIPTION, annotations=UNDO_ANNOTATIONS)
+        server.add_tool(undo, name="undo", description=UNDO_DESCRIPTION, annotations=UNDO_ANNOTATIONS,
+                        meta=meta or None)
     return reverts
+
+
+def prompt_undo(server: Any) -> None:
+    """Give ``server``'s registered ``undo`` the prompt-on-every-call key: a job with the key makes
+    undoing on its server prompt too, since undoing acts as well (fails closed). Reads each SDK's
+    registry, as ``has_tool`` does."""
+    fm = fastmcp_of(server)
+    tool = fm.find_tool(server, "undo") if fm is not None else server._tool_manager.get_tool("undo")
+    tool.meta = {**(tool.meta or {}), **REQUIRE_INTERACTION}
 
 
 def has_tool(server: Any, name: str) -> bool:

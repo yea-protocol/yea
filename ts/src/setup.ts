@@ -27,6 +27,14 @@ export {
   removeService,
 } from './setup/registry.js';
 
+export {
+  expandInteraction,
+  REQUIRE_INTERACTION_ENV,
+  REQUIRE_INTERACTION_REFERENCE,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
+} from './setup/require-interaction.js';
+
 export type { Scope, Target } from './setup/target.js';
 
 export function detectedClients(): string[] {

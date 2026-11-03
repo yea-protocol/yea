@@ -22,5 +22,15 @@ def job_annotations(given: dict | None = None) -> dict:
     return {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, **(given or {})}
 
 
-def job_meta(risk: str | None, undoable: bool) -> dict:
-    return {"dev.yea/job": {"risk": risk or "medium", "undoable": undoable}}
+# Claude Code draws its permission prompt for a tool with this key on every call, in every permission
+# mode, and denies the call where no person can answer (SPEC-mcp-py, ``require_interaction``).
+REQUIRE_INTERACTION = {"anthropic/requiresUserInteraction": True}
+
+
+def interaction_meta(on: bool) -> dict:
+    return dict(REQUIRE_INTERACTION) if on else {}
+
+
+def job_meta(risk: str | None, undoable: bool, prompt: bool) -> dict:
+    """The tool's risk metadata, and the prompt key when ``prompt``."""
+    return {"dev.yea/job": {"risk": risk or "medium", "undoable": undoable}, **interaction_meta(prompt)}

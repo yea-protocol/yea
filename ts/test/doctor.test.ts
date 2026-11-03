@@ -1,6 +1,7 @@
 /** `yea install` from a checkout, and `yea doctor` starting what each AI tool would start (#321). */
 import { spawn } from 'node:child_process';
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -265,6 +266,63 @@ describe.concurrent('yea install from a checkout', () => {
         .mcpServers.yea,
     ).toEqual(PORTABLE_BRIDGE);
     expect(r.out).toMatch(/note: .*npx -y @yea-protocol\/cli mcp/);
+  });
+
+  it('--require-interaction writes YEA_REQUIRE_INTERACTION=1, in a project file too, and doctor starts it', async () => {
+    const u = user();
+    const project = mkdtempSync(join(SCRATCH, 'project-'));
+    const on = ['install', '--require-interaction', '--target'];
+    const own = await yea(u, [...on, 'claude-code']);
+    const local = await yea(u, [...on, 'claude-code', '--local'], {
+      cwd: project,
+    });
+    const entry = (file: string) =>
+      JSON.parse(readFileSync(file, 'utf8')).mcpServers.yea;
+
+    expect(own.out).toContain('prompts     Claude Code asks before every call');
+    expect(entry(join(u.home, '.claude.json'))).toMatchObject({
+      command: process.execPath,
+      args: [BIN, 'mcp'],
+      env: { YEA_REQUIRE_INTERACTION: '1' },
+    });
+    expect(local.status).toBe(0);
+    expect(entry(join(project, '.mcp.json'))).toMatchObject({
+      ...PORTABLE_BRIDGE,
+      env: { YEA_REQUIRE_INTERACTION: '1' },
+    });
+
+    const d = await yea(u, ['doctor']);
+
+    expect(d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+    expect(d.status).toBe(0);
+  });
+
+  it('a plain install warns, before writing, that it drops the env an old entry set', async () => {
+    const u = user();
+
+    await yea(u, [
+      'install',
+      '--require-interaction',
+      '--target',
+      'claude-code',
+    ]);
+
+    const again = await yea(u, ['install', '--target', 'claude-code']);
+    const warning = again.out.indexOf(
+      "! Claude Code: the entry this replaces sets YEA_REQUIRE_INTERACTION, which the new one won't; add --require-interaction",
+    );
+
+    expect(warning).toBeGreaterThan(-1);
+    expect(warning).toBeLessThan(
+      again.out.indexOf('✓ Claude Code: MCP server'),
+    );
+    expect(
+      JSON.parse(readFileSync(join(u.home, '.claude.json'), 'utf8')).mcpServers
+        .yea.env,
+    ).toBeUndefined();
+    expect(
+      (await yea(u, ['install', '--target', 'claude-code'])).out,
+    ).not.toContain('the entry this replaces');
   });
 
   it('refuses a checkout whose build is older than its source, before writing anything', async () => {
@@ -655,6 +713,109 @@ describe.concurrent('the handshake', () => {
     });
   });
 });
+
+/**
+ * A folder whose `npx` records the `YEA_REQUIRE_INTERACTION` it was started with in `log`, then
+ * runs this checkout's `yea mcp`, which refuses a value it doesn't take: npm is never asked.
+ */
+function fakeNpx(log: string): string {
+  const dir = mkdtempSync(join(SCRATCH, 'npx-'));
+  const npx = join(dir, 'npx');
+
+  writeFileSync(
+    npx,
+    `#!/bin/sh\nprintf '[%s]\\n' "$YEA_REQUIRE_INTERACTION" >> ${shellWord(log)}\nshift 2\nexec ${shellWord(process.execPath)} ${shellWord(BIN)} "$@"\n`,
+  );
+  chmodSync(npx, 0o755);
+
+  return dir;
+}
+
+/** The recipe's own `.mcp.json` entry, with the prompt on. */
+const RECIPE_ENTRY = {
+  type: 'stdio',
+  command: 'npx',
+  args: ['-y', '@yea-protocol/cli', 'mcp'],
+  env: { YEA_REQUIRE_INTERACTION: '1' },
+  alwaysLoad: true,
+};
+
+/** The Claude Code plugin's entry, as it ships. */
+const PLUGIN_ENTRY = JSON.parse(
+  readFileSync(join(REPO, 'plugins', 'yea', '.mcp.json'), 'utf8'),
+).mcpServers.yea;
+
+describe.skipIf(process.platform === 'win32')(
+  "doctor --local on a project's YEA_REQUIRE_INTERACTION entry",
+  () => {
+    /** `yea doctor --local` in a project whose `.mcp.json` has `entry`, with `shell` set. */
+    async function doctorOn(entry: object, shell: Record<string, string> = {}) {
+      const u = user();
+      const project = mkdtempSync(join(SCRATCH, 'project-'));
+      const log = join(project, 'npx.log');
+
+      register(join(project, '.mcp.json'), entry);
+
+      const d = await yea(u, ['doctor', '--local'], {
+        cwd: project,
+        env: { PATH: `${fakeNpx(log)}:${process.env.PATH}`, ...shell },
+      });
+
+      return { d, got: existsSync(log) ? readFileSync(log, 'utf8') : '' };
+    }
+
+    it("starts the recipe's entry, with the prompt on", async () => {
+      const { d, got } = await doctorOn(RECIPE_ENTRY);
+
+      expect(d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+      expect(got).toBe('[1]\n');
+    });
+
+    it("starts the plugin's entry, expanding its reference from doctor's environment", async () => {
+      const off = await doctorOn(PLUGIN_ENTRY, { YEA_REQUIRE_INTERACTION: '' });
+      const on = await doctorOn(PLUGIN_ENTRY, { YEA_REQUIRE_INTERACTION: '1' });
+
+      expect(off.d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+      expect(off.got).toBe('[]\n');
+      expect(on.d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+      expect(on.got).toBe('[1]\n');
+    });
+
+    it('a value the bridge refuses in its own environment is one warning, not a failure per entry', async () => {
+      const { d, got } = await doctorOn(PLUGIN_ENTRY, {
+        YEA_REQUIRE_INTERACTION: 'yes',
+      });
+
+      expect(d.out.match(/YEA_REQUIRE_INTERACTION/g)).toHaveLength(1);
+      expect(d.out).toMatch(
+        /^! YEA_REQUIRE_INTERACTION is "yes" here, which the bridge refuses: .* Set it to .* or unset it$/m,
+      );
+      expect(d.out).toMatch(/^✓ Claude Code starts the bridge/m);
+      expect(got).toBe('[]\n');
+    });
+
+    it("install --local over the recipe's entry warns before dropping its env", async () => {
+      const u = user();
+      const project = mkdtempSync(join(SCRATCH, 'project-'));
+
+      register(join(project, '.mcp.json'), RECIPE_ENTRY);
+
+      const r = await yea(
+        u,
+        ['install', '--target', 'claude-code', '--local'],
+        {
+          cwd: project,
+        },
+      );
+      const warning = r.out.indexOf(
+        "! Claude Code: the entry this replaces sets YEA_REQUIRE_INTERACTION, which the new one won't",
+      );
+
+      expect(warning).toBeGreaterThan(-1);
+      expect(warning).toBeLessThan(r.out.indexOf('✓ Claude Code: MCP server'));
+    });
+  },
+);
 
 describe('what doctor says about a launch', () => {
   const at = { id: 'cursor', name: 'Cursor', path: null, project: false };

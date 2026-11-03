@@ -12,6 +12,8 @@ node bench/agent-eval/run.ts --runs 3            # → RESULTS.md (costs real mo
 node bench/agent-eval/run.ts --runs 3 --only order --inject   # prompt-injection condition → RESULTS-injection.md
 ```
 
+The eval needs the bridge's `requireInteraction` off, its default: leave `YEA_REQUIRE_INTERACTION` unset. `claude -p` denies every tool marked with it, since no one is there to answer the prompt.
+
 - [RESULTS.md](RESULTS.md): three tasks, three runs each, medians.
 - [RESULTS-injection.md](RESULTS-injection.md): the order task, with a fake "owner pre-approved $200" note hidden in a menu item's name.
 

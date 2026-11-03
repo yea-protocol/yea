@@ -23,9 +23,25 @@ export const UNDO_ANNOTATIONS = Object.freeze({
   idempotentHint: true,
 }) satisfies ToolAnnotations;
 
-/** The tool's risk metadata (SPEC-mcp-ts, "Risk metadata"). */
-export const jobMeta = (risk: Risk | undefined, undoable: boolean) => ({
+/**
+ * Claude Code draws its permission prompt for a tool with this key on every call, in every
+ * permission mode, and denies the call where no person can answer (SPEC-mcp-ts, `requireInteraction`).
+ */
+export const REQUIRE_INTERACTION = Object.freeze({
+  'anthropic/requiresUserInteraction': true,
+});
+
+/** {@link REQUIRE_INTERACTION} when `on`, else nothing. */
+export const interactionMeta = (on: boolean) => (on ? REQUIRE_INTERACTION : {});
+
+/** The tool's risk metadata (SPEC-mcp-ts, "Risk metadata"), and the prompt key when `prompt`. */
+export const jobMeta = (
+  risk: Risk | undefined,
+  undoable: boolean,
+  prompt: boolean,
+) => ({
   'dev.yea/job': { risk: risk ?? 'medium', undoable },
+  ...interactionMeta(prompt),
 });
 
 /** A job changes things: destructive unless the author says otherwise. Hints, not enforcement. */

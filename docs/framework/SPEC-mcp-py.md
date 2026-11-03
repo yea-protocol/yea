@@ -66,6 +66,7 @@ assume it.
 | `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
 | `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. On `MCPServer` it gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly); on FastMCP, FastMCP's request context. Used for the state binding and for undo. |
+| `require_interaction` | `False` | As `mcp-ts`'s `requireInteraction`: every tool that acts (job, guarded and `undo`, on both server kinds) carries Claude Code's prompt-on-every-call key. A `job()`'s own setting wins for that tool, and one that's on marks `undo` too. |
 
 `approvals.service_id()` returns the server key's public key, the value to pass to
 `yea grant --to` when issuing the policy.
@@ -147,6 +148,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 |---|---|
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
+| `require_interaction` | Optional. `yea()`'s `require_interaction`, for this tool alone. `True` also marks the server's `undo`, whenever `undo` is registered. |
 | `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
@@ -398,6 +400,10 @@ As in `mcp-ts`:
 - Annotations default to `readOnlyHint: false`, `idempotentHint: false`, and
   `destructiveHint: true` unless the author sets it; `openWorldHint` is the author's.
 - Each job tool's `_meta["dev.yea/job"]` is `{"risk", "undoable"}`.
+- With `require_interaction`, each tool that acts (job, guarded, `undo`) also carries
+  `_meta["anthropic/requiresUserInteraction"]: True`, merged with a guarded tool's own `_meta`;
+  no read does. `undo` carries it if `yea()`'s setting is on or any job on its server has its own
+  on, as in `mcp-ts`. Off by default, as in `mcp-ts`.
 
 **Guarded tools with an output schema** (decision 6). A client validates `structured_content`
 against a tool's `outputSchema` unless the result is an error (checked: `mcp`'s client raises
@@ -469,6 +475,9 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
   non-boolean `preview` is an error;
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
   from another server sharing the store;
+- on both server kinds, the listing carries Claude Code's prompt key on exactly the job,
+  guarded and `undo` tools, and on no read, only with `require_interaction`; a job's own
+  `True` marks `undo` too, before or after `undo` is registered;
 - `guard` wraps an existing tool: the original runs only once approved, its result passes
   through with the receipt in `_meta`, and an output-schema tool's own results are errors. The
   original never sees `preview`. An original that returns `is_error` writes no receipt and
