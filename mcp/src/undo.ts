@@ -10,7 +10,12 @@ import {
 } from '@modelcontextprotocol/server';
 import { isReceiptId, printable, undoJob, unixNow } from '@yea-protocol/sdk';
 import { callerOf, isPartial, type RevertFn, type Yea } from './call.js';
-import { errorResult, textResult, UNDO_ANNOTATIONS } from './result.js';
+import {
+  errorResult,
+  REQUIRE_INTERACTION,
+  textResult,
+  UNDO_ANNOTATIONS,
+} from './result.js';
 import { errorMessage, registryOf } from './util.js';
 
 /** Throw before registering anything if the server has an `undo` tool that isn't ours. */
@@ -54,6 +59,7 @@ export function registerUndo(
       description: 'Undo a job by its receipt id, within its undo window.',
       inputSchema: RECEIPT_SCHEMA,
       annotations: UNDO_ANNOTATIONS,
+      ...(y.requireInteraction ? { _meta: REQUIRE_INTERACTION } : {}),
     },
     (args, ctx) => undoCall(y, reverts, args.receipt, ctx),
   );

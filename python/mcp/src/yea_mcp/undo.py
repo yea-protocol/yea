@@ -14,7 +14,7 @@ from yea.store import is_receipt_id
 from yea.text import printable
 
 from .call import Yea, _maybe, caller_of, is_partial
-from .result import error_result
+from .result import error_result, interaction_meta
 from .util import fastmcp_of
 
 UNDO_DESCRIPTION = "Undo a job by its receipt id, within its undo window."
@@ -28,10 +28,12 @@ def add_undo_tool(y: Yea, server: Any) -> dict[str, Callable[..., Any]]:
     async def undo(receipt: str, ctx: Context) -> t.CallToolResult:
         return await undo_call(y, reverts, receipt, ctx)
 
+    meta = interaction_meta(y.require_interaction)
     if (fm := fastmcp_of(server)) is not None:
-        fm.add_undo(server, lambda receipt, ctx: undo_call(y, reverts, receipt, ctx))
+        fm.add_undo(server, lambda receipt, ctx: undo_call(y, reverts, receipt, ctx), meta)
     else:
-        server.add_tool(undo, name="undo", description=UNDO_DESCRIPTION, annotations=UNDO_ANNOTATIONS)
+        server.add_tool(undo, name="undo", description=UNDO_DESCRIPTION, annotations=UNDO_ANNOTATIONS,
+                        meta=meta or None)
     return reverts
 
 

@@ -20,6 +20,7 @@ import { PendingProposals } from './bridge/pending.js';
 import type { Bridge } from './bridge/state.js';
 import { buildTools, errorOf, utilityTools } from './bridge/tools.js';
 import type { ToolMode, ToolSpec } from './bridge/types.js';
+import { interactionMeta } from './result.js';
 import type { Obj } from './util.js';
 
 export type { ConsentStore } from '@yea-protocol/sdk';
@@ -41,6 +42,12 @@ export interface BridgeOptions {
   consents?: ConsentStore;
   /** Unsigned tightening, merged with the home's `policy.json`; only `deny` applies. */
   tighten?: { deny?: string[] };
+  /**
+   * Mark the tools that change things (intents and `yea_undo`) with
+   * `_meta['anthropic/requiresUserInteraction']`: Claude Code then prompts for every call, even
+   * in `auto` or `bypassPermissions`, and denies them in `claude -p`. Default false.
+   */
+  requireInteraction?: boolean;
   /** The clock, in seconds. For tests. */
   now?: () => number;
 }
@@ -56,15 +63,21 @@ export interface BridgeFactory {
   tools: string[];
 }
 
+/** With `prompt` on, a tool marked destructive gets Claude Code's prompt on every call. */
+const metaOf = (t: ToolSpec, prompt: boolean) => ({
+  ...t.meta,
+  ...interactionMeta(prompt && t.annotations.destructiveHint === true),
+});
+
 /** Register one tool; anything it throws becomes a tool error, not a crash. */
-function register(server: McpServer, t: ToolSpec) {
+function register(server: McpServer, t: ToolSpec, prompt: boolean) {
   server.registerTool(
     t.name,
     {
       description: t.description,
       inputSchema: passThrough(t.schema),
       annotations: t.annotations,
-      _meta: t.meta,
+      _meta: metaOf(t, prompt),
     },
     async (args: Obj, ctx: ServerContext) => {
       try {
@@ -114,7 +127,7 @@ export async function bridge(
     );
 
     for (const t of tools) {
-      register(server, t);
+      register(server, t, o.requireInteraction ?? false);
     }
 
     return server;

@@ -87,10 +87,12 @@ def _check_options(transport: str, sub: Any, store: ApprovalStore, single_proces
 def yea(*, name: str, transport: str, home: str | os.PathLike[str] | None = None, store: ApprovalStore | None = None,
         single_process: bool = False, server_key: str | os.PathLike[str] | None = None, principal: str | None = None,
         policy: str | None = None, tighten: dict | None = None, state_key: bytes | str | None = None,
-        sub: Callable[[Any], str] | None = None) -> Approvals:
+        sub: Callable[[Any], str] | None = None, require_interaction: bool = False) -> Approvals:
     """The approval context, once per process (SPEC-mcp-py ``yea()``). ``home`` (default ``YEA_HOME``,
     else ``~/.yea``) is resolved here, once: ``policy.json``, the default store and the default server
-    key live in it. The principal key is never read from it."""
+    key live in it. The principal key is never read from it. ``require_interaction`` marks job tools,
+    guarded tools and ``undo`` with ``_meta["anthropic/requiresUserInteraction"]``: Claude Code then
+    prompts for every call, even in ``auto`` or ``bypassPermissions``, and denies them in ``claude -p``."""
     check_name(name)
     resolved = Path(home) if home is not None else yea_home()
     chosen = store if store is not None else _default_store(transport, resolved)
@@ -100,7 +102,7 @@ def yea(*, name: str, transport: str, home: str | os.PathLike[str] | None = None
             shared_memory=is_memory_store(chosen) and not single_process,
             principal=pinned_principal(principal), policy=policy, tighten=tighten, home=resolved,
             service_id=key.public,
-            sub=sub if sub is not None else (lambda rctx: ""))
+            sub=sub if sub is not None else (lambda rctx: ""), require_interaction=require_interaction)
     _announce(y)
     return Approvals(y, _state_key(state_key))
 
@@ -134,8 +136,10 @@ class Approvals:
     def job(self, server: Any, *, name: str | None = None, title: str | None = None, description: str | None = None,
             annotations: t.ToolAnnotations | dict | None = None, risk: str | None = None,
             revert: Callable[..., Any] | None = None,
-            confirm_with: Callable[[HashedPlan, dict], str] | None = None) -> Callable[[Callable[..., Any]], Any]:
-        """Decorator: register the plan function as a job tool on ``server``."""
+            confirm_with: Callable[[HashedPlan, dict], str] | None = None,
+            require_interaction: bool | None = None) -> Callable[[Callable[..., Any]], Any]:
+        """Decorator: register the plan function as a job tool on ``server``. ``require_interaction`` is
+        ``yea()``'s, for this tool alone (default: ``yea()``'s)."""
 
         def register(plan_fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or plan_fn.__name__
@@ -151,7 +155,8 @@ class Approvals:
                 return await run_job(self._y, job, input, preview, req, plan)
 
             given = job_annotations(_as_dict(annotations))
-            meta = job_meta(risk, revert is not None)
+            prompt = self._y.require_interaction if require_interaction is None else require_interaction
+            meta = job_meta(risk, revert is not None, prompt)
             if (fm := fastmcp_of(server)) is not None:
                 fm.add_job(self._y, server, plan_fn, job, title, description or plan_fn.__doc__, given, meta)
             else:

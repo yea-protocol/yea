@@ -212,6 +212,10 @@ export const cmdMcp = command({
       value: 'name',
       help: 'the agent name services see (default yea-mcp)',
     },
+    'require-interaction': {
+      type: 'boolean',
+      help: 'make Claude Code prompt for every call of a tool that changes things (or YEA_REQUIRE_INTERACTION=1)',
+    },
     'approve-here': {
       type: 'boolean',
       help: 'approve in the AI tool (not available yet; use yea approve)',

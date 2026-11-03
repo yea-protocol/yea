@@ -46,7 +46,7 @@ def add_job(y: Yea, server: FastMCP, plan_fn: Callable[..., Any], job: JobDef, t
                                        annotations=t.ToolAnnotations(**annotations), meta=meta))
 
 
-def add_undo(server: FastMCP, undo: Callable[..., Any]) -> None:
+def add_undo(server: FastMCP, undo: Callable[..., Any], meta: dict) -> None:
     from .undo import (  # undo imports this module lazily too
         UNDO_ANNOTATIONS,
         UNDO_DESCRIPTION,
@@ -56,7 +56,7 @@ def add_undo(server: FastMCP, undo: Callable[..., Any]) -> None:
         return await undo(receipt, ctx)
 
     server.add_tool(Tool.from_function(undo_tool, name="undo", description=UNDO_DESCRIPTION,
-                                       annotations=UNDO_ANNOTATIONS))
+                                       annotations=UNDO_ANNOTATIONS, meta=meta or None))
 
 
 def _runs_as_task(tool: Any) -> bool:
@@ -186,7 +186,7 @@ class FastMCPGuard(Middleware):
         tool.fn = wrapper_fn
         tool.parameters = shape.parameters
         tool.annotations = t.ToolAnnotations(**job_annotations(given))
-        tool.meta = {**(tool.meta or {}), **job_meta(g.risk, g.revert is not None)}
+        tool.meta = {**(tool.meta or {}), **job_meta(g.risk, g.revert is not None, self.y.require_interaction)}
 
 
 def _wrapped(tool: Any) -> bool:

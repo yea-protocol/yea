@@ -23,6 +23,7 @@ import {
   sortedJson,
 } from '../src/bridge/pending.js';
 import { MAX_TOOLS_PER_SERVICE } from '../src/bridge/tools.js';
+import type { BridgeOptions } from '../src/bridge.js';
 import {
   agentClient,
   bridgeIn,
@@ -75,7 +76,7 @@ function lab(k: Keys, id = 'lab.example') {
     });
 }
 
-async function toolsOf(k: Keys, services: Service[], o = {}) {
+async function toolsOf(k: Keys, services: Service[], o: BridgeOptions = {}) {
   const clients = await Promise.all(
     services.map(async (s, i) => ({
       client: await agentClient(k, recorded(s).t, [EACH_40]),
@@ -269,6 +270,27 @@ describe('schemas and annotations', () => {
     expect(textOf(r)).toMatch(
       /^✗ invalid_params: `max_cal` must be an integer/,
     );
+  });
+
+  it('with requireInteraction, the tools that change things, and no read, ask Claude Code to prompt', async () => {
+    const k = await keys();
+    const trust = [k.principal.public];
+    const prompted = async (o: BridgeOptions) => {
+      const { tools } = await toolsOf(k, [shop({ trust })], o);
+
+      return tools
+        .filter((t) => t._meta?.['anthropic/requiresUserInteraction'])
+        .map((t) => t.name);
+    };
+
+    const on = { requireInteraction: true };
+
+    expect(await prompted({})).toEqual([]);
+    expect(await prompted(on)).toEqual(['shop_order', 'shop_tip', 'yea_undo']);
+    expect(await prompted({ ...on, tools: 'generic' })).toEqual([
+      'shop_example_intent',
+      'yea_undo',
+    ]);
   });
 });
 
