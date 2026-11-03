@@ -19,7 +19,7 @@ uv add "yea-sdk @ git+https://github.com/yea-protocol/yea#subdirectory=python" \
 Steps 5 and 6 also use the `yea` command, which ships with the TypeScript packages. From a clone: `git clone https://github.com/yea-protocol/yea ~/yea && cd ~/yea && npm ci && npm run build`, then `alias yea="node $HOME/yea/cli/bin/yea.js"`.
 :::
 
-`yea-mcp` works with the official `mcp` SDK 2.2 or later and Python 3.10 or later.
+`yea-mcp` works with the official `mcp` SDK 2.2 or later and Python 3.11 or later.
 
 ## 2. Guard one tool you already have
 
