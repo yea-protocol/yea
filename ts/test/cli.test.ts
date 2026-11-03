@@ -149,6 +149,22 @@ describe.concurrent('usage errors', () => {
     expect(r.err).toMatch(
       /^yea: unknown option --json\nflags go after the command: yea hello … --json\n/,
     );
+
+    const short = await yea(['-y', 'install']);
+
+    expect(short.status).toBe(2);
+    expect(short.err).toMatch(
+      /^yea: unknown option -y\nflags go after the command: yea install … -y\n/,
+    );
+  });
+
+  it('yea help with a flag for a topic says it is an unknown option', async () => {
+    const r = await yea(['help', '--verison']);
+
+    expect(r.status).toBe(2);
+    expect(r.err).toMatch(
+      /^yea: unknown option --verison\ndid you mean --version\?\n/,
+    );
   });
 
   it('never suggests what was typed', async () => {
@@ -188,6 +204,14 @@ describe.concurrent('usage errors', () => {
       [['grant', '--each', 'spend'], 'bad limit spend'],
       [['ask', 'yea://127.0.0.1:1', 'cal.x', 'oops'], 'expected key=value'],
       [['service-id', '../x'], 'bad server name'],
+      [
+        ['install', '--target', 'nope'],
+        "unknown target nope for 'install'\ntargets: ",
+      ],
+      [
+        ['uninstall', '--target', 'cursor,nope'],
+        "unknown target nope for 'uninstall'\ntargets: ",
+      ],
     ]) {
       const r = await yea(args as string[]);
 
@@ -203,6 +227,17 @@ describe.concurrent('usage errors', () => {
     expect(r.status).toBe(2);
     expect(r.err).not.toContain('\x1b');
     expect(r.err).toMatch(/^yea: unknown option --\\u\{1b\}\[31mx for 'init'/);
+  });
+
+  it('keeps a newline in argv from forging a line of the message', async () => {
+    const r = await yea(['init', '--foo\ndid you mean --evil?']);
+
+    expect(r.status).toBe(2);
+    expect(r.err.split('\n')).toEqual([
+      "yea: unknown option --foo\\u{a}did you mean --evil? for 'init'",
+      "run 'yea init --help' for usage",
+      '',
+    ]);
   });
 
   it('a flag without its value, or a switch given one, exits 2', async () => {

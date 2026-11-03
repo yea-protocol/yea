@@ -1,4 +1,6 @@
 /** What `yea <command> --help` prints, and how a `UsageError` reads, built from a `Command`. */
+
+import { printable } from '../text.js';
 import {
   type Command,
   type Flag,
@@ -38,12 +40,14 @@ const flagHelp = (f: Flag) => (f.multiple ? `${f.help} (repeatable)` : f.help);
 
 /**
  * A usage error as printed: the mistake (and the command it was made in), a hint such as "did
- * you mean" when there is one, and where to look next.
+ * you mean" when there is one, and where to look next. The mistake and hint quote argv, so each
+ * is escaped to one printable line: a newline or escape sequence in an argument can't forge a
+ * line or reach the terminal raw.
  */
 export function usageMessage(e: UsageError, name?: string): string {
   return [
-    `yea: ${e.message}${name ? ` for '${name}'` : ''}`,
-    ...(e.hint ? [e.hint] : []),
+    `yea: ${printable(e.message)}${name ? ` for '${name}'` : ''}`,
+    ...(e.hint ? [printable(e.hint)] : []),
     name
       ? `run 'yea ${name} --help' for usage`
       : "run 'yea help' for the list of commands",

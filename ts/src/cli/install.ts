@@ -23,6 +23,7 @@ import {
   type Flag,
   type Flags,
   positional,
+  UsageError,
   type Values,
 } from './command.js';
 import { client, confirm, die, installScope, LOCAL_FLAG } from './shared.js';
@@ -33,6 +34,24 @@ const TARGET_FLAG = {
   value: 'tools',
   help: `only these, comma-separated: ${Object.keys(CLIENTS).join(', ')}`,
 } as const satisfies Flag;
+
+/**
+ * The AI tools `--target` names, or `fallback` without it. An unknown one is a usage error, so
+ * nothing is done for a typo.
+ */
+function targets(o: { target?: string }, fallback: string[]): string[] {
+  const names = o.target ? o.target.split(',').map((t) => t.trim()) : fallback;
+  const unknown = names.find((n) => !Object.hasOwn(CLIENTS, n));
+
+  if (unknown !== undefined) {
+    throw new UsageError(
+      `unknown target ${unknown}`,
+      `targets: ${Object.keys(CLIENTS).join(', ')}`,
+    );
+  }
+
+  return names;
+}
 
 export const cmdAdd = command({
   summary:
@@ -117,15 +136,7 @@ export const cmdInstall = command({
 
 async function install(o: Values<typeof INSTALL_FLAGS>) {
   const scope = installScope(o);
-  const names = o.target
-    ? o.target.split(',').map((t) => t.trim())
-    : detectedClients();
-
-  for (const n of names) {
-    if (!CLIENTS[n]) {
-      die(`unknown target ${n}; one of: ${Object.keys(CLIENTS).join(', ')}`);
-    }
-  }
+  const names = targets(o, detectedClients());
 
   const a = (await agentKey()) ?? (await agentKey(true));
 
@@ -237,9 +248,7 @@ export const cmdUninstall = command({
 
 async function uninstall(o: Values<typeof UNINSTALL_FLAGS>) {
   const scope = installScope(o);
-  const names = o.target
-    ? o.target.split(',').map((t) => t.trim())
-    : Object.keys(CLIENTS);
+  const names = targets(o, Object.keys(CLIENTS));
   let n = 0;
 
   for (const name of names) {

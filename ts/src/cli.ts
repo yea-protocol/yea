@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   type Command,
   didYouMean,
+  type Flags,
   parseCommand,
   UsageError,
 } from './cli/command.js';
@@ -110,11 +111,10 @@ function find(name: string): Command {
  * the command in `argv` takes it, that flags go after the command.
  */
 function topLevelFlagError(flag: string, argv: string[]): UsageError {
-  const name = flag.replace(/^--?/, '').split('=')[0];
   const owner = argv.find((a) => {
     const flags = COMMANDS.get(a)?.flags;
 
-    return !!flags && Object.hasOwn(flags, name);
+    return !!flags && declares(flags, flag);
   });
   const hint = owner
     ? `flags go after the command: yea ${owner} … ${flag}`
@@ -126,6 +126,15 @@ function topLevelFlagError(flag: string, argv: string[]): UsageError {
       );
 
   return new UsageError(`unknown option ${flag}`, hint);
+}
+
+/** Whether `flags` has `flag`, given as `--name`, `--name=…` or `-x`. */
+function declares(flags: Flags, flag: string): boolean {
+  if (flag.startsWith('--')) {
+    return Object.hasOwn(flags, flag.slice(2).split('=')[0]);
+  }
+
+  return Object.values(flags).some((f) => f.short === flag.slice(1));
 }
 
 async function main(argv: string[], runners: Readonly<Record<string, Runner>>) {
@@ -142,6 +151,10 @@ async function main(argv: string[], runners: Readonly<Record<string, Runner>>) {
   if (name === 'help') {
     const topic = rest[0];
     const general = !topic || topic === 'help' || TOP_FLAGS.includes(topic);
+
+    if (!general && topic.startsWith('-')) {
+      throw topLevelFlagError(topic, rest);
+    }
 
     return console.log(general ? help() : commandHelp(find(topic)));
   }
@@ -176,9 +189,9 @@ function fail(e: unknown, name?: string): never {
     console.error(e.stack.split('\n').map(printable).join('\n'));
   }
 
-  // A usage error quotes argv, which mustn't reach the terminal raw.
+  // usageMessage escapes the argv it quotes.
   if (e instanceof UsageError) {
-    console.error(usageMessage(e, name).split('\n').map(printable).join('\n'));
+    console.error(usageMessage(e, name));
     process.exit(2);
   }
 
