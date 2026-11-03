@@ -2,7 +2,9 @@ name: release
 # Push a tag like v0.1.1 to publish, or run it by hand with that tag picked as the ref (any other
 # ref fails). npm: trusted publishing (OIDC) with provenance, NPM_TOKEN secret as a fallback.
 # PyPI: trusted publishing. Artifacts are attested. Before tagging, bump every version with
-# `npm run release:version <x.y.z>` (CONTRIBUTING.md#changelog-and-releases).
+# `npm run release:version <x.y.z>` (CONTRIBUTING.md#changelog-and-releases). No release job has run
+# yet, so their timeouts are generous: one that fired between two `npm publish` calls would leave a
+# half-published release.
 on:
   push:
     tags: ["v*"]
@@ -16,6 +18,7 @@ jobs:
   # CHANGELOG's top heading and the tag name one version, and the packed artifacts install and run.
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: release from a v<version> tag
         if: github.ref_type != 'tag'
@@ -30,6 +33,7 @@ jobs:
   npm:
     needs: [check]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -52,6 +56,7 @@ jobs:
   pypi:
     needs: [check]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: pypi
     steps:
       - uses: actions/checkout@v7
@@ -69,6 +74,7 @@ jobs:
   github-release:
     needs: [npm, pypi]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -81,6 +87,7 @@ jobs:
   mcp-registry:
     needs: [npm]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - run: curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher

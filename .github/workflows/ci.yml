@@ -3,6 +3,7 @@ on: [push, pull_request]
 jobs:
   typescript:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         node: [20, 22]
@@ -26,6 +27,7 @@ jobs:
         run: npm run demo && npm run bench && git diff --exit-code bench/RESULTS.md
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         python: ["3.10", "3.11", "3.13"]   # yea-sdk supports 3.10; yea-mcp's lock needs 3.11
@@ -47,6 +49,7 @@ jobs:
         working-directory: python/mcp
   site:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
