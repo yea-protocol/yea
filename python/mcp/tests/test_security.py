@@ -809,14 +809,41 @@ YEA_MCP = Path(__file__).parents[1] / "src" / "yea_mcp"
 # Where a form answer enters (``input_responses``, ``elicit_form``), and the rest of the answer path.
 ANSWER_PATH = [YEA_MCP / "__init__.py", YEA_MCP / "ask.py", YEA_MCP / "fastmcp.py", YEA_MCP / "guard.py",
                *sorted((YEA_MCP / "call").glob("*.py"))]
-# Every module outside yea_mcp and yea the answer path may import: None for any file, or the files that
-# may. A new one fails until it's reviewed and listed, whatever it would be used for.
-ALLOWED = {m: None for m in (
-    "__future__", "base64", "collections", "copy", "dataclasses", "datetime", "decimal", "fastmcp",
-    "hashlib", "inspect", "json", "math", "mcp", "mcp_types", "os", "pathlib", "pydantic", "pydantic_core",
-    "re", "secrets", "stat", "sys", "time", "typing", "unicodedata", "weakref")}
-ALLOWED["cryptography"] = {"python/src/yea/keys.py"}  # the SDK's Ed25519, which verifies consents
-ALLOWED["asyncio"] = {"python/src/yea/store/lock.py"}  # it can start processes, so only where it's needed
+# Every module outside yea_mcp and yea the answer path may import, and why: None for any file, or the
+# files that may. A new one fails until it's reviewed and listed, whatever it would be used for. None of
+# these starts a process or loads code; the ones that could (``os``, ``sys``, ``asyncio``) are narrowed
+# below, and their risky calls are refused by name (import_audit.REFUSED_OS, ``sys.modules``).
+ALLOWED: dict[str, set[str] | None] = {
+    "__future__": None,  # annotations
+    "base64": None,  # b64url keys and tokens
+    "collections": None,  # collections.abc types
+    "copy": None,  # copying plans and uses
+    "dataclasses": None,  # value types
+    "datetime": None,  # Lens dates
+    "decimal": None,  # exact amounts
+    "fastmcp": None,  # the FastMCP adapter, an optional extra
+    "hashlib": None,  # sha256 for plan hashes and store names
+    "inspect": None,  # reading handler signatures
+    "json": None,  # canonical JSON, policy.json, the store
+    "math": None,  # Lens number formatting
+    "mcp": None,  # the MCP SDK the server runs on: it reads the answer
+    "mcp_types": None,  # MCP's message types
+    "os": None,  # paths, file modes and the environment; its process starts are refused
+    "pathlib": None,  # paths
+    "pydantic": None,  # the MCP SDK's argument models
+    "pydantic_core": None,  # result serialization
+    "re": None,  # patterns
+    "secrets": None,  # nonces and ids
+    "stat": None,  # checking key-file ownership
+    "time": None,  # clocks and expiry
+    "typing": None,  # annotations
+    "unicodedata": None,  # phrase normalization
+    "weakref": None,  # per-server state in yea_mcp/__init__.py
+    # Narrowed to the files that need them:
+    "sys": {"python/mcp/src/yea_mcp/__init__.py", "python/mcp/src/yea_mcp/util.py"},  # stderr; sys.modules is refused
+    "cryptography": {"python/src/yea/keys.py"},  # the SDK's Ed25519, which verifies consents
+    "asyncio": {"python/src/yea/store/lock.py"},  # it can start processes, so only where it's needed
+}
 
 
 def test_the_code_that_reads_a_form_answer_imports_only_what_is_listed():
@@ -840,12 +867,21 @@ def test_the_import_audit_names_the_file_and_the_module(tmp_path, monkeypatch):
     (pkg / "__init__.py").write_text("")
     (pkg / "entry.py").write_text("import multiprocessing\nfrom cryptography import x\nfrom . import part\n")
     (pkg / "part.py").write_text("import os\nos.system('x')\nos.execv('a', [])\n__import__('y')\n"
-                                 "import importlib\nfrom os import posix_spawn\n")
+                                 "import importlib\nfrom os import posix_spawn\n"
+                                 "import os as o\no.system('x')\ngetattr(os, 'posix_spawn')\n"
+                                 "getattr(os, 'O_NOFOLLOW', 0)\ngetattr(o, name)\n"
+                                 "import sys as s\ns.modules['subprocess']\n")
+    (pkg / "entry.py").write_text("import multiprocessing\nfrom cryptography import x\nfrom . import part\n"
+                                  "from . import bad\n")
+    (pkg / "bad.py").write_text("def broken(:\n")
     monkeypatch.setattr(audit, "REPO", tmp_path)
     monkeypatch.setitem(audit.ROOTS, "yea_mcp", tmp_path)
-    found = audit.import_audit([pkg / "entry.py"], {"os": None, "cryptography": {"elsewhere.py"}})
+    found = audit.import_audit([pkg / "entry.py"], {"os": None, "sys": None, "cryptography": {"elsewhere.py"}})
 
     assert sorted(found) == sorted([
         "yea_mcp/entry.py: multiprocessing", "yea_mcp/entry.py: cryptography",
         "yea_mcp/part.py: importlib", "yea_mcp/part.py: os.system", "yea_mcp/part.py: os.execv",
-        "yea_mcp/part.py: __import__()", "yea_mcp/part.py: __import__", "yea_mcp/part.py: os.posix_spawn"])
+        "yea_mcp/part.py: __import__()", "yea_mcp/part.py: __import__", "yea_mcp/part.py: os.posix_spawn",
+        "yea_mcp/part.py: os.system", "yea_mcp/part.py: getattr(os, …)", "yea_mcp/part.py: getattr(o, …)",
+        "yea_mcp/part.py: sys.modules",
+        "yea_mcp/bad.py: does not parse: invalid syntax (<unknown>, line 1)"])

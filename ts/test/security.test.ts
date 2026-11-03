@@ -1936,7 +1936,7 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
   it('the job call session imports nothing outside the SDK, and loads no code at run time (#337)', () => {
     // An allowlist, and an empty one: every module the session reaches is the SDK's own, and
     // WebCrypto is a global. Anything imported from outside fails here until it's reviewed.
-    expect(importAudit([join(src, 'job-call.ts')], [])).toEqual([]);
+    expect(importAudit([join(src, 'job-call.ts')], {})).toEqual([]);
     expect(reachable([join(src, 'job-call.ts')])).toContain(
       join(src, 'ask', 'judge.ts'),
     );

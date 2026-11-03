@@ -18,6 +18,7 @@ import {
   sign,
 } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Allowed } from '../../ts/test/imports.js';
 import { watchKeys } from '../../ts/test/key-watch.js';
 import { stricter } from '../src/policy.js';
 import { type AnswerStep, accept } from './harness.js';
@@ -845,48 +846,89 @@ describe('the code that reads a form answer (#337)', () => {
   it('imports only the modules listed here, and loads no code at run time', () => {
     // An allowlist, not a list of what signs: a new module on this path (another process, Node's
     // crypto under any name, a new way to read a file) fails here until it's reviewed and listed.
-    const ALLOWED = [
-      '@modelcontextprotocol/server',
-      '@yea-protocol/sdk',
-      '@yea-protocol/sdk/node',
-      'node:fs', // policy.json and the server key
-      'node:path',
-    ];
+    // Each entry, the files that may import it, and what covers the part of it that could sign.
+    const ALLOWED: Allowed = {
+      // The MCP SDK the server runs on: it carries the answer and seals the state with an HMAC.
+      '@modelcontextprotocol/server': 'any file',
+      // The SDK: the job call session, and also its signers, which SIGNS refuses by name and the
+      // key watch catches in use.
+      '@yea-protocol/sdk': 'any file',
+      // FileStore, the home and the pinned key; also a stdio transport that spawns
+      // (ts/src/node/stdio.ts), which the spawn watch catches.
+      '@yea-protocol/sdk/node': [
+        'mcp/src/index.ts',
+        'mcp/src/policy.ts',
+        'mcp/src/server-key.ts',
+      ],
+      // policy.json and the server key, the only files read on this path; a read of the
+      // principal key anywhere is the key watch's.
+      'node:fs': ['mcp/src/policy.ts', 'mcp/src/server-key.ts'],
+      // Paths only.
+      'node:path': 'any file',
+    };
 
     expect(importAudit([join(REPO, 'mcp/src/index.ts')], ALLOWED)).toEqual([]);
   });
 
   it('the audit names the file and the specifier of anything unlisted or refused', () => {
     const dir = tmp();
-    const entry = join(dir, 'entry.ts');
+    const file = (name: string, lines: string[]) => {
+      writeFileSync(join(dir, name), lines.join('\n'));
 
-    writeFileSync(
-      entry,
-      [
-        "import { a } from './part.js';",
-        'import { createPrivateKey } from "crypto";',
-        "export { b } from 'node:child_process';",
-      ].join('\n'),
-    );
-    writeFileSync(
-      join(dir, 'part.ts'),
-      [
-        "import 'node:cluster';",
-        "export const a = await import('node:fs');",
-        "const r = require('x');",
-        "process.binding('fs');",
-      ].join('\n'),
-    );
+      return relative(REPO, join(dir, name));
+    };
+    const e = file('entry.ts', [
+      "import { a } from './part.js';",
+      'import { createPrivateKey } from "crypto";',
+      "export { b } from 'node:child_process';",
+      'import {',
+      '  execFileSync, // a comment inside the braces',
+      "} from 'node:child_process';",
+      "import { /* the signer */ sign as s } from 'node:crypto';",
+      "/** helper */ import { spawn } from 'node:worker_threads';",
+      'import {',
+      '  hidden, // a relative import behind a comment',
+      "} from './hidden.js';",
+      "const notAnImport = \"import x from 'node:os'\"; // a string can't import",
+      "import { gone } from './missing.js';",
+    ]);
+    const p = file('part.ts', [
+      "import 'node:cluster';",
+      "export const a = await import('node:fs');",
+      "const r = require('x');",
+      "process.binding('fs');",
+      "const cp = process.getBuiltinModule('node:child_process');",
+      "const f = Function('return 1');",
+      "const g = new Function('return 2');",
+      "import q = require('node:vm');",
+    ]);
+    const h = file('hidden.ts', [
+      "import { execFile } from 'node:child_process';",
+    ]);
+    const bad = file('bad.ts', ["const s = 'not closed"]);
 
-    const [e, p] = [entry, join(dir, 'part.ts')].map((f) => relative(REPO, f));
-
-    expect(importAudit([entry], ['node:fs'])).toEqual([
+    expect(
+      importAudit([join(dir, 'entry.ts')], { 'node:fs': 'any file' }),
+    ).toEqual([
       `${e}: crypto`,
       `${e}: node:child_process`,
+      `${e}: node:child_process`,
+      `${e}: node:crypto`,
+      `${e}: node:worker_threads`,
+      `${h}: node:child_process`,
       `${p}: node:cluster`,
+      `${p}: node:vm`,
       `${p}: import(`,
       `${p}: require(`,
       `${p}: process.binding`,
+      `${p}: process.getBuiltinModule`,
+      `${p}: Function(`,
+      `${p}: Function(`,
+      `${p}: require(`,
+      `${e}: cannot resolve ./missing.js`,
+    ]);
+    expect(importAudit([join(dir, 'bad.ts')], {})).toEqual([
+      `${bad}: does not tokenize, line 1: a string is not closed`,
     ]);
   });
 });

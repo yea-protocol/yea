@@ -4,8 +4,8 @@ rule 3, #337), as ts/test/imports.ts does for TypeScript.
 From ``yea_mcp``'s answer path, it follows every import into ``yea_mcp`` and ``yea``, resolving each
 imported name to the module that defines it (so ``from yea import Plan`` follows ``yea.service.plan``,
 not the whole package). Every other module imported on the way must be listed; anything else fails
-with the file and the module. Loading code at run time, and the ``os`` calls that start a process,
-are always refused."""
+with the file and the module. Loading code at run time, the ``os`` calls that start a process
+(through any alias), ``sys.modules``, and a file that doesn't parse are always refused."""
 
 from __future__ import annotations
 
@@ -90,22 +90,62 @@ def _imports(path: Path, tree: ast.AST) -> Iterator[tuple[str, bool]]:
                     yield _defining(module, alias.name), True
 
 
+def _starts_a_process(name: str) -> bool:
+    return name in REFUSED_OS or name.startswith(("exec", "spawn"))
+
+
+def _aliases(tree: ast.AST, module: str) -> set[str]:
+    """The names a file binds to ``module`` itself: ``import os``, ``import os as o``."""
+    return {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
+            if a.name == module}
+
+
+def _on(node: ast.AST, names: set[str]) -> bool:
+    """Whether ``node`` is one of ``names``: a module's alias."""
+    return isinstance(node, ast.Name) and node.id in names
+
+
+def _refused_node(node: ast.AST, os_names: set[str], sys_names: set[str]) -> str | None:
+    """The refused construct ``node`` is, or None."""
+    on = _on
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id in REFUSED_CALLS:
+            return f"{node.func.id}()"
+        if node.func.id == "getattr" and len(node.args) > 1 and on(node.args[0], os_names | sys_names):
+            name = node.args[1]
+            constant = isinstance(name, ast.Constant) and isinstance(name.value, str)
+            # A flag looked up by name (``getattr(os, "O_NOFOLLOW", 0)``) is fine; anything else isn't.
+            if not constant or _starts_a_process(name.value) or name.value in ("modules", "__dict__"):
+                return f"getattr({node.args[0].id}, …)"
+    if isinstance(node, ast.Name) and node.id in REFUSED_NAMES:
+        return node.id
+    if isinstance(node, ast.Attribute):
+        if node.attr in REFUSED_NAMES:
+            return node.attr
+        if on(node.value, os_names) and (_starts_a_process(node.attr) or node.attr == "__dict__"):
+            return f"os.{node.attr}"
+        if on(node.value, sys_names) and node.attr == "modules":
+            return "sys.modules"
+    if isinstance(node, ast.ImportFrom) and node.module in ("os", "sys"):
+        names = [a.name for a in node.names if _starts_a_process(a.name) or a.name == "modules"]
+        return ", ".join(f"{node.module}.{n}" for n in names) or None
+    return None
+
+
 def refused(tree: ast.AST) -> list[str]:
-    """The constructs in a parsed file that load code or start a process."""
-    out = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in REFUSED_CALLS:
-            out.append(f"{node.func.id}()")
-        elif isinstance(node, ast.Name) and node.id in REFUSED_NAMES:
-            out.append(node.id)
-        elif isinstance(node, ast.Attribute) and node.attr in REFUSED_NAMES:
-            out.append(node.attr)
-        elif (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "os"
-              and (node.attr in REFUSED_OS or node.attr.startswith(("exec", "spawn")))):
-            out.append(f"os.{node.attr}")
-        elif isinstance(node, ast.ImportFrom) and node.module == "os":
-            out += [f"os.{a.name}" for a in node.names if a.name in REFUSED_OS or a.name.startswith(("exec", "spawn"))]
-    return out
+    """The constructs in a parsed file that load code or start a process, through any alias of
+    ``os`` or ``sys``: ``import os as o; o.system(…)``, ``getattr(os, …)``, ``sys.modules[…]``."""
+    os_names, sys_names = _aliases(tree, "os"), _aliases(tree, "sys")
+    found = (_refused_node(n, os_names, sys_names) for n in ast.walk(tree))
+    return [f for f in found if f is not None]
+
+
+def _parse(path: Path) -> ast.AST | str:
+    """A file's syntax tree, or why it doesn't parse: then the audit fails it."""
+    try:
+        return ast.parse(path.read_text())
+    except (SyntaxError, ValueError, UnicodeDecodeError) as e:
+        return f"does not parse: {e}"
 
 
 def reachable(starts: list[Path]) -> list[Path]:
@@ -117,7 +157,10 @@ def reachable(starts: list[Path]) -> list[Path]:
         if path in seen:
             continue
         seen.add(path)
-        for module, internal in _imports(path, ast.parse(path.read_text())):
+        tree = _parse(path)
+        if isinstance(tree, str):
+            continue
+        for module, internal in _imports(path, tree):
             target = file_of(module) if internal else None
             if target is not None:
                 queue.append(target)
@@ -130,7 +173,10 @@ def import_audit(starts: list[Path], allowed: dict[str, set[str] | None]) -> lis
     (relative to the repo) that may import it, or to None for any file. Empty means as reviewed."""
     out = []
     for path in reachable(starts):
-        name, tree = str(path.relative_to(REPO)), ast.parse(path.read_text())
+        name, tree = str(path.relative_to(REPO)), _parse(path)
+        if isinstance(tree, str):
+            out.append(f"{name}: {tree}")
+            continue
         for module, internal in _imports(path, tree):
             files = allowed.get(module.split(".")[0], set())
             if not internal and files is not None and name not in files:
