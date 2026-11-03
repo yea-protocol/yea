@@ -35,18 +35,25 @@ def serve(a, server, job_options):
     a.guard(server, "charge", describe=lambda i: {"summary": "Charge", "effects": []})
 
 
+def new_server(a, kind):
+    return (FastMCP if kind == "fastmcp" else MCPServer)("billing", request_state_security=a.request_state_security())
+
+
+async def tools_of(server, kind):
+    """Every tool ``server`` lists, by name, with its ``_meta``."""
+    if kind == "fastmcp":
+        async with Client(server) as c:
+            return {tl.name: tl.meta or {} for tl in await c.list_tools()}
+    async with SdkClient(server, mode="auto") as c:
+        return {tl.name: tl.meta or {} for tl in (await c.list_tools()).tools}
+
+
 async def listed(tmp_path, kind, options=None, job_options=None):
     """Every tool the server lists, by name, with its ``_meta``."""
     a = approvals(tmp_path, **(options or {}))
-    if kind == "fastmcp":
-        server = FastMCP("billing", request_state_security=a.request_state_security())
-        serve(a, server, job_options or {})
-        async with Client(server) as c:
-            return {tl.name: tl.meta or {} for tl in await c.list_tools()}
-    server = MCPServer("billing", request_state_security=a.request_state_security())
+    server = new_server(a, kind)
     serve(a, server, job_options or {})
-    async with SdkClient(server, mode="auto") as c:
-        return {tl.name: tl.meta or {} for tl in (await c.list_tools()).tools}
+    return await tools_of(server, kind)
 
 
 def prompted(tools):
@@ -70,7 +77,18 @@ async def test_on_it_marks_every_tool_that_acts_and_no_read(tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", KINDS)
-async def test_a_jobs_own_setting_wins_for_that_job_and_undo_follows_yea(tmp_path, kind):
-    assert prompted(await listed(tmp_path, kind, job_options={"require_interaction": True})) == ["refund"]
+async def test_a_jobs_own_setting_wins_for_that_job_and_undo_is_on_if_any_is(tmp_path, kind):
+    assert prompted(await listed(tmp_path, kind, job_options={"require_interaction": True})) == ["refund", "undo"]
     on, job_off = {"require_interaction": True}, {"require_interaction": False}
     assert prompted(await listed(tmp_path, kind, on, job_off)) == ["charge", "undo"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+async def test_undo_gains_the_key_when_a_job_with_it_on_comes_after_undo(tmp_path, kind):
+    a = approvals(tmp_path)
+    server = new_server(a, kind)
+    # undo is registered here, off; a later job without revert turns it on.
+    a.job(server, name="refund", revert=lambda r, ctx: None)(lambda charge: [])
+    a.job(server, name="resend", require_interaction=True)(lambda charge: [])
+    tools = await tools_of(server, kind)
+    assert prompted(tools) == ["resend", "undo"]

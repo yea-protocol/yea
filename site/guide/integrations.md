@@ -86,16 +86,18 @@ That writes `"env": { "YEA_REQUIRE_INTERACTION": "1" }` into the entry of each t
 claude mcp add yea -e YEA_REQUIRE_INTERACTION=1 -- npx -y @yea-protocol/cli mcp
 ```
 
-In `.mcp.json` or `~/.claude.json`, set `"env": { "YEA_REQUIRE_INTERACTION": "1" }`. The plugin's entry, which you don't edit, passes on the variable from the environment Claude Code starts in, so export it first:
+In your own `.mcp.json` or `~/.claude.json`, write the value itself: `"env": { "YEA_REQUIRE_INTERACTION": "1" }`. The plugin's entry, which you don't edit, passes on the variable from the environment Claude Code starts in, so export it first:
 
 ```sh
 export YEA_REQUIRE_INTERACTION=1   # in your shell profile, or before `claude`
 claude
 ```
 
-To pass the variable through your own `.mcp.json` the same way, give the reference a default, as the plugin does: `"YEA_REQUIRE_INTERACTION": "${YEA_REQUIRE_INTERACTION:-}"`. A bare `${YEA_REQUIRE_INTERACTION}` that isn't set reaches the bridge unexpanded, and the bridge refuses to start. The empty default reads as off. From a shell, `yea mcp --require-interaction` does the same. A server built with the framework takes `yea({ …, requireInteraction: true })` in TypeScript, or `yea(…, require_interaction=True)` in Python, and a single `job()` can set its own.
+That's why the plugin's entry reads `"YEA_REQUIRE_INTERACTION": "${YEA_REQUIRE_INTERACTION:-}"`: Claude Code expands it from its environment, and the `:-` gives an unset variable an empty default, which is off. Without the default, an unset variable would reach the bridge as the literal `${YEA_REQUIRE_INTERACTION}`, and the bridge would refuse to start. From a shell, `yea mcp --require-interaction` does the same.
 
-The tools that change things (each intent capability, and `yea_undo`; in a framework server, each job, guarded tool and `undo`) then carry `_meta["anthropic/requiresUserInteraction"]`. Reads, `yea_expand` and `yea_consent` don't. For a tool with that key, Claude Code (v2.1.292 or later):
+The bridge takes `1`, `true`, `0`, `false` or empty. Any other value, such as `yes`, stops it from starting, so nothing is silently left off: `claude mcp list` and `/mcp` show the server as failed, and `yea doctor` names the value. A server built with the framework takes `yea({ …, requireInteraction: true })` in TypeScript, or `yea(…, require_interaction=True)` in Python, and a single `job()` can set its own.
+
+The tools that change things (each intent capability, and `yea_undo`; in a framework server, each job, guarded tool and `undo`) then carry `_meta["anthropic/requiresUserInteraction"]`. Reads, `yea_expand` and `yea_consent` don't. For a tool with that key, Claude Code v2.1.199 or later (v2.1.246 for the prompt without a "don't ask again" option; v2.1.292 for mods not skipping it), per the [Agent SDK permissions page](https://code.claude.com/docs/en/agent-sdk/permissions) as of 2026-11-03:
 
 - **prompts on every call, in every mode.** There's no "don't ask again", and allow rules, `PreToolUse` hooks that return `allow`, and mods don't skip the prompt;
 - **denies the call where no one can answer:** in `claude -p`, in `dontAsk` mode, and through `--permission-prompt-tool`, whose `allow` becomes a deny. So leave it off for headless runs and CI;

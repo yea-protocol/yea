@@ -70,9 +70,11 @@ On start, the bridge sends `HELLO` to each service with a large budget. It `EXPA
   (`claude -p`). It's off by default: it would prompt for previews and for what the agent's
   grant lets through. `YEA_REQUIRE_INTERACTION` takes `1`, `true`, `0`, `false` or empty;
   anything else refuses to start. That one set (`REQUIRE_INTERACTION_VALUES` in the SDK's
-  `ts/src/setup/bridge-command.ts`) is what `yea mcp`, `yea install` and `yea doctor` all read.
-  The plugin's entry passes the variable on as `${YEA_REQUIRE_INTERACTION:-}`, so an unset
-  variable is empty, which reads as off.
+  `ts/src/setup/require-interaction.ts`) is what `yea mcp`, `yea install` and `yea doctor` all
+  read. The plugin's entry passes the variable on as `${YEA_REQUIRE_INTERACTION:-}`, so an unset
+  variable is empty, which reads as off. `yea doctor` counts that entry as yea's own, and
+  expands the reference from its own environment, as Claude Code does. It names a refused value
+  in that environment once, up front.
 - **Service ids must be unique.** Two URLs whose `BRIEF`s claim the same `service.id` make the
   bridge refuse to start, naming both. The id is self-declared, and it's what proofs and
   consents bind to.

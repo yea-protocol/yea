@@ -10,8 +10,11 @@ import {
   checkoutRoot,
   describeBridge,
   detectedClients,
+  expandInteraction,
   isPortableBridge,
   launchPath,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
   type Scope,
   shellWord,
   type Target,
@@ -60,7 +63,7 @@ export async function checkRegistrations(r: Report, s: Scope): Promise<void> {
     return r.bad(`not registered with any AI tool: ${installCommand()}`);
   }
 
-  const launch = launcher();
+  const launch = launcher(shellEnv(r));
   // Every start is under way before the first is awaited.
   const lines = await Promise.all(found.map((f) => linesFor(f, launch)));
 
@@ -172,8 +175,29 @@ function refusal(f: Registered): Line | null {
   return null;
 }
 
+/**
+ * The environment doctor starts entries from: its own. A `YEA_REQUIRE_INTERACTION` there that
+ * the bridge refuses is one warning, here, and is left out, rather than failing every entry that
+ * would inherit or expand it.
+ */
+function shellEnv(r: Report): NodeJS.ProcessEnv {
+  const { YEA_REQUIRE_INTERACTION: v, ...rest } = process.env;
+
+  if (requiresInteraction(v) !== null) {
+    return process.env;
+  }
+
+  const values = Object.keys(REQUIRE_INTERACTION_VALUES).filter(Boolean);
+
+  r.warn(
+    `YEA_REQUIRE_INTERACTION is ${JSON.stringify(v)} here, which the bridge refuses: an AI tool started from this shell won't start it. Set it to ${values.join(', ')} or unset it`,
+  );
+
+  return rest;
+}
+
 /** Start each distinct command once: the same command, args and environment start the same thing. */
-function launcher(): Launcher {
+function launcher(shell: NodeJS.ProcessEnv): Launcher {
   const started = new Map<string, Promise<Launch>>();
 
   return (f) => {
@@ -181,7 +205,7 @@ function launcher(): Launcher {
       a.localeCompare(b),
     );
     const key = JSON.stringify([f.bridge.command, f.bridge.args, env, f.path]);
-    const launch = started.get(key) ?? handshake(f.bridge, launchEnv(f));
+    const launch = started.get(key) ?? handshake(f.bridge, launchEnv(f, shell));
 
     started.set(key, launch);
 
@@ -189,12 +213,22 @@ function launcher(): Launcher {
   };
 }
 
-/** The environment the tool starts `f` with: ours, its own PATH if it has one, then the entry's. */
-const launchEnv = (f: Registered): NodeJS.ProcessEnv => ({
-  ...process.env,
-  ...(f.path ? { PATH: f.path } : {}),
-  ...f.bridge.env,
-});
+/**
+ * The environment the tool starts `f` with: `shell`, its own PATH if it has one, then the
+ * entry's, with the plugin's `YEA_REQUIRE_INTERACTION` reference expanded from `shell`.
+ */
+function launchEnv(f: Registered, shell: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const own = f.bridge.env?.YEA_REQUIRE_INTERACTION;
+
+  return {
+    ...shell,
+    ...(f.path ? { PATH: f.path } : {}),
+    ...f.bridge.env,
+    ...(own === undefined
+      ? {}
+      : { YEA_REQUIRE_INTERACTION: expandInteraction(own, shell) }),
+  };
+}
 
 /** What doctor says about starting `f`. */
 export function launchLine(f: Registered, l: Launch): Line {

@@ -26,7 +26,7 @@ import { type GuardConfig, guardTool } from './guard.js';
 import { type JobConfig, registerJob } from './job.js';
 import { pinnedPrincipal } from './policy.js';
 import { checkName, loadServerSeed } from './server-key.js';
-import { registerUndo, undoFree } from './undo.js';
+import { promptUndo, registerUndo, type UndoTool, undoFree } from './undo.js';
 import { errorMessage, warnOnce } from './util.js';
 
 export type { RevertFn, RevertInput } from './call.js';
@@ -199,14 +199,18 @@ function logServiceId(y: Yea, name: string) {
 }
 
 function approvalsFor(y: Yea): Approvals {
-  const undo = new WeakMap<McpServer, Map<string, RevertFn>>();
+  const undo = new WeakMap<McpServer, UndoTool>();
+  // Servers with a job whose own requireInteraction is on: their undo prompts too.
+  const prompting = new WeakSet<McpServer>();
   const addRevert = (
     server: McpServer,
     name: string,
     revert: RevertFn | undefined,
   ) => {
     if (revert) {
-      registerUndo(y, server, undo).set(name, revert);
+      const prompt = y.requireInteraction || prompting.has(server);
+
+      registerUndo(y, server, undo, prompt).set(name, revert);
     }
   };
 
@@ -219,6 +223,11 @@ function approvalsFor(y: Yea): Approvals {
       }
 
       const tool = registerJob(y, server, name, config);
+
+      if (config.requireInteraction === true) {
+        prompting.add(server);
+        promptUndo(server, undo);
+      }
 
       addRevert(server, name, config.revert as RevertFn | undefined);
 

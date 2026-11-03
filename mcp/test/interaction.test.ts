@@ -71,9 +71,10 @@ describe('requireInteraction', () => {
     expect(tools.charge).toMatchObject({ 'example.com/own': 1, [KEY]: true });
   });
 
-  it("a job's own setting wins for that job; undo follows yea()'s", async () => {
+  it("a job's own setting wins for that job; undo is on if yea()'s or any job's is", async () => {
     expect(prompted(await listed({}, { requireInteraction: true }))).toEqual([
       'refund',
+      'undo',
     ]);
     expect(
       prompted(
@@ -83,5 +84,29 @@ describe('requireInteraction', () => {
         ),
       ),
     ).toEqual(['charge', 'undo']);
+  });
+
+  it("undo gains the key when a job with it on comes after undo's registration", async () => {
+    const w = await world({});
+    const factory = () => {
+      const server = new McpServer(
+        { name: 'billing', version: '1' },
+        w.approvals.serverOptions(),
+      );
+
+      // undo is registered here, off; a later job without revert turns it on.
+      w.approvals.job(server, 'refund', refundJob(w));
+      w.approvals.job(server, 'resend', {
+        ...refundJob(w),
+        revert: undefined,
+        requireInteraction: true,
+      });
+
+      return server;
+    };
+    const { tools } = await (await connect('2026', factory)).client.listTools();
+    const metas = Object.fromEntries(tools.map((t) => [t.name, t._meta ?? {}]));
+
+    expect(prompted(metas)).toEqual(['resend', 'undo']);
   });
 });

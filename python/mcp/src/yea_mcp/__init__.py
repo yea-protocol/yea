@@ -39,7 +39,7 @@ from .policy import pinned_principal
 from .result import job_annotations, job_meta
 from .server_key import check_name, default_key_path, load_server_key
 from .signature import job_wrapper
-from .undo import add_undo_tool, has_tool
+from .undo import add_undo_tool, has_tool, prompt_undo
 from .util import fastmcp_of, warn_once
 
 __all__ = ["Approvals", "PartialApplyError", "token_subject", "yea"]
@@ -124,6 +124,7 @@ class Approvals:
         self._guards: weakref.WeakKeyDictionary[Any, GuardMiddleware] = weakref.WeakKeyDictionary()
         self._reverts: weakref.WeakKeyDictionary[Any, dict[str, Callable[..., Any]]] = weakref.WeakKeyDictionary()
         self._jobs: weakref.WeakKeyDictionary[Any, set[str]] = weakref.WeakKeyDictionary()  # job() names per server
+        self._prompting: weakref.WeakSet[Any] = weakref.WeakSet()  # servers with a job whose own setting is on
 
     def service_id(self) -> str:
         """This server's service id (its public key): pass it to ``yea grant --to``."""
@@ -139,7 +140,8 @@ class Approvals:
             confirm_with: Callable[[HashedPlan, dict], str] | None = None,
             require_interaction: bool | None = None) -> Callable[[Callable[..., Any]], Any]:
         """Decorator: register the plan function as a job tool on ``server``. ``require_interaction`` is
-        ``yea()``'s, for this tool alone (default: ``yea()``'s)."""
+        ``yea()``'s, for this tool alone (default: ``yea()``'s). On, it also marks this server's ``undo``:
+        undoing acts too."""
 
         def register(plan_fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or plan_fn.__name__
@@ -164,6 +166,10 @@ class Approvals:
                 server.add_tool(fn, name=tool_name, title=title, description=description or plan_fn.__doc__,
                                 annotations=t.ToolAnnotations(**given), meta=meta)
             self._jobs.setdefault(server, set()).add(tool_name)
+            if require_interaction is True:
+                self._prompting.add(server)
+                if server in self._reverts:
+                    prompt_undo(server)
             if revert is not None:
                 self._undo_for(server)[tool_name] = revert
             return plan_fn
@@ -201,7 +207,8 @@ class Approvals:
         """The ``undo`` tool's revert map for ``server``, registering the tool the first time."""
         reverts = self._reverts.get(server)
         if reverts is None:
-            reverts = self._reverts[server] = add_undo_tool(self._y, server)
+            prompt = self._y.require_interaction or server in self._prompting
+            reverts = self._reverts[server] = add_undo_tool(self._y, server, prompt)
         return reverts
 
 

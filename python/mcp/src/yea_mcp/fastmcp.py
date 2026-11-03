@@ -63,11 +63,17 @@ def _runs_as_task(tool: Any) -> bool:
     return getattr(tool, "task_config", None) is not None and tool.task_config.supports_tasks()
 
 
+def find_tool(server: FastMCP, name: str) -> Tool | None:
+    """The tool named ``name`` that ``server`` itself registers (any version), or None. FastMCP's
+    lookups are async and job()/guard() aren't, so this reads the local provider's registry, matching
+    by name as FastMCP's own ``remove_tool`` does (a provisional seam: a rename raises, never passes)."""
+    return next((c for c in server.local_provider._components.values() if isinstance(c, Tool) and c.name == name),
+                None)
+
+
 def has_tool(server: FastMCP, name: str) -> bool:
-    """Whether ``server`` itself registers a tool named ``name`` (any version). FastMCP's lookups
-    are async and job()/guard() aren't, so this reads the local provider's registry, matching by
-    name as FastMCP's own ``remove_tool`` does (a provisional seam: a rename raises, never passes)."""
-    return any(isinstance(c, Tool) and c.name == name for c in server.local_provider._components.values())
+    """Whether ``server`` itself registers a tool named ``name`` (any version)."""
+    return find_tool(server, name) is not None
 
 
 def _failed(r: Any) -> bool:

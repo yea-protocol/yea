@@ -45,7 +45,7 @@ export interface Yea {
   codec: RequestStateCodec<unknown>;
   sub(ctx: ServerContext): string;
   serviceId(): Promise<string>;
-  /** `yea()`'s `requireInteraction`: the default for job tools, and what `undo` gets. */
+  /** `yea()`'s `requireInteraction`: the default for job tools; `undo` gets it, or any job's that's on. */
   requireInteraction: boolean;
 }
 

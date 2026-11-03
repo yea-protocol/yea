@@ -13,6 +13,11 @@ import { platform } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { realPath } from '../fs-util.js';
 import { isObject, isStringList, isStringRecord } from '../util.js';
+import {
+  expandInteraction,
+  REQUIRE_INTERACTION_ENV,
+  requiresInteraction,
+} from './require-interaction.js';
 
 /** How an MCP config starts the bridge. */
 export interface BridgeCommand {
@@ -41,26 +46,6 @@ export const PORTABLE_BRIDGE: BridgeCommand = {
   command: 'npx',
   args: ['-y', '@yea-protocol/cli', 'mcp'],
 };
-
-/**
- * The env that has the bridge mark the tools that change things for Claude Code's prompt on every
- * call (`yea mcp --require-interaction`). Not personal, so a project file may carry it.
- */
-export const REQUIRE_INTERACTION_ENV: Readonly<Record<string, string>> =
-  Object.freeze({ YEA_REQUIRE_INTERACTION: '1' });
-
-/**
- * `YEA_REQUIRE_INTERACTION`'s values and what each means, for `yea mcp`, `yea install` and `yea
- * doctor` alike. Unset reads as empty; any other value is refused, not read as off.
- */
-export const REQUIRE_INTERACTION_VALUES: Readonly<Record<string, boolean>> =
-  Object.freeze({ '1': true, true: true, '0': false, false: false, '': false });
-
-/** Whether `YEA_REQUIRE_INTERACTION=v` turns the prompt on; null if `v` isn't one of its values. */
-export const requiresInteraction = (v: string | undefined): boolean | null =>
-  Object.hasOwn(REQUIRE_INTERACTION_VALUES, v ?? '')
-    ? REQUIRE_INTERACTION_VALUES[v ?? '']
-    : null;
 
 /** What `npm run build` makes in a checkout, each beside the sources it's built from. */
 const BUILDS = [
@@ -257,8 +242,9 @@ export function describeBridge(b: BridgeCommand): string {
 }
 
 /**
- * Whether `b` is yea's portable entry, as `yea install` writes it in a project file: with no env,
- * or with `YEA_REQUIRE_INTERACTION` alone, set to one of its values.
+ * Whether `b` is yea's portable entry, as `yea install` writes it in a project file and the
+ * plugin ships it: with no env, or with `YEA_REQUIRE_INTERACTION` alone, set to one of its
+ * values or to the plugin's reference.
  */
 export const isPortableBridge = (b: BridgeCommand) =>
   b.command === PORTABLE_BRIDGE.command &&
@@ -266,7 +252,8 @@ export const isPortableBridge = (b: BridgeCommand) =>
   b.args.every((a, i) => a === PORTABLE_BRIDGE.args[i]) &&
   Object.entries(b.env ?? {}).every(
     ([k, v]) =>
-      k === 'YEA_REQUIRE_INTERACTION' && requiresInteraction(v) !== null,
+      k === 'YEA_REQUIRE_INTERACTION' &&
+      requiresInteraction(expandInteraction(v, {})) !== null,
   );
 
 /** A config's "yea" entry as a bridge command; throws a BadEntry saying what's wrong with it. */

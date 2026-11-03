@@ -26,7 +26,10 @@ export interface JobConfig<S extends StandardSchemaWithJSON> {
   inputSchema: S;
   /** The tool's default plan risk; a plan's own `risk` wins. Default `medium`. */
   risk?: Risk;
-  /** `yea()`'s `requireInteraction`, for this tool alone. Default: `yea()`'s. */
+  /**
+   * `yea()`'s `requireInteraction`, for this tool alone. Default: `yea()`'s. On, it also marks this
+   * server's `undo`: undoing acts too.
+   */
   requireInteraction?: boolean;
   /** Must not change anything: it runs on preview, on every retry, and under the legacy shim. */
   plan(

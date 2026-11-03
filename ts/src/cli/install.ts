@@ -11,7 +11,6 @@ import {
   isPortableBridge,
   listServices,
   removeService,
-  requiresInteraction,
   runningBridge,
   type Scope,
   type Target,
@@ -186,20 +185,31 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   );
 }
 
-/** Whether `t`'s entry under `s` asks for the prompt on every call; false if none, or unreadable. */
-function prompts(t: Target, s: Scope): boolean {
+/** The env keys `t`'s entry under `s` sets that `bridge` doesn't; none if there's no entry, or it can't be read. */
+function droppedEnv(t: Target, s: Scope, bridge: BridgeCommand): string[] {
   try {
-    const v = t.registered(s)?.env?.YEA_REQUIRE_INTERACTION;
+    const kept = bridge.env ?? {};
 
-    return requiresInteraction(v) === true;
+    return Object.keys(t.registered(s)?.env ?? {}).filter(
+      (k) => !Object.hasOwn(kept, k),
+    );
   } catch {
-    return false;
+    return [];
   }
+}
+
+/** The warning, before it's written, that replacing an entry drops the env `keys` it set. */
+function dropWarning(name: string, keys: string[]): string {
+  const prompt = keys.includes('YEA_REQUIRE_INTERACTION')
+    ? "; add --require-interaction for Claude Code's prompt on every call"
+    : '';
+
+  return `! ${name}: the entry this replaces sets ${keys.join(', ')}, which the new one won't${prompt}`;
 }
 
 /**
  * Register the bridge with `t`: the running command, or the portable one in a project file, with
- * YEA_REQUIRE_INTERACTION=1 if `prompt`. Says so if that drops the prompt an old entry asked for.
+ * YEA_REQUIRE_INTERACTION=1 if `prompt`. First says what env of the old entry that drops.
  */
 function installTarget(
   t: Target,
@@ -212,7 +222,11 @@ function installTarget(
     const bridge = bridgeFor(placement, running, {
       requireInteraction: prompt,
     });
-    const dropped = !prompt && prompts(t, s);
+    const dropped = droppedEnv(t, s, bridge);
+
+    if (dropped.length) {
+      console.log(dropWarning(t.name, dropped));
+    }
 
     for (const line of t.install(s, bridge)) {
       console.log(`✓ ${t.name}: ${line}`);
@@ -222,12 +236,6 @@ function installTarget(
     if (placement.project && !isPortableBridge(running)) {
       console.log(
         `  note: a project file, which others may share, so it gets the portable ${describeBridge(bridge)}`,
-      );
-    }
-
-    if (dropped) {
-      console.log(
-        "  note: the entry this replaced had YEA_REQUIRE_INTERACTION set, and this one doesn't. Add --require-interaction to keep it",
       );
     }
   } catch (e) {

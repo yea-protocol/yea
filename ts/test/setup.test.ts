@@ -18,16 +18,18 @@ import {
   guiPath,
   PORTABLE_BRIDGE,
   parseBridge,
-  REQUIRE_INTERACTION_ENV,
-  REQUIRE_INTERACTION_VALUES,
-  requiresInteraction,
   shellWord,
 } from '../src/setup/bridge-command.js';
 import {
   type BridgeCommand,
   bridgeFor,
   CLIENTS,
+  expandInteraction,
   isPortableBridge,
+  REQUIRE_INTERACTION_ENV,
+  REQUIRE_INTERACTION_REFERENCE,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
   runningBridge,
 } from '../src/setup.js';
 
@@ -395,6 +397,9 @@ describe("whether an entry is yea's portable one (isPortableBridge)", () => {
       expect(env({ YEA_REQUIRE_INTERACTION: v })).toBe(true);
     }
 
+    expect(
+      env({ YEA_REQUIRE_INTERACTION: REQUIRE_INTERACTION_REFERENCE }),
+    ).toBe(true);
     expect(env({ YEA_REQUIRE_INTERACTION: 'yes' })).toBe(false);
     expect(env({ YEA_REQUIRE_INTERACTION: '1', A: 'b' })).toBe(false);
   });
@@ -406,15 +411,33 @@ describe("the Claude Code plugin's entry", () => {
     const entry = parseBridge(
       JSON.parse(readFileSync(file, 'utf8')).mcpServers.yea,
     );
-    // Without `:-`, an unset variable would reach the bridge as the literal `${…}`, which it refuses.
-    const reference = ['$', '{YEA_REQUIRE_INTERACTION:-}'].join('');
 
+    // Without `:-`, an unset variable would reach the bridge as the literal `${…}`, which it refuses.
+    expect(REQUIRE_INTERACTION_REFERENCE).toBe(
+      ['$', '{YEA_REQUIRE_INTERACTION:-}'].join(''),
+    );
     expect(entry).toEqual({
       ...PORTABLE_BRIDGE,
-      env: { YEA_REQUIRE_INTERACTION: reference },
+      env: { YEA_REQUIRE_INTERACTION: REQUIRE_INTERACTION_REFERENCE },
     });
-    // Claude Code expands an unset variable to the default: empty, which is off.
-    expect(requiresInteraction('')).toBe(false);
+    expect(isPortableBridge(entry)).toBe(true);
+  });
+});
+
+describe("the plugin's reference, expanded as Claude Code does (expandInteraction)", () => {
+  it("is the environment's value, empty when unset; any other value is as it is", () => {
+    const ref = REQUIRE_INTERACTION_REFERENCE;
+
+    expect(expandInteraction(ref, {})).toBe('');
+    expect(expandInteraction(ref, { YEA_REQUIRE_INTERACTION: '1' })).toBe('1');
+    expect(expandInteraction(ref, { YEA_REQUIRE_INTERACTION: 'yes' })).toBe(
+      'yes',
+    );
+    expect(expandInteraction('0', { YEA_REQUIRE_INTERACTION: '1' })).toBe('0');
+    expect(expandInteraction(undefined, { YEA_REQUIRE_INTERACTION: '1' })).toBe(
+      undefined,
+    );
+    expect(requiresInteraction(expandInteraction(ref, {}))).toBe(false);
   });
 });
 
