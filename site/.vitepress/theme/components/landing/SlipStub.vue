@@ -85,8 +85,8 @@ watch(
       <p class="receipt">Receipt <span class="mono">{{ s.receipt?.id }}</span></p>
       <pre class="result">{{ s.receipt?.result.join('\n') }}</pre>
       <div class="row">
-        <button class="btn" type="button" :disabled="s.phase === 'undoing'" @click="press('undo')">{{ s.phase === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
-        <button class="btn quiet" type="button" :disabled="s.phase === 'undoing'" @click="press('again')">Start again</button>
+        <button class="btn" type="button" :disabled="s.phase === 'undoing'" @keydown.enter="noRepeat" @click="press('undo')">{{ s.phase === 'undoing' ? 'Undoing…' : 'Undo' }}</button>
+        <button class="btn quiet" type="button" :disabled="s.phase === 'undoing'" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
       </div>
       <p class="fine">Undo asks {{ s.slip.service }} to reverse it; it issues a new receipt.</p>
     </template>
@@ -95,7 +95,7 @@ watch(
       <p class="line">{{ scene.undone }}</p>
       <p class="receipt">Receipt <span class="mono">{{ s.undone?.id }}</span> reverses <span class="mono">{{ s.undone?.undoes }}</span>.</p>
       <div class="row">
-        <button class="btn" type="button" @click="press('again')">Start again</button>
+        <button class="btn" type="button" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
         <a :href="withBase('/guide/mcp-typescript')">Put this in front of your own tools</a>
       </div>
     </template>
@@ -103,14 +103,14 @@ watch(
     <template v-else-if="s.phase === 'declined'">
       <p class="line">{{ declinedLine(s.slip.expires) }}</p>
       <div class="row">
-        <button class="btn" type="button" @click="press('again')">Start again</button>
+        <button class="btn" type="button" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
       </div>
     </template>
 
     <template v-else-if="s.phase === 'expired' || s.phase === 'error'">
       <p :class="['line', { err: s.phase === 'error' }]">{{ s.error }}</p>
       <div class="row">
-        <button class="btn" type="button" @click="press('again')">Start again</button>
+        <button class="btn" type="button" @keydown.enter="noRepeat" @click="press('again')">Start again</button>
       </div>
     </template>
 
@@ -119,7 +119,7 @@ watch(
       <p class="hash">{{ s.slip.hash }}</p>
       <div class="row">
         <button :class="['btn', 'consent', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('approve')">{{ s.phase === 'approving' ? 'Approving…' : 'Approve' }}</button>
-        <button :class="['btn', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @click="press('decline')">Decline</button>
+        <button :class="['btn', { off: s.phase === 'unavailable' }]" type="button" :disabled="s.phase !== 'waiting'" @keydown.enter="noRepeat" @click="press('decline')">Decline</button>
       </div>
       <p v-if="s.phase === 'unavailable'" class="fine err">✗ The protocol core couldn't start in this browser ({{ s.error }}), so this is the recorded exchange.</p>
       <p v-else class="fine">{{ fine }}</p>

@@ -3,6 +3,9 @@
  * and one-line summaries of the request and the reply.
  */
 import type { FinalReply, Request } from '@yea-protocol/sdk';
+import { declinedLine } from '../proposal-facts.ts';
+import type { Exchange } from './model';
+import type { Declined } from './use-consent';
 
 /** Green: done. Amber: waiting on a choice. Red: failed. */
 export type Tone = 'green' | 'amber' | 'red' | 'plain';
@@ -59,4 +62,24 @@ export function replySummary(r: FinalReply): string {
   }
 
   return r.receipt.undoes ? 'RECEIPT (undo)' : 'RECEIPT';
+}
+
+/** What came back, as History says it: an exchange the human declined is "declined". */
+export const outcomeOf = (
+  x: Pick<Exchange, 'n' | 'reply'>,
+  declined: Declined,
+): string => (declined.has(x.n) ? 'declined' : replySummary(x.reply));
+
+/**
+ * The exchange in one line for the live region: its number, what was sent and what came back.
+ * A declined one adds the declined line, so a Decline is announced too.
+ */
+export function statusLine(
+  x: Pick<Exchange, 'n' | 'request' | 'reply'>,
+  declined: Declined,
+): string {
+  const line = `${x.n}. ${requestSummary(x.request)}: ${outcomeOf(x, declined)}`;
+  const p = declined.get(x.n);
+
+  return p ? `${line}. ${declinedLine(p.expires)}` : line;
 }

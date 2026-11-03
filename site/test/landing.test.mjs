@@ -893,3 +893,40 @@ test('decline: the round ends declined with no second COMMIT, the slip clears it
   assert.equal(state.phase.value, 'expired');
   assert.match(state.error.value, /^This proposal expired at 00:00 UTC/);
 });
+
+test('a held Enter presses no stub button: a repeat is dropped, and every button drops it', {
+  skip,
+}, async () => {
+  const { readFileSync } = await import('node:fs');
+  const { noRepeat } = await import(`${LANDING}/keys.ts`);
+  const key = (repeat) => {
+    const e = { repeat, defaultPrevented: false };
+
+    e.preventDefault = () => {
+      e.defaultPrevented = true;
+    };
+
+    return e;
+  };
+  const held = key(true);
+  const fresh = key(false);
+
+  noRepeat(held);
+  noRepeat(fresh);
+  assert.equal(held.defaultPrevented, true);
+  assert.equal(fresh.defaultPrevented, false);
+
+  // A decline settles in milliseconds, so the key repeat lands on the Start again that takes
+  // focus after it; the same goes for every button that replaces another.
+  const stub = readFileSync(
+    new URL(`${LANDING}/SlipStub.vue`, import.meta.url),
+    'utf8',
+  );
+  const buttons = stub.match(/<button[^>]*>/g) ?? [];
+
+  assert.ok(buttons.length >= 7);
+
+  for (const b of buttons) {
+    assert.match(b, /@keydown\.enter="noRepeat"/, b);
+  }
+});

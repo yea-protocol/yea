@@ -194,6 +194,8 @@ test('useConsent: Decline ends the round declined, with no second COMMIT, and th
   await consent.commit(logged, set.received);
   assert.equal(consent.check.value.state, 'ok');
 
+  const asked = consent.facts.value;
+
   await consent.decline();
 
   assert.equal((await outcomes[0]).kind, 'declined');
@@ -201,9 +203,66 @@ test('useConsent: Decline ends the round declined, with no second COMMIT, and th
     state: 'declined',
     expires: set.received.expires,
   });
-  assert.equal(consent.facts.value, null);
-  assert.deepEqual([...consent.declined.value], [[1, set.received.expires]]);
+  // The card keeps what was declined, so it can still be read, and doesn't shrink.
+  assert.ok(asked);
+  assert.deepEqual(consent.facts.value, asked);
+  assert.deepEqual(
+    [...consent.declined.value].map(([n, p]) => [n, p.id, p.expires]),
+    [[1, set.received.id, set.received.expires]],
+  );
   assert.equal(set.commits.length, 1);
+});
+
+test('statusLine says "declined" for a declined exchange, as History does, with the declined line', {
+  skip,
+}, async () => {
+  const { statusLine, outcomeOf } = await import(`${THEME}/labels.ts`);
+  const reply = {
+    yea: 1,
+    id: 'r1',
+    re: 'q1',
+    kind: 'ERROR',
+    code: 'consent_required',
+    message: 'over the limit',
+  };
+  const x = {
+    n: 5,
+    request: { yea: 1, id: 'q1', verb: 'COMMIT', proposal: 'p_1', hash: 'h' },
+    reply,
+  };
+  const declined = new Map([[5, { id: 'p_1', expires: 1_790_000_000 }]]);
+
+  assert.equal(outcomeOf(x, new Map()), 'consent_required');
+  assert.equal(outcomeOf(x, declined), 'declined');
+  assert.equal(statusLine(x, new Map()), '5. COMMIT p_1: consent_required');
+  assert.equal(
+    statusLine(x, declined),
+    "5. COMMIT p_1: declined. Nothing was signed. The proposal can't be committed after 14:13 UTC.",
+  );
+});
+
+test("proposedBy finds the INTENT whose reply held a COMMIT's proposal, and where in it", {
+  skip,
+}, async () => {
+  const { proposedBy } = await import(`${THEME}/seen.ts`);
+  const intent = {
+    n: 2,
+    request: { verb: 'INTENT', capability: 'shop.order' },
+    reply: { kind: 'PROPOSALS', proposals: [{ id: 'p_a' }, { id: 'p_b' }] },
+  };
+  const commit = (id, n) => ({
+    n,
+    request: { verb: 'COMMIT', proposal: id },
+    reply: { kind: 'ERROR', code: 'consent_required' },
+  });
+  const log = [{ n: 1, request: { verb: 'HELLO' }, reply: {} }, intent];
+
+  assert.deepEqual(proposedBy([...log, commit('p_b', 3)], commit('p_b', 3)), {
+    intent,
+    at: 1,
+  });
+  assert.equal(proposedBy(log, commit('p_z', 3)), null);
+  assert.equal(proposedBy(log, intent), null);
 });
 
 test("useConsent: a decline the round doesn't end declined leaves the exchange unmarked", {

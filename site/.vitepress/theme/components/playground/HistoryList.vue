@@ -4,7 +4,7 @@
  * the human declined is marked declined, in neutral, since it no longer waits on them.
  */
 import { computed } from 'vue';
-import { replySummary, requestSummary, toneOf } from './labels';
+import { outcomeOf, requestSummary, toneOf } from './labels';
 import type { Exchange } from './model';
 import type { Declined } from './use-consent';
 
@@ -24,7 +24,7 @@ const newestFirst = computed(() => [...props.log].reverse());
       <button type="button" :class="{ on: x.n === active }" :aria-current="x.n === active ? 'true' : undefined" @click="emit('select', x.n)">
         <span :class="['dot', declined.has(x.n) ? 'plain' : toneOf(x.reply)]" />
         <span class="h-req">{{ requestSummary(x.request) }}</span>
-        <span class="h-rep">{{ declined.has(x.n) ? 'declined' : replySummary(x.reply) }}</span>
+        <span class="h-rep">{{ outcomeOf(x, declined) }}</span>
         <span class="h-ms">{{ x.ms.toFixed(1) }} ms</span>
       </button>
     </li>

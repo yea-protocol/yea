@@ -515,7 +515,10 @@ against an example service, told as a thread that ends in a permission slip.
 
   Once live, Start again is offered whenever nothing is in flight and nothing waits on the
   visitor (while it waits, Decline is the no), and every run starts from a fresh service and a
-  freshly signed policy. Approve ignores a held Enter's repeats, so only a fresh press signs.
+  freshly signed policy. Every stub button (Approve, Decline, Undo, Start again) ignores a
+  held Enter's repeats. A step can settle before the key repeats, and focus has by then moved
+  to the next button, so without this one held Enter could decline and start again before the
+  declined slip is seen. Only a fresh press acts.
 - **Recording and live core.** The page paints the dinner example from a recording
   (`landing/exchange.ts`, generated from the core), finished, so it needs no JavaScript to
   render; a `<noscript>` line says running an example needs it. The core loads when the browser
@@ -537,13 +540,22 @@ agent needs your approval"), the proposal summary, its effects in mono, the uses
 one amber consent button ("Approve as human and commit") with a neutral secondary Decline beside
 it, and a fine-print line saying exactly what is signed. Decline ends the SDK's consent round
 as `declined`: nothing is signed and there's no second COMMIT. Then nothing waits on the
-person, so the card turns neutral (divider border, soft fill), heads "You declined" and says
-"Nothing was signed. The proposal can't be committed after 14:05 UTC." When it was the
-card's own Decline that was pressed, focus moves to that line (with the usual focus ring
-for a keyboard user); picking a declined exchange in the history leaves focus on the
-history. The quick actions come back below the card when the reply offers any (a
-`consent_required` reply offers none, and an empty row is never drawn), and the history marks
-the exchange "declined" with a neutral dot.
+person, so the card turns neutral (divider border, soft fill) and heads "You declined". It
+keeps the proposal's summary, effects and uses line, so the person can read what they
+declined, then says "Nothing was signed. The proposal can't be committed after 14:05 UTC."
+When the card's own Decline was pressed, the card keeps its height, so the history below it
+doesn't move up under the pointer and a second click lands on the card. Focus moves to the
+declined line (with the usual focus ring for a keyboard user). Picking a declined exchange in
+the history leaves focus on the history.
+
+The declined card offers one neutral secondary action, **Ask again**. It sends a fresh INTENT
+for the same request and commits the new proposal in the declined one's place, so a new
+proposal waits on the person. The declined proposal itself is never committed again, since
+that would undercut the decline. Ask again ignores the second click of a double-click, and
+focus moves to the new card's Approve. The history and the live region both call the exchange
+"declined": the history with a neutral dot, the live region with the declined line, and a
+Decline is announced although the exchange on show stays. Quick actions draw nothing when the
+reply offers no next step.
 
 ## 6. Do's and Don'ts
 

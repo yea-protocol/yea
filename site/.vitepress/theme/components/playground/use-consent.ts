@@ -8,7 +8,7 @@
  *
  * Its runtime imports name their `.ts` files, so the tests can run it under Node.
  */
-import type { Client, ConsentRequest } from '@yea-protocol/sdk';
+import type { Client, ConsentRequest, Proposal } from '@yea-protocol/sdk';
 import {
   type ComputedRef,
   computed,
@@ -112,10 +112,10 @@ function cardFor(o: {
       return here.value.check;
     }
 
-    const expires = o.declined.value.get(o.current.value?.n ?? -1);
+    const no = o.declined.value.get(o.current.value?.n ?? -1);
 
-    if (expires !== undefined) {
-      return { state: 'declined', expires };
+    if (no) {
+      return { state: 'declined', expires: no.expires };
     }
 
     if (o.starting.value) {
@@ -125,7 +125,10 @@ function cardFor(o: {
     return o.ran.value.has(o.current.value?.n ?? -1) ? OVER : NO_ROUND;
   });
   const facts = computed((): ConsentFacts | null => {
-    const p = here.value?.waiting?.ask.proposal;
+    // A declined exchange keeps what was declined, so the card still shows it.
+    const p =
+      here.value?.waiting?.ask.proposal ??
+      o.declined.value.get(o.current.value?.n ?? -1);
     const sdk = core.value;
 
     if (!p || !sdk) {
@@ -167,8 +170,8 @@ async function approveRound(o: Settle): Promise<void> {
   o.mark();
 }
 
-/** The exchanges the human declined, each with when its proposal expires (unix seconds). */
-export type Declined = ReadonlyMap<number, number>;
+/** The exchanges the human declined, each with the proposal they declined. */
+export type Declined = ReadonlyMap<number, Proposal>;
 
 /**
  * End the round on show with a no: nothing is signed, and its exchange is kept as declined. It
@@ -183,10 +186,7 @@ async function declineRound(o: Settle): Promise<void> {
     return;
   }
 
-  o.declined.value = new Map([
-    ...o.declined.value,
-    [n, w.ask.proposal.expires],
-  ]);
+  o.declined.value = new Map([...o.declined.value, [n, w.ask.proposal]]);
   o.round.value = null;
   w.decide(false);
 

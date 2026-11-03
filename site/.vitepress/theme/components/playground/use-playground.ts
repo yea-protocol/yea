@@ -119,7 +119,7 @@ export function usePlayground() {
     markAuto: exchanges.markAuto,
     commit: consent.commit,
   });
-  const shortcuts = useShortcuts({ form, current, examples, send });
+  const shortcuts = useShortcuts({ form, examples, send, ...exchanges });
 
   const { failed, opened } = openOnMount({
     runtime,
@@ -145,9 +145,7 @@ export function usePlayground() {
     targets: request.targets,
     pickCapability: request.pickCapability,
     parsedParams,
-    act: shortcuts.act,
-    choose: shortcuts.choose,
-    runPreset: shortcuts.runPreset,
+    ...shortcuts,
     ...consentFields(consent),
   };
 }
