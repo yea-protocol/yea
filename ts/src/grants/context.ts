@@ -1,7 +1,7 @@
 /** What a grant check (SPEC §6.4) is given, the request and its proposal, and what it returns. */
 import type { Risk, Verb } from '../types.js';
 import type { Uses } from '../uses.js';
-import type { Caveat } from './token.js';
+import type { Block, Caveat } from './token.js';
 
 export interface CheckContext {
   service: string;
@@ -30,6 +30,8 @@ export type GrantCheck =
       iss: string;
       holder: string;
       totals: TotalLimit[];
+      /** The grant's blocks, as decoded and verified. */
+      blocks: Block[];
     }
   | {
       ok: false;

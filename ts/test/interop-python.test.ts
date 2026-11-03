@@ -129,4 +129,38 @@ describe.skipIf(!ready)('interop: TS client → Python service', async () => {
       c.close();
     });
   }
+
+  // #287: a grant that doesn't authorize the INTENT leaves it with no principal.
+  it('a COMMIT-only grant never auto-commits, and a plain COMMIT needs consent', async () => {
+    const grant = await P.issueGrant({
+      principal,
+      to: agent.public,
+      caveats: [{ svc: ['calendar.example'] }, { verbs: ['COMMIT'] }],
+    });
+    const c = await connect(urls[0], { key: agent.seed, grants: [grant] });
+    const agenda = async () => {
+      const a = await c.ask('calendar.agenda');
+
+      return a.kind === 'ANSWER' ? a.data : a.lens;
+    };
+    const before = await agenda();
+    const p = await c.intent(
+      'calendar.reschedule',
+      { event: 'e3', day: '2031-03-06' },
+      { auto: true },
+    );
+
+    if (p.kind !== 'PROPOSALS') {
+      throw new Error(p.lens);
+    }
+
+    const r = await c.commit(p.proposals[0]);
+
+    expect(r.kind === 'ERROR' && [r.code, r.consent?.principal]).toEqual([
+      'consent_required',
+      principal.public,
+    ]);
+    expect(await agenda()).toEqual(before);
+    c.close();
+  });
 });

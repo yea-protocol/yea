@@ -41,7 +41,9 @@ The service replies `CLARIFY` with a question and options. Each option carries a
 
 ## Committing
 
-`COMMIT` carries the proposal id and its hash, plus the agent's grants and a proof of possession. The service rejects a hash mismatch with `conflict`. Only the agent whose verified proof was on the original `INTENT` may commit its proposals ([SPEC §4.4](/reference/spec#44-commit--make-it-happen)).
+`COMMIT` carries the proposal id and its hash, plus the agent's grants and a proof of possession. The service rejects a hash mismatch with `conflict`. Only the agent whose verified proof was on the original `INTENT` may commit its proposals, under a grant from the principal whose grant authorized that `INTENT` ([SPEC §4.4](/reference/spec#44-commit--make-it-happen)).
+
+An `INTENT` can carry grants and still be authorized by none of them, for example when its only grant allows `COMMIT` alone. Its proposals then have no principal, and only a consent to that exact proposal, from a principal the service trusts, commits them; a plain `COMMIT` gets `consent_required`.
 
 Commits are idempotent. Sending the same `COMMIT` again returns the original receipt with `replay: true` and never executes twice, so a retry after a lost response is safe.
 
@@ -49,7 +51,7 @@ Commits are idempotent. Sending the same `COMMIT` again returns the original rec
 
 `INTENT` may carry `auto: true`. The service then commits the first proposal in the same round trip if, and only if:
 
-1. one of the agent's grants authorizes that commit outright, with no consent needed, and
+1. a grant authorized the `INTENT`, and a grant from the same principal authorizes that commit outright, with no consent needed, and
 2. the proposal can be undone.
 
 Otherwise the reply is ordinary proposals. So the principal's signed policy, not the agent, decides what may skip the preview: low-risk, undoable changes take one round trip, and anything over a limit, riskier or irreversible still stops for review ([SPEC §4.3.1](/reference/spec#431-policy-gated-auto-commit)).

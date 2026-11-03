@@ -15,7 +15,7 @@ import type {
   StoredReceipt,
 } from '../commit-ledger.js';
 import type { ServiceState } from '../state.js';
-import { admitter } from './grants.js';
+import { admitter, consenter } from './grants.js';
 import { type Identity, identify, identifyRequired } from './identity.js';
 import type { ParsedRequest } from './parse.js';
 
@@ -31,7 +31,7 @@ type Parsed<V extends ParsedRequest['verb']> = ParsedRequest & { verb: V };
 export interface AutoCommit {
   /** The verified holder key and frame id, and the proof's `ts`; null with no verified proof. */
   replay: AutoReplay | null;
-  /** The commit ledger's grant evaluation for the proposal (ADR-0002); null with no holder. */
+  /** The commit ledger's grant evaluation for the proposal (ADR-0002); null with no principal. */
   admit: Admit | null;
 }
 
@@ -99,6 +99,9 @@ export async function verifyIntent(state: Verifier, req: Parsed<'INTENT'>) {
  * grants are checked again at commit time, so `exp` and the other caveats still hold then. Only
  * a grant from the proposal's principal counts, so the search goes on past a valid grant from
  * another one.
+ *
+ * An INTENT no grant authorized has no principal, so it never auto-commits (SPEC §4.3.1, #287):
+ * its plan ran without knowing whose action it was.
  */
 function autoCommit(
   state: Verifier,
@@ -107,7 +110,10 @@ function autoCommit(
 ): AutoCommit {
   return {
     replay: proof && { key: `${proof.key}:${req.id}`, proofTs: proof.ts },
-    admit: holder ? admitter(state, req.grants, holder, principal) : null,
+    admit:
+      holder && principal
+        ? admitter(state, req.grants, holder, principal)
+        : null,
   };
 }
 
@@ -148,7 +154,11 @@ export async function verifyCommit(state: Verifier, req: Parsed<'COMMIT'>) {
   return {
     stored,
     holder,
-    principal,
+    // With no principal of its own, it commits under its consent's issuer, and replays match that.
+    principal:
+      stored.principal === null
+        ? ((await consenter(state, req.grants, holder, proposal)) ?? principal)
+        : principal,
     admit: admitter(state, req.grants, holder, stored.principal),
   };
 }

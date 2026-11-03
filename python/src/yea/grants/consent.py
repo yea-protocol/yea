@@ -19,13 +19,24 @@ def consent_grant(principal: KeyPair, agent_key: str, consent: Mapping[str, Any]
     It authorizes exactly one thing: COMMIT of that proposal hash, for that capability, at
     that service, until the proposal expires. Run this in the principal's own tool; an agent
     must never be able to trigger signing with the principal key."""
-    return issue_grant(principal, agent_key, [
+    return issue_grant(principal, agent_key, _consent_caveats(consent))
+
+
+def _consent_caveats(consent: Mapping[str, Any]) -> list[dict]:
+    """The caveats of a consent to ``consent`` (§6.6), in the order ``consent_grant`` writes them."""
+    return [
         {"svc": [consent["service"]]},
         {"verbs": ["COMMIT"]},
         {"can": [consent["capability"]]},
         {"only": consent["hash"]},
         {"exp": consent["expires"]},
-    ])
+    ]
+
+
+def matches_consent(caveats: list, consent: Mapping[str, Any]) -> bool:
+    """Whether ``caveats`` are exactly a consent's to ``consent`` (§6.6), in any order. Raises on a
+    caveat with no canonical form."""
+    return sorted(map(canonical_bytes, caveats)) == sorted(map(canonical_bytes, _consent_caveats(consent)))
 
 
 def consent_code(consent: Mapping[str, Any], detail: Mapping[str, Any] | None = None, agent: str | None = None) -> str:

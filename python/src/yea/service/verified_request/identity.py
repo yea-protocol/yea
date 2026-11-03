@@ -5,10 +5,10 @@ with those limits, which a COMMIT and an auto INTENT still make here until the c
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ...errors import YeaError, fix
-from ...grants import GrantContext, Verification, verify_grant
+from ...grants import Grant, GrantContext, Verification, matches_consent, verify_grant
 from ...keys import verify_proof
 from ..replies import consent_request
 from ..state import ServiceState
@@ -17,12 +17,15 @@ from ..state import ServiceState
 @dataclass(frozen=True)
 class Scope:
     """What a request is checked for. ``principal``: only grants from this principal (the one a
-    proposal was made for) count."""
+    proposal was made for) count. ``consent_only``: only a consent grant to ``proposal`` (§6.6)
+    counts, and any other that would gets ``consent_required``; set for a proposal with no
+    principal, so ``principal`` is None (§4.4)."""
 
     verb: str
     capability: str
     proposal: dict | None = None
     principal: str | None = None
+    consent_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,11 +70,21 @@ def identify_required(state: ServiceState, req: dict, scope: Scope, target: str)
 
 
 def with_limits(state: ServiceState, grants: list[str], holder: str, scope: Scope) -> Verification:
-    """The grant that authorizes the request with its limits too, or the error that says why none does."""
+    """The grant that authorizes the request with its limits too, or the error that says why none does.
+    A scope with no principal (no grant authorized the proposal's INTENT) admits only a consent grant
+    to the proposal, from any principal the service trusts (§4.4)."""
+    scope = replace(scope, consent_only=scope.principal is None)
     granted, failed = first_grant(state, grants, holder, scope, limits=True)
     if granted is None:
         raise grant_failure(state, failed, scope.proposal)
     return granted
+
+
+def consenter(state: ServiceState, grants: list[str], holder: str, scope: Scope) -> str | None:
+    """The principal a COMMIT of a proposal with no principal acts for, if it carries a consent: the
+    issuer of its first consent grant to the proposal, checked without limits (§4.4)."""
+    granted, _ = first_grant(state, grants, holder, replace(scope, consent_only=True), limits=False)
+    return granted.principal if granted else None
 
 
 def first_grant(
@@ -86,15 +99,33 @@ def first_grant(
     )
     failed = []
     for g in grants:
-        c = verify_grant(g, state.trust, holder, ctx)
-        if scope.principal and c.principal and c.principal != scope.principal:
-            why = "grant is from a different principal than this proposal's"
-            failed.append(Verification(False, "forbidden", why, c.grant, reason=why))
-            continue
+        c = _screen(verify_grant(g, state.trust, holder, ctx), scope, state.id)
         if c.ok:
             return c, failed
         failed.append(c)
     return None, failed
+
+
+def _screen(c: Verification, scope: Scope, service: str) -> Verification:
+    """A grant's check as the scope sees it at ``service``: failed, even where the grant would
+    authorize, when it is from another principal than the proposal's, or isn't the consent the
+    proposal needs."""
+    if scope.principal and c.principal and c.principal != scope.principal:
+        why = "grant is from a different principal than this proposal's"
+        return Verification(False, "forbidden", why, c.grant, reason=why)
+    if c.ok and scope.consent_only and not _is_consent(c.grant, scope.proposal, service):
+        why = "no grant authorized the INTENT that made this proposal"
+        return Verification(False, "consent_required", why, c.grant, reason=why)
+    return c
+
+
+def _is_consent(grant: Grant | None, proposal: dict | None, service: str) -> bool:
+    """Whether a verified grant is a consent grant to ``proposal`` at ``service`` (§6.6): one root
+    block, which its principal signed, with exactly a consent's caveats. A delegated grant never is,
+    so an agent can't turn its own grant into one."""
+    if grant is None or proposal is None or len(grant.blocks) != 1:
+        return False
+    return matches_consent(grant.blocks[0]["p"]["caveats"], {**proposal, "service": service})
 
 
 def grant_failure(state: ServiceState, failed: list[Verification], proposal: dict | None) -> YeaError:

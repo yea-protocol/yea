@@ -5,8 +5,14 @@
 import { b64u, fromUtf8, unb64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import type { KeyPair } from './crypto.js';
-import { isPublicKey, issueGrant } from './grants.js';
+import { type Caveat, isPublicKey, issueGrant } from './grants.js';
 import type { ConsentRequest, Proposal } from './types.js';
+
+/** What a consent is to: one proposal's hash and capability, at one service, until it expires. */
+type ConsentScope = Pick<
+  ConsentRequest,
+  'service' | 'capability' | 'hash' | 'expires'
+>;
 
 export const consentRequest = (
   proposal: Proposal,
@@ -22,6 +28,29 @@ export const consentRequest = (
   expires: proposal.expires,
 });
 
+/** The caveats of a consent to `c` (SPEC §6.6), in the order `consentGrant` writes them. */
+const consentCaveats = (c: ConsentScope): Caveat[] => [
+  { svc: [c.service] },
+  { verbs: ['COMMIT'] },
+  { can: [c.capability] },
+  { only: c.hash },
+  { exp: c.expires },
+];
+
+/** A caveat list as a comparable string, in any order. */
+const caveatSet = (cs: unknown[]) =>
+  cs
+    .map((c) => canonical(c))
+    .sort()
+    .join('\n');
+
+/**
+ * Whether `caveats` are exactly a consent's to `c` (SPEC §6.6), in any order. Throws on a caveat
+ * with no canonical form.
+ */
+export const matchesConsent = (caveats: unknown[], c: ConsentScope) =>
+  caveatSet(caveats) === caveatSet(consentCaveats(c));
+
 /**
  * Consent grant (SPEC §6.6): one-shot approval of one exact proposal. It is scoped to COMMIT
  * of that proposal's capability at that service, so it authorizes nothing else.
@@ -29,20 +58,12 @@ export const consentRequest = (
 export function consentGrant(opts: {
   principal: KeyPair | string;
   agent: string;
-  consent: Pick<ConsentRequest, 'service' | 'capability' | 'hash' | 'expires'>;
+  consent: ConsentScope;
 }): Promise<string> {
-  const c = opts.consent;
-
   return issueGrant({
     principal: opts.principal,
     to: opts.agent,
-    caveats: [
-      { svc: [c.service] },
-      { verbs: ['COMMIT'] },
-      { can: [c.capability] },
-      { only: c.hash },
-      { exp: c.expires },
-    ],
+    caveats: consentCaveats(opts.consent),
   });
 }
 

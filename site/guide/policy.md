@@ -55,7 +55,7 @@ A consent approves one proposal hash, at one service, for one action, until the 
 
 Inside the policy, a plain `COMMIT` goes ahead whether or not the proposal can be undone: the limits are what bound it, so keep the risk ceiling low for anything irreversible.
 
-An agent can also ask a service to commit in the same round trip it proposes (`INTENT` with `auto`), skipping the preview. The service does that only when the policy allows the first proposal outright **and** that proposal can be undone. Everything else is answered with proposals as usual ([auto-commit](/guide/intents#auto-commit-gated-by-the-humans-policy)).
+An agent can also ask a service to commit in the same round trip it proposes (`INTENT` with `auto`), skipping the preview. The service does that only when the policy covers the `INTENT` itself, allows the first proposal outright, **and** that proposal can be undone. Everything else is answered with proposals as usual, and a proposal from an `INTENT` the policy didn't cover commits only with the person's consent ([auto-commit](/guide/intents#auto-commit-gated-by-the-humans-policy)).
 
 MCP servers built with `@yea-protocol/mcp` or `yea-mcp` go further: a plan runs without asking only if it can be undone, whatever the policy says. Anything irreversible asks every time.
 

@@ -189,3 +189,21 @@ def test_shop_consent_flow(ts_servers):
             assert_same_lens([props, need, ok])
 
     asyncio.run(go())
+
+
+def test_a_commit_only_grant_never_auto_commits_and_a_plain_commit_needs_consent(ts_servers):
+    """#287: a grant that doesn't authorize the INTENT leaves it with no principal."""
+    tcp, _ = ts_servers["calendar"]
+    g = issue_grant(PRINCIPAL, AGENT.public, [{"svc": ["calendar.example"]}, {"verbs": ["COMMIT"]}])
+
+    async def go():
+        async with await connect(f"yea://{tcp}", key=AGENT.seed, grants=[g]) as c:
+            before = (await c.ask("calendar.agenda")).data
+            props = await c.intent("calendar.reschedule", {"event": "e3", "day": "2031-03-06"}, auto=True)
+            assert props.kind == "PROPOSALS", props.lens
+            r = await c.commit(props.proposals[0])
+            assert (r.code, r.consent["principal"]) == ("consent_required", PRINCIPAL.public), r.lens
+            assert (await c.ask("calendar.agenda")).data == before
+            assert_same_lens([props, r])
+
+    asyncio.run(go())

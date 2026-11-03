@@ -2,9 +2,10 @@
  * Checking a request's proof and grants (SPEC §6.4, §6.5, §6.6): verify the proof once, then find
  * the first grant that allows the request, or the error that says why none does.
  */
-import { consentRequest } from '../../consent.js';
+import { consentRequest, matchesConsent } from '../../consent.js';
 import { fix, YeaError } from '../../errors.js';
 import {
+  type Block,
   type CheckContext,
   checkGrant,
   type GrantCheck,
@@ -28,6 +29,11 @@ export interface Scope {
   proposal?: Proposal;
   /** Only grants from this principal (the one the proposal was made for) may act. */
   principal?: string | null;
+  /**
+   * Only a consent grant to the proposal (SPEC §6.6) may act; any other grant that would act gets
+   * `consent_required`. Set for a proposal with no principal, so `principal` is null (§4.4).
+   */
+  consentOnly?: boolean;
   /**
    * The usage ledger `total` counts against, to check `each`, `total` and `risk` too; null
    * checks who may act only, and those three never deny (ADR-0002).
@@ -71,19 +77,11 @@ export async function firstGrant(
   const failed: Failed[] = [];
 
   for (const g of grants) {
-    const c = await checkGrant(g, grantContext(state, holder, scope));
-
-    // Only grants from the principal the proposal was made for can act on it.
-    if (scope.principal && c.iss && c.iss !== scope.principal) {
-      failed.push({
-        ok: false,
-        code: 'forbidden',
-        reason: "grant is from a different principal than this proposal's",
-        iss: c.iss,
-      });
-
-      continue;
-    }
+    const c = screen(
+      await checkGrant(g, grantContext(state, holder, scope)),
+      scope,
+      state.id,
+    );
 
     if (c.ok) {
       return { granted: c, failed };
@@ -93,6 +91,47 @@ export async function firstGrant(
   }
 
   return { failed };
+}
+
+/**
+ * A grant's check as the scope sees it at `service`: failed, even where the grant would
+ * authorize, when it is from another principal than the proposal's, or isn't the consent the
+ * proposal needs.
+ */
+function screen(c: GrantCheck, scope: Scope, service: string): GrantCheck {
+  // Only grants from the principal the proposal was made for can act on it.
+  if (scope.principal && c.iss && c.iss !== scope.principal) {
+    return {
+      ok: false,
+      code: 'forbidden',
+      reason: "grant is from a different principal than this proposal's",
+      iss: c.iss,
+    };
+  }
+
+  if (c.ok && scope.consentOnly && !isConsent(c.blocks, scope, service)) {
+    return {
+      ok: false,
+      code: 'consent_required',
+      reason: 'no grant authorized the INTENT that made this proposal',
+      iss: c.iss,
+    };
+  }
+
+  return c;
+}
+
+/**
+ * Whether a verified grant is a consent grant to the scope's proposal at `service` (SPEC §6.6):
+ * one root block, which its principal signed, with exactly a consent's caveats. A delegated
+ * grant never is, so an agent can't turn its own grant into one.
+ */
+function isConsent(blocks: Block[], { proposal }: Scope, service: string) {
+  return (
+    proposal !== undefined &&
+    blocks.length === 1 &&
+    matchesConsent(blocks[0].p.caveats, { ...proposal, service })
+  );
 }
 
 /** `unauthorized`: a verb that must carry a grant came without one. */
@@ -133,9 +172,32 @@ export function grantFailure(
 }
 
 /**
+ * The principal a COMMIT of a proposal with no principal acts for, if it carries a consent: the
+ * issuer of its first consent grant to the proposal, checked without limits (SPEC §4.4).
+ */
+export async function consenter(
+  state: Checker,
+  grants: string[],
+  holder: string,
+  proposal: Proposal,
+): Promise<string | null> {
+  const { granted } = await firstGrant(state, grants, holder, {
+    verb: 'COMMIT',
+    capability: proposal.capability,
+    proposal,
+    principal: null,
+    consentOnly: true,
+    limits: null,
+  });
+
+  return granted?.iss ?? null;
+}
+
+/**
  * Grant evaluation with the limits included (ADR-0002), for the commit ledger: of the grants
  * from `principal` held by `holder`, the first that admits a COMMIT of the proposal, or the
- * error that says why none does.
+ * error that says why none does. A null `principal` (no grant authorized the proposal's INTENT)
+ * admits only a consent grant to the proposal, from any principal the service trusts (SPEC §4.4).
  */
 export const admitter =
   (
@@ -150,6 +212,7 @@ export const admitter =
       capability: proposal.capability,
       proposal,
       principal,
+      consentOnly: principal === null,
       limits: used,
     });
 

@@ -3,25 +3,9 @@
  * the person was asked about (SPEC.md §6.6), signed by its principal and issued to the agent that
  * commits with it. An approver is an adapter outside the round, so its grant is never trusted.
  */
-import { canonical } from '../canonical.js';
-import { type Caveat, checkGrant, decodeGrant } from '../grants.js';
+import { matchesConsent } from '../consent.js';
+import { checkGrant, decodeGrant } from '../grants.js';
 import type { ConsentRequest, Proposal } from '../types.js';
-
-/** The caveats of a consent to `k`, exactly as `consentGrant` writes them. */
-const consentCaveats = (k: ConsentRequest): Caveat[] => [
-  { svc: [k.service] },
-  { verbs: ['COMMIT'] },
-  { can: [k.capability] },
-  { only: k.hash },
-  { exp: k.expires },
-];
-
-/** A caveat list as a comparable string, in any order. */
-const caveatSet = (cs: unknown[]) =>
-  cs
-    .map((c) => canonical(c))
-    .sort()
-    .join('\n');
 
 /** Why `token` isn't one block, from `k`'s principal to `agent`, with exactly `k`'s caveats. */
 function shapeMismatch(
@@ -52,7 +36,7 @@ function shapeMismatch(
   }
 
   try {
-    return caveatSet(caveats) === caveatSet(consentCaveats(k))
+    return matchesConsent(caveats, k)
       ? null
       : 'it consents to something other than the request shown';
   } catch {
