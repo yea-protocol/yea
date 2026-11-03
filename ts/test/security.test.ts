@@ -31,6 +31,7 @@ import {
   jobConsentCode,
   MAX_ROUNDS,
   newState,
+  phraseMatches,
 } from '../src/ask.js';
 import { grantCovers } from '../src/client/grant-scope.js';
 import { approveCode, NO_DETAIL } from '../src/consent-round.js';
@@ -1657,6 +1658,15 @@ describe('approval security (SPEC-approval)', () => {
     expect(await P.consentHashOf(hp.planHash, ' ')).toBe(
       await P.consentHashOf(hp.planHash, 'approve'),
     );
+  });
+
+  it('[A21] matching a typed answer is linear: a long run of tabs takes no quadratic time (#141)', () => {
+    // CodeQL flagged the edge strip as a polynomial regex; 40k tabs took seconds with it.
+    const typed = `y${'\t'.repeat(200_000)}x`;
+    const start = performance.now();
+
+    expect(phraseMatches(typed, 'approve')).toBe(false);
+    expect(performance.now() - start).toBeLessThan(500);
   });
 
   it('[A20] a phrase over 64 characters is refused, counted in code points (#141)', async () => {

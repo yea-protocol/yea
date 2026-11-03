@@ -8,7 +8,7 @@ import {
   effectivePhrase,
   type HashedPlan,
   normalizePhrase,
-  PHRASE_EDGE,
+  stripPhraseEdge,
 } from '../approval.js';
 import { clip, printable } from '../text.js';
 
@@ -46,7 +46,7 @@ function untypeable(phrase: string): string | null {
   }
 
   // Edge whitespace is stripped when matching; inside, only a plain space can be typed.
-  if (phrase.replace(PHRASE_EDGE, '').match(ODD_SPACE)) {
+  if (stripPhraseEdge(phrase).match(ODD_SPACE)) {
     return 'has whitespace other than plain spaces inside, so no one could type it';
   }
 

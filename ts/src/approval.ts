@@ -17,7 +17,7 @@ export {
   DEFAULT_PHRASE,
   effectivePhrase,
   normalizePhrase,
-  PHRASE_EDGE,
+  stripPhraseEdge,
 } from './approval/phrase-form.js';
 
 export {
