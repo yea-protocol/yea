@@ -602,12 +602,11 @@ def signatures(monkeypatch, tmp_path, world):
             return getattr(self._key, name)
 
     monkeypatch.setattr(Ed25519PrivateKey, "from_private_bytes", staticmethod(lambda data: Watched(real(data))))
-    homes = {"": Path(world.home), "YEA_HOME": tmp_path / "yea_home", "YEA_PRINCIPAL_HOME": tmp_path / "principal"}
-    for name, d in homes.items():
+    monkeypatch.setenv("YEA_HOME", str(tmp_path / "yea_home"))
+    monkeypatch.setenv("YEA_PRINCIPAL_HOME", str(tmp_path / "principal"))
+    for d in (Path(world.home), tmp_path / "yea_home", tmp_path / "principal"):
         d.mkdir(parents=True, exist_ok=True)
         (d / "principal.key").write_text(PRINCIPAL.seed.hex())
-        if name:
-            monkeypatch.setenv(name, str(d))
     return made
 
 

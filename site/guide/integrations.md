@@ -260,10 +260,10 @@ A form answer proves only what the client stack attests, and MCP attests nothing
 - **The permission mode decides whether the agent can add a hook.** `.claude/`, `.mcp.json` and `.claude.json` are protected paths: writes to them ask you in `default` and `acceptEdits` mode, go to the classifier in `auto`, and are allowed in `bypassPermissions`.
 - **What holds:**
   - for an organization, managed settings with `allowManagedHooksOnly`, which blocks user, project, local and plugin hooks, and installed mods that aren't the organization's, except those of plugins that managed `enabledPlugins` force on;
-  - for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings (`"disableAllHooks": true` in your user settings doesn't, because a project's `false` wins over it), or `claude --safe-mode`, which turns off every installed mod, with your other customizations;
+  - for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings and also stops installed mods (`"disableAllHooks": true` in your user settings doesn't hold, because a project's `false` wins over it);
   - not running a server with YEA approval in `bypassPermissions`.
 
-  The hooks page doesn't say whether these settings also cover hooks in skill or subagent frontmatter. And none of them, nor `--safe-mode`, stops the mods built into Claude Code.
+  The hooks page doesn't say whether these settings also cover hooks in skill or subagent frontmatter, and neither stops the mods built into Claude Code. `claude --safe-mode` doesn't help here: it turns off hooks and mods, but it doesn't load MCP servers either, so a YEA server isn't there to call ([CLI reference](https://code.claude.com/docs/en/cli-reference), fetched 2026-11-03).
 - **Our run:** [Claude Code, 2026-11-03](#claude-code-2026-11-03) shows the form as Claude Code draws it, and what could have answered instead.
 - **Its own permission prompt:** [the Claude Code call prompt](#the-claude-code-call-prompt), below.
 
