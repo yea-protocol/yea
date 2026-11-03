@@ -179,7 +179,7 @@ When a commit needs the human's approval, the tool returns a consent code for `y
 A server built with [`@yea-protocol/mcp`](/guide/mcp-typescript) or [`yea-mcp`](/guide/mcp-python) doesn't go through the bridge: it's an ordinary MCP server, and you register it with each client the way you register any other. What YEA adds is in its environment and in the client's support for forms.
 
 - **Its environment:** whatever the server itself needs (the guides' `files` example needs `FILES_ROOT`, the folder its tools may change, and refuses to start without it), plus YEA's: `YEA_PRINCIPAL_PUB`, the path of a file holding the pinned principal public key (one the server's user can't change), and `YEA_POLICY`, the signed policy (a `pg1.` token, or the absolute path of a file holding one). Without `YEA_POLICY` every job asks; without `YEA_PRINCIPAL_PUB` no consent code is issued either, so only clients with forms can approve. Client config files don't expand `~`, so use full paths.
-- **Approval in the client:** a client with MCP form elicitation shows the plan and a field to type the phrase. A client without it gets a consent code, and the person runs `yea approve <code>`. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run.
+- **Approval in the client:** a client with MCP form elicitation shows the plan and a field to type the phrase. A client without it gets a consent code, and the person runs `yea approve <code>`. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run, and [Client runs](#client-runs) shows how.
 
 For example, in **Claude Code**:
 
@@ -210,6 +210,47 @@ In **Cursor** (`.cursor/mcp.json`) and other clients that use an `mcpServers` ob
 ```
 
 VS Code (`.vscode/mcp.json`) uses a top-level `servers` key with the same fields, plus `"type": "stdio"`. The server prints its id on stderr at start-up (`yea: service id ed25519:… (name files)`), which is what `yea grant --to` needs. Each guide's step 5 walks through the whole setup.
+
+## Client runs
+
+The evidence behind the [client table](https://github.com/yea-protocol/yea#client-support). A run counts for "asks in the client" only if it's interactive and the client draws the form. Headless modes decline or cancel a form by design: `claude -p`, `codex exec`, and Codex with `approval_policy = "never"`. The tool then reports "not approved", just as if a person had declined, so a transcript where no dialog was drawn proves nothing about the form.
+
+A form that reaches a person is one check, not proof that only a person can answer it: the phrase is in the request, and some clients let software answer forms ([#337](https://github.com/yea-protocol/yea/issues/337)). So each run names what in that client can answer a form without a person.
+
+### Claude Code, 2026-11-03
+
+| | |
+|---|---|
+| Client | Claude Code 2.1.317, interactive, in tmux 3.6a on macOS 26.6, in auto permission mode |
+| Runtimes | both: `MCP_SDK_GENERATION=v2` negotiated revision 2026-07-28 (`input_required`, state sealed in `requestState`); `MCP_SDK_GENERATION=v1` negotiated 2025-11-25 (`elicitation/create`). Claude Code declared `elicitation: {form: {}, url: {}}` on both |
+| Repo | commit `8719326`; `@yea-protocol/mcp` 0.1.0, `@modelcontextprotocol/server` 2.3.1, zod 4.6.7, Node 22.18.0 |
+| Server | [`examples/mcp-quickstart.ts`](https://github.com/yea-protocol/yea/blob/main/examples/mcp-quickstart.ts)'s `createServer`, started by a launcher that logs the negotiated revision, behind a proxy that logs every JSON-RPC line and the server's stderr |
+| Registered with | `claude --strict-mcp-config --mcp-config <file>`, so nothing was written to the Claude Code MCP config |
+| Answers a form without a person | an [`Elicitation` hook](https://code.claude.com/docs/en/hooks#elicitation), which answers with no dialog drawn. None was configured for these runs |
+
+What happened, the same on both runtimes:
+
+- **The form.** Claude Code drew *MCP server "files" requests your input*, the first two lines of the message (`Approval needed: delete_file can't be undone.` and `[1] Delete docs/report.pdf`), and a *Confirm* field described as `Type "report.pdf" to approve.`. The rest of the message (the effect, `risk: medium · undo: never` and the phrase line) was folded behind *… (+3 more lines)*.
+- **Wrong phrases.** We typed `notes.txt`, `notes.txt`, then `report`. The server asked again after each of the first two (`Approval needed: type "report.pdf" exactly to approve.`). After the third it returned `✗ not approved after 3 tries; nothing was run`, and the file was still there.
+- **The right phrase.** `report.pdf` deleted the file, and the result carried a receipt.
+- **Consent codes.** With `{ "outOfBand": "medium" }` in the server's `policy.json` (a medium-risk plan is never approved in the chat) and a pinned principal key, the call returned `✗ approval needed: risk is medium, which needs approval outside the chat; nothing was run` and a `pc1.` code. In a second tmux pane, `yea approve <code>` showed the plan. A wrong phrase printed `not approved` and saved nothing; `report.pdf` printed `✓ approved`. The same call then ran once.
+- **Claude Code's own prompt.** Its permission prompt for the tool call never appeared: auto mode allowed every call (*Allowed by auto mode*). The form appeared anyway, because the server asks, not the client ([#338](https://github.com/yea-protocol/yea/issues/338)).
+
+Two things differ from the guide's setup. The launcher passes the principal key as `yea()`'s `principal` option rather than through `YEA_PRINCIPAL_PUB`: the pinned file must be one the server's OS user can't change, and the run had no root access to make one. And `yea approve` ran with `YEA_HOME` set to the folder holding the principal key, and `YEA_STORE` set to the server's store.
+
+[Transcripts](https://github.com/yea-protocol/yea/tree/main/docs/client-runs/2026-11-03-claude-code): every keystroke, the screens (`tmux capture-pane`), and the wire log with the server's stderr, for each of the four runs (form and codes, on each runtime), with the launcher and proxy to reproduce them.
+
+### Codex and Gemini CLI
+
+Not run by us yet (2026-11-03): each needs a vendor sign-in and model credit, so a person runs them from the [checklist on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641).
+
+Gemini CLI can't show the form. Version 0.66.0's MCP client registers only the `roots` capability (`connectToMcpServer` in its bundle), so the framework gives it consent codes. Its tracker agrees: [#28074](https://github.com/google-gemini/gemini-cli/issues/28074) (no elicitation capability) was closed as not planned, the pull request implementing it ([#28089](https://github.com/google-gemini/gemini-cli/pull/28089)) closed unmerged, and [#22249](https://github.com/google-gemini/gemini-cli/issues/22249) reports *Method not found* with elicitation tools.
+
+Codex documents form elicitation, and its `approval_policy` decides whether a form reaches the person. Under `never`, the setting for non-interactive runs, and unless `granular.mcp_elicitations` is `true`, a form is rejected before anyone sees it. Third-party write-ups, not its reference, say its auto-reviewer (`approvals_reviewer = "auto_review"`) can decide in the person's place.
+
+### Claude Desktop, Cursor, VS Code and Windsurf
+
+These need a person at a GUI; their [checklist is on #319](https://github.com/yea-protocol/yea/issues/319#issuecomment-6607457641).
 
 ## MCP registry
 

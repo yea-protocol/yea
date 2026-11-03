@@ -96,7 +96,7 @@ claude mcp add files -e FILES_ROOT="$HOME/yea-scratch" -- uv run python server.p
 ```
 :::
 
-Ask the agent to delete `docs/report.pdf`. Before anything happens, the server sends the client a form (MCP form elicitation) with the plan and a field to type in. How a client shows it is up to the client; we've tested the exchange with the MCP SDK's own client, not yet in a named app. What it says is this:
+Ask the agent to delete `docs/report.pdf`. Before anything happens, the server sends the client a form (MCP form elicitation) with the plan and a field to type in. How a client shows it is up to the client. We've tested this server's exchange with the MCP SDK's own client, and the TypeScript example's in Claude Code ([client runs](/guide/integrations#client-runs)). What it says is this:
 
 ```text
 Approval needed: delete_file can't be undone.

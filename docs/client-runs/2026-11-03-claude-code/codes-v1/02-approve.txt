@@ -1,0 +1,11 @@
+at server ed25519:l7Ky_gHFhGea7hv1A247KXFLuvKfncgVUXnYD76xHhQ, tool delete_file:
+Delete docs/report.pdf
+  - delete file/docs/report.pdf
+  risk: medium · undo: never
+  input: {"path":"docs/report.pdf"}
+  approval expires: 2026-11-03T15:15:21Z
+
+to approve, type: report.pdf
+› report.pdf
+✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.
+[exit 0]

@@ -1,0 +1,11 @@
+at server ed25519:l7Ky_gHFhGea7hv1A247KXFLuvKfncgVUXnYD76xHhQ, tool delete_file:
+Delete docs/report.pdf
+  - delete file/docs/report.pdf
+  risk: medium · undo: never
+  input: {"path":"docs/report.pdf"}
+  approval expires: 2026-11-03T15:12:55Z
+
+to approve, type: report.pdf
+› notes.txt
+not approved
+[exit 1]
