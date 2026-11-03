@@ -255,9 +255,15 @@ A form answer proves only what the client stack attests, and MCP attests nothing
 
 - **Two hook events reach a form.** An `Elicitation` hook can answer it for you: the server gets the hook's answer, and no dialog appears. An `ElicitationResult` hook runs after you answer, and its answer replaces yours. It runs when you decline or cancel too, so it can turn a decline into an accept.
 - **Hooks come from many places:** user, project and local settings, managed policy, a plugin's `hooks/hooks.json`, and the frontmatter of skills and subagents. A hook's matcher is the MCP server's name, and an empty or `*` matcher matches every server, yours included.
+- **So do mods.** A mod is a plugin whose `hooks/hooks.json` names a hooks module. It gets every settings hook event as `classic.<Event>`, `Elicitation` and `ElicitationResult` included, and it can approve a tool call before you're asked ([mods](https://code.claude.com/docs/en/plugins/mods/overview) and the [mods reference](https://code.claude.com/docs/en/plugins/mods/reference), fetched 2026-11-03).
 - **Hooks reload live.** An edit to a settings file takes effect without a restart, so a check at the start of a session doesn't cover the rest of it.
 - **The permission mode decides whether the agent can add a hook.** `.claude/`, `.mcp.json` and `.claude.json` are protected paths: writes to them ask you in `default` and `acceptEdits` mode, go to the classifier in `auto`, and are allowed in `bypassPermissions`.
-- **What holds:** for an organization, managed settings with `allowManagedHooksOnly`, which blocks user, project, local and plugin hooks, except those of plugins that managed `enabledPlugins` force on; for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings (`"disableAllHooks": true` in your user settings doesn't, because a project's `false` wins over it); and not running a server with YEA approval in `bypassPermissions`. The hooks page doesn't say whether either setting also covers hooks in skill or subagent frontmatter.
+- **What holds:**
+  - for an organization, managed settings with `allowManagedHooksOnly`, which blocks user, project, local and plugin hooks, and installed mods that aren't the organization's, except those of plugins that managed `enabledPlugins` force on;
+  - for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings (`"disableAllHooks": true` in your user settings doesn't, because a project's `false` wins over it), or `claude --safe-mode`, which turns off every installed mod, with your other customizations;
+  - not running a server with YEA approval in `bypassPermissions`.
+
+  The hooks page doesn't say whether these settings also cover hooks in skill or subagent frontmatter. And none of them, nor `--safe-mode`, stops the mods built into Claude Code.
 - **Our run:** [Claude Code, 2026-11-03](#claude-code-2026-11-03) shows the form as Claude Code draws it, and what could have answered instead.
 - **Its own permission prompt:** [the Claude Code call prompt](#the-claude-code-call-prompt), below.
 

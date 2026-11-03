@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import httpx2
 import mcp_types as t
@@ -578,8 +579,9 @@ def test_a13_a_tool_level_unknown_risk_fails_closed_through_hash_plans(world):
 
 
 @pytest.fixture
-def signatures(monkeypatch, tmp_path):
-    """Every Ed25519 signature made from a seed while the test runs, with a principal key at hand.
+def signatures(monkeypatch, tmp_path, world):
+    """Every Ed25519 signature made from a seed while the test runs, with a principal key at hand:
+    in the server's own home, ``YEA_HOME`` and ``YEA_PRINCIPAL_HOME``, as on one account.
 
     ``from_private_bytes`` is cryptography's way to load a private key from its seed, and
     ``KeyPair.sign`` goes through it, so wrapping it sees every signature a seed makes."""
@@ -600,11 +602,12 @@ def signatures(monkeypatch, tmp_path):
             return getattr(self._key, name)
 
     monkeypatch.setattr(Ed25519PrivateKey, "from_private_bytes", staticmethod(lambda data: Watched(real(data))))
-    for name in ("YEA_HOME", "YEA_PRINCIPAL_HOME"):  # one account: the principal key is right there
-        d = tmp_path / name.lower()
-        d.mkdir()
+    homes = {"": Path(world.home), "YEA_HOME": tmp_path / "yea_home", "YEA_PRINCIPAL_HOME": tmp_path / "principal"}
+    for name, d in homes.items():
+        d.mkdir(parents=True, exist_ok=True)
         (d / "principal.key").write_text(PRINCIPAL.seed.hex())
-        monkeypatch.setenv(name, str(d))
+        if name:
+            monkeypatch.setenv(name, str(d))
     return made
 
 
@@ -614,6 +617,11 @@ def two_plans(world, server, done, version):
         v = version[0]
         return [Plan(f"Refund {w} {amount}, v{v}", [create("refund")], apply=lambda w=w: done.append(f"{w} v{v}"))
                 for w in ("A", "B")]
+
+
+def policy_file(world) -> Path:
+    """The person's unsigned ``policy.json`` in the server's home, which ``yea()`` reads on every call."""
+    return Path(world.home) / "policy.json"
 
 
 def choose(params, confirm="approve"):
@@ -630,7 +638,7 @@ def answer_kinds(world, version):
         return choose(params)
 
     def out_of_band_now(params):
-        world.approvals._y.tighten = {"outOfBand": "low"}
+        policy_file(world).write_text('{"outOfBand": "low"}')  # as a person's edit would, read each call
         return choose(params)
 
     def wrong(params):
@@ -695,7 +703,7 @@ async def test_no_answer_to_the_form_signs_or_saves_a_consent(world, signatures,
         for queued, says in answer_kinds(world, version):
             answers.queue[:] = queued
             assert says in text(await c.call_tool("refund", {"amount": 5}, **extra))
-            world.approvals._y.tighten = None
+            policy_file(world).write_text("{}")
     assert done == ["A v2"]
     assert signatures == [] and saves == []
     PRINCIPAL.sign(b"x")  # the wrapper does see a signature when one is made
