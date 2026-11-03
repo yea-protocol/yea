@@ -2,9 +2,9 @@
 import { dirname } from 'node:path';
 import { keyPair } from '../crypto.js';
 import {
-  type Caveat,
   delegateGrant,
   inspectGrant,
+  isPublicKey,
   issueGrant,
 } from '../grants.js';
 import { agentKey, home, principalKey, saveGrant } from '../home.js';
@@ -15,78 +15,27 @@ import {
   serverKeyPath,
 } from '../key-file.js';
 import { fmtTime, lean } from '../lens.js';
-import { isRisk } from '../risk.js';
-import type { Verb } from '../types.js';
-import { isLimit, type Limit } from '../uses.js';
-import { errno, isObject, unixNow } from '../util.js';
-import { die, type Options } from './shared.js';
+import { errno, isObject } from '../util.js';
+import { CAVEAT_FLAGS, caveats } from './caveats.js';
+import {
+  command,
+  type Flags,
+  positional,
+  UsageError,
+  type Values,
+} from './command.js';
+import { die } from './shared.js';
 
-function duration(s: string): number {
-  const m =
-    /^(\d+)([smhd])$/.exec(s) ??
-    die(`bad duration ${s} (use e.g. 30m, 24h, 7d)`);
+export const cmdInit = command({
+  summary:
+    'Create your principal (approval) key and an agent key in ~/.yea (or $YEA_HOME).',
+  usage: 'init',
+  flags: {},
+  example: 'yea init',
+  run: init,
+});
 
-  return Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's'];
-}
-
-/** `spend=25.00USD` or `emails=20` → a limit on that measure (SPEC §6.3). */
-function limit(s: string): Limit {
-  const m =
-    /^([a-z][a-z0-9_.-]*)=(\d+)(?:\.(\d+))?\s*([A-Za-z%][A-Za-z0-9_./%-]*)?$/.exec(
-      s,
-    ) ?? die(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
-  const decimals = m[3] ?? '';
-  const l = {
-    of: m[1],
-    max: Number(m[2] + decimals),
-    ...(decimals ? { scale: decimals.length } : {}),
-    ...(m[4] ? { unit: m[4] } : {}),
-  };
-
-  return isLimit(l) ? l : die(`bad limit ${s} (amount or unit out of range)`);
-}
-
-function caveats(o: Options): Caveat[] {
-  const c: Caveat[] = [];
-
-  if (o.svc) {
-    c.push({ svc: o.svc });
-  }
-
-  if (o.can) {
-    c.push({ can: o.can });
-  }
-
-  if (o.verbs) {
-    c.push({
-      verbs: o.verbs.split(',').map((v) => v.trim().toUpperCase()) as Verb[],
-    });
-  }
-
-  if (o.exp) {
-    c.push({ exp: unixNow() + duration(o.exp) });
-  }
-
-  for (const l of o.each ?? []) {
-    c.push({ each: limit(l) });
-  }
-
-  for (const l of o.total ?? []) {
-    c.push({ total: limit(l) });
-  }
-
-  if (o.risk !== undefined) {
-    c.push({
-      risk: isRisk(o.risk)
-        ? o.risk
-        : die(`bad risk ${o.risk} (low|medium|high)`),
-    });
-  }
-
-  return c;
-}
-
-export async function cmdInit() {
+async function init() {
   const p = await principalKey(true),
     a = await agentKey(true);
 
@@ -95,7 +44,15 @@ export async function cmdInit() {
   );
 }
 
-export async function cmdWhoami() {
+export const cmdWhoami = command({
+  summary: 'Show your public keys.',
+  usage: 'whoami',
+  flags: {},
+  example: 'yea whoami',
+  run: whoami,
+});
+
+async function whoami() {
   const p = await principalKey(),
     a = await agentKey();
 
@@ -104,15 +61,24 @@ export async function cmdWhoami() {
   );
 }
 
+export const cmdServiceId = command({
+  summary:
+    "Print an MCP server's service id, for yea grant --to (a server with a custom key path logs it at start-up).",
+  usage: 'service-id <name>',
+  flags: {},
+  example: 'yea service-id files',
+  run: serviceId,
+});
+
 /**
  * The service id of an MCP server built with `@yea-protocol/mcp` or `yea-mcp`: the public key
  * of its seed in `~/.yea/server/<name>.key`, which `yea grant --to` needs.
  */
-export async function cmdServiceId(rest: string[]) {
-  const name = rest[0] ?? die('usage: yea service-id <name>');
+async function serviceId(rest: string[]) {
+  const name = positional(rest, 0, 'name');
 
   if (!SERVER_NAME.test(name)) {
-    die(
+    throw new UsageError(
       `bad server name ${JSON.stringify(name)}: it matches [a-z0-9._-]{1,64}`,
     );
   }
@@ -151,11 +117,30 @@ function missing(e: unknown): boolean {
   return errno(e) === 'ENOENT' || (isObject(e) && errno(e.cause) === 'ENOENT');
 }
 
-export async function cmdGrant(_rest: string[], o: Options) {
-  // Bad caveat flags are refused before any key is read.
+const GRANT_FLAGS = {
+  ...CAVEAT_FLAGS,
+  to: {
+    type: 'string',
+    value: 'key',
+    help: "the holder, if not this machine's agent key (then it isn't saved)",
+  },
+} as const satisfies Flags;
+
+export const cmdGrant = command({
+  summary:
+    'Sign a grant from your principal key to an agent: your policy. Saved and used automatically.',
+  usage: 'grant [flags]',
+  flags: GRANT_FLAGS,
+  example: 'yea grant --exp 24h --total spend=100.00USD --risk low',
+  run: (_args, o) => grant(o),
+});
+
+async function grant(o: Values<typeof GRANT_FLAGS>) {
+  // Bad flags are refused before any key is read.
   const cav = caveats(o);
+  const holder = o.to === undefined ? undefined : publicKey(o.to);
   const p = (await principalKey()) ?? die('no principal key — run yea init');
-  const to = o.to ?? (await agentKey())?.public ?? die('no agent key');
+  const to = holder ?? (await agentKey())?.public ?? die('no agent key');
   const token = await issueGrant({ principal: p, to, caveats: cav });
   const info = await inspectGrant(token);
 
@@ -169,8 +154,17 @@ export async function cmdGrant(_rest: string[], o: Options) {
   );
 }
 
-export async function cmdGrantImport(rest: string[]) {
-  const token = rest[0] ?? die('usage: yea grant-import <pg1.… token>');
+export const cmdGrantImport = command({
+  summary:
+    "Save a grant issued to this machine's agent key on another device (the principal key stays there).",
+  usage: 'grant-import <token>',
+  flags: {},
+  example: 'yea grant-import pg1.…',
+  run: grantImport,
+});
+
+async function grantImport(rest: string[]) {
+  const token = positional(rest, 0, 'token');
   const info = await inspectGrant(token);
   const a = await agentKey();
 
@@ -184,23 +178,59 @@ export async function cmdGrantImport(rest: string[]) {
   console.log(`✓ imported grant ${info.id.slice(0, 16)} from ${info.iss}`);
 }
 
-export async function cmdDelegate(rest: string[], o: Options) {
+const DELEGATE_FLAGS = {
+  ...CAVEAT_FLAGS,
+  to: {
+    type: 'string',
+    value: 'key',
+    help: "the sub-agent's key (required)",
+  },
+} as const satisfies Flags;
+
+export const cmdDelegate = command({
+  summary: 'Narrow a grant you hold and pass it to a sub-agent.',
+  usage: 'delegate <token> --to <key> [flags]',
+  flags: DELEGATE_FLAGS,
+  example: 'yea delegate pg1.… --to ed25519:… --verbs ASK,INTENT',
+  run: delegate,
+});
+
+async function delegate(rest: string[], o: Values<typeof DELEGATE_FLAGS>) {
+  const token = positional(rest, 0, 'token');
+
+  if (o.to === undefined) {
+    throw new UsageError('missing --to <key>');
+  }
+
+  // Bad flags are refused before any key is read.
+  const to = publicKey(o.to);
+  const cav = caveats(o);
   const a = (await agentKey()) ?? die('no agent key');
 
-  console.log(
-    await delegateGrant(
-      rest[0] ?? die('usage: yea delegate <token> --to <key>'),
-      {
-        holder: a,
-        to: o.to ?? die('--to required'),
-        caveats: caveats(o),
-      },
-    ),
-  );
+  console.log(await delegateGrant(token, { holder: a, to, caveats: cav }));
 }
 
-export async function cmdInspect(rest: string[]) {
-  const info = await inspectGrant(rest[0] ?? die('usage: yea inspect <token>'));
+/** `--to`'s value, if it is a public key: the holder the grant is signed to. */
+function publicKey(to: string): string {
+  if (!isPublicKey(to)) {
+    throw new UsageError(
+      `bad --to ${JSON.stringify(to)}: not a public key (ed25519:…)`,
+    );
+  }
+
+  return to;
+}
+
+export const cmdInspect = command({
+  summary: 'Decode a grant chain: who issued it, to whom, and its caveats.',
+  usage: 'inspect <token>',
+  flags: {},
+  example: 'yea inspect pg1.…',
+  run: inspect,
+});
+
+async function inspect(rest: string[]) {
+  const info = await inspectGrant(positional(rest, 0, 'token'));
 
   console.log(
     lean({

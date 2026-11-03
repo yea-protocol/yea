@@ -1,7 +1,21 @@
 /** Wire types for YEA v1. See SPEC.md. */
 import type { Uses } from './uses.js';
 
-export type Verb = 'HELLO' | 'ASK' | 'INTENT' | 'COMMIT' | 'UNDO' | 'EXPAND';
+/** Every verb, in the order SPEC.md lists them. */
+export const VERBS = [
+  'HELLO',
+  'ASK',
+  'INTENT',
+  'COMMIT',
+  'UNDO',
+  'EXPAND',
+] as const;
+
+export type Verb = (typeof VERBS)[number];
+
+/** Whether `v` is a verb. */
+export const isVerb = (v: string): v is Verb =>
+  (VERBS as readonly string[]).includes(v);
 
 export type Kind =
   | 'BRIEF'

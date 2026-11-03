@@ -16,10 +16,28 @@ import { effectLine, fmtDuration, fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import { fmtUses, isUses } from '../uses.js';
 import { unixNow } from '../util.js';
-import { confirm, die, type Options } from './shared.js';
+import { command, type Flags, positional, type Values } from './command.js';
+import { confirm, die } from './shared.js';
 
-export async function cmdApprove(rest: string[], o: Options) {
-  const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
+const APPROVE_FLAGS = {
+  to: {
+    type: 'string',
+    value: 'key',
+    help: "the agent key the consent is for, if not this machine's (check its fingerprint first)",
+  },
+} as const satisfies Flags;
+
+export const cmdApprove = command({
+  summary:
+    "Review a proposal's real effects and sign a one-time consent for it, to paste back to the agent.",
+  usage: 'approve <code> [flags]',
+  flags: APPROVE_FLAGS,
+  example: 'yea approve pc1.…',
+  run: approve,
+});
+
+async function approve(rest: string[], o: Values<typeof APPROVE_FLAGS>) {
+  const code = positional(rest, 0, 'code');
   const consent = decodeConsentCode(code);
 
   // Refused before any key is loaded: there's nothing here a person could check (SPEC §6.6).

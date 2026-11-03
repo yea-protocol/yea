@@ -1,70 +1,32 @@
 /**
- * What every `yea` command group uses: the flags, `die`, a client, a terminal prompt and the
+ * What every `yea` command group uses: `die`, a client and its flags, a terminal prompt and the
  * install scope.
  */
 import { createInterface } from 'node:readline/promises';
-import { parseArgs } from 'node:util';
 import type { Client } from '../client.js';
 import { agentKey, loadGrants } from '../home.js';
 import { connect } from '../node.js';
+import type { Flag, Flags, Values } from './command.js';
 
-/** The command line, parsed: every flag any command takes, and the positionals. */
-export function parseCommandLine(argv: string[]) {
-  return parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      svc: { type: 'string', multiple: true },
-      can: { type: 'string', multiple: true },
-      verbs: { type: 'string' },
-      exp: { type: 'string' },
-      each: { type: 'string', multiple: true },
-      total: { type: 'string', multiple: true },
-      risk: { type: 'string' },
-      to: { type: 'string' },
-      goal: { type: 'string' },
-      budget: { type: 'string' },
-      expires: { type: 'string' },
-      json: { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-      name: { type: 'string' },
-      model: { type: 'string' },
-      base: { type: 'string' },
-      header: { type: 'string', multiple: true },
-      port: { type: 'string' },
-      http: { type: 'string' },
-      id: { type: 'string' },
-      prefix: { type: 'string' },
-      target: { type: 'string' },
-      local: { type: 'boolean' },
-      yes: { type: 'boolean', short: 'y' },
-      'no-principal': { type: 'boolean' },
-      'with-principal': { type: 'boolean' },
-      host: { type: 'string' },
-      preset: { type: 'string' },
-    },
-  });
-}
+/** The flags of a command that connects to a service, read by `client`. */
+export const CONNECT_FLAGS = {
+  name: {
+    type: 'string',
+    value: 'name',
+    help: 'the agent name the service sees (default yea-cli)',
+  },
+  budget: {
+    type: 'string',
+    value: 'tokens',
+    help: 'the default token budget for replies',
+  },
+} as const satisfies Flags;
 
-/** The flags given on the command line. */
-export type Options = ReturnType<typeof parseCommandLine>['values'];
-
-/**
- * A command that works locally (keys, grants, setup, servers). `argv` is the whole command
- * line given to `run`, for a command that runs `yea` again.
- */
-export type Command = (
-  rest: string[],
-  o: Options,
-  argv: string[],
-) => Promise<void>;
-
-/** A command that talks to the service at the first argument; `args` are the rest. */
-export type ServiceCommand = (
-  c: Client,
-  args: string[],
-  o: Options,
-) => Promise<void>;
+/** `--local`, read by `installScope`. */
+export const LOCAL_FLAG = {
+  type: 'boolean',
+  help: "this project's files instead of your user-level ones",
+} as const satisfies Flag;
 
 /** Print `msg` on stderr and exit with status 1. */
 export function die(msg: string): never {
@@ -73,7 +35,10 @@ export function die(msg: string): never {
 }
 
 /** A client for the service at `url`, holding this machine's agent key, grants and consents. */
-export async function client(url: string, o: Options): Promise<Client> {
+export async function client(
+  url: string,
+  o: Values<typeof CONNECT_FLAGS>,
+): Promise<Client> {
   const agent = await agentKey();
 
   return connect(url, {
@@ -95,7 +60,7 @@ export async function confirm(question: string): Promise<boolean> {
 }
 
 /** Where to install for AI tools: this project (--local) or the user's home. */
-export const installScope = (o: Options) => ({
+export const installScope = (o: { local?: boolean }) => ({
   local: !!o.local,
   cwd: process.cwd(),
 });

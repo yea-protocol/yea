@@ -41,7 +41,7 @@ describe('yea service-id', () => {
 
     expect(run(home, '../x').err).toMatch(/bad server name/);
     expect(run(home, 'nope').err).toMatch(/start the server once/);
-    expect(run(home).err).toMatch(/usage: yea service-id <name>/);
+    expect(run(home).err).toMatch(/^yea: missing <name> for 'service-id'/);
   });
 
   it('refuses a key file that is malformed, shared, or a symlink', async () => {

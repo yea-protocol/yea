@@ -124,7 +124,9 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
    `outOfBand` refuses every job call, since its `deny` can't be known (unknown fields only
    warn). `@yea-protocol/mcp`'s job tools do the same.
 2. **Preview.** With `preview: true`, send `INTENT` without `auto`, and return the proposals
-   as Lens. Nothing is stored.
+   as Lens, saying that nothing ran and to call again without `preview` to act. Nothing is
+   stored, so a preview's ids can never be committed: a call with both `preview` and
+   `proposal` is refused before any `INTENT`, rather than previewed again.
 3. **Pending.** If there are pending, unexpired proposals for this tool and input:
    - **A chosen proposal?** If the call names `proposal`, this step acts on that id only; see
      below.
@@ -326,7 +328,8 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   - a consent is signed only after `consent_required`;
   - a wrong phrase asks again, and decline commits nothing;
   - a `high` proposal gets a code, not the form;
-- `preview` commits nothing; `deny` refuses first, including previews, and matches the
+- `preview` commits nothing, and `preview` with `proposal` is refused; a preview's id named
+  later is refused as not pending; `deny` refuses first, including previews, and matches the
   capability after a suffix;
 - two bridges in one process with different `home`s read their own `policy.json` deny lists
   and keep their own consents; without `home`, `bridge()` reads `YEA_HOME` once, at start-up;

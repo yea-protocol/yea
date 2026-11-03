@@ -30,10 +30,8 @@ export const consentTool = (
 ): ToolSpec => ({
   name: 'yea_consent',
   description:
-    'Hand back a consent the user signed with `yea approve` (a pg1. token they paste to you). It is only saved; then call the same tool again to commit.',
-  schema: object({ token: str('The pg1. consent `yea approve` printed.') }, [
-    'token',
-  ]),
+    'Save a pg1. consent the user pasted from `yea approve`. It commits nothing: to commit, call the job tool again with the same arguments.',
+  schema: object({ token: str }, ['token']),
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
