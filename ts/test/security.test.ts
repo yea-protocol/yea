@@ -1660,15 +1660,6 @@ describe('approval security (SPEC-approval)', () => {
     );
   });
 
-  it('[A21] matching a typed answer is linear: a long run of tabs takes no quadratic time (#141)', () => {
-    // CodeQL flagged the edge strip as a polynomial regex; 40k tabs took seconds with it.
-    const typed = `y${'\t'.repeat(200_000)}x`;
-    const start = performance.now();
-
-    expect(phraseMatches(typed, 'approve')).toBe(false);
-    expect(performance.now() - start).toBeLessThan(500);
-  });
-
   it('[A20] a phrase over 64 characters is refused, counted in code points (#141)', async () => {
     expect(checkedPhrase('x'.repeat(64))).toBe('x'.repeat(64));
     expect(() => checkedPhrase('x'.repeat(65))).toThrow(
@@ -1723,6 +1714,19 @@ describe('approval security (SPEC-approval)', () => {
     ).rejects.toThrow(
       "this consent code's phrase is longer than 64 characters",
     );
+  });
+
+  it('[A21] matching a typed answer is linear: a long run of tabs takes no quadratic time (#141)', () => {
+    // CodeQL flagged the edge strip as a polynomial regex; 40k tabs took seconds with it.
+    const typed = `y${'\t'.repeat(200_000)}x`;
+    // Long edge runs exercise the scan itself, and pin BOM and NBSP stripping at scale.
+    const bom = String.fromCharCode(0xfeff).repeat(200_000);
+    const nbsp = String.fromCharCode(0xa0).repeat(200_000);
+    const start = performance.now();
+
+    expect(phraseMatches(typed, 'approve')).toBe(false);
+    expect(phraseMatches(`${bom}Approve${nbsp}`, 'approve')).toBe(true);
+    expect(performance.now() - start).toBeLessThan(500);
   });
 });
 
