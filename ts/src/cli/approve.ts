@@ -16,7 +16,7 @@ import { effectLine, fmtDuration, fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import { fmtUses, isUses } from '../uses.js';
 import { unixNow } from '../util.js';
-import { command } from './command.js';
+import { command, positional } from './command.js';
 import { confirm, die } from './shared.js';
 
 export const cmdApprove = command({
@@ -35,7 +35,7 @@ export const cmdApprove = command({
 });
 
 async function approve(rest: string[], o: { to?: string }) {
-  const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
+  const code = positional(rest, 0, 'code');
   const consent = decodeConsentCode(code);
 
   // Refused before any key is loaded: there's nothing here a person could check (SPEC §6.6).

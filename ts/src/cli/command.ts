@@ -45,15 +45,30 @@ export interface Command<F extends Flags = Flags> {
 
 /** A mistake on the command line: printed without a stack trace, exiting with status 2. */
 export class UsageError extends Error {
-  /** A close match for what was mistyped, offered as "did you mean". */
-  readonly suggestion?: string;
+  /** One line on what to do instead, such as "did you mean --to?". */
+  readonly hint?: string;
 
-  constructor(message: string, suggestion?: string) {
+  constructor(message: string, hint?: string) {
     super(message);
     this.name = 'UsageError';
-    this.suggestion = suggestion;
+    this.hint = hint;
   }
 }
+
+/** The positional argument at `i`, or a `UsageError` saying `<what>` is missing. */
+export function positional(args: string[], i: number, what: string): string {
+  const arg = args[i];
+
+  if (arg === undefined) {
+    throw new UsageError(`missing <${what}>`);
+  }
+
+  return arg;
+}
+
+/** "did you mean `near`?", when there is something near. */
+export const didYouMean = (near: string | undefined) =>
+  near && `did you mean ${near}?`;
 
 /** Every command takes `-h, --help`. */
 export const HELP_FLAG: Flag = {
@@ -109,7 +124,10 @@ function checkOption(
       ? closest(t.name, Object.keys(options))
       : undefined;
 
-    throw new UsageError(`unknown option ${t.rawName}`, near && `--${near}`);
+    throw new UsageError(
+      `unknown option ${t.rawName}`,
+      didYouMean(near && `--${near}`),
+    );
   }
 
   // `--to --json` is a forgotten value, not the value `--json`; `--to=-x` passes one on purpose.

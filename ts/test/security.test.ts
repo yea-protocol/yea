@@ -815,7 +815,7 @@ describe('security regressions', () => {
         { env: { ...process.env, YEA_HOME: home }, encoding: 'utf8' },
       );
 
-      expect(r.status, risk).toBe(1);
+      expect(r.status, risk).toBe(2);
       expect(r.stderr, risk).toMatch(/bad risk .*\(low\|medium\|high\)/);
       expect(r.stdout, risk).toBe('');
     }

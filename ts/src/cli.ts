@@ -2,7 +2,12 @@
 /** yea — command line for the YEA protocol. The commands live in ./cli/, one module per group. */
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { type Command, parseCommand, UsageError } from './cli/command.js';
+import {
+  type Command,
+  didYouMean,
+  parseCommand,
+  UsageError,
+} from './cli/command.js';
 import { COMMANDS } from './cli/commands.js';
 import { commandHelp, usageMessage } from './cli/help.js';
 import { die } from './cli/shared.js';
@@ -11,6 +16,7 @@ import { printable } from './text.js';
 import { isObject } from './util.js';
 import { closest } from './validate.js';
 
+export { UsageError } from './cli/command.js';
 export { die } from './cli/shared.js';
 
 /** A command's run function, given to `run` to use in place of the SDK's own. */
@@ -88,13 +94,38 @@ function find(name: string): Command {
     return command;
   }
 
-  if (name.startsWith('-')) {
-    throw new UsageError(`unknown option ${name}`, closest(name, TOP_FLAGS));
-  }
+  const near = closest(
+    name,
+    [...COMMANDS.keys(), 'help'].filter((c) => c !== name),
+  );
 
-  const near = closest(name, [...COMMANDS.keys(), 'help']);
+  throw new UsageError(
+    `unknown command '${name}'`,
+    didYouMean(near && `'${near}'`),
+  );
+}
 
-  throw new UsageError(`unknown command '${name}'`, near && `'${near}'`);
+/**
+ * A `UsageError` for `flag`, given before any command: "did you mean" a top-level flag, or, when
+ * the command in `argv` takes it, that flags go after the command.
+ */
+function topLevelFlagError(flag: string, argv: string[]): UsageError {
+  const name = flag.replace(/^--?/, '').split('=')[0];
+  const owner = argv.find((a) => {
+    const flags = COMMANDS.get(a)?.flags;
+
+    return !!flags && Object.hasOwn(flags, name);
+  });
+  const hint = owner
+    ? `flags go after the command: yea ${owner} … ${flag}`
+    : didYouMean(
+        closest(
+          flag,
+          TOP_FLAGS.filter((f) => f !== flag),
+        ),
+      );
+
+  return new UsageError(`unknown option ${flag}`, hint);
 }
 
 async function main(argv: string[], runners: Readonly<Record<string, Runner>>) {
@@ -109,7 +140,14 @@ async function main(argv: string[], runners: Readonly<Record<string, Runner>>) {
   }
 
   if (name === 'help') {
-    return console.log(rest[0] ? commandHelp(find(rest[0])) : help());
+    const topic = rest[0];
+    const general = !topic || topic === 'help' || TOP_FLAGS.includes(topic);
+
+    return console.log(general ? help() : commandHelp(find(topic)));
+  }
+
+  if (name.startsWith('-')) {
+    throw topLevelFlagError(name, argv);
   }
 
   const command = find(name);
@@ -138,8 +176,9 @@ function fail(e: unknown, name?: string): never {
     console.error(e.stack.split('\n').map(printable).join('\n'));
   }
 
+  // A usage error quotes argv, which mustn't reach the terminal raw.
   if (e instanceof UsageError) {
-    console.error(usageMessage(e, name));
+    console.error(usageMessage(e, name).split('\n').map(printable).join('\n'));
     process.exit(2);
   }
 
@@ -151,7 +190,8 @@ function fail(e: unknown, name?: string): never {
  * Run the `yea` command line `argv` (the arguments after `yea`). A mistake on the command line
  * (an unknown command or flag) is printed with a hint and exits with status 2; a command's
  * error is printed and exits with status 1, as `die` does. `runners` run the commands this
- * package declares but can't run itself (`mcp` and `test-drive`, from @yea-protocol/cli).
+ * package declares but can't run itself (`mcp` and `test-drive`, from @yea-protocol/cli); one
+ * throws a `UsageError` for a bad flag value, to be reported the same way.
  */
 export function run(
   argv: string[],

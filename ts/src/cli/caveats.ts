@@ -4,8 +4,7 @@ import { isRisk } from '../risk.js';
 import type { Verb } from '../types.js';
 import { isLimit, type Limit } from '../uses.js';
 import { unixNow } from '../util.js';
-import type { Flags, Values } from './command.js';
-import { die } from './shared.js';
+import { type Flags, UsageError, type Values } from './command.js';
 
 /** The caveat flags of `grant` and `delegate`, each a caveat (SPEC §6.3). */
 export const CAVEAT_FLAGS = {
@@ -50,11 +49,16 @@ export const CAVEAT_FLAGS = {
   },
 } as const satisfies Flags;
 
+/** Refuse a caveat flag's value: a usage error, before any key is read. */
+function bad(message: string): never {
+  throw new UsageError(message);
+}
+
 /** `30m`, `24h`, `7d` … → seconds. */
 function duration(s: string): number {
   const m =
     /^(\d+)([smhd])$/.exec(s) ??
-    die(`bad duration ${s} (use e.g. 30m, 24h, 7d)`);
+    bad(`bad duration ${s} (use e.g. 30m, 24h, 7d)`);
 
   return Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's'];
 }
@@ -64,7 +68,7 @@ function limit(s: string): Limit {
   const m =
     /^([a-z][a-z0-9_.-]*)=(\d+)(?:\.(\d+))?\s*([A-Za-z%][A-Za-z0-9_./%-]*)?$/.exec(
       s,
-    ) ?? die(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
+    ) ?? bad(`bad limit ${s} (use e.g. spend=25.00USD or emails=20)`);
   const decimals = m[3] ?? '';
   const l = {
     of: m[1],
@@ -73,7 +77,7 @@ function limit(s: string): Limit {
     ...(m[4] ? { unit: m[4] } : {}),
   };
 
-  return isLimit(l) ? l : die(`bad limit ${s} (amount or unit out of range)`);
+  return isLimit(l) ? l : bad(`bad limit ${s} (amount or unit out of range)`);
 }
 
 /** The caveats the flags in `o` ask for; exits on a bad one. */
@@ -110,7 +114,7 @@ export function caveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
     c.push({
       risk: isRisk(o.risk)
         ? o.risk
-        : die(`bad risk ${o.risk} (low|medium|high)`),
+        : bad(`bad risk ${o.risk} (low|medium|high)`),
     });
   }
 

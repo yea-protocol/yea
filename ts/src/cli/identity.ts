@@ -12,7 +12,13 @@ import {
 import { fmtTime, lean } from '../lens.js';
 import { errno, isObject } from '../util.js';
 import { CAVEAT_FLAGS, caveats } from './caveats.js';
-import { command, type Flags, type Values } from './command.js';
+import {
+  command,
+  type Flags,
+  positional,
+  UsageError,
+  type Values,
+} from './command.js';
 import { die } from './shared.js';
 
 export const cmdInit = command({
@@ -64,10 +70,10 @@ export const cmdServiceId = command({
  * of its seed in `~/.yea/server/<name>.key`, which `yea grant --to` needs.
  */
 async function serviceId(rest: string[]) {
-  const name = rest[0] ?? die('usage: yea service-id <name>');
+  const name = positional(rest, 0, 'name');
 
   if (!SERVER_NAME.test(name)) {
-    die(
+    throw new UsageError(
       `bad server name ${JSON.stringify(name)}: it matches [a-z0-9._-]{1,64}`,
     );
   }
@@ -152,7 +158,7 @@ export const cmdGrantImport = command({
 });
 
 async function grantImport(rest: string[]) {
-  const token = rest[0] ?? die('usage: yea grant-import <pg1.… token>');
+  const token = positional(rest, 0, 'token');
   const info = await inspectGrant(token);
   const a = await agentKey();
 
@@ -166,36 +172,34 @@ async function grantImport(rest: string[]) {
   console.log(`✓ imported grant ${info.id.slice(0, 16)} from ${info.iss}`);
 }
 
+const DELEGATE_FLAGS = {
+  ...CAVEAT_FLAGS,
+  to: {
+    type: 'string',
+    value: 'key',
+    help: "the sub-agent's key (required)",
+  },
+} as const satisfies Flags;
+
 export const cmdDelegate = command({
   summary: 'Narrow a grant you hold and pass it to a sub-agent.',
   usage: 'delegate <token> --to <key> [flags]',
-  flags: {
-    ...CAVEAT_FLAGS,
-    to: {
-      type: 'string',
-      value: 'key',
-      help: "the sub-agent's key (required)",
-    },
-  },
+  flags: DELEGATE_FLAGS,
   example: 'yea delegate pg1.… --to ed25519:… --verbs ASK,INTENT',
   run: delegate,
 });
 
-async function delegate(
-  rest: string[],
-  o: Values<typeof CAVEAT_FLAGS> & { to?: string },
-) {
+async function delegate(rest: string[], o: Values<typeof DELEGATE_FLAGS>) {
+  const token = positional(rest, 0, 'token');
+
+  if (o.to === undefined) {
+    throw new UsageError('missing --to <key>');
+  }
+
   const a = (await agentKey()) ?? die('no agent key');
 
   console.log(
-    await delegateGrant(
-      rest[0] ?? die('usage: yea delegate <token> --to <key>'),
-      {
-        holder: a,
-        to: o.to ?? die('--to required'),
-        caveats: caveats(o),
-      },
-    ),
+    await delegateGrant(token, { holder: a, to: o.to, caveats: caveats(o) }),
   );
 }
 
@@ -208,7 +212,7 @@ export const cmdInspect = command({
 });
 
 async function inspect(rest: string[]) {
-  const info = await inspectGrant(rest[0] ?? die('usage: yea inspect <token>'));
+  const info = await inspectGrant(positional(rest, 0, 'token'));
 
   console.log(
     lean({

@@ -56,8 +56,12 @@ describe.concurrent('yea help', () => {
       }
     }
 
-    expect((await yea([])).out).toBe(r.out);
-    expect((await yea(['--help'])).out).toBe(r.out);
+    for (const args of [[], ['--help'], ['help', 'help'], ['help', '-h']]) {
+      const same = await yea(args);
+
+      expect(same).toMatchObject({ status: 0, err: '' });
+      expect(same.out).toBe(r.out);
+    }
   });
 
   it.each([...COMMANDS])(
@@ -71,9 +75,9 @@ describe.concurrent('yea help', () => {
 
       expect(r).toMatchObject({ status: 0, err: '' });
       expect(r.out).toContain(`usage: yea ${command.usage}`);
-      expect(r.out).toContain(`\nexample:\n  ${command.example}`);
+      expect(r.out).toContain(`\nexample\n  ${command.example}`);
       expect(command.example).toMatch(
-        new RegExp(`\\b${command.usage.split(' ')[0]}\\b`),
+        new RegExp(`^yea ${command.usage.split(' ')[0]}\\b`),
       );
       expect(r.out).toContain('-h, --help');
 
@@ -136,6 +140,69 @@ describe.concurrent('usage errors', () => {
     expect(r.err).toMatch(
       /^yea: unknown option --verison\ndid you mean --version\?\n/,
     );
+  });
+
+  it("a command's flag before the command says flags go after it", async () => {
+    const r = await yea(['--json', 'hello', 'yea://127.0.0.1:1']);
+
+    expect(r.status).toBe(2);
+    expect(r.err).toMatch(
+      /^yea: unknown option --json\nflags go after the command: yea hello … --json\n/,
+    );
+  });
+
+  it('never suggests what was typed', async () => {
+    const r = await yea(['help', 'nope']);
+
+    expect(r.status).toBe(2);
+    expect(r.err).not.toContain('did you mean');
+  });
+
+  it('a missing argument or required flag exits 2', async () => {
+    for (const [args, message] of [
+      [['inspect'], "missing <token> for 'inspect'"],
+      [['service-id'], "missing <name> for 'service-id'"],
+      [['delegate', 'pg1.x'], "missing --to <key> for 'delegate'"],
+      [['ask', 'yea://127.0.0.1:1'], "missing <capability> for 'ask'"],
+      [['commit', 'yea://127.0.0.1:1', 'p_1'], "missing <hash> for 'commit'"],
+      [
+        ['openapi'],
+        "missing <spec.json|url> or --preset for 'openapi'\npresets: ",
+      ],
+      [
+        ['openapi', '--preset', 'nope'],
+        "unknown preset nope for 'openapi'\npresets: ",
+      ],
+    ]) {
+      const r = await yea(args as string[]);
+
+      expect(r.status).toBe(2);
+      expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
+      expect(r.err).toContain('--help');
+    }
+  });
+
+  it('a bad flag or argument value exits 2, before connecting or reading a key', async () => {
+    for (const [args, message] of [
+      [['grant', '--exp', '5x'], 'bad duration 5x'],
+      [['grant', '--each', 'spend'], 'bad limit spend'],
+      [['ask', 'yea://127.0.0.1:1', 'cal.x', 'oops'], 'expected key=value'],
+      [['service-id', '../x'], 'bad server name'],
+    ]) {
+      const r = await yea(args as string[]);
+
+      expect(r.status).toBe(2);
+      expect(r.err).toMatch(new RegExp(`^yea: ${message}`));
+      expect(r.err).not.toContain('ECONNREFUSED');
+    }
+  });
+
+  it('escapes control characters from argv in a usage error', async () => {
+    const r = await yea(['init', '--\x1b[31mx']);
+
+    expect(r.status).toBe(2);
+    expect(r.err).not.toContain('\x1b');
+    expect(r.err).toMatch(/^yea: unknown option --\\u\{1b\}\[31mx for 'init'/);
   });
 
   it('a flag without its value, or a switch given one, exits 2', async () => {

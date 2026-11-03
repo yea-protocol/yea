@@ -18,7 +18,13 @@ import {
 } from '../setup.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
-import { command, type Flags, type Values } from './command.js';
+import {
+  command,
+  type Flag,
+  type Flags,
+  positional,
+  type Values,
+} from './command.js';
 import { client, confirm, die, installScope, LOCAL_FLAG } from './shared.js';
 
 /** The AI tools to set up or remove. */
@@ -26,7 +32,7 @@ const TARGET_FLAG = {
   type: 'string',
   value: 'tools',
   help: `only these, comma-separated: ${Object.keys(CLIENTS).join(', ')}`,
-} as const satisfies Flags[string];
+} as const satisfies Flag;
 
 export const cmdAdd = command({
   summary:
@@ -38,7 +44,7 @@ export const cmdAdd = command({
 });
 
 async function add(rest: string[]) {
-  const url = rest[0] ?? die('usage: yea add <url>');
+  const url = positional(rest, 0, 'url');
   const c = await client(url, {});
   const b = await c.hello(400);
 
@@ -66,8 +72,10 @@ export const cmdRemove = command({
 });
 
 async function remove(rest: string[]) {
-  removeService(rest[0] ?? die('usage: yea remove <url>'));
-  console.log(`✓ removed ${rest[0]}`);
+  const url = positional(rest, 0, 'url');
+
+  removeService(url);
+  console.log(`✓ removed ${url}`);
 }
 
 export const cmdServices = command({

@@ -22,7 +22,7 @@ This is its own help text, generated from the source at build time:
 
 Every command has its own help: `yea <command> --help` (or `-h`, or `yea help <command>`) shows its synopsis, each flag it takes and an example. `yea --version` (or `-v`) prints the version.
 
-A mistake on the command line (an unknown command or flag, or a flag without its value) says what went wrong and suggests the closest match, then exits with status 2:
+A mistake on the command line (an unknown command or flag, a missing argument, or a flag without its value or with a bad one) says what went wrong and what to do, suggesting the closest match when there is one, then exits with status 2 before anything runs:
 
 ```text
 $ yea grant --tx ed25519:…

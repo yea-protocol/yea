@@ -4,7 +4,7 @@
  */
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { bridge } from '@yea-protocol/mcp/bridge';
-import { die } from '@yea-protocol/sdk/cli';
+import { die, UsageError } from '@yea-protocol/sdk/cli';
 import {
   agentKey,
   connect,
@@ -15,7 +15,8 @@ import {
 const MODES = ['generic', 'per-capability'];
 
 /**
- * The command's options, checked; exits on a bad one. `yea` has already refused unknown flags.
+ * The command's options, checked; throws a `UsageError` for a bad value. `yea` has already
+ * refused unknown flags.
  * @param {{ tools?: string, budget?: string, 'approve-here'?: boolean }} o the flags
  */
 function check(o) {
@@ -26,7 +27,7 @@ function check(o) {
   }
 
   if (o.tools !== undefined && !MODES.includes(o.tools)) {
-    die(`yea mcp: --tools must be one of ${MODES.join(', ')}`);
+    throw new UsageError(`--tools must be one of ${MODES.join(', ')}`);
   }
 
   // Digits only: Number() alone would also take 0x10, 1e3 or " 5 ".
@@ -37,7 +38,7 @@ function check(o) {
     o.budget !== undefined &&
     !(budget !== undefined && Number.isSafeInteger(budget) && budget > 0)
   ) {
-    die('yea mcp: --budget must be a positive integer');
+    throw new UsageError('--budget must be a positive integer');
   }
 
   return budget;

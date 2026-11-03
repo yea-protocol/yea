@@ -11,6 +11,7 @@ import {
   command,
   type Flag,
   type Flags,
+  positional,
   UsageError,
   type Values,
 } from './command.js';
@@ -24,7 +25,7 @@ function kv(pairs: string[]): Record<string, unknown> {
     const i = p.indexOf('=');
 
     if (i < 0) {
-      die(`expected key=value, got ${p}`);
+      throw new UsageError(`expected key=value, got ${p}`);
     }
 
     const v = p.slice(i + 1);
@@ -70,17 +71,20 @@ const GOAL_FLAG = {
 
 /**
  * Connect to the service at `args[0]`, give `talk` the client and the other arguments, and
- * hang up.
+ * hang up. A missing `<url>` or one of the arguments named in `needs` is a usage error, before
+ * connecting.
  */
 async function withService(
   args: string[],
   o: Values<typeof CONNECT_FLAGS>,
+  needs: string[],
   talk: (c: Client, rest: string[]) => Promise<void>,
 ) {
-  const [url, ...rest] = args;
+  const url = positional(args, 0, 'url');
+  const rest = args.slice(1);
 
-  if (!url) {
-    throw new UsageError('missing <url>');
+  for (const [i, what] of needs.entries()) {
+    positional(rest, i, what);
   }
 
   const c = await client(url, o);
@@ -98,7 +102,9 @@ export const cmdHello = command({
   flags: REPLY_FLAGS,
   example: 'yea hello yea://127.0.0.1:7447',
   run: (args, o) =>
-    withService(args, o, async (c) => show(await c.hello(budgetFlag(o)), o)),
+    withService(args, o, [], async (c) =>
+      show(await c.hello(budgetFlag(o)), o),
+    ),
 });
 
 export const cmdAsk = command({
@@ -106,10 +112,13 @@ export const cmdAsk = command({
   usage: 'ask <url> <capability> [key=value …] [flags]',
   flags: REPLY_FLAGS,
   example: 'yea ask yea://127.0.0.1:7447 calendar.free day=2026-09-24',
-  run: (args, o) =>
-    withService(args, o, async (c, [capability, ...params]) =>
-      show(await c.ask(capability, kv(params), { budget: budgetFlag(o) }), o),
-    ),
+  run: (args, o) => {
+    const params = kv(args.slice(2));
+
+    return withService(args, o, ['capability'], async (c, [capability]) =>
+      show(await c.ask(capability, params, { budget: budgetFlag(o) }), o),
+    );
+  },
 });
 
 export const cmdIntent = command({
@@ -117,16 +126,19 @@ export const cmdIntent = command({
   usage: 'intent <url> <capability> [key=value …] [flags]',
   flags: { ...REPLY_FLAGS, goal: GOAL_FLAG },
   example: 'yea intent yea://127.0.0.1:7447 calendar.reschedule event=Ana',
-  run: (args, o) =>
-    withService(args, o, async (c, [capability, ...params]) =>
+  run: (args, o) => {
+    const params = kv(args.slice(2));
+
+    return withService(args, o, ['capability'], async (c, [capability]) =>
       show(
-        await c.intent(capability, kv(params), {
+        await c.intent(capability, params, {
           goal: o.goal,
           budget: budgetFlag(o),
         }),
         o,
       ),
-    ),
+    );
+  },
 });
 
 export const cmdCommit = command({
@@ -135,7 +147,7 @@ export const cmdCommit = command({
   flags: REPLY_FLAGS,
   example: 'yea commit yea://127.0.0.1:7447 p_HGgxOZ4L <hash>',
   run: (args, o) =>
-    withService(args, o, async (c, [id, hash]) =>
+    withService(args, o, ['proposal-id', 'hash'], async (c, [id, hash]) =>
       show(await c.commit({ id, hash }, { onEvent }), o),
     ),
 });
@@ -146,7 +158,7 @@ export const cmdUndo = command({
   flags: REPLY_FLAGS,
   example: 'yea undo yea://127.0.0.1:7447 <receipt-id>',
   run: (args, o) =>
-    withService(args, o, async (c, [receipt]) =>
+    withService(args, o, ['receipt-id'], async (c, [receipt]) =>
       show(await c.undo(receipt, { onEvent }), o),
     ),
 });
@@ -157,7 +169,7 @@ export const cmdExpand = command({
   flags: REPLY_FLAGS,
   example: 'yea expand yea://127.0.0.1:7447 <handle> --budget 2000',
   run: (args, o) =>
-    withService(args, o, async (c, [handle]) =>
+    withService(args, o, ['handle'], async (c, [handle]) =>
       show(await c.expand(handle, { budget: budgetFlag(o) }), o),
     ),
 });
@@ -168,10 +180,13 @@ export const cmdDo = command({
   usage: 'do <url> <capability> [key=value …] [flags]',
   flags: { ...CONNECT_FLAGS, goal: GOAL_FLAG },
   example: 'yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana',
-  run: (args, o) =>
-    withService(args, o, (c, [capability, ...params]) =>
-      interactive(c, capability, kv(params), o),
-    ),
+  run: (args, o) => {
+    const params = kv(args.slice(2));
+
+    return withService(args, o, ['capability'], (c, [capability]) =>
+      interactive(c, capability, params, o),
+    );
+  },
 });
 
 /** `yea do`: intent → choose → commit, answering questions and consent prompts at the terminal. */

@@ -18,10 +18,10 @@ export function commandHelp(c: Command): string {
     '',
     `usage: yea ${c.usage}`,
     '',
-    'flags:',
+    'flags',
     ...flags.map(([name, help]) => `  ${name.padEnd(width)}  ${help}`),
     '',
-    'example:',
+    'example',
     `  ${c.example}`,
   ].join('\n');
 }
@@ -37,13 +37,13 @@ function flagName(name: string, f: Flag): string {
 const flagHelp = (f: Flag) => (f.multiple ? `${f.help} (repeatable)` : f.help);
 
 /**
- * A usage error as printed: the mistake (and the command it was made in), a "did you mean" when
- * something is close, and where to look next.
+ * A usage error as printed: the mistake (and the command it was made in), a hint such as "did
+ * you mean" when there is one, and where to look next.
  */
 export function usageMessage(e: UsageError, name?: string): string {
   return [
     `yea: ${e.message}${name ? ` for '${name}'` : ''}`,
-    ...(e.suggestion ? [`did you mean ${e.suggestion}?`] : []),
+    ...(e.hint ? [e.hint] : []),
     name
       ? `run 'yea ${name} --help' for usage`
       : "run 'yea help' for the list of commands",

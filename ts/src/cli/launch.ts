@@ -1,7 +1,7 @@
 /** Commands that launch something: the demo, the example services and bridges. */
 import { principalKey } from '../home.js';
 import { DEFAULT_PORT, listen, serveHttp } from '../node.js';
-import { command, type Flags, type Values } from './command.js';
+import { command, type Flags, UsageError, type Values } from './command.js';
 import { die } from './shared.js';
 
 /** Where a local service listens. */
@@ -121,7 +121,7 @@ const OPENAPI_FLAGS = {
 export const cmdOpenapi = command({
   summary:
     'Serve a REST API as a YEA service, from its OpenAPI spec: reads become asks, writes become proposals.',
-  usage: 'openapi <spec.json|url> [flags]',
+  usage: 'openapi [<spec.json|url>] [flags]',
   flags: OPENAPI_FLAGS,
   example: 'yea openapi --preset petstore',
   run: openapi,
@@ -130,11 +130,9 @@ export const cmdOpenapi = command({
 async function openapi(rest: string[], o: Values<typeof OPENAPI_FLAGS>) {
   const { fromOpenAPI, loadOpenAPI } = await import('../openapi.js');
   const { PRESETS, presetOptions } = await import('../presets.js');
+  const names = Object.keys(PRESETS);
   const preset = o.preset
-    ? (PRESETS[o.preset] ??
-      die(
-        `unknown preset ${o.preset}; one of: ${Object.keys(PRESETS).join(', ')}`,
-      ))
+    ? (PRESETS[o.preset] ?? usageError(`unknown preset ${o.preset}`, names))
     : null;
 
   for (const e of preset?.env ?? []) {
@@ -148,11 +146,7 @@ async function openapi(rest: string[], o: Values<typeof OPENAPI_FLAGS>) {
   const spec = await loadOpenAPI(
     preset?.spec ??
       rest[0] ??
-      die(
-        'usage: yea openapi <spec.json|url> [--base <url>]  (or --preset ' +
-          Object.keys(PRESETS).join('|') +
-          ')',
-      ),
+      usageError('missing <spec.json|url> or --preset', names),
   );
   const headers = {
     ...(preset ? presetOptions(preset).headers : {}),
@@ -181,6 +175,11 @@ async function openapi(rest: string[], o: Values<typeof OPENAPI_FLAGS>) {
   console.error(
     `✓ ${svc.id}: ${svc.capabilities.length} capabilities (${count('ask')} ask, ${count('intent')} intent)\n  yea://127.0.0.1:${port}${o.http ? `  ·  http://127.0.0.1:${o.http}/yea` : ''}\n  trusting ${trust.length} principal(s) for writes\n  try: yea hello yea://127.0.0.1:${port}`,
   );
+}
+
+/** Throw a `UsageError` for `yea openapi`, with the presets as its hint. */
+function usageError(message: string, presets: string[]): never {
+  throw new UsageError(message, `presets: ${presets.join(', ')}`);
 }
 
 /** --header "K: V" flags as a header map. */
@@ -217,7 +216,7 @@ export const cmdMcp = command({
       help: 'approve in the AI tool (not available yet; use yea approve)',
     },
   },
-  example: 'claude mcp add yea -- npx -y @yea-protocol/cli mcp',
+  example: 'yea mcp yea://127.0.0.1:7447',
   // Overridden by @yea-protocol/cli, which runs it: it depends on @yea-protocol/mcp; the SDK can't.
   run: async () =>
     die(
