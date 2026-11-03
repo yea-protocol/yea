@@ -19,7 +19,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "yea-sdk",
+    "yea-sdk>=0.1.0",
     "mcp>=2.2,<3",
 ]
 

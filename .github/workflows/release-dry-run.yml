@@ -1,0 +1,23 @@
+name: release-dry-run
+# Everything release.yml would publish, packed, installed into an empty project or venv, and run,
+# so a broken `files`, `exports` or `bin`, a stale npm README, or versions that drift apart fail
+# here and not after a permanent publish. It runs on every PR (it takes under a minute), so the
+# tree that gets tagged has always been dry-run; release.yml runs it again, given the tag. The
+# checks live in scripts/release-dry-run.mjs; run it locally with
+# `npm run build && npm run release:dry-run`.
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+      - uses: astral-sh/setup-uv@v7
+        with: { python-version: "3.13" }
+      - run: npm ci && npm run build
+      - run: npm run release:dry-run

@@ -83,7 +83,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
       inputSchema: z.object({ path: z.string() }),
     },
     async ({ path }) => {
-      await rm(await inside(root, path));
+      await rm(await fileInside(root, path));
 
       return { content: [{ type: 'text', text: `deleted ${path}` }] };
     },
@@ -92,7 +92,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
   // One call: now it shows its plan and asks the person before it runs.
   approvals.guard(server, deleteFile, {
     describe: async (input) => {
-      await inside(root, String(input.path)); // refuse before anyone is asked
+      await fileInside(root, String(input.path)); // refuse before anyone is asked
 
       return {
         summary: `Delete ${String(input.path)}`,
@@ -106,8 +106,8 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
 ```
 
 Call it from your server factory, with `approvals` from
-`yea({ name: 'files', transport: 'stdio' })`, created once per process. `inside()` keeps
-paths in one folder; it's in the guide. From there, the
+`yea({ name: 'files', transport: 'stdio' })`, created once per process. `fileInside()` keeps
+paths to files in one folder; it's in the guide. From there, the
 [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed policy
 that lets undoable jobs run on their own, and consent codes for clients that can't ask. The
 whole server is [`examples/mcp-quickstart.ts`](https://github.com/yea-protocol/yea/blob/main/examples/mcp-quickstart.ts).
@@ -335,16 +335,33 @@ Read the [full specification](https://github.com/yea-protocol/yea/blob/main/SPEC
 
 
 <!-- #region quickstart -->
-**Try it in 10 seconds** (no clone): `npx @yea-protocol/cli demo` runs a narrated session
-with two services, a human's policy, consent and undo, over real sockets.
-[Or try it in your browser →](https://yea-protocol.github.io/yea/playground)
+**Try it in your browser:** the [playground](https://yea-protocol.github.io/yea/playground) runs
+the real core, with nothing to install. **Or in your terminal:** `npx @yea-protocol/cli demo` runs a
+narrated session with two services, a human's policy, consent and undo, over real sockets.
+
+> **Unreleased:** the SDKs and the `yea` command aren't on npm or PyPI yet, so `npx` and the
+> installs below fail for now. Until they're published, run the demo from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js demo
+> ```
+>
+> In your own project, install the TypeScript SDK as a packed file, as the
+> [MCP guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows, and the Python SDK
+> from the repo:
+>
+> ```sh
+> uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"
+> ```
+
+Once they're published, each SDK installs with one command:
 
 ```sh
 npm install @yea-protocol/sdk        # TypeScript/JavaScript: Node ≥ 20, Bun, Deno (web-standard APIs only)
 uv add yea-sdk             # Python ≥ 3.10 (or: pip install yea-sdk)
 ```
-
-> The Python package isn't on PyPI yet. Until it is: `uv add "git+https://github.com/yea-protocol/yea#subdirectory=python"`.
 
 ### Build a service
 
@@ -398,7 +415,7 @@ if (r.kind === "PROPOSALS") await cal.commit(r.proposals[0]);
 
 Python has the same concepts in snake_case (`issue_grant`, `consent_grant`, `lens`, `connect`), with decorators and a `Plan` dataclass instead of chaining. The CLI and MCP bridge are TypeScript-only. See [python/README.md](https://github.com/yea-protocol/yea/blob/main/python/README.md).
 
-### Delegate like you mean it
+### Delegate with a policy
 
 ```sh
 yea init                                              # your principal key + an agent key (~/.yea)
@@ -417,6 +434,15 @@ yea help grant                                        # any command's flags and 
 
 
 <!-- #region openapi -->
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so the `npx` commands below fail for
+> now. Until it's published, run the CLI from a clone:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js openapi --preset github
+> ```
+
 You don't have to wait for services to adopt YEA.
 
 ```sh
@@ -472,6 +498,21 @@ claude mcp add my-api -- npx @yea-protocol/cli mcp yea://127.0.0.1:7447
 
 
 <!-- #region claude-code -->
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet. The plugin below and `yea install` both
+> start the bridge with `npx -y @yea-protocol/cli mcp`, which fails until it's published. Until
+> then, run `install` from a clone, and point each tool's `yea` MCP server at the clone instead
+> (command `node`, args `/absolute/path/to/yea/cli/bin/yea.js mcp`). For Claude Code:
+>
+> ```sh
+> git clone https://github.com/yea-protocol/yea && cd yea
+> npm ci && npm run build
+> node cli/bin/yea.js install          # an agent key, the bridge and agent instructions
+> claude mcp remove -s user yea        # then point Claude Code's "yea" entry at the clone
+> claude mcp add -s user yea -- node "$PWD/cli/bin/yea.js" mcp
+> ```
+>
+> Add services with `node cli/bin/yea.js add <url>`.
+
 The bridge exposes YEA services as an MCP server, so every MCP client can use them now.
 Each capability is its own tool (`calendar_reschedule`, `shop_order`, …), plus `yea_consent`,
 `yea_undo` and `yea_expand`. Tool results are Lens.
