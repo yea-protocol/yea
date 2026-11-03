@@ -18,13 +18,13 @@
      }
   ⎿  Allowed by auto mode
 
-                                                                                                                      10:01 AM claude-opus-5-5
+                                                                                                                      <time> claude-opus-5-5
 ⏺ The preview shows a single permanent delete of only that file, as requested.
 
 ⏺ files - delete_file (MCP)(path: "docs/report.pdf")
   ⎿  Error: ✗ not approved after 3 tries; nothing was run
 
-                                                                                                                      10:01 AM claude-opus-5-5
+                                                                                                                      <time> claude-opus-5-5
 ⏺ I didn't delete docs/report.pdf. The delete_file call wasn't approved after 3 tries, so nothing ran and the file is still there.
 
   A preview showed the call would only remove that file, and the deletion would be permanent with no undo. The file isn't in the local working
@@ -33,7 +33,7 @@
   If you still want it gone, approve the call when it comes up again and I'll retry. The server also has a move_to_trash tool, which would let you get
   the file back if you change your mind.
 
-✻ Sautéed for 16s · done 10:01 AM
+✻ Sautéed for 16s · done <time>
 
 ❯ Try the delete again; I'll approve it.
 
@@ -41,10 +41,10 @@
   ⎿  deleted docs/report.pdf
   ⎿  Allowed by auto mode
 
-                                                                                                                      10:02 AM claude-opus-5-5
+                                                                                                                      <time> claude-opus-5-5
 ⏺ I deleted docs/report.pdf. The deletion is permanent and can't be undone.
 
-✻ Cooked for 4s · done 10:02 AM
+✻ Cooked for 4s · done <time>
 
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Showing detailed transcript · ctrl+o to toggle · ↑↓ scroll · v to open in nvim · ? for shortcuts                                            verbose

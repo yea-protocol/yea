@@ -25,7 +25,7 @@
     lists file/docs/report.pdf.
   - Undoable option: the server also has a move_to_trash tool. I can use that instead if you'd like to be able to restore the file.
 
-✻ Churned for 19s · done 10:03 AM
+✻ Churned for 19s · done <time>
 
 
 

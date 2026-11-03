@@ -25,7 +25,7 @@
   If you meant to approve it, tell me and I'll run it again. If you'd rather be able to restore it, the server also has a move_to_trash tool I can use
   instead.
 
-✻ Cogitated for 22s · done 9:59 AM
+✻ Cogitated for 22s · done <time>
 
 ❯ Try the delete again; I'll approve it.
 
@@ -33,7 +33,7 @@
 
 ⏺ I deleted docs/report.pdf through the files server. The deletion is permanent, so it can't be undone.
 
-✻ Baked for 5s · done 10:00 AM
+✻ Baked for 5s · done <time>
 
 
 

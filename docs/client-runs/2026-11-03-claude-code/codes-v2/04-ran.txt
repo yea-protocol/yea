@@ -25,7 +25,7 @@
     lists file/docs/report.pdf.
   - Undoable option: the server also has a move_to_trash tool. I can use that instead if you'd like to be able to restore the file.
 
-✻ Churned for 19s · done 10:03 AM
+✻ Churned for 19s · done <time>
 
 ❯ I've approved it in my terminal. Call the delete again.
 
@@ -34,7 +34,7 @@
 ⏺ I deleted docs/report.pdf through the files server after your approval, and the server confirmed it. This deletion is permanent, so there's no undo
   for it.
 
-✻ Cooked for 7s · done 10:03 AM
+✻ Cooked for 7s · done <time>
 
 
 

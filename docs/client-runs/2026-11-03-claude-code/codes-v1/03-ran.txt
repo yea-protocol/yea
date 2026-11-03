@@ -33,7 +33,7 @@
   The code expires after a while. Once you've approved it, tell me and I'll run the deletion again. If you'd like a way to get the file back, the
   server also has a move_to_trash tool I can use instead.
 
-✻ Sautéed for 20s · done 10:05 AM
+✻ Sautéed for 20s · done <time>
 
 ❯ I've approved it in my terminal. Call the delete again.
 
@@ -41,7 +41,7 @@
 
 ⏺ I deleted docs/report.pdf through the files server after your approval went through. The deletion is permanent and can't be undone.
 
-✻ Churned for 4s · done 10:05 AM
+✻ Churned for 4s · done <time>
 
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ❯ 

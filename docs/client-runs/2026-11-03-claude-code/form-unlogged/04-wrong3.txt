@@ -24,7 +24,7 @@
   To go ahead, say so and approve the next prompt when it appears, and I'll run the delete again. If you'd rather be able to get it back, the server
   also has a move_to_trash tool that I can use instead.
 
-✻ Brewed for 21s · done 9:54 AM
+✻ Brewed for 21s · done <time>
 
 
 

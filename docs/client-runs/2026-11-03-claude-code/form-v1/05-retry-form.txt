@@ -20,7 +20,7 @@
   If you still want it gone, approve the call when it comes up again and I'll retry. The server also has a move_to_trash tool, which would let you get
   the file back if you change your mind.
 
-✻ Sautéed for 16s · done 10:01 AM
+✻ Sautéed for 16s · done <time>
 
 ❯ Try the delete again; I'll approve it.
 
