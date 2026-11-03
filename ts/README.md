@@ -271,13 +271,13 @@ The same tasks as a scripted token count (o200k), isolating what each protocol s
 | **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 12,613 | **2%** | 17% |
 
 - **These numbers changed in [#297](https://github.com/yea-protocol/yea/issues/297) and [#300](https://github.com/yea-protocol/yea/issues/300).** The benchmark used to count `yea test-drive`'s 4 generic tools (687 tokens of definitions), a surface no `yea mcp` user gets, and published 32% fewer tokens than minified REST. Since #297 it measures the bridge `yea mcp` ships, with its default options: 12 tools and its instructions, then 1,466 tokens of definitions against REST's 761, which made YEA 21% more. #300 cut the bridge's wording (not what's counted) to 1,130 tokens, and YEA now sends 2% fewer. Its replies are smaller in four of five rows (1,095 tokens against 1,919 for the full menu); the definitions, re-read every turn, are still its cost.
-- Definitions count each tool's name, description and input schema, and results count the text a call returns. Counting all of `tools/list` (1,568 tokens) and `structuredContent` too, YEA sends 55% more than minified REST. [Details →](https://github.com/yea-protocol/yea/blob/main/bench/RESULTS.md)
+- Definitions count each tool's name, description and input schema, and results count the text a call returns. Counting all of `tools/list` (1,570 tokens) and `structuredContent` too, YEA sends 55% more than minified REST. [Details →](https://github.com/yea-protocol/yea/blob/main/bench/RESULTS.md)
 - Minified JSON is the fair baseline. Pretty-printed JSON is shown because many servers return it.
 - The reschedule row's saving is API design (an outcome-level intent). Against a REST server with an equivalent endpoint, YEA sends 50% more.
 - The skim row runs on a second bridge started with `--budget 800`: at the default budget the whole menu fits in one reply.
 - An early version of this benchmark had YEA *losing* on multi-step tasks. That led to [policy-gated auto-commit](https://github.com/yea-protocol/yea/blob/main/SPEC.md#431-policy-gated-auto-commit) and to hoisting shared attributes in Lens.
 
-`npm run bench` reproduces the payload numbers, and `node bench/agent-eval/run.ts` the live ones.
+`npm run bench` reproduces the payload numbers, and `node bench/agent-eval/run.ts` the live ones. `npm run bench:definitions` shows where the bridge's definition tokens go, part by part.
 
 ## Tested with a real model
 

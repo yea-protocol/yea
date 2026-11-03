@@ -2,7 +2,7 @@
  * Where the tokens of `yea mcp`'s tool definitions go, part by part, counted as bench/run.ts
  * counts them: each tool's name, description and inputSchema as JSON, then the instructions, in
  * o200k_base. A part's figure is what leaving it out saves; "names and JSON" is the rest, so the
- * rows sum to the total. Run it after a build: `npm run build && node bench/definitions.ts`.
+ * rows sum to the total. `npm run bench:definitions` runs it (and `npm run bench` ends with it).
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -132,24 +132,21 @@ const utilityParts = (d: Defs): Part[] =>
     without: (e) => ({ ...e, tools: e.tools.filter((t) => t.name !== u.name) }),
   }));
 
-/** The instructions: each line before the first service's heading, then the service notes. */
+/**
+ * The instructions: each line of the header, then the service notes. A blank line ends the
+ * header in either tool mode (a generic service's note is a Lens list, not a `# ` heading).
+ */
 function instructionParts(d: Defs): Part[] {
   const lines = d.instructions.split('\n');
-  const notes = lines.findIndex((l) => l.startsWith('# '));
-  const header = lines.slice(0, notes);
-  const lineParts = header.flatMap((line, i) =>
-    line
-      ? [
-          {
-            label: `instructions: "${line.slice(0, 40)}…"`,
-            without: (e: Defs) => ({
-              ...e,
-              instructions: lines.filter((_, j) => j !== i).join('\n'),
-            }),
-          },
-        ]
-      : [],
-  );
+  const blank = lines.indexOf('');
+  const header = lines.slice(0, blank === -1 ? lines.length : blank);
+  const lineParts = header.map((line, i) => ({
+    label: `instructions: "${line.slice(0, 40)}…"`,
+    without: (e: Defs) => ({
+      ...e,
+      instructions: lines.filter((_, j) => j !== i).join('\n'),
+    }),
+  }));
 
   return [
     ...lineParts,
