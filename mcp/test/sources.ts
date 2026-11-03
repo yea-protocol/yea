@@ -1,44 +1,17 @@
 /**
  * The source scans the security tests share (AGENTS.md rule 3): what signs, or loads a key to
- * sign with; what could sign out of sight; the files a relative import reaches; and every
- * production source in the repo.
+ * sign with, and every production source in the repo. The import graph and its allowlist audit
+ * are ts/test/imports.ts's, re-exported here.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { REPO } from '../../ts/test/imports.js';
 
-/** The repo's root. */
-export const REPO = fileURLToPath(new URL('../..', import.meta.url));
+export { importAudit, REPO, reachable } from '../../ts/test/imports.js';
 
 /** What signs, or loads a key to sign with: the SDK's signers, and the principal key's file. */
 export const SIGNS =
   /principalKey|consentGrant|issueGrant|delegateGrant|makeProof|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign|['"/]principal\.key/;
-
-/** What could sign out of a test's sight: another process or thread, Node's crypto, run-time code. */
-export const OUT_OF_SIGHT =
-  /node:child_process|node:worker_threads|node:crypto|\bimport\(|createRequire|\brequire\(/;
-
-/** Every source file reachable from `starts` through relative imports, type-only ones included. */
-export function reachable(starts: string[]): string[] {
-  const seen = new Set<string>();
-  const queue = [...starts];
-
-  for (let f = queue.pop(); f !== undefined; f = queue.pop()) {
-    if (seen.has(f)) {
-      continue;
-    }
-
-    seen.add(f);
-
-    for (const m of readFileSync(f, 'utf8').matchAll(
-      /from '(\.\.?\/[^']+)\.js'/g,
-    )) {
-      queue.push(join(dirname(f), `${m[1]}.ts`));
-    }
-  }
-
-  return [...seen].sort();
-}
 
 /** Every production source: the SDK, this package, the CLI's bin and the connectors. */
 export function productionSources(): string[] {

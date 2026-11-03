@@ -4,7 +4,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import {
   createRequestStateCodec,
   McpServer,
@@ -34,7 +34,7 @@ import {
   world,
 } from './helpers.js';
 import {
-  OUT_OF_SIGHT,
+  importAudit,
   productionSources,
   REPO,
   reachable,
@@ -810,7 +810,9 @@ describe.each<Kind>(['2026', '2025'])(
         readFileSync(at.files[0]);
         execFileSync(process.execPath, ['-e', '']);
         await sign(at.principal.seed, 'x');
-        expect(watch.touched).toHaveLength(2); // readFileSync, and the open inside it
+        expect(watch.touched).toContainEqual(
+          expect.stringMatching(/^readFileSync /),
+        );
         expect(watch.spawned).toHaveLength(1);
         expect(ed25519(signs.mock.calls)).toHaveLength(1);
       } finally {
@@ -837,9 +839,54 @@ describe('the code that reads a form answer (#337)', () => {
 
     for (const f of answerPath) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
-      // Nor anything that could sign out of sight: another process or thread, Node's own
-      // crypto, or code loaded at run time.
-      expect(readFileSync(f, 'utf8'), f).not.toMatch(OUT_OF_SIGHT);
     }
+  });
+
+  it('imports only the modules listed here, and loads no code at run time', () => {
+    // An allowlist, not a list of what signs: a new module on this path (another process, Node's
+    // crypto under any name, a new way to read a file) fails here until it's reviewed and listed.
+    const ALLOWED = [
+      '@modelcontextprotocol/server',
+      '@yea-protocol/sdk',
+      '@yea-protocol/sdk/node',
+      'node:fs', // policy.json and the server key
+      'node:path',
+    ];
+
+    expect(importAudit([join(REPO, 'mcp/src/index.ts')], ALLOWED)).toEqual([]);
+  });
+
+  it('the audit names the file and the specifier of anything unlisted or refused', () => {
+    const dir = tmp();
+    const entry = join(dir, 'entry.ts');
+
+    writeFileSync(
+      entry,
+      [
+        "import { a } from './part.js';",
+        'import { createPrivateKey } from "crypto";',
+        "export { b } from 'node:child_process';",
+      ].join('\n'),
+    );
+    writeFileSync(
+      join(dir, 'part.ts'),
+      [
+        "import 'node:cluster';",
+        "export const a = await import('node:fs');",
+        "const r = require('x');",
+        "process.binding('fs');",
+      ].join('\n'),
+    );
+
+    const [e, p] = [entry, join(dir, 'part.ts')].map((f) => relative(REPO, f));
+
+    expect(importAudit([entry], ['node:fs'])).toEqual([
+      `${e}: crypto`,
+      `${e}: node:child_process`,
+      `${p}: node:cluster`,
+      `${p}: import(`,
+      `${p}: require(`,
+      `${p}: process.binding`,
+    ]);
   });
 });

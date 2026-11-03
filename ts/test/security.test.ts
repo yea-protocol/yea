@@ -60,6 +60,7 @@ import {
   ledgerFixture,
   totalGrant,
 } from './commit-ledger-fixture.js';
+import { importAudit, reachable } from './imports.js';
 import { watchKeys } from './key-watch.js';
 
 // Pass-through `openSync`, `renameSync`, `mkdirSync` and `accessSync` with hooks: to swap a file
@@ -106,17 +107,10 @@ vi.mock('node:fs', async (importOriginal) => {
       throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
     }
   };
+  const { READS } = await import('./key-watch.js');
+  const watched = READS.find(([mod]) => mod === 'node:fs')?.[1] ?? [];
   const live = Object.fromEntries(
-    [
-      'open',
-      'readFile',
-      'readFileSync',
-      'createReadStream',
-      'copyFile',
-      'copyFileSync',
-      'cp',
-      'cpSync',
-    ].map((name) => [
+    watched.map((name) => [
       name,
       (...args: unknown[]) =>
         (real as unknown as Record<string, (...a: unknown[]) => unknown>)[name](
@@ -1807,9 +1801,6 @@ describe('approval security (SPEC-approval)', () => {
 // and python/mcp/tests/test_security.py does the same for Python.
 describe('a form answer never triggers a signature (rule 3, #337)', () => {
   const src = fileURLToPath(new URL('../src', import.meta.url));
-  /** What could sign out of a test's sight (as in mcp/test/sources.ts). */
-  const OUT_OF_SIGHT =
-    /node:child_process|node:worker_threads|node:crypto|\bimport\(|createRequire|\brequire\(/;
   /** What signs, or loads a key to sign with (as in mcp/test/sources.ts). */
   const SIGNS =
     /principalKey|consentGrant|issueGrant|delegateGrant|makeProof|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign|['"/]principal\.key/;
@@ -1939,8 +1930,16 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
 
     for (const f of session) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
-      expect(readFileSync(f, 'utf8'), f).not.toMatch(OUT_OF_SIGHT);
     }
+  });
+
+  it('the job call session imports nothing outside the SDK, and loads no code at run time (#337)', () => {
+    // An allowlist, and an empty one: every module the session reaches is the SDK's own, and
+    // WebCrypto is a global. Anything imported from outside fails here until it's reviewed.
+    expect(importAudit([join(src, 'job-call.ts')], [])).toEqual([]);
+    expect(reachable([join(src, 'job-call.ts')])).toContain(
+      join(src, 'ask', 'judge.ts'),
+    );
   });
 });
 

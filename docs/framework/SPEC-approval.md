@@ -681,7 +681,9 @@ export function decide(
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - no answer to the form, whatever it is, makes a signature or saves a consent, even with a
     principal key on the machine: in the session, and through real MCP clients of both eras in
-    each language's MCP package. The code that reads an answer names no signer (§9);
+    each language's MCP package. With the key placed before anything loads, nothing reads it
+    and no other process or thread starts. The code that reads an answer imports only the
+    modules its test lists, loads no code at run time, and names no signer (§9);
   - a `deny`ed tool never runs, even with approval;
   - deleting the unsigned policy file returns to the defaults, never to something looser;
   - undo refuses outside its window, for another principal, a second time, for an id that

@@ -1,7 +1,7 @@
 /**
  * A watch on the two things any signing path needs, whatever crypto it uses (AGENTS.md rule 3,
  * #337): the principal key's bytes, which can only come from its file, and another process or
- * thread to sign in. It patches Node's own `fs`, `fs/promises`, `child_process` and
+ * thread to sign in. It patches Node's own `fs`, `fs/promises`, `child_process`, `cluster` and
  * `worker_threads` in place and syncs their ES module bindings, so it sees code outside Vitest's
  * mocks too (an externalized package, a dynamic import), and puts them back when stopped.
  * mcp/test imports it by relative path, as the connectors import mcp/test/harness.ts.
@@ -26,8 +26,11 @@ export interface KeyWatch {
 // `require` reaches the real built-ins even in a test file that `vi.mock`s them.
 const load = createRequire(import.meta.url);
 
-/** The functions that open, read or copy a file, by built-in module. */
-const READS: [string, string[]][] = [
+/**
+ * The functions that open, read or copy a file, by built-in module. A test that mocks `node:fs`
+ * calls these through to the real module, so the watch reaches code under the mock.
+ */
+export const READS: [string, string[]][] = [
   [
     'node:fs',
     [
@@ -40,6 +43,7 @@ const READS: [string, string[]][] = [
       'copyFileSync',
       'cp',
       'cpSync',
+      'openAsBlob',
     ],
   ],
   ['node:fs/promises', ['open', 'readFile', 'copyFile', 'cp']],
@@ -156,10 +160,13 @@ export function watchKeys(keyFiles: string[]): KeyWatch {
     }
   }
 
-  for (const name of SPAWNS) {
+  for (const [mod, name] of [
+    ...SPAWNS.map((n) => ['node:child_process', n]),
+    ['node:cluster', 'fork'],
+  ]) {
     restores.push(
       patch(
-        load('node:child_process'),
+        load(mod),
         name,
         (f) =>
           function (this: unknown, ...args: unknown[]) {

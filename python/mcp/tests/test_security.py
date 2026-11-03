@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import multiprocessing
 import os
 import re
 import subprocess
@@ -21,6 +22,7 @@ from yea.approval import consent_hash_of
 from yea.store import FileStore
 
 from conftest import PRINCIPAL, Person, make_world, text
+from import_audit import REPO, import_audit, reachable
 from yea_mcp import yea
 
 pytestmark = pytest.mark.anyio
@@ -622,6 +624,28 @@ def _audit(event: str, args: tuple) -> None:
         w["busy"] = False
 
 
+def _watch_starts(monkeypatch):
+    """Record the process starts no audit event reports: a ``multiprocessing`` child (``spawn`` and
+    ``forkserver`` exec through ``_posixsubprocess``), and anything else that execs through it."""
+    import _posixsubprocess
+    import multiprocessing.process
+
+    start, fork_exec = multiprocessing.process.BaseProcess.start, _posixsubprocess.fork_exec
+
+    def watched_start(self):
+        if _Watch.current is not None:
+            _Watch.current["spawned"].append("multiprocessing.start")
+        return start(self)
+
+    def watched_fork_exec(*args, **kwargs):
+        if _Watch.current is not None:
+            _Watch.current["spawned"].append("_posixsubprocess.fork_exec")
+        return fork_exec(*args, **kwargs)
+
+    monkeypatch.setattr(multiprocessing.process.BaseProcess, "start", watched_start)
+    monkeypatch.setattr(_posixsubprocess, "fork_exec", watched_fork_exec)
+
+
 @pytest.fixture
 def key_watch(monkeypatch, tmp_path):
     """A principal key at hand before the server exists, and a watch on the two things any signing
@@ -631,7 +655,8 @@ def key_watch(monkeypatch, tmp_path):
       ``YEA_PRINCIPAL_HOME``, as on one account.
     - ``touched``: every ``open`` of a key file (Python's audit events see every open, whatever
       reads it). ``spawned``: every process started (``subprocess``, ``os.system``,
-      ``os.posix_spawn``, ``os.exec*``, ``os.spawn*``, ``os.fork``).
+      ``os.posix_spawn``, ``os.exec*``, ``os.spawn*``, ``os.fork``, a ``multiprocessing`` child and
+      ``_posixsubprocess.fork_exec``).
     - ``signatures``: every Ed25519 signature made from a seed in this process.
       ``from_private_bytes`` is how cryptography loads a key from its seed, and ``KeyPair.sign``
       goes through it."""
@@ -652,6 +677,7 @@ def key_watch(monkeypatch, tmp_path):
             return getattr(self._key, name)
 
     monkeypatch.setattr(Ed25519PrivateKey, "from_private_bytes", staticmethod(lambda data: Watched(real(data))))
+    _watch_starts(monkeypatch)
     monkeypatch.setenv("YEA_HOME", str(tmp_path / "yea_home"))
     monkeypatch.setenv("YEA_PRINCIPAL_HOME", str(tmp_path / "principal"))
     files = [d / "principal.key" for d in (tmp_path / "home", tmp_path / "yea_home", tmp_path / "principal")]
@@ -768,21 +794,58 @@ async def test_no_answer_to_the_form_reads_the_key_starts_a_process_signs_or_sav
     assert done == ["A v2"]
     assert key_watch["touched"] == [] and key_watch["spawned"] == []
     assert key_watch["signatures"] == [] and saves == []
-    # The watch does see a read, a process and a signature when one happens.
+    # The watch does see a read, each kind of process and a signature when one happens.
     key_watch["files"][2].read_text()
     subprocess.run([sys.executable, "-c", ""], check=True)
+    child = multiprocessing.get_context("spawn").Process(target=os.getpid)
+    child.start()
+    child.join()
     PRINCIPAL.sign(b"x")
-    assert key_watch["touched"] and len(key_watch["spawned"]) == 1 and len(key_watch["signatures"]) == 1
+    assert key_watch["touched"] and len(key_watch["signatures"]) == 1
+    assert {"subprocess.Popen", "_posixsubprocess.fork_exec", "multiprocessing.start"} <= set(key_watch["spawned"])
 
 
-def test_the_code_that_reads_a_form_answer_has_nothing_that_signs_out_of_sight():
-    """The answer path (``call/``, ``ask``, ``guard``, ``fastmcp`` and the package's job wiring)
-    starts no process or thread, uses no crypto library and loads no code at run time."""
-    src = Path(__file__).parents[1] / "src" / "yea_mcp"
-    files = [*sorted((src / "call").glob("*.py")), *(src / f for f in ("ask.py", "guard.py", "fastmcp.py",
-                                                                    "__init__.py"))]
-    banned = re.compile(r"\bsubprocess\b|os\.(system|exec|spawn|posix_spawn|fork)|multiprocessing|\bthreading\b"
-                        r"|concurrent\.futures|\bcryptography\b|\bctypes\b|importlib|__import__")
-    assert len(files) > 5
-    for f in files:
-        assert not banned.search(f.read_text()), f
+YEA_MCP = Path(__file__).parents[1] / "src" / "yea_mcp"
+# Where a form answer enters (``input_responses``, ``elicit_form``), and the rest of the answer path.
+ANSWER_PATH = [YEA_MCP / "__init__.py", YEA_MCP / "ask.py", YEA_MCP / "fastmcp.py", YEA_MCP / "guard.py",
+               *sorted((YEA_MCP / "call").glob("*.py"))]
+# Every module outside yea_mcp and yea the answer path may import: None for any file, or the files that
+# may. A new one fails until it's reviewed and listed, whatever it would be used for.
+ALLOWED = {m: None for m in (
+    "__future__", "base64", "collections", "copy", "dataclasses", "datetime", "decimal", "fastmcp",
+    "hashlib", "inspect", "json", "math", "mcp", "mcp_types", "os", "pathlib", "pydantic", "pydantic_core",
+    "re", "secrets", "stat", "sys", "time", "typing", "unicodedata", "weakref")}
+ALLOWED["cryptography"] = {"python/src/yea/keys.py"}  # the SDK's Ed25519, which verifies consents
+ALLOWED["asyncio"] = {"python/src/yea/store/lock.py"}  # it can start processes, so only where it's needed
+
+
+def test_the_code_that_reads_a_form_answer_imports_only_what_is_listed():
+    """Every module the answer path reaches, in yea_mcp and yea, imports only what ``ALLOWED`` lists, and
+    nothing loads code at run time or starts a process through ``os``."""
+    readers = sorted(f for f in YEA_MCP.rglob("*.py") if re.search(r"input_responses|elicit_form", f.read_text()))
+
+    assert readers == sorted(YEA_MCP / f for f in ("__init__.py", "ask.py", "fastmcp.py"))
+    assert set(readers) <= set(ANSWER_PATH)
+    assert Path("python/src/yea/job_call/answer.py") in {p.relative_to(REPO) for p in reachable(ANSWER_PATH)}
+    assert import_audit(ANSWER_PATH, ALLOWED) == []
+
+
+def test_the_import_audit_names_the_file_and_the_module(tmp_path, monkeypatch):
+    """The audit flags an unlisted module, a listed one in a file it isn't listed for, and each refused
+    construct."""
+    import import_audit as audit
+
+    pkg = tmp_path / "yea_mcp"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "entry.py").write_text("import multiprocessing\nfrom cryptography import x\nfrom . import part\n")
+    (pkg / "part.py").write_text("import os\nos.system('x')\nos.execv('a', [])\n__import__('y')\n"
+                                 "import importlib\nfrom os import posix_spawn\n")
+    monkeypatch.setattr(audit, "REPO", tmp_path)
+    monkeypatch.setitem(audit.ROOTS, "yea_mcp", tmp_path)
+    found = audit.import_audit([pkg / "entry.py"], {"os": None, "cryptography": {"elsewhere.py"}})
+
+    assert sorted(found) == sorted([
+        "yea_mcp/entry.py: multiprocessing", "yea_mcp/entry.py: cryptography",
+        "yea_mcp/part.py: importlib", "yea_mcp/part.py: os.system", "yea_mcp/part.py: os.execv",
+        "yea_mcp/part.py: __import__()", "yea_mcp/part.py: __import__", "yea_mcp/part.py: os.posix_spawn"])
