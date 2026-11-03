@@ -13,7 +13,7 @@
     },
     "./bridge": {
       "types": "./dist/bridge.d.ts",
-      "default": "./dist/bridge.js"
+      "default": "./dist/bridges.js"
     },
     "./test-drive": {
       "types": "./dist/test-drive.d.ts",
