@@ -8,6 +8,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { privateFolders } from './check-structure/private-folders.mjs';
+import { privatePackages } from './check-structure/private-packages.mjs';
 
 /** The most lines a source file may have. */
 export const MAX_LINES = 300;
@@ -41,10 +42,19 @@ export const LENGTH_EXEMPT = [
  * when a listed violation no longer occurs.
  */
 export const RATCHET = {
-  // Imports from inside another module's folder (ADR-0001): #284.
+  // Imports from inside another module's folder (ADR-0001): #284, and #336 in python/.
   'mcp/src/bridge.ts': ['private'],
   'mcp/src/bridge/instructions.ts': ['private'],
   'site/.vitepress/theme/components/landing/HeroSection.vue': ['private'],
+  'python/mcp/src/yea_mcp/__init__.py': ['private'],
+  'python/mcp/src/yea_mcp/server_key.py': ['private'],
+  'python/src/yea/approval/plan.py': ['private'],
+  'python/src/yea/approve.py': ['private'],
+  'python/src/yea/job_call/__init__.py': ['private'],
+  'python/src/yea/job_call/answer.py': ['private'],
+  'python/src/yea/job_call/ask.py': ['private'],
+  'python/src/yea/text.py': ['private'],
+  'python/src/yea/transport.py': ['private'],
 };
 
 /** Run-together names, since renamed to kebab-case (#108); they may not come back. */
@@ -215,15 +225,15 @@ export function expand(root, pattern) {
     .filter((dir) => existsSync(`${root}/${dir}`));
 }
 
-/** The violations in the source folder `dir`: each file's, then its imports'. */
-function checkRoot(root, dir) {
-  const files = new Map(
-    walk(root, dir).map((path) => [
-      path,
-      readFileSync(`${root}/${path}`, 'utf8'),
-    ]),
-  );
+/** The source folder `dir` as `{ dir, files }`, its files a Map of path to text. */
+function readRoot(root, dir) {
+  const read = (path) => [path, readFileSync(`${root}/${path}`, 'utf8')];
 
+  return { dir, files: new Map(walk(root, dir).map(read)) };
+}
+
+/** The violations in one source folder: each file's, then its relative imports'. */
+function checkRoot({ dir, files }) {
   return [
     ...[...files].flatMap(([path, text]) => checkFile(path, text)),
     ...privateFolders(dir, files),
@@ -232,14 +242,13 @@ function checkRoot(root, dir) {
 
 /** Every violation under `roots`, sorted, with paths relative to `root`. */
 export function findViolations(root, roots = ROOTS) {
-  return roots
+  const sources = roots
     .flatMap((pattern) => expand(root, pattern))
-    .flatMap((dir) => checkRoot(root, dir))
-    .sort((a, b) =>
-      `${a.path} ${a.rule} ${a.detail}`.localeCompare(
-        `${b.path} ${b.rule} ${b.detail}`,
-      ),
-    );
+    .map((dir) => readRoot(root, dir));
+  const found = [...sources.flatMap(checkRoot), ...privatePackages(sources)];
+  const key = (v) => `${v.path} ${v.rule} ${v.detail}`;
+
+  return found.sort((a, b) => key(a).localeCompare(key(b)));
 }
 
 /**

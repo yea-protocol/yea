@@ -170,8 +170,10 @@ docs embed whole, generated files and the `conformance/` vectors are exempt from
 `npm run lint:structure` (`scripts/check-structure.mjs`, run in CI and before each commit)
 checks every source file for the header, the 300-line limit and the name: its case, plus a list
 of known run-together names (`servefetch`, `keyfile`, …). It also reads the relative imports
-in TS, JS and Vue files and fails on any from inside another module's folder (Python packages:
-#283). Biome covers exports:
+in TS, JS and Vue files and the imports in Python files, and fails on any from inside another
+module's folder. Python imports resolve by module name across `python/src` and `python/mcp/src`;
+a subpackage's `__init__.py` is open to its package, and a top-level package (`yea`, `yea_mcp`)
+isn't a module. Biome covers exports:
 `noDefaultExport`, with overrides for the files a framework needs one in, and `noReExportAll`,
 off only for package index files.
 

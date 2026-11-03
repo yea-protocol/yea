@@ -373,14 +373,185 @@ test('private: a Vue file is read only inside <script>', () => {
   );
 });
 
-test('private: Python files are not read by the rule', () => {
+/** A Python module: its docstring, then `lines`. */
+function py(...lines) {
+  return DOC + lines.map((line) => `${line}\n`).join('');
+}
+
+/** `path: rule (detail)` for each violation under the Python roots `roots`. */
+function pythonFound(name, files, roots = ['src']) {
+  return report(compare(findViolations(fixture(name, files), roots), {}));
+}
+
+/** The files a Python import test reads: package `app` with `x/` holding `parts`. */
+function appImporting(text, parts) {
+  const files = {
+    'src/app/__init__.py': DOC,
+    'src/app/run.py': text,
+    'src/app/x/__init__.py': DOC,
+  };
+
+  for (const part of parts) {
+    files[`src/app/x/${part}.py`] = DOC;
+  }
+
+  return files;
+}
+
+/** The files the violations under `src` say were imported, in order. */
+function importedFiles(name, files) {
+  return pythonFound(name, files).map(
+    (line) => /imports (\S+)/.exec(line)?.[1],
+  );
+}
+
+test("private: a Python package's modules are closed to modules outside it", () => {
   assert.deepEqual(
-    privateFound('private-python', {
-      'src/run.py': `${DOC}from .x.part import a  # './x/part.js'\n`,
-      'src/x/__init__.py': DOC,
-      'src/x/part.py': DOC,
+    pythonFound('python-sibling', {
+      'src/app/__init__.py': DOC,
+      'src/app/run.py': py('from .pkg.part import a'),
+      'src/app/pkg/__init__.py': py('from .part import a'),
+      'src/app/pkg/part.py': DOC,
+    }),
+    [
+      'src/app/run.py: private (imports src/app/pkg/part.py from inside src/app/pkg/; import src/app/pkg/__init__.py instead)',
+    ],
+  );
+});
+
+test('private: the __init__.py and the modules in the package may import them', () => {
+  assert.deepEqual(
+    pythonFound('python-allowed', {
+      'src/app/__init__.py': py('from .pkg import a', 'from .text import t'),
+      'src/app/text.py': DOC,
+      'src/app/run.py': py('from .pkg import a', 'from . import text'),
+      'src/app/pkg/__init__.py': py(
+        'from .part import a',
+        'from . import inner',
+      ),
+      'src/app/pkg/part.py': py('from .inner import d', 'from .. import text'),
+      'src/app/pkg/inner/__init__.py': py('from .deep import d'),
+      'src/app/pkg/inner/deep.py': py(
+        'from ..part import a',
+        'from ...run import r',
+      ),
     }),
     [],
+  );
+});
+
+test('private: a subpackage is open to its package, not beyond it', () => {
+  assert.deepEqual(
+    pythonFound('python-nested', {
+      'src/app/__init__.py': DOC,
+      'src/app/run.py': py('from .a.b import x'),
+      'src/app/a/__init__.py': py('from .b.part import y'),
+      'src/app/a/c.py': py('from .b import x'),
+      'src/app/a/b/__init__.py': DOC,
+      'src/app/a/b/part.py': DOC,
+    }),
+    [
+      'src/app/a/__init__.py: private (imports src/app/a/b/part.py from inside src/app/a/b/; import src/app/a/b/__init__.py instead)',
+      'src/app/run.py: private (imports src/app/a/b/__init__.py from inside src/app/a/; import src/app/a/__init__.py instead)',
+    ],
+  );
+});
+
+test('private: from .pkg import x names a submodule only when its file exists', () => {
+  assert.deepEqual(
+    importedFiles(
+      'python-from-package',
+      appImporting(py('from .x import part, name', 'from .x import *'), [
+        'part',
+      ]),
+    ),
+    ['src/app/x/part.py'],
+  );
+});
+
+test('private: absolute imports resolve across every Python root', () => {
+  const found = pythonFound(
+    'python-roots',
+    {
+      'lib/src/lib/__init__.py': DOC,
+      'lib/src/lib/text.py': DOC,
+      'lib/src/lib/pkg/__init__.py': DOC,
+      'lib/src/lib/pkg/part.py': DOC,
+      'tool/src/tool/__init__.py': DOC,
+      'tool/src/tool/run.py': py(
+        'import os, json',
+        'from lib import pkg',
+        'from lib.text import t',
+        'from lib.pkg import name',
+        'from lib.pkg.part import a',
+        'import lib.pkg.part as p',
+        'from lib.pkg import part',
+      ),
+    },
+    ['lib/src', 'tool/src'],
+  );
+
+  assert.deepEqual(found, [
+    'tool/src/tool/run.py: private (imports lib/src/lib/pkg/part.py from inside lib/src/lib/pkg/; import lib/src/lib/pkg/__init__.py instead)',
+  ]);
+});
+
+test('private: a top-level package and a package without __init__.py are open', () => {
+  assert.deepEqual(
+    pythonFound('python-open', {
+      'src/run.py': py(
+        'from app.text import t',
+        'from app.plain.part import p',
+      ),
+      'src/app/__init__.py': DOC,
+      'src/app/text.py': DOC,
+      'src/app/plain/part.py': DOC,
+    }),
+    [],
+  );
+});
+
+test('private: every Python import statement form is read', () => {
+  const text = py(
+    'from .x import (',
+    '    a,',
+    '    b as bee,',
+    ')',
+    'from .x import c, \\',
+    '    d',
+    'import os; from .x import e',
+    'if TYPE_CHECKING: from .x import f',
+    'def g():',
+    '    from .x.g import g',
+    'import app.x.h as h, app.x.i',
+  );
+  const parts = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+
+  assert.deepEqual(
+    importedFiles('python-forms', appImporting(text, parts)),
+    parts.map((p) => `src/app/x/${p}.py`),
+  );
+});
+
+test('private: imports in Python comments and strings are not read', () => {
+  const text = [
+    '"""A module.',
+    '',
+    'Use `from .x.a import a` for a.',
+    '"""',
+    '# from .x.b import b',
+    "s = 'from .x.c import c'",
+    "t = r'''",
+    'from .x.d import d',
+    "'''",
+    'u = "\\"#"; from .x.e import e  # from .x.f import f',
+    "from .x.g import g  # './x/a.js'",
+  ].join('\n');
+  const parts = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+  assert.deepEqual(
+    importedFiles('python-comments', appImporting(text, parts)),
+    ['src/app/x/e.py', 'src/app/x/g.py'],
   );
 });
 
