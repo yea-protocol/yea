@@ -5,7 +5,7 @@ ts/src/service/verified-request/verbs.ts."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from ...errors import YeaError, fix
@@ -15,7 +15,7 @@ from ...validate import validate_params
 from ..capabilities import unknown_capability
 from ..state import ServiceState, _AskDef, _IntentDef, _StoredProposal, _StoredReceipt
 from ..util import _json_str
-from .identity import Identity, Scope, first_grant, identify, identify_required, with_limits
+from .identity import Identity, Scope, consenter, first_grant, identify, identify_required, with_limits
 
 
 @dataclass(frozen=True)
@@ -147,9 +147,10 @@ def verify_commit(state: ServiceState, req: dict, budget: int) -> VerifiedCommit
     scope = Scope("COMMIT", proposal["capability"], proposal, stored.principal)
     holder, principal, _ = identify_required(state, req, scope, proposal["hash"])
     _check_requester(stored, holder)
-    # A proposal with no principal (no grant authorized its INTENT) commits only with a consent.
-    limits = replace(scope, consent_only=stored.principal is None)
-    return VerifiedCommit(req["id"], budget, stored, holder, principal, lambda: with_limits(state, req["grants"], holder, limits))
+    if stored.principal is None:
+        # With no principal of its own, it commits under its consent's issuer, and replays match that.
+        principal = consenter(state, req["grants"], holder, scope) or principal
+    return VerifiedCommit(req["id"], budget, stored, holder, principal, lambda: with_limits(state, req["grants"], holder, scope))
 
 
 def _check_requester(stored: _StoredProposal, holder: str) -> None:

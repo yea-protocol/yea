@@ -208,8 +208,8 @@ proposal in the same round trip if, and only if, both of these hold:
 
 The reply is then a `RECEIPT` with `"auto": true` on the reply frame. In every other
 case the service replies exactly as it would without `auto`. So an `INTENT` that no grant
-authorized never auto-commits, whatever its grants allow a `COMMIT`: it planned without a
-principal, and its proposals commit only as §4.4 allows.
+authorized never auto-commits, even when one of its grants allows the `COMMIT` outright: it
+planned without a principal, and its proposals commit only as §4.4 allows.
 
 The principal's grant, not the agent, decides what may skip the preview. Low-risk,
 reversible actions inside the policy take one round trip. Anything over a limit, riskier or
@@ -244,10 +244,14 @@ no grants and proof can be viewed but never committed. This stops one party from
 preparing a proposal, with effects of its choosing, for someone else's agent to commit.
 
 A proposal from an `INTENT` that carried grants but was authorized by none has no
-principal. Only a consent (§6.6) commits it: a grant whose root block carries
-`{"only": hash}` with the proposal's hash, so that a principal, not the agent, signed for
-this exact proposal. A `COMMIT` under any other grant that would authorize it gets
-`consent_required`, naming that grant's issuer as the principal.
+principal. Only a consent grant to it (§6.6), from any principal the service trusts, commits
+it: one root block whose caveats are exactly a consent's, in any order, for this service, the
+proposal's capability, its hash and its `expires`. So a principal, not the agent, signed for
+this exact proposal, and a delegated grant is never a consent. A `COMMIT` under any other
+grant that would authorize it gets `consent_required`, naming that grant's issuer as the
+principal. Such a `COMMIT` acts for the issuer of its first presented consent grant to the
+proposal or, with none, of its first presented grant that authorizes it, and a replay
+(below) is matched against that principal.
 
 A service checks the requester and the principal before the consent a proposal with no
 principal needs and before the proposal's `each`, `total` and `risk` (§6.6), so a `COMMIT`
@@ -486,8 +490,8 @@ A request MAY present several grants. It is authorized if **any single** present
 grant authorizes it on its own.
 
 If a `COMMIT` would be authorized except for a `risk`, `each` or `total` caveat, or
-except that its proposal has no principal and the grant isn't a consent for it (§4.4), the
-service MUST reply `ERROR` `consent_required` with:
+except that its proposal has no principal and the grant isn't a consent grant to it
+(§4.4), the service MUST reply `ERROR` `consent_required` with:
 
 ```json
 "consent": {"proposal":"p_7Hc2","hash":"…","service":"shop.example","capability":"shop.order",

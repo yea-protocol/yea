@@ -681,11 +681,13 @@ def test_m4b_a_non_requester_whose_grant_would_need_consent_gets_forbidden():
 # and still be authorized by none of them, such as a COMMIT-only grant. It then plans with no
 # principal, so it never auto-commits, and only a principal's consent commits its proposal.
 COMMIT_ONLY = [{"verbs": ["COMMIT"]}]
+OTHER = key_from_seed(bytes([4]) * 32)  # another principal the service trusts
+OTHER_AGENT = key_from_seed(bytes([5]) * 32)
 
 
 def _undoable(applied, require_grants=False):
     """A service whose one intent is undoable, recording the principal of every ``apply``."""
-    svc = Service("v", "V", "v", trust=[PRINCIPAL.public], require_grants=require_grants)
+    svc = Service("v", "V", "v", trust=[PRINCIPAL.public, OTHER.public], require_grants=require_grants)
 
     def apply(ctx):
         applied.append(ctx.principal)
@@ -764,6 +766,55 @@ def test_an_agent_cannot_consent_for_itself_by_delegating_only_to_its_own_key():
         self_consent = delegate_grant(own, AGENT, AGENT.public, [{"only": p["hash"]}])
         _consent_of(await _as(svc, self_consent).commit(p))
         assert applied == []
+
+    run(go())
+
+
+def test_only_a_grant_shaped_exactly_as_a_consent_commits_a_proposal_with_no_principal():
+    async def go():
+        applied = []
+        c = _as(_undoable(applied), issue_grant(PRINCIPAL, AGENT.public, COMMIT_ONLY))
+        p = _proposal_of(await c.intent("v.do", {}))
+        svc, verbs, can, only, exp = (
+            {"svc": ["v"]}, {"verbs": ["COMMIT"]}, {"can": ["v.do"]}, {"only": p["hash"]}, {"exp": p["expires"]})
+        # Each is valid and allows this COMMIT, but isn't a consent to it.
+        not_consents = {
+            "a bare only": [only],
+            "an extra caveat": [svc, verbs, can, only, exp, {"nbf": 0}],
+            "a missing caveat": [svc, verbs, only, exp],
+            "a wider can": [svc, verbs, {"can": ["v.*"]}, only, exp],
+            "an earlier exp": [svc, verbs, can, only, {"exp": p["expires"] - 60}],
+        }
+        for name, caveats in not_consents.items():
+            r = await c.commit(p, grants=[issue_grant(PRINCIPAL, AGENT.public, caveats)])
+            assert _consent_of(r)["hash"] == p["hash"], name
+        # Exactly a consent's caveats, but delegated on: a consent is a root grant.
+        passed_on = delegate_grant(issue_grant(PRINCIPAL, OTHER_AGENT.public, [svc, verbs, can, only, exp]),
+                                   OTHER_AGENT, AGENT.public, [])
+        _consent_of(await c.commit(p, grants=[passed_on]))
+        assert applied == []
+        # The same caveats in another order are a consent.
+        r = await c.commit(p, grants=[issue_grant(PRINCIPAL, AGENT.public, [exp, only, can, verbs, svc])])
+        assert r.kind == "RECEIPT", r.lens
+        assert applied == [PRINCIPAL.public]
+
+    run(go())
+
+
+def test_a_replay_with_grants_from_two_principals_is_matched_to_the_consents():
+    async def go():
+        applied = []
+        c = _as(_undoable(applied), issue_grant(OTHER, AGENT.public, COMMIT_ONLY))
+        p = _proposal_of(await c.intent("v.do", {}))
+        consent = {**_consent_of(await c.commit(p)), "principal": PRINCIPAL.public}
+        grants = [consent_grant(PRINCIPAL, AGENT.public, consent)]
+        assert (await c.commit(p, grants=grants)).kind == "RECEIPT"
+        again = await c.commit(p, grants=grants)
+        assert again.kind == "RECEIPT" and again.replay is True, again.lens
+        # Without the consent, the replay is the other principal's, who can't read the receipt.
+        r = await c.commit(p)
+        assert (r.kind, r.get("code")) == ("ERROR", "forbidden"), r.lens
+        assert applied == [PRINCIPAL.public]
 
     run(go())
 

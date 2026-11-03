@@ -15,7 +15,7 @@ import type {
   StoredReceipt,
 } from '../commit-ledger.js';
 import type { ServiceState } from '../state.js';
-import { admitter } from './grants.js';
+import { admitter, consenter } from './grants.js';
 import { type Identity, identify, identifyRequired } from './identity.js';
 import type { ParsedRequest } from './parse.js';
 
@@ -154,8 +154,11 @@ export async function verifyCommit(state: Verifier, req: Parsed<'COMMIT'>) {
   return {
     stored,
     holder,
-    principal,
-    // A proposal with no principal (no grant authorized its INTENT) commits only with a consent.
+    // With no principal of its own, it commits under its consent's issuer, and replays match that.
+    principal:
+      stored.principal === null
+        ? ((await consenter(state, req.grants, holder, proposal)) ?? principal)
+        : principal,
     admit: admitter(state, req.grants, holder, stored.principal),
   };
 }

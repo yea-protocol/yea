@@ -4433,6 +4433,80 @@ describe('an INTENT no grant authorized (#287)', async () => {
     expect(applied).toEqual([]);
   });
 
+  it('only a grant shaped exactly as a consent (SPEC §6.6) commits a proposal with no principal', async () => {
+    const { applied, as } = fixture();
+    const c = as([await grantOf(principal, commitOnly)]);
+    const p = proposalOf(await c.intent('v.do', {}));
+    const [svc, verbs, can, only, exp]: P.Caveat[] = [
+      { svc: ['v'] },
+      { verbs: ['COMMIT'] },
+      { can: ['v.do'] },
+      { only: p.hash },
+      { exp: p.expires },
+    ];
+    // Each is valid and allows this COMMIT, but isn't a consent to it.
+    const notConsents: Record<string, P.Caveat[]> = {
+      'a bare only': [only],
+      'an extra caveat': [svc, verbs, can, only, exp, { nbf: 0 }],
+      'a missing caveat': [svc, verbs, only, exp],
+      'a wider can': [svc, verbs, { can: ['v.*'] }, only, exp],
+      'an earlier exp': [svc, verbs, can, only, { exp: p.expires - 60 }],
+    };
+
+    for (const [name, caveats] of Object.entries(notConsents)) {
+      const grants = [await grantOf(principal, caveats)];
+
+      expect(consentOf(await c.commit(p, { grants })).hash, name).toBe(p.hash);
+    }
+
+    // Exactly a consent's caveats, but delegated on: a consent is a root grant.
+    const passedOn = await P.delegateGrant(
+      await P.issueGrant({
+        principal,
+        to: otherAgent.public,
+        caveats: [svc, verbs, can, only, exp],
+      }),
+      { holder: otherAgent, to: agent.public },
+    );
+
+    consentOf(await c.commit(p, { grants: [passedOn] }));
+    expect(applied).toEqual([]);
+
+    // The same caveats in another order are a consent.
+    const grants = [await grantOf(principal, [exp, only, can, verbs, svc])];
+
+    expect((await c.commit(p, { grants })).kind).toBe('RECEIPT');
+    expect(applied).toEqual([principal.public]);
+  });
+
+  it('a replay with grants from two principals is matched to the consent’s', async () => {
+    const { applied, as } = fixture();
+    const c = as([await grantOf(other, commitOnly)]);
+    const p = proposalOf(await c.intent('v.do', {}));
+    const grants = [
+      await P.consentGrant({
+        principal,
+        agent: agent.public,
+        consent: {
+          ...consentOf(await c.commit(p)),
+          principal: principal.public,
+        },
+      }),
+    ];
+
+    expect((await c.commit(p, { grants })).kind).toBe('RECEIPT');
+
+    const again = await c.commit(p, { grants });
+
+    expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
+
+    // Without the consent, the replay is the other principal's, who can't read the receipt.
+    const r = await c.commit(p);
+
+    expect(r.kind === 'ERROR' && r.code).toBe('forbidden');
+    expect(applied).toEqual([principal.public]);
+  });
+
   it('an INTENT a grant authorized still auto-commits under its principal', async () => {
     const { applied, as } = fixture();
     const r = await as([await grantOf(principal)]).intent(

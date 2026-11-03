@@ -139,5 +139,6 @@ async function checkGrantUnsafe(
     iss,
     holder: chain.holder,
     totals,
+    blocks,
   };
 }
