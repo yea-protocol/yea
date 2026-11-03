@@ -4,7 +4,8 @@
  * however TOML lets it be written (spaced, quoted or commented). Removing it also removes its
  * sub-tables, such as `[mcp_servers.yea.env]`, so a new entry doesn't keep an old one's parts.
  * Values are written as JSON strings and arrays, which TOML reads the same way; anything else
- * can't be read back.
+ * can't be read back. An env may also be the sub-table `[mcp_servers.yea.env]`, TOML's other way
+ * to write it.
  */
 import { BadEntry, type BridgeCommand, parseBridge } from './bridge-command.js';
 
@@ -18,6 +19,11 @@ const YEA = `${key('mcp_servers')}\\s*\\.\\s*${key('yea')}`;
 
 /** The yea table's header. */
 const YEA_TABLE = new RegExp(`^\\s*\\[\\s*${YEA}\\s*\\]\\s*(?:#.*)?$`);
+
+/** Its env sub-table's header, `[mcp_servers.yea.env]`: another way to write its `env`. */
+const YEA_ENV_TABLE = new RegExp(
+  `^\\s*\\[\\s*${YEA}\\s*\\.\\s*${key('env')}\\s*\\]\\s*(?:#.*)?$`,
+);
 
 /** A header of one of its sub-tables (or arrays of them), such as `[mcp_servers.yea.env]`. */
 const YEA_SUB_TABLE = new RegExp(`^\\s*\\[\\[?\\s*${YEA}\\s*\\.`);
@@ -167,7 +173,40 @@ export function readTable(text: string): BridgeCommand | null {
     }
   }
 
-  return parseBridge(entry);
+  const env = envTable(lines);
+
+  if (env && 'env' in entry) {
+    throw new BadEntry('its env is set twice, inline and as a table');
+  }
+
+  return parseBridge(env ? { ...entry, env } : entry);
+}
+
+/** The `K = "v"` lines of the yea table's env sub-table, if it has one; throws a BadEntry for others. */
+function envTable(lines: string[]): Record<string, unknown> | null {
+  const start = lines.findIndex((l) => YEA_ENV_TABLE.test(l));
+
+  if (start < 0) {
+    return null;
+  }
+
+  const env: Record<string, unknown> = {};
+
+  for (const line of lines.slice(start + 1)) {
+    if (TABLE.test(line)) {
+      break;
+    }
+
+    const m = /^\s*("(?:[^"\\]|\\.)*"|[\w-]+)\s*=\s*(.+?)\s*$/.exec(line);
+
+    if (m) {
+      const name = m[1].startsWith('"') ? parseValue('env', m[1]) : m[1];
+
+      env[String(name)] = parseValue('env', m[2]);
+    }
+  }
+
+  return env;
 }
 
 /** One value as `writeTable` writes it; throws a BadEntry for any other TOML. */

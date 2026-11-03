@@ -2,6 +2,9 @@
 import { spawn } from 'node:child_process';
 import { lines, type Transport } from '../client.js';
 
+/** How long a closed service has to exit after SIGTERM, before SIGKILL. */
+const KILL_AFTER_MS = 2000;
+
 /** Start the service `command` (split on spaces) and talk to it over its stdin and stdout. */
 export function stdioTransport(command: string): Transport {
   const [cmd, ...args] = command.trim().split(/\s+/);
@@ -10,7 +13,9 @@ export function stdioTransport(command: string): Transport {
     (s) => child.stdin.write(s),
     () => {
       child.kill();
-      // And let go of it: a service that ignores SIGTERM can't keep this process running.
+      // A service that ignores SIGTERM gets SIGKILL soon after, if this process is still
+      // running then; either way, let go of it, so it can't keep this process running.
+      setTimeout(() => child.kill('SIGKILL'), KILL_AFTER_MS).unref();
       child.stdin.destroy();
       child.stdout.destroy();
       child.unref();

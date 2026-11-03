@@ -473,6 +473,28 @@ describe('reading a registered entry back', () => {
     expect(text).not.toContain('FOO');
   });
 
+  it("Codex: an env sub-table is read back as the entry's env, which doctor starts it with", () => {
+    put(home, {
+      '.codex/config.toml':
+        '[mcp_servers.yea]\ncommand = "npx"\n\n[ mcp_servers.yea.env ]  # by hand\nFOO = "bar"\n"A B" = "c"\n\n[tui]\na = 1\n',
+    });
+
+    expect(CLIENTS.codex.registered(scope())).toEqual({
+      command: 'npx',
+      args: [],
+      env: { FOO: 'bar', 'A B': 'c' },
+    });
+  });
+
+  it('Codex: an env set both inline and as a sub-table is unreadable, which installing replaces', () => {
+    put(home, {
+      '.codex/config.toml':
+        '[mcp_servers.yea]\ncommand = "npx"\nenv = { "A" = "b" }\n\n[mcp_servers.yea.env]\nFOO = "bar"\n',
+    });
+
+    expect(() => CLIENTS.codex.registered(scope())).toThrow(BadEntry);
+  });
+
   it('Codex: sub-tables without the table are an entry with no command, which installing replaces', () => {
     put(home, { '.codex/config.toml': '[mcp_servers.yea.env]\nFOO = "bar"\n' });
 
