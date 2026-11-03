@@ -86,7 +86,14 @@ That writes `"env": { "YEA_REQUIRE_INTERACTION": "1" }` into the entry of each t
 claude mcp add yea -e YEA_REQUIRE_INTERACTION=1 -- npx -y @yea-protocol/cli mcp
 ```
 
-In `.mcp.json` or the plugin's server entry, set `"env": { "YEA_REQUIRE_INTERACTION": "1" }`. From a shell, `yea mcp --require-interaction` does the same. A server built with the framework takes `yea({ …, requireInteraction: true })` in TypeScript, or `yea(…, require_interaction=True)` in Python, and a single `job()` can set its own.
+In `.mcp.json` or `~/.claude.json`, set `"env": { "YEA_REQUIRE_INTERACTION": "1" }`. The plugin's entry, which you don't edit, passes on the variable from the environment Claude Code starts in, so export it first:
+
+```sh
+export YEA_REQUIRE_INTERACTION=1   # in your shell profile, or before `claude`
+claude
+```
+
+To pass the variable through your own `.mcp.json` the same way, give the reference a default, as the plugin does: `"YEA_REQUIRE_INTERACTION": "${YEA_REQUIRE_INTERACTION:-}"`. A bare `${YEA_REQUIRE_INTERACTION}` that isn't set reaches the bridge unexpanded, and the bridge refuses to start. The empty default reads as off. From a shell, `yea mcp --require-interaction` does the same. A server built with the framework takes `yea({ …, requireInteraction: true })` in TypeScript, or `yea(…, require_interaction=True)` in Python, and a single `job()` can set its own.
 
 The tools that change things (each intent capability, and `yea_undo`; in a framework server, each job, guarded tool and `undo`) then carry `_meta["anthropic/requiresUserInteraction"]`. Reads, `yea_expand` and `yea_consent` don't. For a tool with that key, Claude Code (v2.1.292 or later):
 

@@ -4,7 +4,12 @@
  */
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { bridge } from '@yea-protocol/mcp/bridge';
-import { die, UsageError } from '@yea-protocol/sdk/cli';
+import {
+  die,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
+  UsageError,
+} from '@yea-protocol/sdk/cli';
 import {
   agentKey,
   connect,
@@ -14,24 +19,24 @@ import {
 
 const MODES = ['generic', 'per-capability'];
 
-/** `YEA_REQUIRE_INTERACTION`'s accepted values; anything else is refused, not read as off. */
-const SWITCH = { 1: true, true: true, 0: false, false: false, '': false };
-
 /**
  * Whether the tools that change things carry Claude Code's prompt-on-every-call key: the flag,
  * or `YEA_REQUIRE_INTERACTION`, for a plugin or `.mcp.json` whose arguments are fixed.
  * @param {boolean | undefined} flag `--require-interaction`
  */
 function requireInteraction(flag) {
-  const env = process.env.YEA_REQUIRE_INTERACTION ?? '';
+  const env = process.env.YEA_REQUIRE_INTERACTION;
+  const on = requiresInteraction(env);
 
-  if (!Object.hasOwn(SWITCH, env)) {
+  if (on === null) {
+    const values = Object.keys(REQUIRE_INTERACTION_VALUES).filter(Boolean);
+
     die(
-      `yea mcp: YEA_REQUIRE_INTERACTION must be 1, true, 0 or false, not ${JSON.stringify(env)}`,
+      `yea mcp: YEA_REQUIRE_INTERACTION must be ${values.join(', ')} or empty, not ${JSON.stringify(env)}`,
     );
   }
 
-  return flag === true || SWITCH[env];
+  return flag === true || on === true;
 }
 
 /**

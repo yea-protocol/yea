@@ -13,6 +13,8 @@ export {
   describeBridge,
   isPortableBridge,
   launchPath,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
   runningBridge,
   shellWord,
   unbuilt,

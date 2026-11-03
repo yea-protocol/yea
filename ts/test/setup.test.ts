@@ -17,7 +17,10 @@ import {
   BadEntry,
   guiPath,
   PORTABLE_BRIDGE,
+  parseBridge,
   REQUIRE_INTERACTION_ENV,
+  REQUIRE_INTERACTION_VALUES,
+  requiresInteraction,
   shellWord,
 } from '../src/setup/bridge-command.js';
 import {
@@ -384,13 +387,63 @@ describe("whether an entry is yea's portable one (isPortableBridge)", () => {
     );
   });
 
-  it('allows YEA_REQUIRE_INTERACTION=1 alone as its env, and nothing else', () => {
+  it('allows YEA_REQUIRE_INTERACTION alone as its env, set to one of its values', () => {
     const env = (e: Record<string, string>) =>
       isPortableBridge({ ...PORTABLE_BRIDGE, env: e });
 
-    expect(env({ YEA_REQUIRE_INTERACTION: '1' })).toBe(true);
-    expect(env({ YEA_REQUIRE_INTERACTION: '0' })).toBe(false);
+    for (const v of ['1', 'true', '0', 'false', '']) {
+      expect(env({ YEA_REQUIRE_INTERACTION: v })).toBe(true);
+    }
+
+    expect(env({ YEA_REQUIRE_INTERACTION: 'yes' })).toBe(false);
     expect(env({ YEA_REQUIRE_INTERACTION: '1', A: 'b' })).toBe(false);
+  });
+});
+
+describe("the Claude Code plugin's entry", () => {
+  it('is the portable one, and passes on YEA_REQUIRE_INTERACTION with an empty default', () => {
+    const file = new URL('../../plugins/yea/.mcp.json', import.meta.url);
+    const entry = parseBridge(
+      JSON.parse(readFileSync(file, 'utf8')).mcpServers.yea,
+    );
+    // Without `:-`, an unset variable would reach the bridge as the literal `${…}`, which it refuses.
+    const reference = ['$', '{YEA_REQUIRE_INTERACTION:-}'].join('');
+
+    expect(entry).toEqual({
+      ...PORTABLE_BRIDGE,
+      env: { YEA_REQUIRE_INTERACTION: reference },
+    });
+    // Claude Code expands an unset variable to the default: empty, which is off.
+    expect(requiresInteraction('')).toBe(false);
+  });
+});
+
+describe("YEA_REQUIRE_INTERACTION's values (requiresInteraction)", () => {
+  it('reads 1 and true as on; 0, false, empty and unset as off; anything else as none', () => {
+    expect(['1', 'true'].map(requiresInteraction)).toEqual([true, true]);
+    expect(['0', 'false', '', undefined].map(requiresInteraction)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+
+    // The last: a `${…}` reference with no default that Claude Code left unexpanded.
+    const unexpanded = ['$', '{YEA_REQUIRE_INTERACTION}'].join('');
+
+    expect(['yes', 'TRUE', ' 1', unexpanded].map(requiresInteraction)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(REQUIRE_INTERACTION_VALUES).toEqual({
+      '1': true,
+      true: true,
+      '0': false,
+      false: false,
+      '': false,
+    });
   });
 });
 

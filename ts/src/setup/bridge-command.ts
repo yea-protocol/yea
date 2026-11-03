@@ -49,6 +49,19 @@ export const PORTABLE_BRIDGE: BridgeCommand = {
 export const REQUIRE_INTERACTION_ENV: Readonly<Record<string, string>> =
   Object.freeze({ YEA_REQUIRE_INTERACTION: '1' });
 
+/**
+ * `YEA_REQUIRE_INTERACTION`'s values and what each means, for `yea mcp`, `yea install` and `yea
+ * doctor` alike. Unset reads as empty; any other value is refused, not read as off.
+ */
+export const REQUIRE_INTERACTION_VALUES: Readonly<Record<string, boolean>> =
+  Object.freeze({ '1': true, true: true, '0': false, false: false, '': false });
+
+/** Whether `YEA_REQUIRE_INTERACTION=v` turns the prompt on; null if `v` isn't one of its values. */
+export const requiresInteraction = (v: string | undefined): boolean | null =>
+  Object.hasOwn(REQUIRE_INTERACTION_VALUES, v ?? '')
+    ? REQUIRE_INTERACTION_VALUES[v ?? '']
+    : null;
+
 /** What `npm run build` makes in a checkout, each beside the sources it's built from. */
 const BUILDS = [
   { built: 'ts/dist/cli.js', from: 'ts/src' },
@@ -245,7 +258,7 @@ export function describeBridge(b: BridgeCommand): string {
 
 /**
  * Whether `b` is yea's portable entry, as `yea install` writes it in a project file: with no env,
- * or with `REQUIRE_INTERACTION_ENV` alone.
+ * or with `YEA_REQUIRE_INTERACTION` alone, set to one of its values.
  */
 export const isPortableBridge = (b: BridgeCommand) =>
   b.command === PORTABLE_BRIDGE.command &&
@@ -253,8 +266,7 @@ export const isPortableBridge = (b: BridgeCommand) =>
   b.args.every((a, i) => a === PORTABLE_BRIDGE.args[i]) &&
   Object.entries(b.env ?? {}).every(
     ([k, v]) =>
-      Object.hasOwn(REQUIRE_INTERACTION_ENV, k) &&
-      REQUIRE_INTERACTION_ENV[k] === v,
+      k === 'YEA_REQUIRE_INTERACTION' && requiresInteraction(v) !== null,
   );
 
 /** A config's "yea" entry as a bridge command; throws a BadEntry saying what's wrong with it. */

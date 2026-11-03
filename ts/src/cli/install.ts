@@ -11,6 +11,7 @@ import {
   isPortableBridge,
   listServices,
   removeService,
+  requiresInteraction,
   runningBridge,
   type Scope,
   type Target,
@@ -190,7 +191,7 @@ function prompts(t: Target, s: Scope): boolean {
   try {
     const v = t.registered(s)?.env?.YEA_REQUIRE_INTERACTION;
 
-    return v === '1' || v === 'true';
+    return requiresInteraction(v) === true;
   } catch {
     return false;
   }
