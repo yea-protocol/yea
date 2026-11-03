@@ -35,6 +35,7 @@ const ledgerTotal = (l: LedgerFile) =>
   Object.values(l.reserved).reduce((a, b) => a + BigInt(b), BigInt(l.settled));
 
 export {
+  issuerEnded,
   newPendingId,
   PENDING_ID,
   type PendingCode,

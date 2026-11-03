@@ -252,6 +252,7 @@ export {
   defaultFileStore,
   FileStore,
   homePending,
+  issuerEnded,
   type PendingCode,
   PendingCodes,
   type PendingIssuer,

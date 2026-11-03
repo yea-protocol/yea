@@ -3,7 +3,7 @@
  * hands out, written under a short id where `yea approve <id>` on the same account finds it.
  * A file is the code on its first line, so `yea approve` trusts nothing in it that a pasted
  * code isn't. The bridge adds a second line naming the process that wrote it, which only its
- * start-up cleanup reads.
+ * start-up cleanup and the listing read.
  */
 import { closeSync, fstatSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,9 +17,8 @@ import { writeAtomic } from './files.js';
 /** What a pending code says: the consent request it carries, and the agent it names, if any. */
 export type PendingConsent = ConsentRequest & { agent?: unknown };
 
-/** The process that wrote a pending file: its host's name and its pid. */
+/** The process that wrote a pending file: its pid, in this home's one-machine account. */
 export interface PendingIssuer {
-  host: string;
   pid: number;
 }
 
@@ -52,9 +51,7 @@ export function newPendingId(): string {
  * process that wrote it as canonical JSON on a second.
  */
 export const pendingFile = (code: string, issuer?: PendingIssuer) =>
-  issuer
-    ? `${code}\n${canonical({ host: issuer.host, pid: issuer.pid })}\n`
-    : `${code}\n`;
+  issuer ? `${code}\n${canonical({ pid: issuer.pid })}\n` : `${code}\n`;
 
 /**
  * The text of the pending file at `path`, or null if there is none. It's opened without
@@ -98,15 +95,33 @@ function issuerOf(text: string): PendingIssuer | null {
   try {
     const v = JSON.parse(text.split('\n')[1] ?? '') as Partial<PendingIssuer>;
 
-    return typeof v.host === 'string' &&
-      typeof v.pid === 'number' &&
-      Number.isSafeInteger(v.pid)
-      ? { host: v.host, pid: v.pid }
+    // Only a real pid: 0 and negative ones name process groups, not a process.
+    return typeof v.pid === 'number' && Number.isSafeInteger(v.pid) && v.pid > 0
+      ? { pid: v.pid }
       : null;
   } catch {
     return null;
   }
 }
+
+/** Whether process `pid` is still running (EPERM: it is, as another user). */
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+
+    return true;
+  } catch (e) {
+    return errno(e) === 'EPERM';
+  }
+}
+
+/**
+ * Whether a pending file names a process that has ended: a bridge no one runs now, so no one
+ * holds its proposal and its code can never commit. A home is one account's on one machine, so
+ * its pids are this machine's. A server's file names no process.
+ */
+export const issuerEnded = (e: PendingCode) =>
+  e.issuer !== null && !running(e.issuer.pid);
 
 /** The pending codes in one directory: `<store>/pending` for a server, `<home>/pending` for the bridge. */
 export class PendingCodes {
@@ -164,12 +179,18 @@ export class PendingCodes {
   }
 
   /**
-   * The code under `id`, or null if there's no such file. Throws for an id outside
-   * `PENDING_ID`, a symlink, anything but a regular file, and a file over 64 KiB.
+   * The code under `id`, or null if there's no file of exactly that name: it's matched against
+   * the directory's names before anything is opened, so a case-insensitive disk can't hand back
+   * another id's file. Throws for an id outside `PENDING_ID`, a symlink, anything but a regular
+   * file, and a file over 64 KiB.
    */
   read(id: string): string | null {
     if (!PENDING_ID.test(id)) {
       throw new Error('not a pending id');
+    }
+
+    if (!this.ids().includes(id)) {
+      return null;
     }
 
     const text = readPendingFile(join(this.dir, id));

@@ -4,7 +4,6 @@
  * ts/test/security.test.ts.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -334,12 +333,7 @@ describe('bridge security', () => {
 
     // The code, then the process that wrote it: nothing `yea approve` reads but the code.
     expect(files.sort()).toEqual(
-      codes
-        .map(
-          (c) =>
-            `${c.code}\n{"host":${JSON.stringify(hostname())},"pid":${process.pid}}\n`,
-        )
-        .sort(),
+      codes.map((c) => `${c.code}\n{"pid":${process.pid}}\n`).sort(),
     );
 
     for (const text of files) {

@@ -48,7 +48,7 @@ async function approve(rest: string[], o: Values<typeof APPROVE_FLAGS>) {
   const arg = rest[0];
 
   if (arg === undefined) {
-    console.log(pendingLines(unixNow()).join('\n'));
+    console.log((await pendingLines(unixNow())).join('\n'));
 
     return;
   }

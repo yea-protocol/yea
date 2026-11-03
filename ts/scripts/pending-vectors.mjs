@@ -151,14 +151,10 @@ rmSync(dir, { recursive: true });
 
 // The bridge's files name the process that wrote them on a second line, which `yea approve`
 // never reads; a server's have none.
-const issuer = { host: 'host.example', pid: 4242 };
+const issuer = { pid: 4242 };
 const tagged = pendingFile(codes.bridge, issuer);
 
-must(
-  'tagged file',
-  tagged,
-  `${codes.bridge}\n{"host":"host.example","pid":4242}\n`,
-);
+must('tagged file', tagged, `${codes.bridge}\n{"pid":4242}\n`);
 
 export const pending = {
   // Where each issuer writes, and what `yea approve <id>` accepts.

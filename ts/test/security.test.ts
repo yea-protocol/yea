@@ -2012,9 +2012,10 @@ async function protocolCode(o: {
   agent: string;
   expires: number;
   summary?: string;
+  id?: string;
 }) {
   const p = {
-    id: 'p_1',
+    id: o.id ?? 'p_1',
     capability: 'shop.order',
     summary: o.summary ?? 'Order 1 meal',
     effects: [],
@@ -2103,6 +2104,8 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
 
     expect(pending.read('abcdefgh')).toBeNull();
     expect(pending.read('abcdefghij')).toBe('pc1.x');
+    // Matched against the directory's names: a case-insensitive disk can't open another id's file.
+    expect(pending.read('ABCDEFGHIJ')).toBeNull();
   });
 
   it('[A24] a symlinked, oversize or non-regular pending file is refused, not followed', () => {
@@ -2209,36 +2212,109 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
   );
 
   it.skipIf(!existsSync(CLI))(
-    '[A27] the listing escapes service text and leaves out what has expired',
+    '[A27] the listing groups by directory, keeps service text on one line, and says what is waiting',
     async () => {
       const home = approverHome();
-      const pending = new PendingCodes(join(home, 'pending'));
-      const shown = pending.put(
-        await protocolCode({
+      const now = P.unixNow();
+      const bridgeDir = join(home, 'pending');
+      const storeDir = join(home, 'store', 'pending');
+      const bridge = new PendingCodes(bridgeDir);
+      const store = new PendingCodes(storeDir);
+      const proto = (id: string, summary?: string) =>
+        protocolCode({
           principal: B.public,
           agent: B.public,
-          expires: P.unixNow() + 900,
-          summary: 'Order\n  ✓ approved\u202e',
-        }),
-        P.unixNow(),
+          expires: now + 900,
+          summary,
+          id,
+        });
+      const shown = bridge.put(
+        await proto('p_1', 'Order\n  ✓ approved\u202e'),
+        now,
+        { pid: process.pid },
       );
-      const gone = new PendingCodes(join(home, 'store', 'pending')).put(
-        await jobCodeAt(P.unixNow() - 700),
-        P.unixNow() - 700,
+      const ended = spawnSync(process.execPath, ['-e', '']).pid ?? 0;
+      const stopped = bridge.put(await proto('p_2'), now, { pid: ended });
+      // A summary padded with whitespace, then too long to show whole.
+      const longCode = await jobCodeAt(
+        now,
+        `Delete${' \t'.repeat(300)}a.txt ${'x'.repeat(200)}`,
+      );
+      const long = store.put(longCode, now);
+      const gone = store.put(await jobCodeAt(now - 700), now - 700);
+
+      await new FileStore(join(home, 'store')).putConsent(
+        P.decodeConsentCode(longCode).proposal,
+        'pg1.example',
       );
 
       try {
         const r = approveIn(home, []);
+        const lines = r.out.split('\n');
+        const lineOf = (id: string) => lines.filter((l) => l.includes(id));
 
         expect(r.status).toBe(0);
-        expect(r.out).toContain(
-          `  ${shown} · shop.order · Order\\u{a}  ✓ approved\\u{202e} · at shop.example`,
+        expect(lines.indexOf(`in ${bridgeDir}:`)).toBeLessThan(
+          lines.indexOf(`in ${storeDir}:`),
         );
+        expect(lineOf(shown)).toEqual([
+          expect.stringMatching(
+            new RegExp(
+              `^  ${shown} · shop\\.order · Order ✓ approved\\\\u\\{202e\\} · at shop\\.example · expires [^·]+$`,
+            ),
+          ),
+        ]);
         expect(r.out).not.toContain('\u202e');
-        expect(r.out).not.toContain(gone);
-        expect(r.out.split('\n').filter((l) => l.includes('✓'))).toHaveLength(
-          1,
+        expect(lineOf(stopped)[0]).toMatch(
+          / · its bridge has stopped: call the tool again$/,
         );
+
+        // One line, its whitespace collapsed and its summary cut to 80 code points.
+        expect(lineOf(long)).toHaveLength(1);
+        expect(lineOf(long)[0]).toContain(
+          ` · Delete a.txt ${'x'.repeat(66)}… · at `,
+        );
+        expect(lineOf(long)[0].slice(2)).not.toMatch(/\s\s/);
+        expect(lineOf(long)[0]).toMatch(/ · approved, waiting for the agent$/);
+        expect(r.out).not.toContain(gone);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A28] an id in both directories is refused, and a file that holds no code is never quoted',
+    async () => {
+      const home = approverHome();
+      const now = P.unixNow();
+      const bridgeDir = join(home, 'pending');
+      const storeDir = join(home, 'store', 'pending');
+      const code = await jobCodeAt(now);
+
+      mkdirSync(bridgeDir, { recursive: true });
+      mkdirSync(storeDir, { recursive: true });
+      writeFileSync(join(bridgeDir, 'bothplaces'), `${code}\n`);
+      writeFileSync(join(storeDir, 'bothplaces'), `${code}\n`);
+      writeFileSync(join(bridgeDir, 'notacodexx'), 'SECRET text\n');
+      writeFileSync(join(bridgeDir, 'brokencode'), 'pc1.SECRET{"x":\n');
+      writeFileSync(join(bridgeDir, 'emptyfirst'), `\n${code}\n`);
+
+      try {
+        expect(approveIn(home, ['bothplaces']).out).toContain(
+          `pending id bothplaces is in both ${bridgeDir} and ${storeDir}, so it doesn't name one approval`,
+        );
+
+        for (const id of ['notacodexx', 'brokencode', 'emptyfirst']) {
+          const r = approveIn(home, [id]);
+
+          expect(r.status, id).toBe(1);
+          expect(r.out, id).toContain(
+            `pending file ${join(bridgeDir, id)} doesn't hold a consent code: call the tool again for a fresh one`,
+          );
+          expect(r.out, id).not.toMatch(/SECRET|JSON|Unexpected/);
+        }
       } finally {
         rmSync(home, { recursive: true, force: true });
       }

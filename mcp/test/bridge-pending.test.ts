@@ -2,7 +2,6 @@
 // code, `yea approve <id>` on one machine with nothing passed back, and the files' lifecycle.
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { hostname } from 'node:os';
 import { join } from 'node:path';
 import {
   approveConsentCode,
@@ -24,11 +23,10 @@ import {
 import { connect, textOf } from './helpers.js';
 
 /** This process, as the bridge's pending files name it. */
-const HERE = { host: hostname(), pid: process.pid };
+const HERE = { pid: process.pid };
 
 /** A bridge's pending file for `code`: the code, then this process as canonical JSON. */
-const bridgeFile = (code: string) =>
-  `${code}\n{"host":${JSON.stringify(HERE.host)},"pid":${HERE.pid}}\n`;
+const bridgeFile = (code: string) => `${code}\n{"pid":${HERE.pid}}\n`;
 
 /** A process that has ended: its pid, for a file a bridge left behind. */
 const endedPid = () => spawnSync(process.execPath, ['-e', '']).pid ?? 0;
@@ -128,21 +126,14 @@ describe('the bridge’s pending files', () => {
     const code = (proposal: string) =>
       consentCode({ ...c, proposal }, c.detail, { agent: c.agent as string });
     const now = unixNow();
-    const ended = pending.put(code('p_ended'), now, {
-      host: HERE.host,
-      pid: endedPid(),
-    });
-    // Kept: a process on another host can't be checked from here, and a server names none.
-    const elsewhere = pending.put(code('p_elsewhere'), now, {
-      host: `not-${HERE.host}`,
-      pid: endedPid(),
-    });
+    const ended = pending.put(code('p_ended'), now, { pid: endedPid() });
+    // Kept: a server's file names no process.
     const server = pending.put(code('p_server'), now);
 
     await connect('2026', await bridgeIn(k, (await examples(k)).clients));
 
     expect(Object.keys(pendingFiles(k)).sort()).toEqual(
-      [...live.map((l) => l.id), elsewhere, server].sort(),
+      [...live.map((l) => l.id), server].sort(),
     );
     expect(pendingFiles(k)).not.toHaveProperty(ended);
 

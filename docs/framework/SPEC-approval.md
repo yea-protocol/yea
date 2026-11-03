@@ -404,9 +404,10 @@ alone, and approving works as before.
 
 **The format**, pinned by `conformance/pending.json`:
 - The file's first line is the `pc1.` code verbatim. A server's file is that line alone
-  (`<code>\n`). The bridge's adds a second naming the process that wrote it,
-  `{"host":"<host name>","pid":<pid>}` in canonical JSON, for its start-up cleanup (SPEC-bridge
-  step 6). `yea approve` reads the first line only. A file holds nothing else: no field
+  (`<code>\n`). The bridge's adds a second naming the process that wrote it, `{"pid":<pid>}`
+  in canonical JSON, for its start-up cleanup and the listing (SPEC-bridge step 6). A home is
+  one account's on one machine, so its pids are that machine's. `yea approve` reads the first
+  line only. A file holds nothing else: no field
   `yea approve` would trust, and never a key or seed.
 - `<id>` is 10 random characters of lowercase base32 (`a`–`z`, `2`–`7`), made by the issuer. An
   id never starts with `-`, so the command line never reads one as a flag.
@@ -423,26 +424,34 @@ alone, and approving works as before.
 - Every write also removes the files whose codes have expired.
 - A plan that runs removes its files, whether it ran on its own, from the form or with a consent.
 - The bridge removes an entry's files when it drops, replaces or commits the entry, or when a
-  proposal loses its code. At start-up it removes the files of bridges on this host whose
-  process has ended, never a running bridge's (SPEC-bridge step 6).
+  proposal loses its code. At start-up it removes the files whose process has ended, never a
+  running bridge's (SPEC-bridge step 6).
 
-**`yea approve` with no argument** lists the pending codes in the home's `pending/`, then the
-store's (`<home>` is `YEA_HOME`, else `~/.yea`; the store as above): for each, its id, its
-capability, its service, its summary and its expiry, each through `printable`. Expired ones
-are left out.
+**`yea approve` with no argument** lists the pending codes under each directory's name: the
+home's `pending/`, then the store's (`<home>` is `YEA_HOME`, else `~/.yea`; the store as above).
+Each code is one line: its id, capability, summary, service and expiry. The service-written
+fields have their whitespace runs collapsed to one space, the summary is cut to 80 code points,
+and then each goes through `printable`. Expired codes are left out. A line ends with *its
+bridge has stopped: call the tool again* when the file's process has ended, or with *approved,
+waiting for the agent* when a consent for it is already saved (in the home under its `hash`,
+or in the store under its plan hash).
 
 **`yea approve <id>`**:
 1. accepts only an id matching `^[A-Za-z0-9_-]{8,32}$`, exactly: there is no prefix search,
    and nothing but the id reaches a path;
-2. looks for `pending/<id>` in the home, then in the store;
+2. looks for `pending/<id>` in the home and in the store, matching each directory's names
+   exactly before it opens anything, so a case-insensitive disk can't hand back another id's
+   file. An id in both is refused, naming both directories: it doesn't name one approval;
 3. opens it without following a symlink, and refuses anything but a regular file of at most
    64 KiB;
 4. takes its first line as the code, and from there is `yea approve <code>`, unchanged: every
    check above, the plan in full, the phrase, and where the consent is saved. Nothing in the
-   file is trusted that a pasted code isn't.
+   file is trusted that a pasted code isn't. A first line that's empty, or isn't a consent
+   code, is refused as *pending file `<path>` doesn't hold a consent code*, and the file is
+   never quoted, not even in a parse error.
 
 An id it can't find is refused with where it looked, and one whose code has expired with where
-it is, both saying *call the tool again for a fresh one*.
+it is. Every refusal of an id says *call the tool again for a fresh one*.
 
 **Short ids are a one-account convenience**, for trying YEA on one machine. There they are
 what [#337](https://github.com/yea-protocol/yea/issues/337) calls form tier: the agent runs as
@@ -778,10 +787,11 @@ export function decide(
   - undo refuses outside its window, for another principal, a second time, for an id that
     isn't in the generated format (`../x`), and for a receipt from another server;
   - a plan with a malformed `uses` or an unknown `risk` never gets a plan hash;
-  - `yea approve <id>` refuses an id outside its pattern (`../x`), a symlinked or oversize
-    pending file, a pending file whose plan or hash was edited, and an expired one; a file
-    naming another agent still needs `--to`; the listing escapes service text; a pending file
-    holds the code and nothing else, never a seed;
+  - `yea approve <id>` refuses an id outside its pattern (`../x`), an id that differs only in
+    case, an id in both directories, a symlinked or oversize pending file, a pending file whose
+    plan or hash was edited, one that holds no code (never quoting it), and an expired one; a
+    file naming another agent still needs `--to`; the listing keeps service text escaped and on
+    one line; a pending file holds the code and nothing else, never a seed;
   - no tool result names `yea init` or `--with-principal`;
   - a principal key file writable by the server's user, or in a directory it can write, is
     refused;

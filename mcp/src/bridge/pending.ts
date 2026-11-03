@@ -4,14 +4,13 @@
  * the `bridge()` closure for the life of the process, not in a server instance. Each code shown
  * also has a pending file in the home (step 6), which goes when its code or entry does.
  */
-import { hostname } from 'node:os';
 import { type Proposal, sha256 } from '@yea-protocol/sdk';
-import type {
-  PendingCode,
-  PendingCodes,
-  PendingIssuer,
+import {
+  issuerEnded,
+  type PendingCodes,
+  type PendingIssuer,
 } from '@yea-protocol/sdk/node';
-import { errno, errorMessage, warnOnce } from '../util.js';
+import { errorMessage, warnOnce } from '../util.js';
 
 /** At most this many entries; the oldest is dropped first. */
 export const MAX_PENDING = 256;
@@ -72,28 +71,7 @@ export const approvable = (p: Proposal, now: number) =>
  * home, so the files say whose they are: a bridge starting up removes only those of bridges
  * that have ended.
  */
-const THIS_PROCESS: PendingIssuer = { host: hostname(), pid: process.pid };
-
-/** Whether process `pid` on this host is still running (EPERM: it is, as another user). */
-function running(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-
-    return true;
-  } catch (e) {
-    return errno(e) === 'EPERM';
-  }
-}
-
-/**
- * Whether a pending file is a bridge's whose process has ended: no one holds its proposals, so
- * its codes could never commit (decision 3). A server's file names no process, and a file from
- * another host can't be judged here: both stay.
- */
-const orphaned = (e: PendingCode) =>
-  e.issuer !== null &&
-  e.issuer.host === THIS_PROCESS.host &&
-  !running(e.issuer.pid);
+const THIS_PROCESS: PendingIssuer = { pid: process.pid };
 
 /** Whether a proposal hasn't expired: an approval already saved can still commit it. */
 const alive = (p: Proposal, now: number) => p.expires > now;
@@ -203,9 +181,12 @@ export class PendingProposals {
     }
   }
 
-  /** At start-up: remove the files of bridges that have ended, never a running bridge's. */
+  /**
+   * At start-up: remove the files of bridges that have ended, never a running bridge's. No one
+   * holds their proposals, so their codes could never commit (decision 3).
+   */
   clearOrphans() {
-    this.quietly(() => this.files?.clear(orphaned));
+    this.quietly(() => this.files?.clear(issuerEnded));
   }
 
   /** Every live entry, oldest first. */

@@ -204,9 +204,8 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      removes an entry's files when it drops, replaces or commits the entry, and a proposal's
      file when the proposal loses its code (under 2 minutes left). Each file's second line names
      the process that wrote it. Every client the person installs runs its own bridge with the
-     same home, so at start-up a bridge removes only the files of bridges on this host whose
-     process has ended, since no one holds their proposals (decision 3). A running bridge's files
-     stay, and so does a file from another host, until it expires.
+     same home, so at start-up a bridge removes only the files whose process has ended, since
+     no one holds their proposals (decision 3). A running bridge's files stay.
    - **The message** says, with `<id>` and `<code>` literally, then a line per proposal:
 
      ```
@@ -355,7 +354,7 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
 - `yea approve` requires `--to` when a code's `agent` differs from the local agent key;
 - pending files: one per code, named in the result; the same id again on a re-call; removed
   when the entry commits, drops or is replaced, and when a proposal loses its code; an ended
-  bridge's removed at start-up, a running one's and another host's left alone; `yea approve <id>` on one
+  bridge's removed at start-up, a running one's left alone; `yea approve <id>` on one
   machine plus the same call commits, with nothing passed back through the model;
 - security:
   - the model can't approve by any argument;
