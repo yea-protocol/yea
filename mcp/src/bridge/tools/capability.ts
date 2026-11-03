@@ -18,9 +18,12 @@ import type { Bridge } from '../state.js';
 import { jobHandler, split } from './job-handler.js';
 import { meta, type Unnamed } from './spec.js';
 
-/** The description a model sees: the service's summary, one line, and where it runs. */
+/**
+ * The description a model sees: the capability's summary, one line, and the service it runs
+ * at, which tells two services' same-named tools apart and is what `yea_undo` takes.
+ */
 const describe = (svc: Service, cap: CapabilityInfo) =>
-  `${clip(cap.summary || cap.name)} (${clip(cap.name, 100)} at ${clip(svc.id, 100)})`;
+  `${clip(cap.summary || cap.name)} (${clip(svc.id, 100)})`;
 
 /** Why a capability's tool can't be built from its params, or null. */
 function paramProblem(cap: CapabilityInfo): string | null {

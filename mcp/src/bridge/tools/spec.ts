@@ -13,8 +13,8 @@ export const meta = (svc: Service, capability?: string) => ({
   ...(capability === undefined ? {} : { 'dev.yea/capability': capability }),
 });
 
-/** A string field of a utility tool's schema. */
-export const str = (description: string) => ({ type: 'string', description });
+/** A string field of a utility tool's schema: the tool's description says what goes in it. */
+export const str = Object.freeze({ type: 'string' } as const);
 
 /** A utility tool's input schema. */
 export const object = (properties: Obj, required: string[]) => ({

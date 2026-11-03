@@ -52,6 +52,15 @@ export async function runJobCall(
     return refused(refusal);
   }
 
+  // A preview keeps nothing, so a proposal named with it could never be committed: refuse it
+  // rather than preview again, which a model told "same arguments" would repeat.
+  if (call.preview && call.proposal !== undefined) {
+    return refused(
+      "preview and proposal can't be used together: a preview's ids can't be committed",
+      ['Call again without `preview` for proposals you can commit.'],
+    );
+  }
+
   if (call.preview) {
     return previewCall(b, call);
   }
@@ -67,7 +76,7 @@ export async function runJobCall(
     }
   } else if (call.proposal !== undefined) {
     return errorResult([
-      `✗ proposal ${printable(call.proposal)} isn't pending for these arguments (it expired, was used, or the bridge restarted); ${NOTHING_RAN}. Call again without proposal for fresh proposals.`,
+      `✗ proposal ${printable(call.proposal)} isn't pending for these arguments (it came from a preview, expired, was used, or the bridge restarted); ${NOTHING_RAN}. Call again without proposal for fresh proposals.`,
     ]);
   }
 
@@ -89,7 +98,7 @@ async function previewCall(b: Bridge, call: JobCall): Promise<CallToolResult> {
 
   return textResult(
     [
-      `preview: ${NOTHING_RAN}`,
+      `preview: ${NOTHING_RAN}; to act, call again without \`preview\``,
       ...(kept.length ? [proposalsLens(kept)] : []),
       ...dropped,
     ],

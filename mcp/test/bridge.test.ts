@@ -286,12 +286,65 @@ describe('a job tool call', () => {
     expect(proposalsOf(r).proposals[0].id).not.toBe(p.id);
   });
 
+  it('results teach what the tool schemas leave out: how to commit, and which service to expand', async () => {
+    const k = await keys();
+    const { conn } = await bridged(k);
+    const over = await conn.call(BIG_ORDER, 'shop_order');
+
+    expect(textOf(over)).toContain(
+      'call this tool again with the same arguments and `proposal: "<id>"`',
+    );
+
+    const small = await bridged(await keys(), '2026', {
+      options: { budget: 800 },
+    });
+    const menu = await small.conn.call({}, 'shop_search');
+
+    expect(textOf(menu)).toContain(
+      'call yea_expand with service "shop.example"',
+    );
+  });
+
+  it("a preview's proposal ids can't be committed, and the refusal says why", async () => {
+    const k = await keys();
+    const { conn, shop } = await bridged(k);
+    const preview = await conn.call(
+      { ...BIG_ORDER, preview: true },
+      'shop_order',
+    );
+    const [p] = proposalsOf(preview).proposals;
+    const r = await conn.call({ ...BIG_ORDER, proposal: p.id }, 'shop_order');
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/came from a preview/);
+    expect(shop.verbs('INTENT')).toHaveLength(1);
+    expect(shop.verbs('COMMIT')).toHaveLength(0);
+  });
+
+  it('preview with proposal is refused, not previewed', async () => {
+    const k = await keys();
+    const { conn, shop } = await bridged(k);
+    const r = await conn.call(
+      { ...SMALL_ORDER, preview: true, proposal: 'p_x' },
+      'shop_order',
+    );
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(
+      /^✗ preview and proposal can't be used together: a preview's ids can't be committed; nothing was run/,
+    );
+    expect(shop.verbs('INTENT')).toHaveLength(0);
+    expect(shop.verbs('COMMIT')).toHaveLength(0);
+  });
+
   it('preview commits nothing and keeps nothing', async () => {
     const k = await keys();
     const { conn, shop } = await bridged(k);
     const r = await conn.call({ ...SMALL_ORDER, preview: true }, 'shop_order');
 
-    expect(textOf(r)).toMatch(/^preview: nothing was run\n2 proposals/);
+    expect(textOf(r)).toMatch(
+      /^preview: nothing was run; to act, call again without `preview`\n2 proposals/,
+    );
     expect(shop.verbs('INTENT')[0]).not.toHaveProperty('auto');
     expect(shop.verbs('COMMIT')).toHaveLength(0);
 

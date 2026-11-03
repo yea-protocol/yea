@@ -111,20 +111,16 @@ export const reservedParams = (params: unknown): string[] =>
         .filter((k) => JOB_FIELDS.includes(k))
     : [];
 
+// Every job tool carries these, so what `goal` and `proposal` mean is said once, in the
+// instructions, and a proposals result says how to commit one. `preview` keeps its line: it's
+// how a model looks before acting.
 const JOB_PROPERTIES: Obj = {
-  goal: {
-    type: 'string',
-    description: "The user's goal in their words, for services that use it.",
-  },
+  goal: { type: 'string' },
   preview: {
     type: 'boolean',
-    description: 'Only show the proposals; nothing is committed or kept.',
+    description: 'Only show proposals; nothing is done.',
   },
-  proposal: {
-    type: 'string',
-    description:
-      "Commit this proposal (an id from an earlier call with the same arguments), if the user's grant allows it.",
-  },
+  proposal: { type: 'string' },
 };
 
 /** A job tool's schema: the params plus `goal`, `preview` and `proposal`. */
