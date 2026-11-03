@@ -8,10 +8,10 @@
  * `importlib.import_module` calls count too when their names are literals,
  * as `import()` and `require()` do in TS: one-line literals, optionally `r`
  * or `u` prefixed, that hold only a module name. Only such a literal is kept
- * for that pass, so a call quoted in a string or docstring isn't read; a name
- * built from triple-quoted or concatenated literals isn't either. A part reached as an attribute of
- * its package (`yea.store.files` after `import yea.store`) isn't an import,
- * and no reader sees it.
+ * for that pass, so a call quoted in a string or docstring isn't read; a
+ * name built from triple-quoted or concatenated literals isn't either. A
+ * part reached as an attribute of its package (`yea.store.files` after
+ * `import yea.store`) isn't an import, and no reader sees it.
  */
 
 const QUOTES = new Set(["'", '"']);
