@@ -5,7 +5,7 @@ YEA is software that holds authority over your money and calendar, so you should
 | Artifact | How it's published | Provenance |
 |---|---|---|
 | npm `@yea-protocol/sdk` and `@yea-protocol/cli` | npm trusted publishing (OIDC), except the first release; see below | npm provenance (`--provenance`) plus a GitHub build attestation of each `.tgz` |
-| PyPI `yea-sdk` | PyPI trusted publishing, from the first release | GitHub build attestations of the wheel and sdist |
+| PyPI `yea-sdk` and `yea-mcp` | PyPI trusted publishing, from the first release | GitHub build attestations of each wheel and sdist |
 | `ghcr.io/yea-protocol/yea` | Docker build on release tags | GitHub build attestation of the image |
 | GitHub release | The npm and PyPI artifacts, plus `SHA256SUMS` | |
 
@@ -25,6 +25,7 @@ A downloaded artifact, against this repository's workflow:
 gh attestation verify yea-protocol-sdk-0.1.0.tgz --repo yea-protocol/yea
 gh attestation verify yea-protocol-cli-0.1.0.tgz --repo yea-protocol/yea
 gh attestation verify yea_sdk-0.1.0-py3-none-any.whl --repo yea-protocol/yea
+gh attestation verify yea_mcp-0.1.0-py3-none-any.whl --repo yea-protocol/yea
 ```
 
 The container image:

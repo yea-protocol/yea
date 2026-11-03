@@ -1,0 +1,30 @@
+name: release-dry-run
+# Everything release.yml would publish, packed, installed into an empty project or venv, and run,
+# so a broken `files`, `exports` or `bin`, or versions that drift apart, fail here and not after a
+# permanent publish. The checks live in scripts/release-dry-run.mjs; run it locally with
+# `npm run build && npm run release:dry-run`.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/workflows/release-dry-run.yml
+      - "**/package.json"
+      - "**/pyproject.toml"
+      - server.json
+      - scripts/release-dry-run.mjs
+      - scripts/release-dry-run/**
+      - scripts/release-versions.mjs
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+      - uses: astral-sh/setup-uv@v7
+        with: { python-version: "3.13" }
+      - run: npm ci && npm run build
+      - run: npm run release:dry-run

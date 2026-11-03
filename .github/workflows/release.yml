@@ -1,6 +1,8 @@
 name: release
 # Push a tag like v0.1.1 (or run manually) to publish. npm: trusted publishing (OIDC) with
 # provenance, NPM_TOKEN secret as a fallback. PyPI: trusted publishing. Artifacts are attested.
+# Before tagging, bump every version with `npm run release:version <x.y.z>`
+# (scripts/release-versions.mjs) and let the release-dry-run workflow pass on its PR.
 on:
   push:
     tags: ["v*"]
@@ -19,7 +21,6 @@ jobs:
       - run: npm install -g npm@latest
       - run: npm ci && npm run build && npm test
         env: { SKIP_INTEROP: "1" }
-      # The npm packages share one version: bump ts/, cli/, mcp/ and connectors/stripe/ (and their sdk and mcp dependencies) together.
       - run: mkdir npm-dist && npm pack -w @yea-protocol/sdk -w @yea-protocol/cli -w @yea-protocol/mcp -w @yea-protocol/stripe --pack-destination npm-dist
       - uses: actions/attest-build-provenance@v4
         with: { subject-path: "npm-dist/*.tgz" }
@@ -38,14 +39,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv build
-        working-directory: python
+      # yea-sdk and yea-mcp, built without uv's local sources, as PyPI installs them.
+      - run: |
+          uv build --no-sources --out-dir python-dist python
+          uv build --no-sources --out-dir python-dist python/mcp
       - uses: actions/attest-build-provenance@v4
-        with: { subject-path: "python/dist/*" }
+        with: { subject-path: "python-dist/*" }
       - uses: pypa/gh-action-pypi-publish@release/v1
-        with: { packages-dir: python/dist }
+        with: { packages-dir: python-dist }
       - uses: actions/upload-artifact@v7
-        with: { name: pypi, path: "python/dist/*" }
+        with: { name: pypi, path: "python-dist/*" }
   github-release:
     needs: [npm, pypi]
     runs-on: ubuntu-latest
