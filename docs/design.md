@@ -39,8 +39,11 @@ context. The fix is below.
 ## Policy-gated auto-commit
 
 **Decision.** `INTENT` with `auto: true` commits the first proposal immediately if, and
-only if, the request's grant authorizes it *without consent* and the proposal is
-undoable (§4.3.1).
+only if, a grant authorized the `INTENT`, a grant from that grant's principal authorizes the
+commit *without consent*, and the proposal is undoable (§4.3.1). An `INTENT` no grant
+authorized has no principal: it never auto-commits, and only a consent commits its
+proposals (§4.4). Through a tool host, a plain `COMMIT` is the model's, not a person's, so
+it can't stand in for the principal's approval ([#287](https://github.com/yea-protocol/yea/issues/287)).
 
 **Alternatives.** An agent-side flag with no service check, which is unsafe. A separate
 `DO` verb, which duplicates `INTENT`'s semantics. Always preview, which we measured as too

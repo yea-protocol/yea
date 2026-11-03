@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...errors import YeaError, fix
-from ...grants import GrantContext, Verification, verify_grant
+from ...grants import Grant, GrantContext, Verification, verify_grant
 from ...keys import verify_proof
 from ..replies import consent_request
 from ..state import ServiceState
@@ -17,12 +17,15 @@ from ..state import ServiceState
 @dataclass(frozen=True)
 class Scope:
     """What a request is checked for. ``principal``: only grants from this principal (the one a
-    proposal was made for) count."""
+    proposal was made for) count. ``consent_only``: only a consent for ``proposal`` counts, a grant
+    whose root block carries ``only`` with its hash; any other that would gets ``consent_required``
+    (§4.4)."""
 
     verb: str
     capability: str
     proposal: dict | None = None
     principal: str | None = None
+    consent_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,15 +89,32 @@ def first_grant(
     )
     failed = []
     for g in grants:
-        c = verify_grant(g, state.trust, holder, ctx)
-        if scope.principal and c.principal and c.principal != scope.principal:
-            why = "grant is from a different principal than this proposal's"
-            failed.append(Verification(False, "forbidden", why, c.grant, reason=why))
-            continue
+        c = _screen(verify_grant(g, state.trust, holder, ctx), scope)
         if c.ok:
             return c, failed
         failed.append(c)
     return None, failed
+
+
+def _screen(c: Verification, scope: Scope) -> Verification:
+    """A grant's check as the scope sees it: failed, even where the grant would authorize, when it is
+    from another principal than the proposal's, or isn't the consent the proposal needs."""
+    if scope.principal and c.principal and c.principal != scope.principal:
+        why = "grant is from a different principal than this proposal's"
+        return Verification(False, "forbidden", why, c.grant, reason=why)
+    if c.ok and scope.consent_only and not _consents(c.grant, scope.proposal):
+        why = "no grant authorized the INTENT that made this proposal"
+        return Verification(False, "consent_required", why, c.grant, reason=why)
+    return c
+
+
+def _consents(grant: Grant | None, proposal: dict | None) -> bool:
+    """Whether a grant consents to this proposal: its root block carries ``only`` with its hash, so its
+    principal signed for it. An ``only`` in a later block doesn't count, as an agent can add one to
+    its own grant."""
+    if grant is None or proposal is None:
+        return False
+    return any(isinstance(c, dict) and c.get("only") == proposal["hash"] for c in grant.blocks[0]["p"]["caveats"])
 
 
 def grant_failure(state: ServiceState, failed: list[Verification], proposal: dict | None) -> YeaError:

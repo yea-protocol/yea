@@ -154,7 +154,7 @@ person or is rejected, and an auto-reviewer may decide in the person's place.
 |---|---|
 | Agents want **outcomes**, but APIs expose **CRUD** | `INTENT` carries the goal, and the service answers with concrete **proposals** |
 | Agents make mistakes | Nothing happens until `COMMIT`. Every proposal lists its **effects, what it uses, risk and undo window**, and its hash binds the commit to exactly what was shown |
-| "Are you sure?" isn't a protocol primitive | **Policy-gated auto-commit**: the human's grant decides what can skip review. Low-risk, undoable changes within the limits take one round trip; anything over a limit, risky or irreversible stops for review |
+| "Are you sure?" isn't a protocol primitive | **Policy-gated auto-commit**: the human's grant decides what can skip review. Low-risk, undoable changes that a grant authorizes, within its limits, take one round trip; anything over a limit, risky, irreversible or authorized by no grant stops for review |
 | Undo is an afterthought | Reversible proposals declare an undo window, receipts carry it, and `UNDO` is a verb (effects that can't be reversed, like a sent email, are marked as such) |
 | Context windows are expensive | Every request carries a **token budget**. Replies fit inside it and leave `EXPAND` handles for the rest |
 | Models read text; APIs return JSON for code | **Lens** is a canonical, deterministic, compact text rendering of every message, defined in the spec and byte-identical across implementations |

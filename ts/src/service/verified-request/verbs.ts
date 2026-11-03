@@ -31,7 +31,7 @@ type Parsed<V extends ParsedRequest['verb']> = ParsedRequest & { verb: V };
 export interface AutoCommit {
   /** The verified holder key and frame id, and the proof's `ts`; null with no verified proof. */
   replay: AutoReplay | null;
-  /** The commit ledger's grant evaluation for the proposal (ADR-0002); null with no holder. */
+  /** The commit ledger's grant evaluation for the proposal (ADR-0002); null with no principal. */
   admit: Admit | null;
 }
 
@@ -99,6 +99,9 @@ export async function verifyIntent(state: Verifier, req: Parsed<'INTENT'>) {
  * grants are checked again at commit time, so `exp` and the other caveats still hold then. Only
  * a grant from the proposal's principal counts, so the search goes on past a valid grant from
  * another one.
+ *
+ * An INTENT no grant authorized has no principal, so it never auto-commits (SPEC §4.3.1, #287):
+ * its plan ran without knowing whose action it was.
  */
 function autoCommit(
   state: Verifier,
@@ -107,7 +110,10 @@ function autoCommit(
 ): AutoCommit {
   return {
     replay: proof && { key: `${proof.key}:${req.id}`, proofTs: proof.ts },
-    admit: holder ? admitter(state, req.grants, holder, principal) : null,
+    admit:
+      holder && principal
+        ? admitter(state, req.grants, holder, principal)
+        : null,
   };
 }
 
@@ -149,6 +155,7 @@ export async function verifyCommit(state: Verifier, req: Parsed<'COMMIT'>) {
     stored,
     holder,
     principal,
+    // A proposal with no principal (no grant authorized its INTENT) commits only with a consent.
     admit: admitter(state, req.grants, holder, stored.principal),
   };
 }

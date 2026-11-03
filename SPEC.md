@@ -201,11 +201,15 @@ about intent. `params` carries the structured request. The reply is one of:
 An `INTENT` MAY carry `"auto": true`. The service then MUST commit the **first**
 proposal in the same round trip if, and only if, both of these hold:
 
-1. one of the request's grants authorizes a `COMMIT` of that proposal outright (§6.3), with no consent needed; and
+1. a grant authorized the `INTENT` (the first presented grant that authorizes it names the
+   principal), and a grant from that principal authorizes a `COMMIT` of that proposal
+   outright (§6.3), with no consent needed; and
 2. the proposal is undoable (`undo` is not `null`).
 
 The reply is then a `RECEIPT` with `"auto": true` on the reply frame. In every other
-case the service replies exactly as it would without `auto`.
+case the service replies exactly as it would without `auto`. So an `INTENT` that no grant
+authorized never auto-commits, whatever its grants allow a `COMMIT`: it planned without a
+principal, and its proposals commit only as §4.4 allows.
 
 The principal's grant, not the agent, decides what may skip the preview. Low-risk,
 reversible actions inside the policy take one round trip. Anything over a limit, riskier or
@@ -238,16 +242,25 @@ proof was on the `INTENT` that produced it, and only with a grant from the same
 principal, if that `INTENT` was authorized by one. A proposal from an `INTENT` that carried
 no grants and proof can be viewed but never committed. This stops one party from
 preparing a proposal, with effects of its choosing, for someone else's agent to commit.
-A service checks who may commit before the proposal's `each`, `total` and `risk` (§6.6), so a
-`COMMIT` these rules refuse gets `forbidden`, never `consent_required`.
+
+A proposal from an `INTENT` that carried grants but was authorized by none has no
+principal. Only a consent (§6.6) commits it: a grant whose root block carries
+`{"only": hash}` with the proposal's hash, so that a principal, not the agent, signed for
+this exact proposal. A `COMMIT` under any other grant that would authorize it gets
+`consent_required`, naming that grant's issuer as the principal.
+
+A service checks the requester and the principal before the consent a proposal with no
+principal needs and before the proposal's `each`, `total` and `risk` (§6.6), so a `COMMIT`
+those two checks refuse gets `forbidden`, never `consent_required`.
 
 Reply: `RECEIPT`, optionally preceded by `EVENT`s.
 
 **Idempotency:** `COMMIT` of an already-committed proposal MUST return the original
 receipt with `"replay": true` and MUST NOT execute again. A replay is authorized like a
-commit, by the same requester and principal, except that `each`, `total` and `risk` are
-not re-evaluated, because the commit already happened. So a retry after a lost response
-never turns into a consent prompt, and other principals can't read the receipt.
+commit, by the same requester and principal, except that `each`, `total` and `risk`, and
+the consent a proposal with no principal needs, are not re-evaluated, because the commit
+already happened. So a retry after a lost response never turns into a consent prompt, and
+other principals can't read the receipt.
 
 ### 4.5 `UNDO` — reverse a receipt within its window
 
@@ -472,7 +485,8 @@ request fails on the client instead.
 A request MAY present several grants. It is authorized if **any single** presented
 grant authorizes it on its own.
 
-If a `COMMIT` would be authorized except for a `risk`, `each` or `total` caveat, the
+If a `COMMIT` would be authorized except for a `risk`, `each` or `total` caveat, or
+except that its proposal has no principal and the grant isn't a consent for it (§4.4), the
 service MUST reply `ERROR` `consent_required` with:
 
 ```json

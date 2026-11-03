@@ -11,7 +11,8 @@ import urllib.request
 import pytest
 
 from yea import (
-    Client, GrantContext, Plan, Service, create, decode_grant, issue_grant, key_from_seed, local, serve_http, verify_grant,
+    Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
+    local, serve_http, verify_grant,
 )
 from yea._json import b64url_encode
 from yea.approval import Policy, reserve_all
@@ -672,5 +673,106 @@ def test_m4b_a_non_requester_whose_grant_would_need_consent_gets_forbidden():
         r = await thief.commit(mine)
         assert (r.kind, r.code, r.message, r.get("consent")) == (
             "ERROR", "forbidden", "only the agent that requested this proposal can commit it", None)
+
+    run(go())
+
+
+# Mirrors 'an INTENT no grant authorized (#287)' in TS: an INTENT can carry grants and a valid proof
+# and still be authorized by none of them, such as a COMMIT-only grant. It then plans with no
+# principal, so it never auto-commits, and only a principal's consent commits its proposal.
+COMMIT_ONLY = [{"verbs": ["COMMIT"]}]
+
+
+def _undoable(applied, require_grants=False):
+    """A service whose one intent is undoable, recording the principal of every ``apply``."""
+    svc = Service("v", "V", "v", trust=[PRINCIPAL.public], require_grants=require_grants)
+
+    def apply(ctx):
+        applied.append(ctx.principal)
+
+    @svc.intent("v.do", "do")
+    def do(ctx):
+        return Plan("do it", [create("thing/1")], apply=apply, revert=lambda ctx: None)
+
+    return svc
+
+
+def _as(svc, *grants):
+    return Client(local(svc), key=AGENT, grants=[g.encode() for g in grants])
+
+
+def _proposal_of(r):
+    assert r.kind == "PROPOSALS", r.lens
+    return r.proposals[0]
+
+
+def _consent_of(r):
+    assert (r.kind, r.get("code")) == ("ERROR", "consent_required"), r.lens
+    return r.consent
+
+
+def test_a_commit_only_grant_plus_auto_gives_proposals_and_a_plain_commit_needs_consent():
+    async def go():
+        applied = []
+        c = _as(_undoable(applied), issue_grant(PRINCIPAL, AGENT.public, COMMIT_ONLY))
+        p = _proposal_of(await c.intent("v.do", {}, auto=True))
+        consent = _consent_of(await c.commit(p))
+        assert applied == []
+        assert (consent["proposal"], consent["hash"], consent["service"], consent["principal"]) == (
+            p["id"], p["hash"], "v", PRINCIPAL.public)
+        r = await c.commit(p, grants=[consent_grant(PRINCIPAL, AGENT.public, consent)])
+        assert r.kind == "RECEIPT", r.lens
+        assert applied == [PRINCIPAL.public]
+        # A replay doesn't need the consent again: the commit already happened (§4.4).
+        again = await c.commit(p)
+        assert again.kind == "RECEIPT" and again.replay is True
+        assert applied == [PRINCIPAL.public]
+
+    run(go())
+
+
+def test_an_untrusted_grant_for_the_intent_and_a_trusted_commit_only_grant_never_commit():
+    stranger = key_from_seed(bytes([9]) * 32)
+
+    async def go():
+        applied = []
+        c = _as(_undoable(applied), issue_grant(stranger, AGENT.public, []), issue_grant(PRINCIPAL, AGENT.public, COMMIT_ONLY))
+        p = _proposal_of(await c.intent("v.do", {}, auto=True))
+        assert _consent_of(await c.commit(p))["principal"] == PRINCIPAL.public
+        assert applied == []
+
+    run(go())
+
+
+def test_with_require_grants_a_commit_only_grant_is_still_forbidden():
+    async def go():
+        applied = []
+        c = _as(_undoable(applied, require_grants=True), issue_grant(PRINCIPAL, AGENT.public, COMMIT_ONLY))
+        r = await c.intent("v.do", {}, auto=True)
+        assert (r.kind, r.get("code")) == ("ERROR", "forbidden"), r.lens
+        assert applied == []
+
+    run(go())
+
+
+def test_an_agent_cannot_consent_for_itself_by_delegating_only_to_its_own_key():
+    async def go():
+        applied = []
+        svc = _undoable(applied)
+        own = issue_grant(PRINCIPAL, AGENT.public, COMMIT_ONLY)
+        p = _proposal_of(await _as(svc, own).intent("v.do", {}))
+        self_consent = delegate_grant(own, AGENT, AGENT.public, [{"only": p["hash"]}])
+        _consent_of(await _as(svc, self_consent).commit(p))
+        assert applied == []
+
+    run(go())
+
+
+def test_an_intent_a_grant_authorized_still_auto_commits_under_its_principal():
+    async def go():
+        applied = []
+        r = await _as(_undoable(applied), issue_grant(PRINCIPAL, AGENT.public, [])).intent("v.do", {}, auto=True)
+        assert r.kind == "RECEIPT" and r.auto is True, r.lens
+        assert applied == [PRINCIPAL.public]
 
     run(go())

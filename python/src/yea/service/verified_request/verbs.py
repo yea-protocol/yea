@@ -5,7 +5,7 @@ ts/src/service/verified-request/verbs.ts."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ...errors import YeaError, fix
@@ -114,10 +114,13 @@ def _auto_commit(state: ServiceState, req: dict, who: Identity) -> AutoCommit:
 
     The proof is checked once, when the request arrives (#278). ``grant`` doesn't check it again
     after the plan runs, so a plan that outlasts the proof's 300s window still auto-commits. The
-    grants are checked again at commit time, so ``exp`` and the other caveats still hold then."""
+    grants are checked again at commit time, so ``exp`` and the other caveats still hold then.
+
+    An INTENT no grant authorized has no principal, so it never auto-commits (§4.3.1, #287): its
+    plan ran without knowing whose action it was."""
 
     def grant(proposal: dict) -> Verification | None:
-        if not proposal["undo"] or who.holder is None:
+        if not proposal["undo"] or who.holder is None or who.principal is None:
             return None
         # Only a grant from the proposal's principal counts, so the search goes on past a valid
         # grant from another one.
@@ -144,7 +147,9 @@ def verify_commit(state: ServiceState, req: dict, budget: int) -> VerifiedCommit
     scope = Scope("COMMIT", proposal["capability"], proposal, stored.principal)
     holder, principal, _ = identify_required(state, req, scope, proposal["hash"])
     _check_requester(stored, holder)
-    return VerifiedCommit(req["id"], budget, stored, holder, principal, lambda: with_limits(state, req["grants"], holder, scope))
+    # A proposal with no principal (no grant authorized its INTENT) commits only with a consent.
+    limits = replace(scope, consent_only=stored.principal is None)
+    return VerifiedCommit(req["id"], budget, stored, holder, principal, lambda: with_limits(state, req["grants"], holder, limits))
 
 
 def _check_requester(stored: _StoredProposal, holder: str) -> None:

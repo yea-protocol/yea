@@ -4315,3 +4315,133 @@ describe("yea doctor runs nothing it shouldn't (#321)", () => {
     expect(readFileSync(ran, 'utf8')).toBe(home);
   });
 });
+
+// An INTENT can carry grants and a valid proof and still be authorized by none of them, such as a
+// COMMIT-only grant. It then plans with no principal, so it never auto-commits, and only a
+// principal's consent commits its proposal: the "explicit" COMMIT is otherwise the model's.
+describe('an INTENT no grant authorized (#287)', async () => {
+  const stranger = await P.keyPair();
+  const commitOnly: P.Caveat[] = [{ verbs: ['COMMIT'] }];
+  const grantOf = (from: P.KeyPair, caveats: P.Caveat[] = []) =>
+    P.issueGrant({ principal: from, to: agent.public, caveats });
+  const fixture = (opts: { requireGrants?: boolean } = {}) => {
+    const applied: (string | null)[] = [];
+    const svc = P.service({
+      id: 'v',
+      name: 'V',
+      summary: 'v',
+      trust: [principal.public, other.public],
+      ...opts,
+    }).intent('v.do', {
+      summary: 'do',
+      plan: () => ({
+        summary: 'do it',
+        effects: [P.create('thing/1')],
+        apply: ({ principal: p }) => {
+          applied.push(p);
+        },
+        revert: () => null,
+      }),
+    });
+    const as = (grants: string[]) =>
+      new P.Client(P.local(svc), { key: agent.seed, grants });
+
+    return { applied, as };
+  };
+  const proposalOf = (r: P.FinalReply) => {
+    if (r.kind !== 'PROPOSALS') {
+      throw new Error(`expected PROPOSALS, got ${r.kind}`);
+    }
+
+    return r.proposals[0];
+  };
+  const consentOf = (r: P.FinalReply) => {
+    if (r.kind !== 'ERROR' || r.code !== 'consent_required' || !r.consent) {
+      throw new Error(`expected consent_required, got ${JSON.stringify(r)}`);
+    }
+
+    return r.consent;
+  };
+
+  it('a COMMIT-only grant plus auto gives proposals, and a plain COMMIT needs consent', async () => {
+    const { applied, as } = fixture();
+    const c = as([await grantOf(principal, commitOnly)]);
+    const p = proposalOf(await c.intent('v.do', {}, { auto: true }));
+    const consent = consentOf(await c.commit(p));
+
+    expect(applied).toEqual([]);
+    expect(consent).toMatchObject({
+      proposal: p.id,
+      hash: p.hash,
+      service: 'v',
+      principal: principal.public,
+    });
+
+    const grant = await P.consentGrant({
+      principal,
+      agent: agent.public,
+      consent,
+    });
+    const r = await c.commit(p, { grants: [grant] });
+
+    expect(r.kind).toBe('RECEIPT');
+    expect(applied).toEqual([principal.public]);
+
+    // A replay doesn't need the consent again: the commit already happened (SPEC §4.4).
+    const again = await c.commit(p);
+
+    expect(again.kind === 'RECEIPT' && again.replay).toBe(true);
+    expect(applied).toEqual([principal.public]);
+  });
+
+  it('an untrusted grant for the INTENT and a trusted COMMIT-only grant never commit', async () => {
+    const { applied, as } = fixture();
+    const c = as([
+      await grantOf(stranger),
+      await grantOf(principal, commitOnly),
+    ]);
+    const p = proposalOf(await c.intent('v.do', {}, { auto: true }));
+
+    expect(consentOf(await c.commit(p)).principal).toBe(principal.public);
+    expect(applied).toEqual([]);
+  });
+
+  it('with requireGrants, a COMMIT-only grant is still forbidden', async () => {
+    const { applied, as } = fixture({ requireGrants: true });
+    const r = await as([await grantOf(principal, commitOnly)]).intent(
+      'v.do',
+      {},
+      { auto: true },
+    );
+
+    expect(r.kind === 'ERROR' && r.code).toBe('forbidden');
+    expect(applied).toEqual([]);
+  });
+
+  it('an agent cannot consent for itself by delegating `only` to its own key', async () => {
+    const { applied, as } = fixture();
+    const own = await grantOf(principal, commitOnly);
+    const c = as([own]);
+    const p = proposalOf(await c.intent('v.do', {}));
+    const selfConsent = await P.delegateGrant(own, {
+      holder: agent,
+      to: agent.public,
+      caveats: [{ only: p.hash }],
+    });
+
+    consentOf(await as([selfConsent]).commit(p));
+    expect(applied).toEqual([]);
+  });
+
+  it('an INTENT a grant authorized still auto-commits under its principal', async () => {
+    const { applied, as } = fixture();
+    const r = await as([await grantOf(principal)]).intent(
+      'v.do',
+      {},
+      { auto: true },
+    );
+
+    expect(r.kind === 'RECEIPT' && r.auto).toBe(true);
+    expect(applied).toEqual([principal.public]);
+  });
+});
