@@ -102,7 +102,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
         effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
       };
     },
-    // The person types the file's name to approve.
+    // The phrase to type is the file's name.
     confirmWith: (_plan, input) => basename(String(input.path)),
   });
 }
@@ -118,7 +118,11 @@ whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
 This delete can't be undone, yet it's approved in the form: a guarded tool's risk is `medium`
 unless you say otherwise. Pass `risk: 'high'` to `guard()` to make it need a consent signed
 with `yea approve` instead, at the cost of a pinned principal key (guide step 5) and a
-`yea approve` for each delete.
+`yea approve` for each delete. Today that's best effort too: `yea approve` has to run on the
+server's account, since a key on another OS user
+([#358](https://github.com/yea-protocol/yea/issues/358)) or device
+([#328](https://github.com/yea-protocol/yea/issues/328)) can't save the consent yet
+([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 ### Client support
 
@@ -146,8 +150,9 @@ codes are its only way to approve ([#73](https://github.com/yea-protocol/yea/iss
 "Vendor docs" means the client's own documentation, checked 2026-09-26
 ([notes](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093)), not a run of
 ours. ¹ A typed phrase stops a client that accepts empty forms, as our notes say Codex does
-under auto-approve policies (unconfirmed: its config reference doesn't say so, 2026-11-03). It
-doesn't stop a script or a model that reads the form.
+under auto-approve policies (unconfirmed: its
+[config reference](https://learn.chatgpt.com/docs/config-file/config-reference) doesn't say
+so, 2026-11-03). It doesn't stop a script or a model that reads the form.
 
 A ✓ means the form reached a person in our run, not that only a person can answer it: the
 phrase is in the request, and some clients let software answer forms
@@ -155,7 +160,8 @@ phrase is in the request, and some clients let software answer forms
 ² Claude Code: an `Elicitation` hook can answer the form with no dialog drawn, and an
 `ElicitationResult` hook can rewrite the person's answer or turn a decline into an accept
 ([who can answer a form](https://yea-protocol.github.io/yea/guide/integrations#who-can-answer-a-form)).
-It declares form support on 2025-era stdio connections from v2.1.287 (its docs, 2026-11-03);
+It declares form support on 2025-era stdio connections from v2.1.287 (its
+[MCP docs](https://code.claude.com/docs/en/mcp#respond-to-mcp-elicitation-requests), 2026-11-03);
 we ran v2.1.317 on both of its MCP runtimes. ³ Codex: its `approval_policy` (`never`,
 `granular.mcp_elicitations`) decides whether a form reaches the person or is rejected; whether
 its auto-reviewer can answer one is unconfirmed (third-party)

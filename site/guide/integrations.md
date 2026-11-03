@@ -257,7 +257,7 @@ A form answer proves only what the client stack attests, and MCP attests nothing
 - **Hooks come from many places:** user, project and local settings, managed policy, a plugin's `hooks/hooks.json`, and the frontmatter of skills and subagents. A hook's matcher is the MCP server's name, and an empty or `*` matcher matches every server, yours included.
 - **Hooks reload live.** An edit to a settings file takes effect without a restart, so a check at the start of a session doesn't cover the rest of it.
 - **The permission mode decides whether the agent can add a hook.** `.claude/`, `.mcp.json` and `.claude.json` are protected paths: writes to them ask you in `default` and `acceptEdits` mode, go to the classifier in `auto`, and are allowed in `bypassPermissions`.
-- **What holds:** for an organization, managed settings with `allowManagedHooksOnly`, which blocks user, project, local and plugin hooks; for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings (`"disableAllHooks": true` in your user settings doesn't, because a project's `false` wins over it); and not running a server with YEA approval in `bypassPermissions`.
+- **What holds:** for an organization, managed settings with `allowManagedHooksOnly`, which blocks user, project, local and plugin hooks, except those of plugins that managed `enabledPlugins` force on; for one run, `claude --settings '{"disableAllHooks": true}'`, which overrides project and local settings (`"disableAllHooks": true` in your user settings doesn't, because a project's `false` wins over it); and not running a server with YEA approval in `bypassPermissions`. The hooks page doesn't say whether either setting also covers hooks in skill or subagent frontmatter.
 - **Our run:** [Claude Code, 2026-11-03](#claude-code-2026-11-03) shows the form as Claude Code draws it, and what could have answered instead.
 - **Its own permission prompt:** [the Claude Code call prompt](#the-claude-code-call-prompt), below.
 
@@ -272,7 +272,15 @@ A form answer proves only what the client stack attests, and MCP attests nothing
 
 #### The Claude Code call prompt
 
-With the `requireInteraction` option on (opt-in, and off by default; [#338](https://github.com/yea-protocol/yea/issues/338) adds it and its recipe), Claude Code shows its own permission prompt for every call of a YEA tool that acts, in every permission mode ([permission modes](https://code.claude.com/docs/en/permission-modes#actions-no-mode-auto-approves), fetched 2026-11-03). It shows that a person allowed the call with its arguments, not which plan they chose in the form, and it proves nothing under an Agent SDK host, whose `canUseTool` callback can approve in code. What else it depends on is in the [threat model](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves).
+With the `requireInteraction` option on (opt-in, and off by default; [#338](https://github.com/yea-protocol/yea/issues/338) adds it and its recipe), YEA's tools that act carry `_meta["anthropic/requiresUserInteraction"]`. Claude Code v2.1.292 or later then shows its own permission prompt for every call of them in every mode that can prompt, and `dontAsk` and `--permission-prompt-tool` deny the call instead ([MCP](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool), [permissions](https://code.claude.com/docs/en/permissions), fetched 2026-11-03).
+
+What the prompt shows is narrower than it looks:
+
+- **It's about the call, not the plan.** Whoever answered allowed the call with its arguments; which plan they chose still comes back through the form.
+- **A hook may answer it.** A `PreToolUse` hook's `allow` can't skip it, but the docs don't say whether a `PermissionRequest` hook's can. Until #338's interactive check says, treat a `PermissionRequest` hook that matches the tool like an `Elicitation` hook.
+- **An app built on the Agent SDK can approve it in code**, through its `canUseTool` callback.
+
+What else it depends on is in the [threat model](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves).
 
 ## Client runs
 

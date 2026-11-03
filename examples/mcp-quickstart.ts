@@ -132,7 +132,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
         effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
       };
     },
-    // The person types the file's name to approve.
+    // The phrase to type is the file's name.
     confirmWith: (_plan, input) => basename(String(input.path)),
   });
 }

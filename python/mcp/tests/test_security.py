@@ -570,3 +570,133 @@ def test_a13_a_tool_level_unknown_risk_fails_closed_through_hash_plans(world):
 
     with pytest.raises(ValueError, match="unknown risk"):
         hash_plans(JobDef("refund", "critical", None, None), {"amount": 5}, [Plan("Refund", [], apply=lambda: None)])
+
+
+# AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer a
+# form, so anything a form answer triggers is form tier, whichever key signs it. No code path may
+# sign with the principal key in response to one. mcp/test/security.test.ts holds the TypeScript half.
+
+
+@pytest.fixture
+def signatures(monkeypatch, tmp_path):
+    """Every Ed25519 signature made from a seed while the test runs, with a principal key at hand.
+
+    ``from_private_bytes`` is cryptography's way to load a private key from its seed, and
+    ``KeyPair.sign`` goes through it, so wrapping it sees every signature a seed makes."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    made: list[bytes] = []
+    real = Ed25519PrivateKey.from_private_bytes
+
+    class Watched:
+        def __init__(self, key):
+            self._key = key
+
+        def sign(self, data):
+            made.append(data)
+            return self._key.sign(data)
+
+        def __getattr__(self, name):
+            return getattr(self._key, name)
+
+    monkeypatch.setattr(Ed25519PrivateKey, "from_private_bytes", staticmethod(lambda data: Watched(real(data))))
+    for name in ("YEA_HOME", "YEA_PRINCIPAL_HOME"):  # one account: the principal key is right there
+        d = tmp_path / name.lower()
+        d.mkdir()
+        (d / "principal.key").write_text(PRINCIPAL.seed.hex())
+        monkeypatch.setenv(name, str(d))
+    return made
+
+
+def two_plans(world, server, done, version):
+    @world.approvals.job(server, risk="low")
+    async def refund(amount: int) -> list[Plan]:
+        v = version[0]
+        return [Plan(f"Refund {w} {amount}, v{v}", [create("refund")], apply=lambda w=w: done.append(f"{w} v{v}"))
+                for w in ("A", "B")]
+
+
+def choose(params, confirm="approve"):
+    """Accept the open form, choosing plan A."""
+    plans = params.requested_schema["properties"]["plan"]["oneOf"]
+    return {"plan": next(p["const"] for p in plans if "Refund A" in p["title"]), "confirm": confirm}
+
+
+def answer_kinds(world, version):
+    """Every kind of answer, each call's in turn (a cancel once they run out), and what the call says."""
+
+    def plans_change(params):
+        version[0] = 2
+        return choose(params)
+
+    def out_of_band_now(params):
+        world.approvals._y.tighten = {"outOfBand": "low"}
+        return choose(params)
+
+    def wrong(params):
+        return choose(params, "nope")
+
+    def not_offered(params):
+        return {"plan": "p", "confirm": "approve"}
+
+    return [
+        (["decline"], "not approved"),
+        ([], "not approved"),
+        ([wrong, wrong, wrong], "not approved after 3 tries"),
+        ([not_offered], "was not offered"),
+        ([plans_change], "not approved"),
+        ([out_of_band_now], "pc1."),
+        ([choose], "Refund A 5, v2"),
+    ]
+
+
+class Answers:
+    """The answers queued for the call in progress, as an MCP or FastMCP elicitation handler."""
+
+    def __init__(self):
+        self.queue: list = []
+
+    def next(self, params):
+        a = self.queue.pop(0) if self.queue else "cancel"
+        if a in ("decline", "cancel"):
+            return t.ElicitResult(action=a)
+        return t.ElicitResult(action="accept", content=a(params))
+
+    async def mcp(self, ctx, params):
+        return self.next(params)
+
+    async def fastmcp(self, message, response_type, params, ctx):
+        from fastmcp.client.elicitation import ElicitResult
+
+        r = self.next(params)
+        return ElicitResult(action=r.action, content=r.content)
+
+
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+@pytest.mark.parametrize("framework", ["mcp", "fastmcp"])
+async def test_no_answer_to_the_form_signs_or_saves_a_consent(world, signatures, mode, framework, monkeypatch):
+    from fastmcp import Client as FastClient
+    from fastmcp import FastMCP
+
+    done, version, answers, saves = [], [1], Answers(), []
+
+    async def put_consent(*args):
+        saves.append(args)
+
+    monkeypatch.setattr(world.store, "put_consent", put_consent)
+    if framework == "mcp":
+        server = world.server
+        client, extra = Client(server, mode=mode, elicitation_callback=answers.mcp), {}
+    else:
+        server = FastMCP("billing", request_state_security=world.approvals.request_state_security())
+        client, extra = FastClient(server, mode=mode, elicitation_handler=answers.fastmcp), {"raise_on_error": False}
+    two_plans(world, server, done, version)
+    async with client as c:
+        for queued, says in answer_kinds(world, version):
+            answers.queue[:] = queued
+            assert says in text(await c.call_tool("refund", {"amount": 5}, **extra))
+            world.approvals._y.tighten = None
+    assert done == ["A v2"]
+    assert signatures == [] and saves == []
+    PRINCIPAL.sign(b"x")  # the wrapper does see a signature when one is made
+    assert len(signatures) == 1

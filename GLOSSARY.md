@@ -14,8 +14,10 @@ grant. It is the protocol's answer to `consent_required`.
 _Avoid_: approval (for the signed grant)
 
 **Approval**:
-A person's decision on a job's plan, given in the client or somewhere else (`yea approve`). An
-approval given somewhere else reaches the job as a consent.
+The decision that lets a job's plan run outside the policy, given in the client's form or
+somewhere else (`yea approve`). An approval given somewhere else reaches the job as a consent.
+Whether a person made it depends on its tier: the form tier or signed consent (SPEC-approval
+§9).
 _Avoid_: consent (for the job's policy decision)
 
 **Form tier**:
@@ -31,6 +33,13 @@ client, by `yea approve`. It proves the key's holder signed that exact plan, and
 acted only when the key and the prompt that triggers the signing are both out of the agent's
 reach.
 _Avoid_: strong approval (unqualified)
+
+**Client call prompt**:
+Claude Code's own permission prompt for a tool marked
+`_meta["anthropic/requiresUserInteraction"]`, which YEA's acting tools carry when
+`requireInteraction` is on (#338). It shows that whoever answered the prompt allowed that call
+with those arguments, not which plan they chose in the form.
+_Avoid_: client approval
 
 ### The service side
 

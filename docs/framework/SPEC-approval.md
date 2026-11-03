@@ -488,24 +488,26 @@ not by what the approval is made of:
 |---|---|---|---|
 | **Form tier** | an answer to the approval form (§3), or anything else triggered from inside the chat client | the client stack returned an accepted form whose `confirm` matches the phrase of the plan it names | nothing in that stack can answer or rewrite a form: no hook, auto-reviewer, model, proxy or script, and no config the agent can edit to add one |
 | **Signed consent** | `yea approve <code>` (§6), where the principal key is | the holder of the principal key signed this exact plan | the key, and the prompt that triggers the signing, are outside everything the agent can drive: its shell, its files, and any browser it automates |
-| **Client call prompt** (conditional) | Claude Code's own permission prompt, before the call reaches the server, for a tool marked `requiresUserInteraction` | a person allowed this call, with these arguments | the conditions below hold |
+| **Client call prompt** (conditional) | Claude Code's own permission prompt (v2.1.292 or later), before the call reaches the server, for a tool marked `_meta["anthropic/requiresUserInteraction"]` | whoever answered Claude Code's prompt allowed this call, with these arguments | the conditions below hold, including that no `PermissionRequest` hook answers the prompt |
 
 **A signature is only as strong as the step that triggered it. Anything triggered from inside
 the chat client is form tier**, whichever key signs afterwards, because a hook or a model can
-supply the answer that triggers it. So no tool host signs with the principal key in response to
-a form answer (SPEC.md §6.6, ADR-0003), and the bridge never signs at all
+supply the answer that triggers it. That's why no tool host signs with the principal key at
+all (SPEC.md §6.6, ADR-0003), and why the bridge has no in-client signing
 ([SPEC-bridge](SPEC-bridge.md), decision 4). The same rule holds outside the chat: an approval
 page ([#328](https://github.com/yea-protocol/yea/issues/328)) is form tier for an agent that can
 drive the browser it's open in.
 
 **The client call prompt** is opt-in, and off by default
 ([#338](https://github.com/yea-protocol/yea/issues/338)). With the `requireInteraction` option
-on, Claude Code prompts for every call of an acting tool, in every permission mode
-([permission modes](https://code.claude.com/docs/en/permission-modes#actions-no-mode-auto-approves),
-fetched 2026-11-03). The integrations guide's
+on, Claude Code v2.1.292 or later prompts for every call of an acting tool in every mode that can
+prompt; `dontAsk` and `--permission-prompt-tool` deny it instead
+([MCP](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool),
+[permission modes](https://code.claude.com/docs/en/permission-modes#actions-no-mode-auto-approves)
+and [permissions](https://code.claude.com/docs/en/permissions), fetched 2026-11-03). The
+integrations guide's
 [The Claude Code call prompt](../../site/guide/integrations.md#the-claude-code-call-prompt)
-summarises it; #338 adds the recipe, with the minimum Claude Code version and the cases that
-deny the call.
+summarises it; #338 adds the recipe.
 - **It doesn't prove** which plan the person chose, or that the form answer is theirs: the
   server computes the plans after the call, so the choice and the phrase still come back
   through the form. It proves nothing under an Agent SDK host, whose `canUseTool` callback can
@@ -514,10 +516,17 @@ deny the call.
   the agent can edit the server's source. Set by the person in the server's MCP entry
   (`.mcp.json` or `~/.claude.json`), it's in files that `bypassPermissions` lets the agent
   write without asking, and that `auto` leaves to its classifier.
+- **It depends on no `PermissionRequest` hook matching the tool.** That hook runs when Claude
+  Code is about to ask, and can allow "on behalf of the user". The hooks page says a
+  `PreToolUse` hook's `allow` can't skip this prompt, but it doesn't say whether a
+  `PermissionRequest` hook's can ([hooks](https://code.claude.com/docs/en/hooks), fetched
+  2026-11-03). That hook comes from the same places, and reloads the same way, as the
+  `Elicitation` hooks.
 - **Together with the form,** it shows that a person chose the plan only when, in addition, no
   `Elicitation` or `ElicitationResult` hook matches the server.
-- **Not yet known:** whether the retry of a 2026-07-28 `input_required` call draws a second
-  prompt. That waits for #338's interactive check.
+- **Not yet known:** whether a `PermissionRequest` hook's `allow` skips the prompt, and whether
+  the retry of a 2026-07-28 `input_required` call draws a second prompt. Both wait for #338's
+  interactive check.
 
 **Today's status, for servers built with the framework**, where `yea approve` must save the
 consent in the server's store:
@@ -536,10 +545,10 @@ there prints the consent and the person pastes it back (SPEC-bridge).
 **Choosing the tier.**
 - **The author chooses it per tool.** A tool or plan at `risk: 'high'` is never offered in the
   form; it gets consent codes, whatever the person's settings say (the floor, §2). The Stripe
-  connector does this in live mode: its refunds, immediate cancellations and immediate plan
-  changes are `high` ([SPEC-connector-stripe](SPEC-connector-stripe.md)). The cost is a
-  pinned principal key and a store `yea approve` can reach (§2, §6): without them, a `high`
-  plan can't be approved at all.
+  connector does this in live mode: its refunds, immediate cancellations and changes, and
+  dearer changes at renewal are `high` ([SPEC-connector-stripe](SPEC-connector-stripe.md)).
+  The cost is a pinned principal key and a store `yea approve` can reach (§2, §6): without
+  them, a `high` plan can't be approved at all.
 - **The person can lower `outOfBand`.** It's a risk level, not a list of tools:
   `{ "outOfBand": "medium" }` sends medium and high plans out of band. Like every unsigned
   rule, it's best effort (§2): an agent that can write `~/.yea` can remove it.
@@ -665,7 +674,8 @@ export function decide(
   - an irreversible plan never auto-runs, whatever the grant says;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - no answer to the form, whatever it is, makes a signature or saves a consent, even with a
-    principal key on the machine, and the code that reads an answer names no signer (§9);
+    principal key on the machine: in the session, and through real MCP clients of both eras in
+    each language's MCP package. The code that reads an answer names no signer (§9);
   - a `deny`ed tool never runs, even with approval;
   - deleting the unsigned policy file returns to the defaults, never to something looser;
   - undo refuses outside its window, for another principal, a second time, for an id that

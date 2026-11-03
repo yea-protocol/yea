@@ -19,7 +19,7 @@ import {
 import { createServer } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { shop } from '../../examples/shop.ts';
@@ -61,16 +61,17 @@ import {
   totalGrant,
 } from './commit-ledger-fixture.js';
 
-// Pass-through `openSync`, `renameSync`, `mkdirSync` and `accessSync` with hooks: to swap a file
-// just before or after an open (the key file blocks below), to act right after a rename or a
-// mkdir (the undo claim tests), and to say which paths this user may write (the pinned key tests, which can't make
-// root-owned files). Null leaves fs alone.
+// Pass-through `openSync`, `renameSync`, `mkdirSync`, `accessSync` and `readFileSync` with hooks: to
+// swap a file just before or after an open (the key file blocks below), to act right after a rename
+// or a mkdir (the undo claim tests), to say which paths this user may write (the pinned key tests,
+// which can't make root-owned files), and to see what's read (rule 3, #337). Null leaves fs alone.
 const fsHook = vi.hoisted(() => ({
   beforeOpen: null as ((path: string) => void) | null,
   afterOpen: null as ((path: string) => void) | null,
   afterRename: null as ((from: string) => void) | null,
   afterMkdir: null as ((path: string) => void) | null,
   writable: null as ((path: string) => boolean) | null,
+  read: null as ((path: string) => void) | null,
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -104,7 +105,12 @@ vi.mock('node:fs', async (importOriginal) => {
       throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
     }
   };
-  const hooked = { openSync, renameSync, mkdirSync, accessSync };
+  const readFileSync = (...args: Parameters<typeof real.readFileSync>) => {
+    fsHook.read?.(String(args[0]));
+
+    return real.readFileSync(...args);
+  };
+  const hooked = { openSync, renameSync, mkdirSync, accessSync, readFileSync };
 
   return { ...real, ...hooked, default: { ...real, ...hooked } };
 });
@@ -1782,12 +1788,14 @@ describe('approval security (SPEC-approval)', () => {
 
 // AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer
 // a form, so anything a form answer triggers is form tier, whichever key signs it. No code path
-// may sign with the principal key in response to one. Nothing does today; these keep it so.
+// may sign with the principal key in response to one. These cover the SDK's job call session;
+// mcp/test/security.test.ts drives the MCP adapter, where an answer arrives, through real clients,
+// and python/mcp/tests/test_security.py does the same for Python.
 describe('a form answer never triggers a signature (rule 3, #337)', () => {
-  const repo = fileURLToPath(new URL('../..', import.meta.url));
-  /** What signs, or loads a key to sign with (as in mcp/test/bridge-security.test.ts). */
+  const src = fileURLToPath(new URL('../src', import.meta.url));
+  /** What signs, or loads a key to sign with (as in mcp/test/sources.ts). */
   const SIGNS =
-    /principalKey|consentGrant|issueGrant|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign/;
+    /principalKey|consentGrant|issueGrant|delegateGrant|makeProof|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign|['"/]principal\.key/;
   const plan = (summary: string) => ({
     summary,
     effects: [],
@@ -1802,9 +1810,9 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
       policy,
       ...over,
     });
-  const accept = (plan: string, confirm: string): P.ApprovalAnswer => ({
+  const accept = (chosen: string, confirm: string): P.ApprovalAnswer => ({
     action: 'accept',
-    content: { plan, confirm },
+    content: { plan: chosen, confirm },
   });
   /** Every kind of answer, each to a fresh form, and the outcome it gets. */
   const ANSWERS: {
@@ -1829,41 +1837,6 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
     },
   ];
 
-  /** The files a relative import reaches from `starts`, `.js` specifiers read as `.ts`. */
-  function reachable(starts: string[]): string[] {
-    const seen = new Set<string>();
-    const queue = [...starts];
-
-    for (let f = queue.pop(); f !== undefined; f = queue.pop()) {
-      if (!seen.has(f)) {
-        seen.add(f);
-
-        for (const m of readFileSync(f, 'utf8').matchAll(
-          /from '(\.\.?\/[^']+)\.js'/g,
-        )) {
-          queue.push(join(dirname(f), `${m[1]}.ts`));
-        }
-      }
-    }
-
-    return [...seen].sort();
-  }
-
-  /** Every production source file of the SDK, the MCP package, the CLI's bin and the connectors. */
-  function productionSources(): string[] {
-    const connectors = readdirSync(join(repo, 'connectors')).map((c) =>
-      join('connectors', c, 'src'),
-    );
-
-    return ['ts/src', 'mcp/src', 'cli/bin', ...connectors]
-      .filter((dir) => existsSync(join(repo, dir)))
-      .flatMap((dir) =>
-        readdirSync(join(repo, dir), { recursive: true, encoding: 'utf8' })
-          .filter((f) => /\.(ts|js|mjs)$/.test(f))
-          .map((f) => join(repo, dir, f)),
-      );
-  }
-
   /** A principal key in YEA_HOME and YEA_PRINCIPAL_HOME, as on a one-account machine. */
   function principalAtHand() {
     const dirs = [tmp(), tmp()];
@@ -1878,14 +1851,15 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
     return dirs;
   }
 
-  it('[R3] no answer to a form signs or saves a consent, even with the principal key at hand', async () => {
+  it('no answer to a form signs, saves a consent or reads the principal key (#337)', async () => {
     const homes = principalAtHand();
-    const opened: string[] = [];
+    const touched: string[] = [];
     const store = new FileStore(tmp());
     const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
     const saves = vi.spyOn(store, 'putConsent');
 
-    fsHook.beforeOpen = (path) => opened.push(path);
+    fsHook.beforeOpen = (path) => touched.push(path);
+    fsHook.read = (path) => touched.push(path);
 
     try {
       for (const a of ANSWERS) {
@@ -1915,43 +1889,33 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
 
       expect(signs).not.toHaveBeenCalled();
       expect(saves).not.toHaveBeenCalled();
-      expect(opened.filter((f) => homes.some((h) => f.startsWith(h)))).toEqual(
+      expect(touched.filter((f) => homes.some((h) => f.startsWith(h)))).toEqual(
         [],
       );
 
-      // The spy does see a signature when one is made.
+      // The spy does see a signature, and the hooks a read, when one is made.
       await P.sign(B.seed, 'x');
+      readFileSync(join(homes[1], 'principal.key'));
       expect(signs).toHaveBeenCalledTimes(1);
+      expect(touched).toContain(join(homes[1], 'principal.key'));
     } finally {
       fsHook.beforeOpen = null;
+      fsHook.read = null;
       signs.mockRestore();
       vi.unstubAllEnvs();
     }
   });
 
-  it('[R3] the code that reads a form answer names no signer', () => {
-    const readers = productionSources().filter((f) =>
-      /inputResponses|elicitInput|elicitation\/create/.test(
-        readFileSync(f, 'utf8'),
+  it("the job call session's code names no signer (#337)", () => {
+    const session = [
+      join(src, 'job-call.ts'),
+      ...readdirSync(join(src, 'job-call')).map((f) =>
+        join(src, 'job-call', f),
       ),
-    );
-
-    // The framework's job tools are the only place an answer enters; a new one belongs here.
-    expect(readers).toEqual([join(repo, 'mcp/src/call/round.ts')]);
-
-    const jobCallFiles = readdirSync(join(repo, 'ts/src/job-call')).map((f) =>
-      join(repo, 'ts/src/job-call', f),
-    );
-    const answerPath = [
-      ...reachable([join(repo, 'mcp/src/index.ts')]),
-      join(repo, 'ts/src/job-call.ts'),
-      ...jobCallFiles,
-      join(repo, 'ts/src/ask/judge.ts'),
+      join(src, 'ask', 'judge.ts'),
     ];
 
-    expect(answerPath).toContain(readers[0]);
-
-    for (const f of answerPath) {
+    for (const f of session) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
     }
   });

@@ -69,7 +69,7 @@ def add_delete_file(server: MCPServer, approvals: Approvals, root: str) -> None:
 
     # One call: now it shows its plan and waits for approval before it runs.
     approvals.guard(server, "delete_file", describe=describe,
-                    # The person types the file's name to approve.
+                    # The phrase to type is the file's name.
                     confirm_with=lambda plan, args: Path(str(args.get("path"))).name)
 
 

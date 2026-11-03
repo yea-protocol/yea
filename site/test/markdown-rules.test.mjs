@@ -7,14 +7,15 @@
  * approval claim on a page adopters read links to what an approval proves (#337).
  */
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-/** A claim that the model or the client can't approve, or that the person is asked. */
-const CLAIM = /can['’]t approve|asks the person/i;
+/** A claim that the model can't approve, that the person is asked, or approves in their client. */
+const CLAIM =
+  /can['’]t approve|cannot approve|asks the person|approve in (your|the|their) (MCP )?client/i;
 /** A link to the threat model, in SPEC-approval §9 or the security guide's summary of it. */
 const PROOF = /(guide\/security|SPEC-approval\.md)#what-an-approval-proves/;
 
@@ -135,12 +136,31 @@ test('other languages, plaintext and no-lens fences stay plain', {
   }
 });
 
-/** The paragraphs of `text` that make an approval claim without linking to what it proves. */
-function bareClaims(text) {
-  return text.split(/\n\s*\n/).filter((p) => CLAIM.test(p) && !PROOF.test(p));
+/**
+ * The units a claim must carry its own link in: paragraphs, then each table row and each block
+ * element (`<p>`, `<li>`, …) on its own, so one link can't excuse a whole table or template.
+ */
+function units(text) {
+  return text
+    .split(/\n\s*\n/)
+    .flatMap((p) =>
+      p.split(/\n(?=\s*\|)|(?=<(?:p|li|h[1-6]|td|th|dd|blockquote)\b)/),
+    );
 }
 
-/** The pages adopters read: both READMEs, the site's pages and its landing components. */
+/** The units of `text` that make an approval claim without linking to what it proves. */
+function bareClaims(text) {
+  return units(text).filter((p) => CLAIM.test(p) && !PROOF.test(p));
+}
+
+/** Every `README.md` one level under `dir`, such as each connector's npm page. */
+const readmesUnder = (dir) =>
+  readdirSync(join(ROOT, dir), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => join(ROOT, dir, d.name, 'README.md'))
+    .filter((f) => existsSync(f));
+
+/** The pages adopters read: the READMEs, the site's pages and its landing components. */
 function adopterPages() {
   const site = join(ROOT, 'site');
   const pages = readdirSync(site, { recursive: true, encoding: 'utf8' })
@@ -150,7 +170,9 @@ function adopterPages() {
 
   return [
     join(ROOT, 'README.md'),
+    join(ROOT, 'cli', 'README.md'),
     join(ROOT, 'python', 'mcp', 'README.md'),
+    ...readmesUnder('connectors'),
     ...pages,
   ];
 }
@@ -166,6 +188,15 @@ test('an approval claim without a link to what it proves is caught', () => {
   ]);
   assert.deepEqual(bareClaims(`The model can’t approve it\n(${link}).`), []);
   assert.deepEqual(bareClaims('Nothing the model sends approves it.'), []);
+  // A link in one row, or one element, doesn't excuse a claim in another.
+  assert.deepEqual(
+    bareClaims(`| a | ${link} |\n| b | You approve in your client |`),
+    ['| b | You approve in your client |'],
+  );
+  assert.deepEqual(
+    bareClaims(`<p>See ${link}.</p>\n<p>The model cannot approve it.</p>`),
+    ['<p>The model cannot approve it.</p>'],
+  );
 });
 
 test('every approval claim adopters read links to what it proves', () => {
@@ -177,6 +208,7 @@ test('every approval claim adopters read links to what it proves', () => {
   );
 
   assert.ok(pages.some((f) => f.endsWith('PathsSection.vue')));
+  assert.ok(pages.some((f) => f.endsWith(join('stripe', 'README.md'))));
   assert.ok(pages.some((f) => f.endsWith(join('guide', 'security.md'))));
   assert.deepEqual(bare, []);
 });

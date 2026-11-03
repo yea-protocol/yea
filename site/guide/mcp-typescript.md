@@ -235,7 +235,7 @@ Ask the user to run `yea approve <code>` in their terminal, then call again.
 
 `yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
 
-So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account: that's the case our tests cover, and it's best effort, since an agent that runs as you can reach the key. With the key on another OS user, `yea approve` can't save the consent yet, because the store's files are private to the server's user ([#358](https://github.com/yea-protocol/yea/issues/358)). A key on another device can't answer a consent code yet ([#328](https://github.com/yea-protocol/yea/issues/328)).
+So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account: that's the case our tests cover, and it's best effort, since an agent that runs as you can reach the key. With the key on another OS user or device, `yea approve` can't answer the code yet ([today's status](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 **Why the pinned key matters here:** the server accepts only consents signed by the pinned principal key. Without one it can't accept any, so it gives no codes and says why:
 

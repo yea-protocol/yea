@@ -2,25 +2,36 @@
  * The approval core's security list, from the MCP side (SPEC-mcp-ts, Testing). The core's own
  * regression tests are in ts/test/security.test.ts.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   createRequestStateCodec,
   McpServer,
 } from '@modelcontextprotocol/server';
-import { atLeast, MemoryStore, quantity, type Risk } from '@yea-protocol/sdk';
-import { describe, expect, it } from 'vitest';
+import {
+  atLeast,
+  MemoryStore,
+  quantity,
+  type Risk,
+  sign,
+} from '@yea-protocol/sdk';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { stricter } from '../src/policy.js';
+import { type AnswerStep, accept } from './harness.js';
 import {
   approve,
   connect,
   grantPolicy,
+  type Kind,
   ledgerKeyOf,
   refundJob,
   refundServer,
   textOf,
+  tmp,
+  type World,
   world,
 } from './helpers.js';
+import { productionSources, REPO, reachable, SIGNS } from './sources.js';
 
 const ch1 = { charge: 'ch_1' };
 
@@ -665,5 +676,125 @@ describe('an unprintable phrase', () => {
 
     expect(elicit.elicited).toEqual([]);
     expect(w.applied).toEqual([]);
+  });
+});
+
+// AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer
+// a form, so anything a form answer triggers is form tier, whichever key signs it. No code path
+// may sign with the principal key in response to one. The SDK's half is in
+// ts/test/security.test.ts; this drives the adapter, which is where an answer arrives.
+describe.each<Kind>(['2026', '2025'])(
+  'a form answer never triggers a signature, on a %s client (#337)',
+  (kind) => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    });
+
+    /** A principal key in the server's home, YEA_HOME and YEA_PRINCIPAL_HOME: one account. */
+    function principalAtHand(w: World) {
+      const dirs = [w.home, tmp(), tmp()];
+
+      for (const d of dirs) {
+        writeFileSync(join(d, 'principal.key'), w.principal.seed, {
+          mode: 0o600,
+        });
+      }
+
+      vi.stubEnv('YEA_HOME', dirs[1]);
+      vi.stubEnv('YEA_PRINCIPAL_HOME', dirs[2]);
+    }
+
+    /** The Ed25519 signatures made: the state codec's HMACs go through the same API. */
+    const ed25519 = (calls: unknown[][]) =>
+      calls.filter(([alg]) =>
+        typeof alg === 'string' ? alg === 'Ed25519' : isEd25519(alg),
+      );
+    const isEd25519 = (alg: unknown) =>
+      typeof alg === 'object' &&
+      alg !== null &&
+      (alg as { name?: unknown }).name === 'Ed25519';
+
+    it('no answer to the form signs with Ed25519 or saves a consent, with the principal key at hand', async () => {
+      const w = await world();
+      let version = 1;
+      const server = refundServer(w, {
+        plan: ({ charge }) =>
+          ['A', 'B'].map((which) => ({
+            summary: `Refund ${which} ${charge}, v${version}`,
+            effects: [],
+            risk: 'low' as const,
+            apply: () => {
+              w.applied.push(`${which} v${version}`);
+            },
+          })),
+      });
+
+      principalAtHand(w);
+
+      const conn = await connect(kind, server);
+      const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
+      const saves = vi.spyOn(w.store, 'putConsent');
+      const rightPhrase = accept(conn, 'ch_1', 'Refund A');
+      const outOfBandNow = async () => {
+        writeFileSync(join(w.home, 'policy.json'), '{ "outOfBand": "low" }');
+
+        return rightPhrase();
+      };
+      const plansChange = async () => {
+        version = 2;
+
+        return rightPhrase();
+      };
+      const wrongPhrase = accept(conn, 'nope', 'Refund A');
+      /** Every kind of answer, each call's in turn (a cancel once they run out), and its result. */
+      const rounds: [AnswerStep[], RegExp][] = [
+        [[{ action: 'decline' }], /not approved/],
+        [[], /not approved/],
+        [[wrongPhrase, wrongPhrase, wrongPhrase], /not approved after 3 tries/],
+        [
+          [{ action: 'accept', content: { plan: 'p', confirm: 'ch_1' } }],
+          /was not offered/,
+        ],
+        [[plansChange], /not approved/],
+        [[outOfBandNow], /pc1\./],
+        [[rightPhrase], /^✓ Refund A ch_1, v2/],
+      ];
+
+      for (const [answers, outcome] of rounds) {
+        conn.answers.push(...answers);
+        expect(textOf(await conn.call(ch1))).toMatch(outcome);
+        writeFileSync(join(w.home, 'policy.json'), '{}');
+      }
+
+      expect(w.applied).toEqual(['A v2']);
+      expect(ed25519(signs.mock.calls)).toEqual([]);
+      expect(saves).not.toHaveBeenCalled();
+
+      // The spy does see a signature when one is made.
+      await sign(w.principal.seed, 'x');
+      expect(ed25519(signs.mock.calls)).toHaveLength(1);
+    });
+  },
+);
+
+describe('the code that reads a form answer (#337)', () => {
+  it('names no signer, from the reader to the job call session', () => {
+    const readers = productionSources().filter((f) =>
+      /inputResponses|elicitInput|elicitation\/create/.test(
+        readFileSync(f, 'utf8'),
+      ),
+    );
+
+    // The framework's job tools are the only place an answer enters; a new one belongs here.
+    expect(readers).toEqual([join(REPO, 'mcp/src/call/round.ts')]);
+
+    const answerPath = reachable([join(REPO, 'mcp/src/index.ts')]);
+
+    expect(answerPath).toContain(readers[0]);
+
+    for (const f of answerPath) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+    }
   });
 });

@@ -14,10 +14,12 @@ your approval, and can be undone where Stripe allows it.
 | `change_plan` | job | At renewal (undoable until a day before it), or now with proration (not undoable). |
 
 Each job returns its plans first: what changes, what money it spends, its risk and its undo
-window. You approve in your MCP client by typing a phrase: the amount for a refund, or the
-customer's email (their `cus_` id if they have no email) for a cancel or plan change. A client
-that can't show a form gets a consent code for `yea approve` instead. Every job also takes
-`"preview": true`, which shows the plans and does nothing.
+window. In a client that shows forms, a plan is approved by typing its phrase: the amount for a
+refund, or the customer's email (their `cus_` id if they have no email) for a cancel or plan
+change. A form answer is only as trustworthy as the client that draws it
+([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)), which is why live mode's `high` plans never go to the form
+(see [Risk](#risk)). A client that can't show a form gets a consent code for `yea approve`
+instead. Every job also takes `"preview": true`, which shows the plans and does nothing.
 
 ## Install
 
