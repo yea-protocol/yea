@@ -51,6 +51,22 @@ npm run lint && npm run lint:style && npm run lint:structure   # the checks CI r
 
 The docs site (`site/`, built with `npm run site`) follows the design context in `.agents/context/`: PRODUCT.md for who it's for and DESIGN.md for its tokens, which you update when theme tokens change.
 
+## Changelog and releases
+
+Every package shares one version, and CHANGELOG.md's top heading tracks it:
+
+- **Between releases**, record what users will notice under `## Unreleased` at the top of
+  CHANGELOG.md, adding the heading if the top one is still the last release's.
+- **To release `x.y.z`**, open a PR that runs `npm run release:version x.y.z`, which bumps the
+  version everywhere it's written (scripts/release-versions.mjs), and renames
+  `## Unreleased` to `## vx.y.z: <a short title>`.
+- **After it merges**, push the tag `vx.y.z`. release.yml publishes only from a tag, and only once
+  `npm run release:dry-run -- vx.y.z` passes on it. That dry run needs every version, the top
+  heading and the tag to name `x.y.z`, and the packed artifacts to install and run.
+
+`npm run release:check` shows any version that disagrees. Without a tag it accepts
+`## Unreleased`. CI runs `npm run release:dry-run` on every pull request.
+
 ## Code style
 
 TypeScript and JavaScript are formatted by [Biome](https://biomejs.dev) (80 columns, single

@@ -1,8 +1,8 @@
 name: release
-# Push a tag like v0.1.1 (or run manually) to publish. npm: trusted publishing (OIDC) with
-# provenance, NPM_TOKEN secret as a fallback. PyPI: trusted publishing. Artifacts are attested.
-# Before tagging, bump every version with `npm run release:version <x.y.z>`
-# (scripts/release-versions.mjs) and let the release-dry-run workflow pass on its PR.
+# Push a tag like v0.1.1 to publish, or run it by hand with that tag picked as the ref (any other
+# ref fails). npm: trusted publishing (OIDC) with provenance, NPM_TOKEN secret as a fallback.
+# PyPI: trusted publishing. Artifacts are attested. Before tagging, bump every version with
+# `npm run release:version <x.y.z>` (CONTRIBUTING.md#changelog-and-releases).
 on:
   push:
     tags: ["v*"]
@@ -12,16 +12,21 @@ permissions:
   id-token: write
   attestations: write
 jobs:
-  # Nothing publishes unless every version agrees, CHANGELOG's top section is this release's,
-  # and a pushed tag is v<version>.
+  # Nothing publishes unless this run is on a tag and the dry run passes on it: every version,
+  # CHANGELOG's top heading and the tag name one version, and the packed artifacts install and run.
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: release from a v<version> tag
+        if: github.ref_type != 'tag'
+        run: echo "::error::Release from a v<version> tag, not $GITHUB_REF_NAME" && exit 1
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with: { node-version: 22 }
-      - run: npm run release:check -- "$TAG"
-        env: { TAG: "${{ github.ref_type == 'tag' && github.ref_name || '' }}" }
+      - uses: astral-sh/setup-uv@v7
+        with: { python-version: "3.13" }
+      - run: npm ci && npm run build
+      - run: npm run release:dry-run -- "$GITHUB_REF_NAME"
   npm:
     needs: [check]
     runs-on: ubuntu-latest

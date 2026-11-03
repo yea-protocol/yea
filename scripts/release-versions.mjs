@@ -3,9 +3,11 @@
  * their internal dependency ranges, the two Python packages, server.json, the
  * plugin, the citation, the lockfiles, the versions the code reports, and
  * CHANGELOG's top heading. `set <x.y.z>` bumps them all in one step (all but
- * CHANGELOG, whose new section a person writes); `check` fails when any
- * disagrees with @yea-protocol/sdk's and, given the tag a release pushes,
- * when it isn't `v` and that version.
+ * CHANGELOG, whose heading a person writes); `check` fails when any
+ * disagrees with @yea-protocol/sdk's. Between releases CHANGELOG may open
+ * with `## Unreleased`; given the tag a release pushes, `check` also needs
+ * CHANGELOG's top heading and the tag to be that version
+ * (CONTRIBUTING.md#changelog-and-releases).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,7 +29,8 @@ const PROJECT_VERSION = (name) =>
 /**
  * Every place the version lives. Each `pattern` captures the version in its
  * first group; a global one must hold it every time it matches. `bump: false`
- * marks a place `set` leaves to a person.
+ * marks a place `set` leaves to a person, and `between` a value it may hold
+ * instead between releases.
  */
 export const SITES = [
   { file: 'ts/package.json', what: 'version', pattern: OWN_VERSION },
@@ -112,6 +115,7 @@ export const SITES = [
     what: 'top heading',
     pattern: /^## v?([^\s:]+)/m,
     bump: false,
+    between: 'Unreleased',
   },
 ];
 
@@ -141,11 +145,18 @@ export function currentVersion(root) {
 /**
  * Each place under `root` that doesn't hold `expected`, as a line naming the
  * file, what it is and what it holds instead. Empty when they all agree.
+ * With `betweenReleases`, a place may hold its `between` value instead.
  */
-export function disagreements(root, expected = currentVersion(root)) {
-  return SITES.flatMap(({ file, what, pattern }) => {
+export function disagreements(
+  root,
+  expected,
+  { betweenReleases = false } = {},
+) {
+  return SITES.flatMap(({ file, what, pattern, between }) => {
     const found = versionsIn(readFileSync(join(root, file), 'utf8'), pattern);
-    const wrong = found.filter((v) => v !== expected);
+    const allowed =
+      betweenReleases && between ? [expected, between] : [expected];
+    const wrong = found.filter((v) => !allowed.includes(v));
 
     if (found.length === 0) {
       return [`${file} (${what}): not found`];
@@ -162,6 +173,22 @@ export function tagProblems(tag, version) {
   return tag === `v${version}`
     ? []
     : [`tag ${tag} isn't v${version}, the version every package holds`];
+}
+
+/**
+ * What keeps the tree at `root` from being released as `tag`: places that
+ * disagree with @yea-protocol/sdk's version, and a tag that isn't `v` and that
+ * version. With no tag the tree is between releases, so CHANGELOG may open
+ * with `## Unreleased`.
+ */
+export function releaseProblems(root, tag) {
+  const version = currentVersion(root);
+
+  if (!tag) {
+    return disagreements(root, version, { betweenReleases: true });
+  }
+
+  return [...disagreements(root, version), ...tagProblems(tag, version)];
 }
 
 /** The places `set` bumps. */
@@ -235,14 +262,8 @@ function set(root, version) {
 
 /** `check [<tag>]`: every version agrees, and with the tag, if one is given. */
 function check(root, tag) {
-  const version = currentVersion(root);
-  const problems = [
-    ...disagreements(root, version),
-    ...(tag ? tagProblems(tag, version) : []),
-  ];
-
-  if (report(problems, 'Versions disagree:')) {
-    console.log(`Every version is ${version}.`);
+  if (report(releaseProblems(root, tag), 'Versions disagree:')) {
+    console.log(`Every version is ${currentVersion(root)}.`);
   }
 }
 

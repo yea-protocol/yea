@@ -4,12 +4,12 @@ YEA is software that holds authority over your money and calendar, so you should
 
 | Artifact | How it's published | Provenance |
 |---|---|---|
-| npm `@yea-protocol/sdk` and `@yea-protocol/cli` | npm trusted publishing (OIDC), except the first release; see below | npm provenance (`--provenance`) plus a GitHub build attestation of each `.tgz` |
+| npm `@yea-protocol/sdk`, `@yea-protocol/mcp`, `@yea-protocol/cli` and `@yea-protocol/stripe` | npm trusted publishing (OIDC), except the first release; see below | npm provenance (`--provenance`) plus a GitHub build attestation of each `.tgz` |
 | PyPI `yea-sdk` and `yea-mcp` | PyPI trusted publishing, from the first release | GitHub build attestations of each wheel and sdist |
 | `ghcr.io/yea-protocol/yea` | Docker build on release tags | GitHub build attestation of the image |
 | GitHub release | The npm and PyPI artifacts, plus `SHA256SUMS` | |
 
-**The first npm release uses a token.** npm only lets a trusted publisher be added to a package that already exists, so v0.1.0 of the two npm packages is published with a scoped automation token stored as a repository secret. Once both packages exist, trusted publishing takes over and the token is revoked ([#31](https://github.com/yea-protocol/yea/issues/31)). Provenance and build attestations apply to every release either way, so the checks below work for v0.1.0 too.
+**The first npm release uses a token.** npm only lets a trusted publisher be added to a package that already exists, so v0.1.0 of the four npm packages is published with a scoped automation token stored as a repository secret. Once they exist, trusted publishing takes over and the token is revoked ([#31](https://github.com/yea-protocol/yea/issues/31)). Provenance and build attestations apply to every release either way, so the checks below work for v0.1.0 too.
 
 ## Verify
 
@@ -23,9 +23,13 @@ A downloaded artifact, against this repository's workflow:
 
 ```sh
 gh attestation verify yea-protocol-sdk-0.1.0.tgz --repo yea-protocol/yea
+gh attestation verify yea-protocol-mcp-0.1.0.tgz --repo yea-protocol/yea
 gh attestation verify yea-protocol-cli-0.1.0.tgz --repo yea-protocol/yea
+gh attestation verify yea-protocol-stripe-0.1.0.tgz --repo yea-protocol/yea
 gh attestation verify yea_sdk-0.1.0-py3-none-any.whl --repo yea-protocol/yea
+gh attestation verify yea_sdk-0.1.0.tar.gz --repo yea-protocol/yea
 gh attestation verify yea_mcp-0.1.0-py3-none-any.whl --repo yea-protocol/yea
+gh attestation verify yea_mcp-0.1.0.tar.gz --repo yea-protocol/yea
 ```
 
 The container image:

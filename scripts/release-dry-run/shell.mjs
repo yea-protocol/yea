@@ -27,3 +27,13 @@ export function sh(command, args, options = {}) {
     );
   }
 }
+
+/**
+ * The line that says why a command `sh` ran failed: the first naming an
+ * error, else the first it printed, else the command itself.
+ */
+export function errorLine(error) {
+  const [command, ...output] = error.message.split('\n');
+
+  return output.find((line) => /Error\b/.test(line)) ?? output[0] ?? command;
+}

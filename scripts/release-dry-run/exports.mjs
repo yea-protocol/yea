@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sh } from './shell.mjs';
+import { errorLine, sh } from './shell.mjs';
 
 /**
  * Entries only `import` can load: the CLI dispatcher runs behind a top-level
@@ -72,9 +72,7 @@ function failure(cwd, args) {
 
     return undefined;
   } catch (error) {
-    const lines = error.message.split('\n');
-
-    return lines.find((line) => /Error\b/.test(line)) ?? lines[0];
+    return errorLine(error);
   }
 }
 
