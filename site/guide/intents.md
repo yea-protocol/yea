@@ -43,7 +43,7 @@ The service replies `CLARIFY` with a question and options. Each option carries a
 
 `COMMIT` carries the proposal id and its hash, plus the agent's grants and a proof of possession. The service rejects a hash mismatch with `conflict`. Only the agent whose verified proof was on the original `INTENT` may commit its proposals, under a grant from the principal whose grant authorized that `INTENT` ([SPEC §4.4](/reference/spec#44-commit--make-it-happen)).
 
-An `INTENT` can carry grants and still be authorized by none of them, for example when its only grant allows `COMMIT` alone. Its proposals then have no principal, and only the principal's consent commits them: a plain `COMMIT` gets `consent_required`.
+An `INTENT` can carry grants and still be authorized by none of them, for example when its only grant allows `COMMIT` alone. Its proposals then have no principal, and only a consent to that exact proposal, from a principal the service trusts, commits them; a plain `COMMIT` gets `consent_required`.
 
 Commits are idempotent. Sending the same `COMMIT` again returns the original receipt with `replay: true` and never executes twice, so a retry after a lost response is safe.
 
