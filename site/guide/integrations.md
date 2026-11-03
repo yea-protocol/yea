@@ -105,7 +105,7 @@ The tools that change things (each intent capability, and `yea_undo`; in a frame
 
 The cost: the prompt comes on every call, including `preview: true` and calls your policy would let through without asking. That's why it's off by default. With it on, Claude Code's permission prompt, not an in-client form, is the step that shows a person allowed this call with these arguments, not which plan they approved or that the form answer is theirs (see [#337](https://github.com/yea-protocol/yea/issues/337)).
 
-Checked in an interactive Claude Code session: pending, to be recorded with the client checks in [#326](https://github.com/yea-protocol/yea/issues/326).
+Checked in an interactive Claude Code session: pending, tracked in [#372](https://github.com/yea-protocol/yea/issues/372), with the same launcher as the [form run](https://github.com/yea-protocol/yea/tree/main/docs/client-runs/2026-11-03-claude-code).
 
 ### Claude Desktop
 
