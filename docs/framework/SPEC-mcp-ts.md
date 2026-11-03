@@ -320,10 +320,10 @@ step 11 for a `run`.
    ```
    `round` is 1 on a first ask, and the verdict's round on an ask-again.
 9. **Fail closed.** Return `isError: true` with the plans in Lens, a `jobConsentCode` for each
-   plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their terminal,
-   then call again.* The result carries `structuredContent: { plans, codes }`. Without a pinned
-   principal key, or on a `MemoryStore`, no consent can be accepted, so there are no codes, and
-   the result says why.
+   plan that isn't denied, its short id on a `FileStore`, and how to approve, in SPEC-approval
+   §6's words. The result carries `structuredContent: { plans, codes }`, each code with its
+   `id` when it has one. Without a pinned principal key, or on a `MemoryStore`, no consent can
+   be accepted, so there are no codes, and the result says why.
 10. **Answer.**
     - `checkState(state.yea, { tool, inputHash, sub, now })`, then
       `consumeOnce(state.yea.nonce, state.yea.exp)`. Any failure refuses, with one message.
