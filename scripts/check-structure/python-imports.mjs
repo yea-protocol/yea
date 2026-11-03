@@ -1,18 +1,28 @@
 /**
- * The import statements in a Python file. Comments and string literals
- * (docstrings among them) are taken out first, so an import quoted in one
- * isn't read as one. A statement may be indented, follow a `;` or a `:`, wrap
- * its names in parentheses or continue past a backslash.
+ * The imports in a Python file. Comments and string literals (docstrings
+ * among them) are taken out first, so an import quoted in one isn't read as
+ * one. A statement may be indented, follow a `;` or a `:`, wrap its names in
+ * parentheses or continue past a backslash, and is read in every spelling
+ * Python accepts: names folded by NFKC as Python folds identifiers, form
+ * feeds as spaces, spaces around dots. `__import__` and
+ * `importlib.import_module` calls count too when their names are literals,
+ * as `import()` and `require()` do in TS. A part reached as an attribute of
+ * its package (`yea.store.files` after `import yea.store`) isn't an import,
+ * and no reader sees it.
  */
 
 const QUOTES = new Set(["'", '"']);
 
 /** `from <dots><module> import <names>`, the names in parentheses or not. */
 const FROM =
-  /(?:^|[;:])[ \t]*from[ \t]+(\.*)([\w.]*)[ \t]+import\b[ \t]*(\([^)]*\)|[^\n;]*)/gm;
+  /(?:^|[;:])[ \t]*from[ \t]+(\.*)([\p{ID_Continue}.]*?)[ \t]*\bimport\b[ \t]*(\([^)]*\)|[^\n;]*)/gmu;
 
 /** `import <module> [as <alias>], …`. */
-const IMPORT = /(?:^|[;:])[ \t]*import[ \t]+([^\n;]*)/gm;
+const IMPORT = /(?:^|[;:])[ \t]*import[ \t]+([^\n;]*)/gmu;
+
+/** `__import__('<name>')` or `import_module('<name>'[, [package=]'<package>'])`, with literal names. */
+const DYNAMIC =
+  /\b(?:__import__|import_module)\s*\(\s*(['"])([^'"\n]+)\1(?:\s*,\s*(?:package\s*=\s*)?(['"])([^'"\n]+)\3)?/gu;
 
 /** The index just past the string literal opening at `i`, triple-quoted or not. */
 function literalEnd(text, i) {
@@ -42,8 +52,8 @@ function skipEnd(text, i) {
   return QUOTES.has(text[i]) ? literalEnd(text, i) : undefined;
 }
 
-/** Python source with each comment taken out and each string literal emptied. */
-function stripPython(text) {
+/** Python source with each comment taken out, and each string literal put through `literal`. */
+function stripComments(text, literal) {
   let out = '';
   let i = 0;
 
@@ -54,12 +64,38 @@ function stripPython(text) {
       out += text[i];
       i += 1;
     } else {
-      out += text[i] === '#' ? '' : "''";
+      out += text[i] === '#' ? '' : literal(text.slice(i, end));
       i = end;
     }
   }
 
   return out.replace(/\\\n/g, ' ');
+}
+
+/**
+ * Code in one spelling of each import: names folded by NFKC, form feeds as
+ * spaces, no spaces around a dot, and `from.x` as `from .x`.
+ */
+function normalise(code) {
+  return code
+    .normalize('NFKC')
+    .replaceAll('\f', ' ')
+    .replace(/[ \t]*\.[ \t]*/g, '.')
+    .replace(/\bfrom(?=\.)/g, 'from ');
+}
+
+/** `.name` as its level and module: `{ level: 1, module: 'name' }`. */
+function relative(name) {
+  const dots = /^\.*/.exec(name)?.[0] ?? '';
+
+  return { level: dots.length, module: name.slice(dots.length) };
+}
+
+/** The literal `__import__` and `import_module` calls in code that still has its strings. */
+function dynamicImports(code) {
+  return [...code.matchAll(DYNAMIC)]
+    .map((m) => ({ ...relative(m[2]), names: [], package: m[4] }))
+    .filter((found) => found.level === 0 || found.package !== undefined);
 }
 
 /** The first word of each comma-separated item: `a as b, c` is `a`, `c`. */
@@ -72,12 +108,13 @@ function firstWords(list) {
 }
 
 /**
- * The imports in a Python file, as `{ level, module, names }`: `level` counts
- * the leading dots of a relative import, and `names` are what a `from` import
- * takes from `module` (empty for a plain `import module`).
+ * The imports in a Python file, as `{ level, module, names, package? }`:
+ * `level` counts the leading dots of a relative import, `names` are what a
+ * `from` import takes from `module` (empty for a plain `import module`), and
+ * `package` is what `import_module` resolves a relative name against.
  */
 export function pythonImports(text) {
-  const code = stripPython(text);
+  const code = normalise(stripComments(text, () => "''"));
   const from = [...code.matchAll(FROM)].map((m) => ({
     level: m[1].length,
     module: m[2],
@@ -87,5 +124,7 @@ export function pythonImports(text) {
     firstWords(m[1]).map((module) => ({ level: 0, module, names: [] })),
   );
 
-  return [...from, ...plain];
+  const dynamic = dynamicImports(stripComments(text, (literal) => literal));
+
+  return [...from, ...plain, ...dynamic];
 }

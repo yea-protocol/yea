@@ -40,14 +40,24 @@ function modules(sources) {
   );
 }
 
-/** The name `from <level dots><module>` gives inside `importer`, or undefined past the top. */
-function absoluteName(importer, level, module) {
+/** The package a relative import in `importer` starts from, as name parts. */
+function anchor(importer, pkg) {
+  const parts = (pkg ?? importer.name).split('.');
+
+  return pkg !== undefined || importer.isPackage ? parts : parts.slice(0, -1);
+}
+
+/**
+ * The name `<level dots><module>` gives inside `importer` (or inside
+ * `package`, for `import_module`), or undefined past the top.
+ */
+function absoluteName(importer, { level, module, package: pkg }) {
   if (level === 0) {
     return module;
   }
 
-  const parts = importer.name.split('.');
-  const kept = parts.length - (importer.isPackage ? 0 : 1) - (level - 1);
+  const parts = anchor(importer, pkg);
+  const kept = parts.length - (level - 1);
 
   if (kept < 1) {
     return undefined;
@@ -62,8 +72,9 @@ function absoluteName(importer, level, module) {
  * that is both a submodule and something `base/__init__.py` defines counts as
  * the submodule, so the check fails closed.
  */
-function imported(importer, { level, module, names }, index) {
-  const base = absoluteName(importer, level, module);
+function imported(importer, statement, index) {
+  const base = absoluteName(importer, statement);
+  const { names } = statement;
 
   if (base === undefined) {
     return [];
@@ -110,13 +121,14 @@ function breach(importer, target, index) {
   return undefined;
 }
 
-/** What a breach says: the `__init__.py` to import instead, or the `_` that closes it. */
+/** What a breach says: the `__init__.py` to import instead, or the `_` name that closes it. */
 function breachDetail(target, { n, entry }) {
-  const dir = `${target.root}/${target.name.split('.').slice(0, n).join('/')}`;
+  const parts = target.name.split('.');
+  const dir = `${target.root}/${parts.slice(0, n).join('/')}`;
 
   return entry
     ? `imports ${target.path} from inside ${dir}/; import ${dir}/__init__.py instead`
-    : `imports ${target.path}, which its leading _ makes private to ${dir}/`;
+    : `imports ${target.path}; the leading _ of ${parts[n]} makes it private to ${dir}/`;
 }
 
 /** The modules in `index` that a file's imports load, each once. */

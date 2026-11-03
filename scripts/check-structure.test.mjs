@@ -215,7 +215,7 @@ function privateFound(name, files, roots = ['src']) {
 /** The files the violations under `roots` in a fixture say were imported, in order. */
 function importedFiles(name, files, roots = ['src']) {
   return privateFound(name, files, roots).map(
-    (line) => /imports (\S+?),? /.exec(line)?.[1],
+    (line) => /imports ([^\s;]+)/.exec(line)?.[1],
   );
 }
 
@@ -519,9 +519,9 @@ test('private: a leading _ keeps a module or package inside its parent', () => {
   );
 
   assert.deepEqual(found, [
-    'python/mcp/src/yea_mcp/__init__.py: private (imports python/src/yea/_inner/__init__.py, which its leading _ makes private to python/src/yea/)',
-    'python/mcp/src/yea_mcp/__init__.py: private (imports python/src/yea/_json.py, which its leading _ makes private to python/src/yea/)',
-    'python/src/yea/run.py: private (imports python/src/yea/ns/_part.py, which its leading _ makes private to python/src/yea/ns/)',
+    'python/mcp/src/yea_mcp/__init__.py: private (imports python/src/yea/_inner/__init__.py; the leading _ of _inner makes it private to python/src/yea/)',
+    'python/mcp/src/yea_mcp/__init__.py: private (imports python/src/yea/_json.py; the leading _ of _json makes it private to python/src/yea/)',
+    'python/src/yea/run.py: private (imports python/src/yea/ns/_part.py; the leading _ of _part makes it private to python/src/yea/ns/)',
   ]);
 });
 
@@ -568,12 +568,57 @@ test('private: every Python import statement form is read', () => {
     'def g():',
     '    from .x.g import g',
     'import app.x.h as h, app.x.i',
+    'from app . x . j import j',
+    'import app . x . k',
+    'from . x . l import l',
+    'from.x.m import m',
+    '\ffrom .x.n import n',
+    'from\f.x.o\fimport\fo',
+    'from .x import \u{1D429}',
+    'from .x.\u{1D42A} import q',
+    'import app.x.\u{1D42B}',
   );
-  const parts = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+  const parts = [...'abcdefghijklmnopqr'];
 
   assert.deepEqual(
     importedFiles('python-forms', appImporting(text, parts)),
     parts.map((p) => `src/app/x/${p}.py`),
+  );
+});
+
+test('private: a literal __import__ is read like an import', () => {
+  const text = py(
+    "a = __import__('app.x.a')",
+    'b = __import__ ( "app.x.b" , globals())',
+    "c = __import__(f'app.x.{name}')",
+    "# __import__('app.x.d')",
+  );
+
+  assert.deepEqual(
+    importedFiles(
+      'python-dunder-import',
+      appImporting(text, ['a', 'b', 'c', 'd']),
+    ),
+    ['src/app/x/a.py', 'src/app/x/b.py'],
+  );
+});
+
+test('private: a literal import_module is read, relative names against its package', () => {
+  const text = py(
+    'import importlib',
+    "a = importlib.import_module('app.x.a')",
+    "b = importlib.import_module('.b', 'app.x')",
+    "c = importlib.import_module('..x.c', package='app.y')",
+    "d = importlib.import_module('.d')",
+    'e = importlib.import_module(name)',
+  );
+
+  assert.deepEqual(
+    importedFiles(
+      'python-import-module',
+      appImporting(text, ['a', 'b', 'c', 'd']),
+    ),
+    ['src/app/x/a.py', 'src/app/x/b.py', 'src/app/x/c.py'],
   );
 });
 

@@ -173,10 +173,13 @@ of known run-together names (`servefetch`, `keyfile`, …). It also reads the re
 in TS, JS and Vue files and the imports in Python files, and fails on any from inside another
 module's folder. Python imports resolve by module name across `python/src` and `python/mcp/src`;
 a subpackage's `__init__.py` is open to its package, and a top-level package (`yea`, `yea_mcp`)
-isn't a module. A folder needs an `__init__.py` for its modules to be private: without one it
-only groups files. A module or package named with a leading `_` (`yea/_json.py`) is private to its
-parent package, top-level ones included. The Python examples (`python/examples`,
-`python/mcp/examples`) are read for these imports too, since adopters copy them. Biome covers exports:
+isn't a module. A folder needs an `__init__.py` for its modules to be private: without one it only
+groups files. A module or package named with a leading `_` (`yea/_json.py`) is private to its parent
+package, top-level ones included. Literal `__import__` and `importlib.import_module` calls count as
+imports. The check reads imports only, so a part reached as an attribute of its package
+(`yea.store.files` after `import yea.store`) is the same breach, and it's caught in review. The
+Python examples (`python/examples`, `python/mcp/examples`) are read for these imports too, since
+adopters copy them. Biome covers exports:
 `noDefaultExport`, with overrides for the files a framework needs one in, and `noReExportAll`,
 off only for package index files.
 
