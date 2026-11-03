@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 import httpx2
@@ -15,7 +20,7 @@ from yea import Plan, create, issue_grant
 from yea.approval import consent_hash_of
 from yea.store import FileStore
 
-from conftest import PRINCIPAL, Person, text
+from conftest import PRINCIPAL, Person, make_world, text
 from yea_mcp import yea
 
 pytestmark = pytest.mark.anyio
@@ -578,13 +583,58 @@ def test_a13_a_tool_level_unknown_risk_fails_closed_through_hash_plans(world):
 # sign with the principal key in response to one. mcp/test/security.test.ts holds the TypeScript half.
 
 
-@pytest.fixture
-def signatures(monkeypatch, tmp_path, world):
-    """Every Ed25519 signature made from a seed while the test runs, with a principal key at hand:
-    in the server's own home, ``YEA_HOME`` and ``YEA_PRINCIPAL_HOME``, as on one account.
+class _Watch:
+    """The watch in progress. An audit hook can't be removed, so the one installed stays inert
+    whenever ``current`` is None."""
 
-    ``from_private_bytes`` is cryptography's way to load a private key from its seed, and
-    ``KeyPair.sign`` goes through it, so wrapping it sees every signature a seed makes."""
+    current: dict | None = None
+    hooked = False
+
+
+_SPAWNS = {"subprocess.Popen", "os.system", "os.posix_spawn", "os.exec", "os.spawn", "os.fork", "os.forkpty"}
+
+
+def _is_key(keys: set, path) -> bool:
+    """Whether ``path`` names a key file: by name, or by device and inode (a link to one)."""
+    if path is None or isinstance(path, int):
+        return False
+    try:
+        p = os.fsdecode(os.fspath(path))
+        if os.path.basename(p) == "principal.key":
+            return True
+        s = os.stat(p)
+        return (s.st_dev, s.st_ino) in keys
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _audit(event: str, args: tuple) -> None:
+    w = _Watch.current
+    if w is None or w["busy"]:
+        return
+    w["busy"] = True
+    try:
+        if event == "open" and args and _is_key(w["keys"], args[0]):
+            w["touched"].append(f"open {args[0]}")
+        elif event in _SPAWNS:
+            w["spawned"].append(event)
+    finally:
+        w["busy"] = False
+
+
+@pytest.fixture
+def key_watch(monkeypatch, tmp_path):
+    """A principal key at hand before the server exists, and a watch on the two things any signing
+    path needs, whatever crypto it uses: the key's bytes, and another process to sign in.
+
+    - The key sits where ``make_world(tmp_path)`` puts the server's home, and in ``YEA_HOME`` and
+      ``YEA_PRINCIPAL_HOME``, as on one account.
+    - ``touched``: every ``open`` of a key file (Python's audit events see every open, whatever
+      reads it). ``spawned``: every process started (``subprocess``, ``os.system``,
+      ``os.posix_spawn``, ``os.exec*``, ``os.spawn*``, ``os.fork``).
+    - ``signatures``: every Ed25519 signature made from a seed in this process.
+      ``from_private_bytes`` is how cryptography loads a key from its seed, and ``KeyPair.sign``
+      goes through it."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     made: list[bytes] = []
@@ -604,10 +654,20 @@ def signatures(monkeypatch, tmp_path, world):
     monkeypatch.setattr(Ed25519PrivateKey, "from_private_bytes", staticmethod(lambda data: Watched(real(data))))
     monkeypatch.setenv("YEA_HOME", str(tmp_path / "yea_home"))
     monkeypatch.setenv("YEA_PRINCIPAL_HOME", str(tmp_path / "principal"))
-    for d in (Path(world.home), tmp_path / "yea_home", tmp_path / "principal"):
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "principal.key").write_text(PRINCIPAL.seed.hex())
-    return made
+    files = [d / "principal.key" for d in (tmp_path / "home", tmp_path / "yea_home", tmp_path / "principal")]
+    for f in files:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(base64.urlsafe_b64encode(PRINCIPAL.seed).rstrip(b"=").decode())  # as `yea init` writes it
+    keys = {(s.st_dev, s.st_ino) for s in (f.stat() for f in files)}
+    if not _Watch.hooked:
+        sys.addaudithook(_audit)
+        _Watch.hooked = True
+    _Watch.current = {"keys": keys, "touched": [], "spawned": [], "signatures": made, "files": files,
+                      "busy": False}
+    try:
+        yield _Watch.current
+    finally:
+        _Watch.current = None
 
 
 def two_plans(world, server, done, version):
@@ -681,10 +741,12 @@ class Answers:
 
 @pytest.mark.parametrize("mode", ["auto", "legacy"])
 @pytest.mark.parametrize("framework", ["mcp", "fastmcp"])
-async def test_no_answer_to_the_form_signs_or_saves_a_consent(world, signatures, mode, framework, monkeypatch):
+async def test_no_answer_to_the_form_reads_the_key_starts_a_process_signs_or_saves(
+        tmp_path, key_watch, mode, framework, monkeypatch):
     from fastmcp import Client as FastClient
     from fastmcp import FastMCP
 
+    world = make_world(tmp_path)  # only now, with the key already in its home
     done, version, answers, saves = [], [1], Answers(), []
 
     async def put_consent(*args):
@@ -704,6 +766,23 @@ async def test_no_answer_to_the_form_signs_or_saves_a_consent(world, signatures,
             assert says in text(await c.call_tool("refund", {"amount": 5}, **extra))
             policy_file(world).write_text("{}")
     assert done == ["A v2"]
-    assert signatures == [] and saves == []
-    PRINCIPAL.sign(b"x")  # the wrapper does see a signature when one is made
-    assert len(signatures) == 1
+    assert key_watch["touched"] == [] and key_watch["spawned"] == []
+    assert key_watch["signatures"] == [] and saves == []
+    # The watch does see a read, a process and a signature when one happens.
+    key_watch["files"][2].read_text()
+    subprocess.run([sys.executable, "-c", ""], check=True)
+    PRINCIPAL.sign(b"x")
+    assert key_watch["touched"] and len(key_watch["spawned"]) == 1 and len(key_watch["signatures"]) == 1
+
+
+def test_the_code_that_reads_a_form_answer_has_nothing_that_signs_out_of_sight():
+    """The answer path (``call/``, ``ask``, ``guard``, ``fastmcp`` and the package's job wiring)
+    starts no process or thread, uses no crypto library and loads no code at run time."""
+    src = Path(__file__).parents[1] / "src" / "yea_mcp"
+    files = [*sorted((src / "call").glob("*.py")), *(src / f for f in ("ask.py", "guard.py", "fastmcp.py",
+                                                                    "__init__.py"))]
+    banned = re.compile(r"\bsubprocess\b|os\.(system|exec|spawn|posix_spawn|fork)|multiprocessing|\bthreading\b"
+                        r"|concurrent\.futures|\bcryptography\b|\bctypes\b|importlib|__import__")
+    assert len(files) > 5
+    for f in files:
+        assert not banned.search(f.read_text()), f

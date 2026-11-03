@@ -36,9 +36,10 @@ _Avoid_: strong approval (unqualified)
 
 **Client call prompt**:
 Claude Code's own permission prompt for a tool marked
-`_meta["anthropic/requiresUserInteraction"]`, which YEA's acting tools carry when
-`requireInteraction` is on (#338). It shows that whoever answered the prompt allowed that call
-with those arguments, not which plan they chose in the form.
+`_meta["anthropic/requiresUserInteraction"]`. Not in this release: #338 adds a
+`requireInteraction` option that will mark YEA's acting tools. It would show that whoever
+answered the prompt allowed that call with those arguments, not which plan they chose in the
+form.
 _Avoid_: client approval
 
 ### The service side

@@ -1,6 +1,7 @@
 /**
  * The source scans the security tests share (AGENTS.md rule 3): what signs, or loads a key to
- * sign with; the files a relative import reaches; and every production source in the repo.
+ * sign with; what could sign out of sight; the files a relative import reaches; and every
+ * production source in the repo.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -12,6 +13,10 @@ export const REPO = fileURLToPath(new URL('../..', import.meta.url));
 /** What signs, or loads a key to sign with: the SDK's signers, and the principal key's file. */
 export const SIGNS =
   /principalKey|consentGrant|issueGrant|delegateGrant|makeProof|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign|['"/]principal\.key/;
+
+/** What could sign out of a test's sight: another process or thread, Node's crypto, run-time code. */
+export const OUT_OF_SIGHT =
+  /node:child_process|node:worker_threads|node:crypto|\bimport\(|createRequire|\brequire\(/;
 
 /** Every source file reachable from `starts` through relative imports, type-only ones included. */
 export function reachable(starts: string[]): string[] {

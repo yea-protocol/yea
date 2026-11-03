@@ -2,6 +2,7 @@
  * The approval core's security list, from the MCP side (SPEC-mcp-ts, Testing). The core's own
  * regression tests are in ts/test/security.test.ts.
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -10,12 +11,14 @@ import {
 } from '@modelcontextprotocol/server';
 import {
   atLeast,
+  keyPair,
   MemoryStore,
   quantity,
   type Risk,
   sign,
 } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { watchKeys } from '../../ts/test/key-watch.js';
 import { stricter } from '../src/policy.js';
 import { type AnswerStep, accept } from './harness.js';
 import {
@@ -28,10 +31,15 @@ import {
   refundServer,
   textOf,
   tmp,
-  type World,
   world,
 } from './helpers.js';
-import { productionSources, REPO, reachable, SIGNS } from './sources.js';
+import {
+  OUT_OF_SIGHT,
+  productionSources,
+  REPO,
+  reachable,
+  SIGNS,
+} from './sources.js';
 
 const ch1 = { charge: 'ch_1' };
 
@@ -691,18 +699,25 @@ describe.each<Kind>(['2026', '2025'])(
       vi.unstubAllEnvs();
     });
 
-    /** A principal key in the server's home, YEA_HOME and YEA_PRINCIPAL_HOME: one account. */
-    function principalAtHand(w: World) {
-      const dirs = [w.home, tmp(), tmp()];
+    /**
+     * A principal key in the server's home, YEA_HOME and YEA_PRINCIPAL_HOME, as on one account,
+     * placed before anything loads: a module that reads the environment once, at load, sees it.
+     */
+    async function principalAtHand() {
+      const principal = await keyPair();
+      const [home, yeaHome, principalHome] = [tmp(), tmp(), tmp()];
+      const files = [home, yeaHome, principalHome].map((d) =>
+        join(d, 'principal.key'),
+      );
 
-      for (const d of dirs) {
-        writeFileSync(join(d, 'principal.key'), w.principal.seed, {
-          mode: 0o600,
-        });
+      for (const f of files) {
+        writeFileSync(f, principal.seed, { mode: 0o600 });
       }
 
-      vi.stubEnv('YEA_HOME', dirs[1]);
-      vi.stubEnv('YEA_PRINCIPAL_HOME', dirs[2]);
+      vi.stubEnv('YEA_HOME', yeaHome);
+      vi.stubEnv('YEA_PRINCIPAL_HOME', principalHome);
+
+      return { principal, home, files };
     }
 
     /** The Ed25519 signatures made: the state codec's HMACs go through the same API. */
@@ -715,65 +730,92 @@ describe.each<Kind>(['2026', '2025'])(
       alg !== null &&
       (alg as { name?: unknown }).name === 'Ed25519';
 
-    it('no answer to the form signs with Ed25519 or saves a consent, with the principal key at hand', async () => {
-      const w = await world();
-      let version = 1;
-      const server = refundServer(w, {
+    /** The server, freshly loaded after the key is in place, and a client of `kind` on it. */
+    async function serve(at: Awaited<ReturnType<typeof principalAtHand>>) {
+      vi.resetModules();
+
+      const fresh = await import('./helpers.js');
+      const w = await fresh.world({
+        home: at.home,
+        principal: at.principal.public,
+      });
+      const plans = { version: 1 };
+      const server = fresh.refundServer(w, {
         plan: ({ charge }) =>
           ['A', 'B'].map((which) => ({
-            summary: `Refund ${which} ${charge}, v${version}`,
+            summary: `Refund ${which} ${charge}, v${plans.version}`,
             effects: [],
             risk: 'low' as const,
             apply: () => {
-              w.applied.push(`${which} v${version}`);
+              w.applied.push(`${which} v${plans.version}`);
             },
           })),
       });
 
-      principalAtHand(w);
+      return { w, plans, conn: await fresh.connect(kind, server) };
+    }
 
-      const conn = await connect(kind, server);
-      const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
-      const saves = vi.spyOn(w.store, 'putConsent');
-      const rightPhrase = accept(conn, 'ch_1', 'Refund A');
-      const outOfBandNow = async () => {
-        writeFileSync(join(w.home, 'policy.json'), '{ "outOfBand": "low" }');
+    it('no answer to the form reads the principal key, starts a process, signs or saves a consent', async () => {
+      const at = await principalAtHand();
+      const watch = watchKeys(at.files);
 
-        return rightPhrase();
-      };
-      const plansChange = async () => {
-        version = 2;
+      try {
+        const { w, plans, conn } = await serve(at);
+        const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
+        const saves = vi.spyOn(w.store, 'putConsent');
+        const policy = (json: string) =>
+          writeFileSync(join(at.home, 'policy.json'), json);
+        const rightPhrase = accept(conn, 'ch_1', 'Refund A');
+        const outOfBandNow = async () => {
+          policy('{ "outOfBand": "low" }');
 
-        return rightPhrase();
-      };
-      const wrongPhrase = accept(conn, 'nope', 'Refund A');
-      /** Every kind of answer, each call's in turn (a cancel once they run out), and its result. */
-      const rounds: [AnswerStep[], RegExp][] = [
-        [[{ action: 'decline' }], /not approved/],
-        [[], /not approved/],
-        [[wrongPhrase, wrongPhrase, wrongPhrase], /not approved after 3 tries/],
-        [
-          [{ action: 'accept', content: { plan: 'p', confirm: 'ch_1' } }],
-          /was not offered/,
-        ],
-        [[plansChange], /not approved/],
-        [[outOfBandNow], /pc1\./],
-        [[rightPhrase], /^✓ Refund A ch_1, v2/],
-      ];
+          return rightPhrase();
+        };
+        const plansChange = async () => {
+          plans.version = 2;
 
-      for (const [answers, outcome] of rounds) {
-        conn.answers.push(...answers);
-        expect(textOf(await conn.call(ch1))).toMatch(outcome);
-        writeFileSync(join(w.home, 'policy.json'), '{}');
+          return rightPhrase();
+        };
+        const wrongPhrase = accept(conn, 'nope', 'Refund A');
+        /** Every kind of answer, each call's in turn (a cancel once they run out), and its result. */
+        const rounds: [AnswerStep[], RegExp][] = [
+          [[{ action: 'decline' }], /not approved/],
+          [[], /not approved/],
+          [
+            [wrongPhrase, wrongPhrase, wrongPhrase],
+            /not approved after 3 tries/,
+          ],
+          [
+            [{ action: 'accept', content: { plan: 'p', confirm: 'ch_1' } }],
+            /was not offered/,
+          ],
+          [[plansChange], /not approved/],
+          [[outOfBandNow], /pc1\./],
+          [[rightPhrase], /^✓ Refund A ch_1, v2/],
+        ];
+
+        for (const [answers, outcome] of rounds) {
+          conn.answers.push(...answers);
+          expect(textOf(await conn.call(ch1))).toMatch(outcome);
+          policy('{}');
+        }
+
+        expect(w.applied).toEqual(['A v2']);
+        expect(watch.touched).toEqual([]);
+        expect(watch.spawned).toEqual([]);
+        expect(ed25519(signs.mock.calls)).toEqual([]);
+        expect(saves).not.toHaveBeenCalled();
+
+        // The watch does see a read, a process and a signature when one happens.
+        readFileSync(at.files[0]);
+        execFileSync(process.execPath, ['-e', '']);
+        await sign(at.principal.seed, 'x');
+        expect(watch.touched).toHaveLength(2); // readFileSync, and the open inside it
+        expect(watch.spawned).toHaveLength(1);
+        expect(ed25519(signs.mock.calls)).toHaveLength(1);
+      } finally {
+        watch.stop();
       }
-
-      expect(w.applied).toEqual(['A v2']);
-      expect(ed25519(signs.mock.calls)).toEqual([]);
-      expect(saves).not.toHaveBeenCalled();
-
-      // The spy does see a signature when one is made.
-      await sign(w.principal.seed, 'x');
-      expect(ed25519(signs.mock.calls)).toHaveLength(1);
     });
   },
 );
@@ -795,6 +837,9 @@ describe('the code that reads a form answer (#337)', () => {
 
     for (const f of answerPath) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+      // Nor anything that could sign out of sight: another process or thread, Node's own
+      // crypto, or code loaded at run time.
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(OUT_OF_SIGHT);
     }
   });
 });

@@ -60,18 +60,19 @@ import {
   ledgerFixture,
   totalGrant,
 } from './commit-ledger-fixture.js';
+import { watchKeys } from './key-watch.js';
 
-// Pass-through `openSync`, `renameSync`, `mkdirSync`, `accessSync` and `readFileSync` with hooks: to
-// swap a file just before or after an open (the key file blocks below), to act right after a rename
-// or a mkdir (the undo claim tests), to say which paths this user may write (the pinned key tests,
-// which can't make root-owned files), and to see what's read (rule 3, #337). Null leaves fs alone.
+// Pass-through `openSync`, `renameSync`, `mkdirSync` and `accessSync` with hooks: to swap a file
+// just before or after an open (the key file blocks below), to act right after a rename or a
+// mkdir (the undo claim tests), and to say which paths this user may write (the pinned key tests,
+// which can't make root-owned files). Null leaves fs alone. The functions key-watch.ts watches
+// call through to the real module at call time, so its patches reach code under this mock.
 const fsHook = vi.hoisted(() => ({
   beforeOpen: null as ((path: string) => void) | null,
   afterOpen: null as ((path: string) => void) | null,
   afterRename: null as ((from: string) => void) | null,
   afterMkdir: null as ((path: string) => void) | null,
   writable: null as ((path: string) => boolean) | null,
-  read: null as ((path: string) => void) | null,
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -105,12 +106,25 @@ vi.mock('node:fs', async (importOriginal) => {
       throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
     }
   };
-  const readFileSync = (...args: Parameters<typeof real.readFileSync>) => {
-    fsHook.read?.(String(args[0]));
-
-    return real.readFileSync(...args);
-  };
-  const hooked = { openSync, renameSync, mkdirSync, accessSync, readFileSync };
+  const live = Object.fromEntries(
+    [
+      'open',
+      'readFile',
+      'readFileSync',
+      'createReadStream',
+      'copyFile',
+      'copyFileSync',
+      'cp',
+      'cpSync',
+    ].map((name) => [
+      name,
+      (...args: unknown[]) =>
+        (real as unknown as Record<string, (...a: unknown[]) => unknown>)[name](
+          ...args,
+        ),
+    ]),
+  );
+  const hooked = { ...live, openSync, renameSync, mkdirSync, accessSync };
 
   return { ...real, ...hooked, default: { ...real, ...hooked } };
 });
@@ -1793,6 +1807,9 @@ describe('approval security (SPEC-approval)', () => {
 // and python/mcp/tests/test_security.py does the same for Python.
 describe('a form answer never triggers a signature (rule 3, #337)', () => {
   const src = fileURLToPath(new URL('../src', import.meta.url));
+  /** What could sign out of a test's sight (as in mcp/test/sources.ts). */
+  const OUT_OF_SIGHT =
+    /node:child_process|node:worker_threads|node:crypto|\bimport\(|createRequire|\brequire\(/;
   /** What signs, or loads a key to sign with (as in mcp/test/sources.ts). */
   const SIGNS =
     /principalKey|consentGrant|issueGrant|delegateGrant|makeProof|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign|['"/]principal\.key/;
@@ -1837,33 +1854,38 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
     },
   ];
 
-  /** A principal key in YEA_HOME and YEA_PRINCIPAL_HOME, as on a one-account machine. */
+  /**
+   * A principal key in YEA_HOME and YEA_PRINCIPAL_HOME, as on a one-account machine, placed
+   * before the session's modules load: one that reads the environment at load sees it.
+   */
   function principalAtHand() {
-    const dirs = [tmp(), tmp()];
+    const files = [tmp(), tmp()].map((d) => join(d, 'principal.key'));
 
-    for (const d of dirs) {
-      writeFileSync(join(d, 'principal.key'), B.seed, { mode: 0o600 });
+    for (const f of files) {
+      writeFileSync(f, B.seed, { mode: 0o600 });
     }
 
-    vi.stubEnv('YEA_HOME', dirs[0]);
-    vi.stubEnv('YEA_PRINCIPAL_HOME', dirs[1]);
+    vi.stubEnv('YEA_HOME', join(files[0], '..'));
+    vi.stubEnv('YEA_PRINCIPAL_HOME', join(files[1], '..'));
 
-    return dirs;
+    return files;
   }
 
-  it('no answer to a form signs, saves a consent or reads the principal key (#337)', async () => {
-    const homes = principalAtHand();
-    const touched: string[] = [];
-    const store = new FileStore(tmp());
+  it('no answer to a form reads the principal key, starts a process, signs or saves a consent (#337)', async () => {
+    const files = principalAtHand();
+    const watch = watchKeys(files);
     const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
-    const saves = vi.spyOn(store, 'putConsent');
-
-    fsHook.beforeOpen = (path) => touched.push(path);
-    fsHook.read = (path) => touched.push(path);
 
     try {
+      vi.resetModules();
+
+      const S = await import('../src/index.js');
+      const { FileStore: Store } = await import('../src/node.js');
+      const store = new Store(tmp());
+      const saves = vi.spyOn(store, 'putConsent');
+
       for (const a of ANSWERS) {
-        const asked = await P.jobCall(call(), store);
+        const asked = await S.jobCall(call(), store);
 
         if (asked.kind !== 'ask') {
           throw new Error(`expected a form, got ${asked.kind}`);
@@ -1873,7 +1895,7 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
           state: asked.state,
           answer: a.answer(asked.state.plans),
         };
-        const o = await P.jobCall(call(a.retry), store, retry);
+        const o = await S.jobCall(call(a.retry), store, retry);
 
         expect(o.kind).toBe(a.outcome);
 
@@ -1882,25 +1904,25 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
         }
 
         // The same state sent again is refused, whatever it said.
-        expect((await P.jobCall(call(a.retry), store, retry)).kind).toBe(
+        expect((await S.jobCall(call(a.retry), store, retry)).kind).toBe(
           'refuse',
         );
       }
 
+      expect(watch.touched).toEqual([]);
+      expect(watch.spawned).toEqual([]);
       expect(signs).not.toHaveBeenCalled();
       expect(saves).not.toHaveBeenCalled();
-      expect(touched.filter((f) => homes.some((h) => f.startsWith(h)))).toEqual(
-        [],
-      );
 
-      // The spy does see a signature, and the hooks a read, when one is made.
-      await P.sign(B.seed, 'x');
-      readFileSync(join(homes[1], 'principal.key'));
+      // The watch does see a read, a process and a signature when one happens.
+      readFileSync(files[1]);
+      execFileSync(process.execPath, ['-e', '']);
+      await S.sign(B.seed, 'x');
+      expect(watch.touched).not.toEqual([]);
+      expect(watch.spawned).toHaveLength(1);
       expect(signs).toHaveBeenCalledTimes(1);
-      expect(touched).toContain(join(homes[1], 'principal.key'));
     } finally {
-      fsHook.beforeOpen = null;
-      fsHook.read = null;
+      watch.stop();
       signs.mockRestore();
       vi.unstubAllEnvs();
     }
@@ -1917,6 +1939,7 @@ describe('a form answer never triggers a signature (rule 3, #337)', () => {
 
     for (const f of session) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(OUT_OF_SIGHT);
     }
   });
 });

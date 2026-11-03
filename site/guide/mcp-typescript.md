@@ -122,7 +122,7 @@ Three things to know at this point:
 
 - **The server's stderr warns** `yea: no pinned principal key (YEA_PRINCIPAL_PUB is not set): nothing auto-runs and no consent is accepted`. That's expected: it only matters for steps 5 and 6.
 - **The client must support form elicitation** to show the form. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run and what their vendors document. A client without it gets step 6's consent codes instead.
-- **A tool marked `risk: 'high'`** is never approved in the chat. It goes to consent codes, which need step 5's pinned key. Mark the tools whose approval should be signed, not typed into a form ([why](/guide/security#what-an-approval-proves)). The person can send more plans there with an `outOfBand` risk level in `~/.yea/policy.json` (`"outOfBand": "medium"`), but that file is best effort: an agent that can write it can undo it.
+- **A plan at `risk: 'high'`** is never approved in the chat. It goes to consent codes, which need step 5's pinned key. Use it for the plans whose approval should be signed, not typed into a form ([why](/guide/security#what-an-approval-proves)). A tool's `risk` (`guard(…, { risk: 'high' })` or `job({ risk })`) is only the default for plans that don't set their own, so a plan whose `describe` or `plan` returns a lower `risk` still goes to the form ([#369](https://github.com/yea-protocol/yea/issues/369) asks whether the tool's should be a floor). The person can send more plans there with an `outOfBand` risk level in `~/.yea/policy.json` (`"outOfBand": "medium"`), but that file is best effort: an agent that can write it can undo it.
 
 ## 4. Make it undoable
 

@@ -137,20 +137,28 @@ test('other languages, plaintext and no-lens fences stay plain', {
 });
 
 /**
- * The units a claim must carry its own link in: paragraphs, then each table row and each block
- * element (`<p>`, `<li>`, …) on its own, so one link can't excuse a whole table or template.
+ * The units a claim must carry its own link in: paragraphs, then each table row, each list item
+ * and each block element (`<p>`, `<li>`, …) on its own, so one link can't excuse a whole table,
+ * list or template.
  */
 function units(text) {
   return text
     .split(/\n\s*\n/)
     .flatMap((p) =>
-      p.split(/\n(?=\s*\|)|(?=<(?:p|li|h[1-6]|td|th|dd|blockquote)\b)/),
+      p.split(
+        /\n(?=\s*\|)|\n(?=\s*(?:[-*+]|\d+\.)\s)|(?=<(?:p|li|h[1-6]|td|th|dd|blockquote)\b)/,
+      ),
     );
 }
 
 /** The units of `text` that make an approval claim without linking to what it proves. */
 function bareClaims(text) {
-  return units(text).filter((p) => CLAIM.test(p) && !PROOF.test(p));
+  return units(text).filter((p) => {
+    // Hard-wrapped pages break a claim across lines.
+    const flat = p.replace(/\s+/g, ' ');
+
+    return CLAIM.test(flat) && !PROOF.test(flat);
+  });
 }
 
 /** Every `README.md` one level under `dir`, such as each connector's npm page. */
@@ -197,13 +205,29 @@ test('an approval claim without a link to what it proves is caught', () => {
     bareClaims(`<p>See ${link}.</p>\n<p>The model cannot approve it.</p>`),
     ['<p>The model cannot approve it.</p>'],
   );
+  assert.deepEqual(
+    bareClaims(`- The model can't approve a guarded tool.\n- See ${link}.`),
+    ["- The model can't approve a guarded tool."],
+  );
+  assert.deepEqual(bareClaims(`1. See ${link}.\n2. It asks the person.`), [
+    '2. It asks the person.',
+  ]);
+  // A claim broken across lines, as in the hard-wrapped READMEs.
+  assert.deepEqual(bareClaims('a form that asks the\nperson to type'), [
+    'a form that asks the\nperson to type',
+  ]);
+  assert.deepEqual(
+    bareClaims(`a form that asks the\nperson to type (${link})`),
+    [],
+  );
 });
 
 test('every approval claim adopters read links to what it proves', () => {
   const pages = adopterPages();
   const bare = pages.flatMap((f) =>
     bareClaims(readFileSync(f, 'utf8')).map(
-      (p) => `${relative(ROOT, f)}: ${p.match(CLAIM)?.[0]}`,
+      (p) =>
+        `${relative(ROOT, f)}: ${p.replace(/\s+/g, ' ').match(CLAIM)?.[0]}`,
     ),
   );
 

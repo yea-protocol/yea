@@ -38,7 +38,7 @@ An approval is only as strong as the step that produced it, judged by what the a
 - **An answer to the approval form** (the form tier) proves only what the client attests, and MCP attests nothing about a person. Hooks, auto-reviewers, proxies and scripts can answer a form, and its phrase is printed in it. [Who can answer a form](/guide/integrations#who-can-answer-a-form) has what we know per client.
 - **A consent signed with `yea approve`** proves the principal key signed that exact plan. It proves a person acted only when the key, and the prompt that triggers the signing, are outside everything the agent can drive. A signature triggered from inside the chat client is form tier, so no tool host signs.
 
-Today, for servers built with the framework, a signed consent can't yet prove a person acted: it works only with the key on the server's own account, which is best effort ([today's status](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)). The threat model also says how to put a tool on the signed tier (`risk: 'high'`), and what Claude Code's opt-in call prompt adds.
+Today, for servers built with the framework, a signed consent can't yet prove a person acted: it works only with the key on the server's own account, which is best effort ([today's status](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)). The threat model also says how to put a tool on the signed tier (`risk: 'high'`), and what Claude Code's call prompt would add once #338 lands.
 
 ## MCP servers built with the framework
 
