@@ -741,7 +741,7 @@ def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
         checked_phrase("\ufeff")
     assert checked_phrase("old nav") == "old nav"
     assert checked_phrase(" ") == "approve"
-    with pytest.raises(TypeError):  # a format character newer than Python 3.11's Unicode, refused everywhere
+    with pytest.raises(TypeError):  # a format character newer than Python 3.10's Unicode, refused everywhere
         checked_phrase("go\U00013439")
     with pytest.raises(TypeError, match="must be a string"):
         checked_phrase(None)

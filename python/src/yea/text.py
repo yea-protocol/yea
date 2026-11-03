@@ -4,11 +4,10 @@ Text from a service or a consent code is untrusted: control characters could rew
 person reads before approving, and invisible ones could make two targets look the same or
 smuggle text to a model, so they're shown as escapes. Mirrors ts/src/text.ts.
 
-What counts follows the interpreter's Unicode version (``unicodedata``), except that the
-Unicode 15 format characters U+13439–1343F are listed, so Python 3.11 (Unicode 14) escapes them
-too. U+0890–0891 (Unicode 14) stay listed; every supported Python already treats them as Cf. That
-matters beyond display: ``printable`` also decides whether an approval phrase is accepted
-(SPEC-approval §3), and every implementation must refuse the same phrases."""
+What counts follows the interpreter's Unicode version (``unicodedata``), except that the format
+characters added after Unicode 13 (U+0890–0891, U+13439–1343F) are listed, so Python 3.10 escapes
+them too. That matters beyond display: ``printable`` also decides whether an approval phrase is
+accepted (SPEC-approval §3), and every implementation must refuse the same phrases."""
 
 from __future__ import annotations
 
@@ -25,7 +24,7 @@ _IGNORABLE = (
     (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3),
     (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF),
 )
-# Format (Cf) characters added in Unicode 14 and 15; Python 3.11's Unicode 14 lacks the latter.
+# Format (Cf) characters added in Unicode 14 and 15, unassigned in Python 3.10's Unicode 13.
 _LATER_FORMAT = ((0x0890, 0x0891), (0x13439, 0x1343F))
 _UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp"})
 

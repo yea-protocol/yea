@@ -9,7 +9,7 @@ reversible commits come with an undo window.
 
 This is the Python implementation of the [spec](https://github.com/yea-protocol/yea/blob/main/SPEC.md).
 It's checked against the shared [conformance vectors](https://github.com/yea-protocol/yea/tree/main/conformance)
-and tested for interop, in both directions, against the TypeScript reference. Python ≥ 3.11; its only
+and tested for interop, in both directions, against the TypeScript reference. Python ≥ 3.10; its only
 dependency is `cryptography`.
 
 ```sh
