@@ -360,7 +360,7 @@ Once they're published, each SDK installs with one command:
 
 ```sh
 npm install @yea-protocol/sdk        # TypeScript/JavaScript: Node ≥ 20, Bun, Deno (web-standard APIs only)
-uv add yea-sdk             # Python ≥ 3.10 (or: pip install yea-sdk)
+uv add yea-sdk             # Python ≥ 3.11 (or: pip install yea-sdk)
 ```
 
 ### Build a service

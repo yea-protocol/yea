@@ -12,8 +12,9 @@ updates:
       # The types must match the oldest Node the SDK supports (ts/package.json engines).
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-  - package-ecosystem: pip
-    directory: /python
+  # uv, not pip: only the uv ecosystem updates uv.lock, where the transitive pins live.
+  - package-ecosystem: uv
+    directories: [/python, /python/mcp]
     schedule: { interval: weekly }
   - package-ecosystem: github-actions
     directory: /
