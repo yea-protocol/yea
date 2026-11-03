@@ -1,23 +1,21 @@
 /** Services for your AI tools: add, remove, services, install (setup) and uninstall. */
-import type { KeyPair } from '../crypto.js';
-import { type Caveat, inspectGrant, issueGrant } from '../grants.js';
-import {
-  agentKey,
-  home,
-  loadGrants,
-  principalKey,
-  saveGrant,
-} from '../home.js';
+import { agentKey, home } from '../home.js';
 import { untrustedLens } from '../lens.js';
 import {
   addService,
+  type BridgeCommand,
+  bridgeFor,
   CLIENTS,
+  describeBridge,
   detectedClients,
   listServices,
   removeService,
+  runningBridge,
+  type Scope,
+  sameBridge,
+  type Target,
 } from '../setup.js';
 import { printable } from '../text.js';
-import { unixNow } from '../util.js';
 import {
   command,
   type Flag,
@@ -26,7 +24,8 @@ import {
   UsageError,
   type Values,
 } from './command.js';
-import { client, confirm, die, installScope, LOCAL_FLAG } from './shared.js';
+import { installPrincipal } from './install/principal.js';
+import { client, die, installScope, LOCAL_FLAG } from './shared.js';
 
 /** The AI tools to set up or remove. */
 const TARGET_FLAG = {
@@ -138,16 +137,17 @@ export const cmdInstall = command({
 async function install(o: Values<typeof INSTALL_FLAGS>) {
   const scope = installScope(o);
   const names = targets(o, detectedClients());
+  // Before anything is written: a checkout that isn't built can't start the bridge.
+  const running = runningBridge();
 
   const a = (await agentKey()) ?? (await agentKey(true));
 
   console.log(`agent key   ${a.public} (${home()})`);
 
-  const p = await installPrincipal(a, o);
-
-  if (p && !loadGrants('grants').length) {
-    await installDefaultPolicy(p, a);
-  }
+  await installPrincipal(a, o);
+  console.log(
+    `bridge      ${describeBridge(running.bridge)}${running.checkout ? ' (this checkout)' : ''}`,
+  );
 
   if (!names.length) {
     console.log(
@@ -156,13 +156,7 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   }
 
   for (const n of names) {
-    try {
-      for (const line of CLIENTS[n].install(scope)) {
-        console.log(`✓ ${CLIENTS[n].name}: ${line}`);
-      }
-    } catch (e) {
-      console.log(`✗ ${CLIENTS[n].name}: ${(e as Error).message}`);
-    }
+    installTarget(CLIENTS[n], scope, running.bridge);
   }
 
   const s = listServices();
@@ -177,61 +171,23 @@ async function install(o: Values<typeof INSTALL_FLAGS>) {
   );
 }
 
-/**
- * The principal (approval) key should live where agents can't read it. Only create it here
- * when asked: --with-principal, or a yes at the interactive prompt.
- */
-async function installPrincipal(
-  a: KeyPair,
-  o: { yes?: boolean; 'with-principal'?: boolean },
-): Promise<KeyPair | null> {
-  const existing = await principalKey();
+/** Register the bridge with `t`: the running command, or the portable one in a project file. */
+function installTarget(t: Target, s: Scope, running: BridgeCommand) {
+  try {
+    const bridge = bridgeFor({ project: t.project(s), gui: t.gui }, running);
 
-  if (existing) {
-    console.log(`principal   ${existing.public}`);
+    for (const line of t.install(s, bridge)) {
+      console.log(`✓ ${t.name}: ${line}`);
+    }
 
-    return existing;
+    if (t.project(s) && !sameBridge(bridge, running)) {
+      console.log(
+        `  note: a project file, which others may share, so it gets the portable ${describeBridge(bridge)}`,
+      );
+    }
+  } catch (e) {
+    console.log(`✗ ${t.name}: ${(e as Error).message}`);
   }
-
-  let create = !!o['with-principal'];
-
-  if (!create && process.stdin.isTTY && !o.yes) {
-    create = await confirm(
-      'Create your approval (principal) key on this machine too? Handy for trying YEA, but an agent with shell access could read it. [y/N] › ',
-    );
-  }
-
-  if (!create) {
-    console.log(
-      `principal   not on this machine (recommended). On the device that holds it, run:\n              yea grant --to ${a.public} --risk low --each spend=25.00USD --total spend=100.00USD --exp 30d\n            and save the token here with: yea grant-import <token>   (or re-run with --with-principal to try things quickly)`,
-    );
-
-    return null;
-  }
-
-  const p = await principalKey(true);
-
-  console.log(
-    `principal   ${p.public} (on this machine: fine for trying things; see SECURITY.md for real use)`,
-  );
-
-  return p;
-}
-
-/** Grant the agent a safe default policy: low risk, ≤ 25 USD each, ≤ 100 USD total, 30 days. */
-async function installDefaultPolicy(p: KeyPair, a: KeyPair) {
-  const caveats: Caveat[] = [
-    { risk: 'low' },
-    { each: { of: 'spend', max: 2500, scale: 2, unit: 'USD' } },
-    { total: { of: 'spend', max: 10000, scale: 2, unit: 'USD' } },
-    { exp: unixNow() + 30 * 86400 },
-  ];
-  const token = await issueGrant({ principal: p, to: a.public, caveats });
-
-  saveGrant(token, 'grants', (await inspectGrant(token)).id.slice(0, 16));
-  console.log(
-    'policy      low-risk actions, ≤ 25.00 USD each, ≤ 100.00 USD total, 30 days. Anything else asks you. (change: yea grant …)',
-  );
 }
 
 const UNINSTALL_FLAGS = {

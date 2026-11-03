@@ -36,7 +36,7 @@ get started
   add           add a service for your AI tools
   remove        remove one
   services      list them
-  doctor        check keys, grants, services and AI-tool registration
+  doctor        check keys, grants, services, and that your AI tools start YEA
   uninstall     remove YEA from your AI tools
 
 identity and policy

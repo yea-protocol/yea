@@ -59,6 +59,15 @@ export async function confirm(question: string): Promise<boolean> {
   return yes;
 }
 
+/**
+ * How to pin the principal key `key` for servers that check approvals: a file their OS user
+ * can't change (SPEC-approval §2), named by YEA_PRINCIPAL_PUB.
+ */
+export const pinRecipe = (key: string) => [
+  `sudo mkdir -p /etc/yea && echo '${key}' | sudo tee /etc/yea/principal.pub`,
+  'YEA_PRINCIPAL_PUB=/etc/yea/principal.pub   (in each such server’s environment)',
+];
+
 /** Where to install for AI tools: this project (--local) or the user's home. */
 export const installScope = (o: { local?: boolean }) => ({
   local: !!o.local,

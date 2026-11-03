@@ -1,23 +1,28 @@
-/** `yea doctor`: check keys, grants, services and AI-tool registration. */
+/**
+ * `yea doctor`: check what an AI tool needs to start YEA (node, the agent key, its registration,
+ * and that what it registered starts), then grants, services and the pinned principal key. Only
+ * the first are ✗, and any ✗ makes it exit 1.
+ */
 import type { KeyPair } from '../crypto.js';
 import { type GrantInfo, inspectGrant } from '../grants.js';
 import { agentKey, home, loadGrants, principalKey } from '../home.js';
 import { fmtTime, untrustedLens } from '../lens.js';
-import { CLIENTS, listServices } from '../setup.js';
-import { printable } from '../text.js';
+import { readPinnedKey } from '../pinned-key.js';
+import { listServices } from '../setup.js';
 import { unixNow } from '../util.js';
 import { command, type Flags, type Values } from './command.js';
-import { client, installScope, LOCAL_FLAG } from './shared.js';
-
-const ok = (m: string) => console.log(`✓ ${m}`);
-const warn = (m: string) => console.log(`! ${m}`);
-const bad = (m: string) => console.log(`✗ ${m}`);
+import { checkRegistrations } from './doctor/registration.js';
+import { Report } from './doctor/report.js';
+import { client, installScope, LOCAL_FLAG, pinRecipe } from './shared.js';
 
 const DOCTOR_FLAGS = { local: LOCAL_FLAG } as const satisfies Flags;
 
+/** Where a grant is fixed: by the principal key, which isn't here in the recommended setup. */
+const REISSUE = 'where your principal key is';
+
 export const cmdDoctor = command({
   summary:
-    'Check your node version, keys, grants, services and which AI tools YEA is registered with.',
+    'Check your node version, keys, grants and services, and start what each AI tool would start. Exits 1 if YEA would not start.',
   usage: 'doctor [flags]',
   flags: DOCTOR_FLAGS,
   example: 'yea doctor',
@@ -25,57 +30,92 @@ export const cmdDoctor = command({
 });
 
 async function doctor(o: Values<typeof DOCTOR_FLAGS>) {
+  const r = new Report();
   const major = Number(process.versions.node.split('.')[0]);
 
   if (major >= 20) {
-    ok(`node ${process.versions.node}`);
+    r.ok(`node ${process.versions.node}`);
   } else {
-    bad(`node ${process.versions.node}: YEA needs node ≥ 20`);
+    r.bad(`node ${process.versions.node}: YEA needs node ≥ 20 (nodejs.org)`);
   }
 
   const a = await agentKey();
 
   if (a) {
-    ok(`agent key ${a.public.slice(0, 24)}…`);
+    r.ok(`agent key ${a.public.slice(0, 24)}…`);
   } else {
-    bad('no agent key: run yea install');
+    r.bad('no agent key: yea install');
   }
 
+  await reportPrincipal(r);
+  await reportGrants(r, a);
+  await checkServices(r);
+  await checkRegistrations(r, installScope(o));
+
+  if (r.failed) {
+    process.exitCode = 1;
+  }
+}
+
+/** Where the principal key is, and the pinned copy servers check approvals against, if set. */
+async function reportPrincipal(r: Report) {
   const p = await principalKey();
 
   if (p) {
-    warn(
+    r.warn(
       `principal key is readable here (${process.env.YEA_PRINCIPAL_HOME ?? home()}). Fine for trying things; for real use keep it away from agents (SECURITY.md)`,
     );
   } else {
-    ok('principal key is not on this machine (recommended)');
+    r.ok('principal key is not on this machine (recommended)');
   }
 
-  await reportGrants(a);
-  await checkServices();
-  checkRegistration(o);
+  if (!process.env.YEA_PRINCIPAL_PUB) {
+    return;
+  }
+
+  const pinned = readPinnedKey();
+
+  if ('key' in pinned) {
+    r.ok(`pinned principal key ${pinned.key} (YEA_PRINCIPAL_PUB)`);
+  } else {
+    r.warn(
+      [
+        `YEA_PRINCIPAL_PUB: ${pinned.why}. Servers that check approvals accept none until it's pinned, where they run:`,
+        ...pinRecipe(p?.public ?? '<your principal key>').map(
+          (l) => `    ${l}`,
+        ),
+      ].join('\n'),
+    );
+  }
 }
 
 /** The doctor's report on each saved grant. */
-async function reportGrants(a: KeyPair | null) {
+async function reportGrants(r: Report, a: KeyPair | null) {
   const grants = loadGrants('grants');
 
   if (!grants.length) {
-    bad(
-      'no grants: your agent can read but not act. yea grant … (or yea install)',
+    r.warn(
+      [
+        `no grants: your agent can read but not act. Issue one ${REISSUE}, and import it here:`,
+        `    yea grant --to ${a?.public ?? '<agent key>'} …   (there)`,
+        '    yea grant-import <token>   (here)',
+        '  or, to try things on one machine: yea install --with-principal',
+      ].join('\n'),
     );
   }
 
   for (const g of grants) {
     try {
-      reportGrant(await inspectGrant(g), a);
+      reportGrant(r, await inspectGrant(g), a);
     } catch {
-      bad('a saved grant is unreadable');
+      r.warn(
+        `a saved grant in ${home()}/grants is unreadable: re-issue it ${REISSUE}`,
+      );
     }
   }
 }
 
-function reportGrant(info: GrantInfo, a: KeyPair | null) {
+function reportGrant(r: Report, info: GrantInfo, a: KeyPair | null) {
   const now = unixNow();
   const cav = info.blocks.flatMap((b) => b.caveats);
   const exp = Math.min(
@@ -86,26 +126,35 @@ function reportGrant(info: GrantInfo, a: KeyPair | null) {
     cav
       .find((c): c is { svc: string[] } => 'svc' in c && !!c.svc)
       ?.svc.join(', ') ?? 'all services';
-  const holder = a && info.holder === a.public ? '' : ' (held by another key!)';
+  const id = info.id.slice(0, 10);
+  const to = `--to ${a?.public ?? '<agent key>'}`;
 
-  if (exp !== Infinity && exp <= now) {
-    bad(`grant ${info.id.slice(0, 10)} expired ${fmtTime(exp)}${holder}`);
+  if (a && info.holder !== a.public) {
+    r.warn(
+      `grant ${id} is held by another key, not this agent's: re-issue it ${REISSUE}, ${to}`,
+    );
+  } else if (exp !== Infinity && exp <= now) {
+    r.warn(
+      `grant ${id} expired ${fmtTime(exp)}: re-issue it ${REISSUE}, ${to}`,
+    );
   } else {
-    ok(
-      `grant ${info.id.slice(0, 10)}: ${scope}; ${exp === Infinity ? 'no expiry' : `expires ${fmtTime(exp)}`}${holder}`,
+    r.ok(
+      `grant ${id}: ${scope}; ${exp === Infinity ? 'no expiry' : `expires ${fmtTime(exp)}`}`,
     );
   }
 }
 
-async function checkServices() {
+/** Each added service, which the bridge starts without if it doesn't answer. */
+async function checkServices(r: Report) {
   const services = listServices();
 
   if (!services.length) {
-    warn('no services: yea add <url>');
+    r.warn('no services: yea add <url>');
   }
 
   for (const u of services) {
     const t0 = Date.now();
+    const down = `the bridge starts without it: start it, or yea remove ${u}`;
 
     try {
       const c = await client(u, {});
@@ -114,31 +163,12 @@ async function checkServices() {
       c.close();
 
       if (b.kind === 'BRIEF') {
-        ok(printable(`${u}: ${b.service.name} (${Date.now() - t0} ms)`));
+        r.ok(`${u}: ${b.service.name} (${Date.now() - t0} ms)`);
       } else {
-        bad(`${printable(u)}: ${untrustedLens(b)}`);
+        r.warn(`${u}: ${untrustedLens(b)}. ${down}`);
       }
     } catch (e) {
-      bad(printable(`${u}: ${(e as Error).message}`));
+      r.warn(`${u}: ${(e as Error).message}. ${down}`);
     }
-  }
-}
-
-function checkRegistration(o: { local?: boolean }) {
-  const scope = installScope(o);
-  const installed = Object.values(CLIENTS)
-    .filter((t) => {
-      try {
-        return t.installed(scope);
-      } catch {
-        return false;
-      }
-    })
-    .map((t) => t.name);
-
-  if (installed.length) {
-    ok(`registered with: ${installed.join(', ')}`);
-  } else {
-    warn('not registered with any AI tool: yea install');
   }
 }

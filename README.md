@@ -512,20 +512,18 @@ claude mcp add my-api -- npx @yea-protocol/cli mcp yea://127.0.0.1:7447
 
 
 <!-- #region claude-code -->
-> **Unreleased:** `@yea-protocol/cli` isn't on npm yet. The plugin below and `yea install` both
-> start the bridge with `npx -y @yea-protocol/cli mcp`, which fails until it's published. Until
-> then, run `install` from a clone, and point each tool's `yea` MCP server at the clone instead
-> (command `node`, args `/absolute/path/to/yea/cli/bin/yea.js mcp`). For Claude Code:
+> **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so the plugin below and
+> `npx @yea-protocol/cli` fail until it's published. Until then, install from a clone: run there,
+> `install` registers the clone itself (this `node` and `cli/bin/yea.js`) with each tool.
 >
 > ```sh
 > git clone https://github.com/yea-protocol/yea && cd yea
 > npm ci && npm run build
-> node cli/bin/yea.js install          # an agent key, the bridge and agent instructions
-> claude mcp remove -s user yea        # then point Claude Code's "yea" entry at the clone
-> claude mcp add -s user yea -- node "$PWD/cli/bin/yea.js" mcp
+> node cli/bin/yea.js install          # an agent key, the bridge (this clone) and agent instructions
+> node cli/bin/yea.js doctor           # starts what each tool would start, to check it
 > ```
 >
-> Add services with `node cli/bin/yea.js add <url>`.
+> Add services with `node cli/bin/yea.js add <url>`, and run `npm run build` again after a `git pull`.
 
 The bridge exposes YEA services as an MCP server, so every MCP client can use them now.
 Each capability is its own tool (`calendar_reschedule`, `shop_order`, …), plus `yea_consent`,

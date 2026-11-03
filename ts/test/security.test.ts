@@ -4216,3 +4216,60 @@ describe('Approval never covers content Lens cuts (#213)', () => {
     expect(shown).not.toContain('…');
   });
 });
+
+describe('yea doctor runs nothing a project ships (#321)', () => {
+  /** A user's home and a project folder, and doctor run in the project. */
+  function doctorIn(project: string, home: string) {
+    return spawnSync(process.execPath, [CLI, 'doctor'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        YEA_HOME: join(home, '.yea'),
+        YEA_PRINCIPAL_PUB: '',
+      },
+    });
+  }
+
+  /** A node command that writes its working folder to `file`. */
+  const writesCwd = (file: string) => ({
+    command: process.execPath,
+    args: [
+      '-e',
+      `require('fs').writeFileSync(${JSON.stringify(file)}, process.cwd())`,
+    ],
+  });
+
+  it("doesn't start a project file's own command for yea", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'yea-home-')));
+    const project = realpathSync(mkdtempSync(join(tmpdir(), 'yea-proj-')));
+    const ran = join(project, 'ran');
+
+    mkdirSync(join(project, '.vscode'));
+    writeFileSync(
+      join(project, '.vscode', 'mcp.json'),
+      JSON.stringify({ servers: { yea: writesCwd(ran) } }),
+    );
+
+    const r = doctorIn(project, home);
+
+    expect(r.stdout).toMatch(/^! VS Code: .*doctor won't run/m);
+    expect(existsSync(ran)).toBe(false);
+  });
+
+  it('starts a registered command in the home folder, not the project it runs in', () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'yea-home-')));
+    const project = realpathSync(mkdtempSync(join(tmpdir(), 'yea-proj-')));
+    const ran = join(home, 'ran');
+
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({ mcpServers: { yea: writesCwd(ran) } }),
+    );
+    doctorIn(project, home);
+
+    expect(readFileSync(ran, 'utf8')).toBe(home);
+  });
+});

@@ -16,14 +16,14 @@ node cli/bin/yea.js doctor
 ```
 :::
 
-It checks your node version, keys, grants, services and AI-tool registration, and says what to run for each problem.
+It checks your node version, keys, grants and services, starts what each AI tool has registered the way that tool would, and says what to run for each problem. It exits 1 if something would stop a tool starting YEA.
 
 ## My AI tool doesn't show the YEA tools
 
 - Restart the tool after `yea install` or `yea add`. Most clients read MCP config only at startup.
-- Run `yea doctor` and look for "registered with". If your tool isn't listed, run `yea install --target <tool>`, or add it by hand from [Integrations](/guide/integrations).
+- Run `yea doctor` and look for your tool's line ("starts the bridge"). If your tool isn't listed, run `yea install --target <tool>`, or add it by hand from [Integrations](/guide/integrations).
 - In Claude Code, `claude mcp list` should show `yea`. The installer sets `alwaysLoad` so the tools aren't hidden behind deferred tool search.
-- `npx` needs Node 20 or newer on the `PATH` your tool uses. GUI apps sometimes see a different `PATH` than your shell; use an absolute path to `npx` in the config if so.
+- Desktop apps opened from the Dock or a launcher don't get your shell's `PATH`, so nvm's or Homebrew's `node` isn't on it. `yea install` writes them absolute paths and a `PATH` with `node`'s folder, and `yea doctor` starts their entries without your shell's `PATH`, as they would. If you upgrade or remove that `node`, run `yea install --target <tool>` again.
 
 ## The tools are there, but there are no capabilities
 
