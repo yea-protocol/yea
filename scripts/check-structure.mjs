@@ -51,13 +51,8 @@ export const LENGTH_EXEMPT = [
  * new private import. The check fails when a listed violation no longer occurs.
  */
 export const RATCHET = {
-  // Imports from inside another module's folder (ADR-0001): #284.
-  'mcp/src/bridge.ts': ['private mcp/src/bridge/tools/generic.ts'],
-  'mcp/src/bridge/instructions.ts': ['private mcp/src/bridge/tools/generic.ts'],
-  'site/.vitepress/theme/components/landing/HeroSection.vue': [
-    'private site/.vitepress/theme/components/playground/SegmentedRadio.vue',
-  ],
-  // The same in Python, and imports of another package's _ modules: #336.
+  // Python imports from inside another module's folder (ADR-0001), and of
+  // another package's _ modules: #336.
   'python/mcp/src/yea_mcp/__init__.py': [
     'private python/src/yea/store/files.py',
   ],

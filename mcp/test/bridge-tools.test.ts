@@ -551,6 +551,25 @@ describe('the generic fallback', () => {
       true,
     );
   });
+
+  it('the instructions follow the tools built: a service that got none lists no capabilities', async () => {
+    const k = await keys();
+    const empty = service({
+      id: 'empty.example',
+      name: 'Empty',
+      summary: 'Nothing to call yet',
+      trust: [k.principal.public],
+    });
+    const { byName, factory } = await toolsOf(k, [empty], {
+      tools: 'generic',
+    });
+
+    expect([...byName.keys()].filter((n) => !n.startsWith('yea_'))).toEqual([]);
+    expect(factory.instructions).toContain(
+      '# Empty (empty.example)\nNothing to call yet',
+    );
+    expect(factory.instructions).not.toContain('with a capability from');
+  });
 });
 
 describe('the pending key', () => {

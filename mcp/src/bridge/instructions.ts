@@ -5,7 +5,6 @@
 import { type Brief, est, untrustedLens } from '@yea-protocol/sdk';
 import type { Service } from './greet.js';
 import { clip } from './lens.js';
-import { isGeneric, type ToolMode } from './tools/generic.js';
 import type { ToolSpec } from './types.js';
 
 // What the tools' own descriptions say (yea_undo, yea_expand) isn't repeated here, and the
@@ -65,20 +64,29 @@ function serviceNote(
   return `${capabilityList(svc, o.budget)}\nUse ${o.tools.join(' and ')} with a capability from this list.`;
 }
 
+/**
+ * Whether a service's tools are the generic ones. Read off the tools built, not the mode, so the
+ * note matches what's served: generic tools name no capability in their `_meta`. A service given
+ * no tools isn't generic, so its note lists nothing to call.
+ */
+const areGeneric = (tools: ToolSpec[]) =>
+  tools.length > 0 &&
+  tools.every((t) => t.meta['dev.yea/capability'] === undefined);
+
 export function instructionsFor(
   services: Service[],
   specs: ToolSpec[],
-  o: { mode: ToolMode; budget: number; problems: string[] },
+  o: { budget: number; problems: string[] },
 ): string {
-  const notes = services.map((svc) =>
-    serviceNote(svc, {
-      generic: isGeneric(svc, o.mode),
-      tools: specs
-        .filter((t) => t.meta['dev.yea/service'] === svc.id)
-        .map((t) => t.name),
+  const notes = services.map((svc) => {
+    const tools = specs.filter((t) => t.meta['dev.yea/service'] === svc.id);
+
+    return serviceNote(svc, {
+      generic: areGeneric(tools),
+      tools: tools.map((t) => t.name),
       budget: o.budget,
-    }),
-  );
+    });
+  });
 
   return [HEADER, notes.length ? notes.join('\n\n') : NONE, ...o.problems]
     .join('\n\n')

@@ -5,11 +5,11 @@
  * request, events and reply.
  */
 import { computed, ref, useId, useTemplateRef } from 'vue';
+import { focusSibling, moveIndex } from '../roving';
 import { type CopyResult, copyOrSelect } from './clipboard';
 import { replySummary, requestSummary, toneOf } from './labels';
 import type { LensView } from './lens-view';
 import type { Exchange } from './model';
-import { focusSibling, moveIndex } from './roving';
 import { copyKeys, isApple } from './shortcut';
 
 const props = defineProps<{ exchange: Exchange; view: LensView }>();
@@ -104,7 +104,7 @@ function onTabKey(e: KeyboardEvent, i: number) {
   </div>
 </template>
 
-<style scoped src="./segmented.css"></style>
+<style scoped src="../segmented.css"></style>
 <style scoped>
 .out-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--vp-c-divider); }
 .badge { font-family: var(--vp-font-family-mono); font-size: 0.75rem; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid currentColor; }
