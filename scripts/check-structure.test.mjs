@@ -592,14 +592,21 @@ test('private: a literal __import__ is read like an import', () => {
     'b = __import__ ( "app.x.b" , globals())',
     "c = __import__(f'app.x.{name}')",
     "# __import__('app.x.d')",
+    "e = __import__(r'app.x.e')",
+    'def lazy():',
+    '    """Lazy loading.',
+    '',
+    "    Do not write __import__('app.x.f') here; go through app.x.",
+    '    """',
+    '    hint = "never __import__(\'app.x.f\')"',
   );
 
   assert.deepEqual(
     importedFiles(
       'python-dunder-import',
-      appImporting(text, ['a', 'b', 'c', 'd']),
+      appImporting(text, ['a', 'b', 'c', 'd', 'e', 'f']),
     ),
-    ['src/app/x/a.py', 'src/app/x/b.py'],
+    ['src/app/x/a.py', 'src/app/x/b.py', 'src/app/x/e.py'],
   );
 });
 
@@ -611,12 +618,14 @@ test('private: a literal import_module is read, relative names against its packa
     "c = importlib.import_module('..x.c', package='app.y')",
     "d = importlib.import_module('.d')",
     'e = importlib.import_module(name)',
+    'HINT = "use importlib.import_module(\'app.x.f\') only in tests"',
+    "DOC = '''importlib.import_module(\"app.x.f\")'''",
   );
 
   assert.deepEqual(
     importedFiles(
       'python-import-module',
-      appImporting(text, ['a', 'b', 'c', 'd']),
+      appImporting(text, ['a', 'b', 'c', 'd', 'f']),
     ),
     ['src/app/x/a.py', 'src/app/x/b.py', 'src/app/x/c.py'],
   );

@@ -6,7 +6,10 @@
  * Python accepts: names folded by NFKC as Python folds identifiers, form
  * feeds as spaces, spaces around dots. `__import__` and
  * `importlib.import_module` calls count too when their names are literals,
- * as `import()` and `require()` do in TS. A part reached as an attribute of
+ * as `import()` and `require()` do in TS: one-line literals, optionally `r`
+ * or `u` prefixed, that hold only a module name. Only such a literal is kept
+ * for that pass, so a call quoted in a string or docstring isn't read; a name
+ * built from triple-quoted or concatenated literals isn't either. A part reached as an attribute of
  * its package (`yea.store.files` after `import yea.store`) isn't an import,
  * and no reader sees it.
  */
@@ -22,7 +25,10 @@ const IMPORT = /(?:^|[;:])[ \t]*import[ \t]+([^\n;]*)/gmu;
 
 /** `__import__('<name>')` or `import_module('<name>'[, [package=]'<package>'])`, with literal names. */
 const DYNAMIC =
-  /\b(?:__import__|import_module)\s*\(\s*(['"])([^'"\n]+)\1(?:\s*,\s*(?:package\s*=\s*)?(['"])([^'"\n]+)\3)?/gu;
+  /\b(?:__import__|import_module)\s*\(\s*[rRuU]?(['"])([\p{ID_Continue}.]+)\1(?:\s*,\s*(?:package\s*=\s*)?[rRuU]?(['"])([\p{ID_Continue}.]+)\3)?/gu;
+
+/** A string literal that can be a module name: one quote each side, only name characters. */
+const NAME_LITERAL = /^(['"])[\p{ID_Continue}.]*\1$/u;
 
 /** The index just past the string literal opening at `i`, triple-quoted or not. */
 function literalEnd(text, i) {
@@ -53,7 +59,7 @@ function skipEnd(text, i) {
 }
 
 /** Python source with each comment taken out, and each string literal put through `literal`. */
-function stripComments(text, literal) {
+function stripPython(text, literal) {
   let out = '';
   let i = 0;
 
@@ -91,7 +97,7 @@ function relative(name) {
   return { level: dots.length, module: name.slice(dots.length) };
 }
 
-/** The literal `__import__` and `import_module` calls in code that still has its strings. */
+/** The literal `__import__` and `import_module` calls in code that keeps only its name literals. */
 function dynamicImports(code) {
   return [...code.matchAll(DYNAMIC)]
     .map((m) => ({ ...relative(m[2]), names: [], package: m[4] }))
@@ -114,7 +120,7 @@ function firstWords(list) {
  * `package` is what `import_module` resolves a relative name against.
  */
 export function pythonImports(text) {
-  const code = normalise(stripComments(text, () => "''"));
+  const code = normalise(stripPython(text, () => "''"));
   const from = [...code.matchAll(FROM)].map((m) => ({
     level: m[1].length,
     module: m[2],
@@ -124,7 +130,8 @@ export function pythonImports(text) {
     firstWords(m[1]).map((module) => ({ level: 0, module, names: [] })),
   );
 
-  const dynamic = dynamicImports(stripComments(text, (literal) => literal));
+  const names = (literal) => (NAME_LITERAL.test(literal) ? literal : "''");
+  const dynamic = dynamicImports(stripPython(text, names));
 
   return [...from, ...plain, ...dynamic];
 }
