@@ -2,8 +2,9 @@ name: release
 # Push a tag like v0.1.1 to publish, or run it by hand with that tag picked as the ref (any other
 # ref fails). npm: trusted publishing (OIDC) with provenance, NPM_TOKEN secret as a fallback.
 # PyPI: trusted publishing. Artifacts are attested. Before tagging, bump every version with
-# `npm run release:version <x.y.z>` (CONTRIBUTING.md#changelog-and-releases). The job timeouts are
-# generous on purpose: one that fires between two `npm publish` calls leaves a half-published release.
+# `npm run release:version <x.y.z>` (CONTRIBUTING.md#changelog-and-releases). No release job has run
+# yet, so their timeouts are generous: one that fired between two `npm publish` calls would leave a
+# half-published release.
 on:
   push:
     tags: ["v*"]

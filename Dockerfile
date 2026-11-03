@@ -16,10 +16,12 @@ COPY mcp mcp
 # --ignore-scripts: ts/'s prepack syncs its npm README from the root README, which the image doesn't need.
 RUN npm run build -w @yea-protocol/sdk && npm run build -w @yea-protocol/mcp && mkdir /pkgs && npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp -w @yea-protocol/cli --pack-destination /pkgs --silent --ignore-scripts
 # One project holds all three packages, so the CLI's SDK and MCP dependencies resolve to this build, not the registry.
-# A platform-specific dependency (os, cpu, libc or an install script) would be wrong in the other platforms' images, so it fails the build.
 WORKDIR /opt/yea
-RUN npm init -y >/dev/null && npm install --omit=dev /pkgs/*.tgz \
-  && if grep -E '"(os|cpu|libc|hasInstallScript)":' package-lock.json; then echo "a dependency is platform-specific, so it can't be installed once for every platform" >&2; exit 1; fi
+RUN npm init -y >/dev/null && npm install --omit=dev /pkgs/*.tgz
+# Every platform's image gets these files, so a platform-specific package (os, cpu, libc or an install script) fails the build.
+RUN node -e 'const { packages } = require("./package-lock.json"); \
+  const specific = Object.keys(packages).filter((path) => ["os", "cpu", "libc", "hasInstallScript"].some((key) => key in packages[path])); \
+  if (specific.length) { console.error("platform-specific, so not installable once for every platform:", specific.join(" ")); process.exit(1); }'
 
 FROM node:22-alpine
 COPY --from=build /opt/yea /opt/yea
