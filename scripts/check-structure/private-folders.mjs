@@ -82,7 +82,7 @@ function resolve(target, paths) {
   return found ?? target;
 }
 
-/** One file's breaches as `{ path, rule, detail }`, one per imported file. */
+/** One file's breaches as `{ path, rule, target, detail }`, one per imported file. */
 function fileBreaches(root, path, text, paths) {
   const targets = new Set(
     relativeImports(path, text)
@@ -100,6 +100,7 @@ function fileBreaches(root, path, text, paths) {
           {
             path,
             rule: 'private',
+            target,
             detail: `imports ${target} from inside ${found.dir}/; import ${found.entry} instead`,
           },
         ];

@@ -43,7 +43,7 @@ function skipEnd(text, i) {
 }
 
 /** Python source with each comment taken out and each string literal emptied. */
-export function stripPython(text) {
+function stripPython(text) {
   let out = '';
   let i = 0;
 

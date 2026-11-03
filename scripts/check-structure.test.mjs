@@ -207,9 +207,16 @@ function importing(...specs) {
   return HEADER + specs.map((s) => `import { a } from '${s}';\n`).join('');
 }
 
-/** `path: rule (detail)` for each violation under `src` in a fixture. */
-function privateFound(name, files) {
-  return report(compare(findViolations(fixture(name, files), ['src']), {}));
+/** `path: rule (detail)` for each violation under `roots` in a fixture. */
+function privateFound(name, files, roots = ['src']) {
+  return report(compare(findViolations(fixture(name, files), roots), {}));
+}
+
+/** The files the violations under `roots` in a fixture say were imported, in order. */
+function importedFiles(name, files, roots = ['src']) {
+  return privateFound(name, files, roots).map(
+    (line) => /imports (\S+?),? /.exec(line)?.[1],
+  );
 }
 
 test('private: a module folder is closed to files outside it', () => {
@@ -318,13 +325,13 @@ test('private: every import form is read, bare package names are not', () => {
     "import g from 'node:fs';",
     "import h from '@yea-protocol/sdk';",
   ].join('\n');
-  const found = privateFound('private-forms', {
+  const found = importedFiles('private-forms', {
     'src/run.ts': text,
     'src/x.ts': HEADER,
   });
 
   assert.deepEqual(
-    found.map((line) => /imports (\S+)/.exec(line)?.[1]),
+    found,
     ['a.js', 'b.js', 'c.js', 'd.css', 'e.js', 'f.cjs'].map((f) => `src/x/${f}`),
   );
 });
@@ -340,15 +347,12 @@ test('private: imports in comments are not read', () => {
     "const url = 'https://example.com/*'; import d from './x/d.js';",
     "const re = /['\"]\\/\\//; import e from './x/e.js'; // f",
   ].join('\n');
-  const found = privateFound('private-comments', {
+  const found = importedFiles('private-comments', {
     'src/run.ts': text,
     'src/x.ts': HEADER,
   });
 
-  assert.deepEqual(
-    found.map((line) => /imports (\S+)/.exec(line)?.[1]),
-    ['src/x/d.js', 'src/x/e.js'],
-  );
+  assert.deepEqual(found, ['src/x/d.js', 'src/x/e.js']);
 });
 
 test('private: a Vue file is read only inside <script>', () => {
@@ -362,25 +366,17 @@ test('private: a Vue file is read only inside <script>', () => {
     '</script >',
     "<p>import C from './x/c.vue'</p>",
   ].join('\n');
-  const found = privateFound('private-vue-template', {
+  const found = importedFiles('private-vue-template', {
     'src/Run.vue': vue,
     'src/x.ts': HEADER,
   });
 
-  assert.deepEqual(
-    found.map((line) => /imports (\S+)/.exec(line)?.[1]),
-    ['src/x/b.vue'],
-  );
+  assert.deepEqual(found, ['src/x/b.vue']);
 });
 
 /** A Python module: its docstring, then `lines`. */
 function py(...lines) {
   return DOC + lines.map((line) => `${line}\n`).join('');
-}
-
-/** `path: rule (detail)` for each violation under the Python roots `roots`. */
-function pythonFound(name, files, roots = ['src']) {
-  return report(compare(findViolations(fixture(name, files), roots), {}));
 }
 
 /** The files a Python import test reads: package `app` with `x/` holding `parts`. */
@@ -398,16 +394,9 @@ function appImporting(text, parts) {
   return files;
 }
 
-/** The files the violations under `src` say were imported, in order. */
-function importedFiles(name, files) {
-  return pythonFound(name, files).map(
-    (line) => /imports (\S+)/.exec(line)?.[1],
-  );
-}
-
 test("private: a Python package's modules are closed to modules outside it", () => {
   assert.deepEqual(
-    pythonFound('python-sibling', {
+    privateFound('python-sibling', {
       'src/app/__init__.py': DOC,
       'src/app/run.py': py('from .pkg.part import a'),
       'src/app/pkg/__init__.py': py('from .part import a'),
@@ -421,7 +410,7 @@ test("private: a Python package's modules are closed to modules outside it", () 
 
 test('private: the __init__.py and the modules in the package may import them', () => {
   assert.deepEqual(
-    pythonFound('python-allowed', {
+    privateFound('python-allowed', {
       'src/app/__init__.py': py('from .pkg import a', 'from .text import t'),
       'src/app/text.py': DOC,
       'src/app/run.py': py('from .pkg import a', 'from . import text'),
@@ -442,7 +431,7 @@ test('private: the __init__.py and the modules in the package may import them', 
 
 test('private: a subpackage is open to its package, not beyond it', () => {
   assert.deepEqual(
-    pythonFound('python-nested', {
+    privateFound('python-nested', {
       'src/app/__init__.py': DOC,
       'src/app/run.py': py('from .a.b import x'),
       'src/app/a/__init__.py': py('from .b.part import y'),
@@ -469,36 +458,91 @@ test('private: from .pkg import x names a submodule only when its file exists', 
   );
 });
 
-test('private: absolute imports resolve across every Python root', () => {
-  const found = pythonFound(
-    'python-roots',
+test('private: absolute imports resolve across the Python roots, in every form', () => {
+  const files = {
+    'python/src/yea/__init__.py': DOC,
+    'python/src/yea/text.py': DOC,
+    'python/src/yea/pkg/__init__.py': DOC,
+    'python/mcp/src/yea_mcp/__init__.py': DOC,
+    'python/mcp/src/yea_mcp/run.py': py(
+      'import os, json',
+      'from yea import pkg, text',
+      'from yea.pkg import name',
+      'from yea.pkg.a import x',
+      'import yea.pkg.b',
+      'import yea.pkg.c as c',
+      'from yea.pkg import d',
+      'def lazy():',
+      '    from yea.pkg.e import e',
+    ),
+  };
+  const parts = ['a', 'b', 'c', 'd', 'e'];
+
+  for (const part of parts) {
+    files[`python/src/yea/pkg/${part}.py`] = DOC;
+  }
+
+  assert.deepEqual(
+    importedFiles('python-roots', files, ['python/src', 'python/mcp/src']),
+    parts.map((p) => `python/src/yea/pkg/${p}.py`),
+  );
+});
+
+test('private: a name that is both a submodule and a symbol counts as the submodule', () => {
+  const files = appImporting(py('from .x import part'), ['part']);
+
+  files['src/app/x/__init__.py'] = py('part = "a symbol"');
+
+  assert.deepEqual(importedFiles('python-tie', files), ['src/app/x/part.py']);
+});
+
+test('private: a leading _ keeps a module or package inside its parent', () => {
+  const found = privateFound(
+    'python-underscore',
     {
-      'lib/src/lib/__init__.py': DOC,
-      'lib/src/lib/text.py': DOC,
-      'lib/src/lib/pkg/__init__.py': DOC,
-      'lib/src/lib/pkg/part.py': DOC,
-      'tool/src/tool/__init__.py': DOC,
-      'tool/src/tool/run.py': py(
-        'import os, json',
-        'from lib import pkg',
-        'from lib.text import t',
-        'from lib.pkg import name',
-        'from lib.pkg.part import a',
-        'import lib.pkg.part as p',
-        'from lib.pkg import part',
+      'python/src/yea/__init__.py': py('from ._json import j'),
+      'python/src/yea/_json.py': DOC,
+      'python/src/yea/__about__.py': DOC,
+      'python/src/yea/_inner/__init__.py': DOC,
+      'python/src/yea/ns/_part.py': DOC,
+      'python/src/yea/ns/run.py': py(
+        'from ._part import p',
+        'from .._json import j',
+      ),
+      'python/src/yea/run.py': py('from .ns._part import p'),
+      'python/mcp/src/yea_mcp/__init__.py': py(
+        'from yea._json import j',
+        'from yea import _inner, __about__',
       ),
     },
-    ['lib/src', 'tool/src'],
+    ['python/src', 'python/mcp/src'],
   );
 
   assert.deepEqual(found, [
-    'tool/src/tool/run.py: private (imports lib/src/lib/pkg/part.py from inside lib/src/lib/pkg/; import lib/src/lib/pkg/__init__.py instead)',
+    'python/mcp/src/yea_mcp/__init__.py: private (imports python/src/yea/_inner/__init__.py, which its leading _ makes private to python/src/yea/)',
+    'python/mcp/src/yea_mcp/__init__.py: private (imports python/src/yea/_json.py, which its leading _ makes private to python/src/yea/)',
+    'python/src/yea/run.py: private (imports python/src/yea/ns/_part.py, which its leading _ makes private to python/src/yea/ns/)',
+  ]);
+});
+
+test('private: Python examples are read for their imports alone', () => {
+  const dir = fixture('python-examples', {
+    'python/src/yea/__init__.py': DOC,
+    'python/src/yea/pkg/__init__.py': DOC,
+    'python/src/yea/pkg/part.py': DOC,
+    'python/examples/Quick-Start.py':
+      'from yea import pkg\nfrom yea.pkg.part import x\n',
+  });
+  const found = findViolations(dir, ['python/src'], ['python/examples']);
+
+  assert.deepEqual(report(compare(found, {})), [
+    'python/examples/Quick-Start.py: private (imports python/src/yea/pkg/part.py from inside python/src/yea/pkg/; import python/src/yea/pkg/__init__.py instead)',
   ]);
 });
 
 test('private: a top-level package and a package without __init__.py are open', () => {
   assert.deepEqual(
-    pythonFound('python-open', {
+    privateFound('python-open', {
       'src/run.py': py(
         'from app.text import t',
         'from app.plain.part import p',
@@ -555,6 +599,22 @@ test('private: imports in Python comments and strings are not read', () => {
   );
 });
 
+test('ratchet: a private entry covers only the file it names', () => {
+  const dir = fixture('private-by-target', {
+    'src/run.ts': importing('./x/a.js', './x/b.js'),
+    'src/x.ts': HEADER,
+    'src/x/a.ts': HEADER,
+    'src/x/b.ts': HEADER,
+  });
+  const result = compare(findViolations(dir, ['src']), {
+    'src/run.ts': ['private src/x/a.ts'],
+  });
+
+  assert.deepEqual(report(result), [
+    'src/run.ts: private (imports src/x/b.ts from inside src/x/; import src/x.ts instead)',
+  ]);
+});
+
 test('ratchet: a listed private violation that no longer occurs fails', () => {
   const dir = fixture('private-fixed', {
     'src/run.ts': importing('./x.js'),
@@ -562,10 +622,10 @@ test('ratchet: a listed private violation that no longer occurs fails', () => {
     'src/x/part.ts': HEADER,
   });
   const result = compare(findViolations(dir, ['src']), {
-    'src/run.ts': ['private'],
+    'src/run.ts': ['private src/x/part.ts'],
   });
 
   assert.deepEqual(report(result), [
-    'src/run.ts: private (no longer occurs: remove it from the ratchet)',
+    'src/run.ts: private src/x/part.ts (no longer occurs: remove it from the ratchet)',
   ]);
 });
