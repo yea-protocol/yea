@@ -1,172 +1,163 @@
 #!/usr/bin/env node
 /** yea — command line for the YEA protocol. The commands live in ./cli/, one module per group. */
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { cmdApprove } from './cli/approve.js';
-import { cmdDoctor } from './cli/doctor.js';
-import {
-  cmdDelegate,
-  cmdGrant,
-  cmdGrantImport,
-  cmdInit,
-  cmdInspect,
-  cmdServiceId,
-  cmdWhoami,
-} from './cli/identity.js';
-import {
-  cmdAdd,
-  cmdInstall,
-  cmdRemove,
-  cmdServices,
-  cmdUninstall,
-} from './cli/install.js';
-import {
-  cmdDemo,
-  cmdExamples,
-  cmdMcp,
-  cmdOpenapi,
-  cmdTestDrive,
-} from './cli/launch.js';
-import {
-  type Command,
-  client,
-  die,
-  type Options,
-  parseCommandLine,
-  type ServiceCommand,
-} from './cli/shared.js';
-import {
-  cmdAsk,
-  cmdCommit,
-  cmdDo,
-  cmdExpand,
-  cmdHello,
-  cmdIntent,
-  cmdUndo,
-} from './cli/talk.js';
+import { type Command, parseCommand, UsageError } from './cli/command.js';
+import { COMMANDS } from './cli/commands.js';
+import { commandHelp, usageMessage } from './cli/help.js';
+import { die } from './cli/shared.js';
 import { home } from './home.js';
 import { printable } from './text.js';
+import { isObject } from './util.js';
+import { closest } from './validate.js';
 
 export { die } from './cli/shared.js';
 
-/** The help text. Built when it's shown: `home()` can move an old ~/.parley on first use. */
+/** A command's run function, given to `run` to use in place of the SDK's own. */
+export type Runner = Command['run'];
+
+/**
+ * The help text. Built when it's shown: `home()` can move an old ~/.parley on first use.
+ * `site/scripts/generate.mjs` reads it from this file for the CLI reference.
+ */
 const help = () => `yea — the protocol agents speak
 
+usage: yea <command> [flags]
+
 get started
-  yea install [--target claude-code,cursor,codex,gemini,vscode,windsurf,claude-desktop] [--local] [--with-principal]
-                                           keys, a safe default policy, the MCP bridge and agent instructions (auto-detects tools)
-  yea add <url>                         add a service for your AI tools (yea services · yea remove <url>)
-  yea doctor                            check keys, grants, services and AI-tool registration
-  yea uninstall [--target …]            remove YEA from your AI tools
+  install       set YEA up for your AI tools: keys, a safe policy, the MCP bridge
+  add           add a service for your AI tools
+  remove        remove one
+  services      list them
+  doctor        check keys, grants, services and AI-tool registration
+  uninstall     remove YEA from your AI tools
 
-identity
-  yea init                              create your principal key and an agent key in ${home()}
-  yea whoami                            show public keys
-  yea service-id <name>                 an MCP server's service id, for yea grant --to (servers with a custom key path log it at start-up)
-  yea grant [caveats]                   principal → agent grant (saved; used automatically)
-  yea grant-import <token>              save a grant issued to this machine's agent key (principal kept elsewhere)
-  yea delegate <token> --to <key> [caveats]   attenuate a grant for a sub-agent
-  yea inspect <token>                   decode a grant chain
-  yea approve <pc1.code> [--to <key>]   review and sign a one-time consent for one proposal
+identity and policy
+  init          create your principal key and an agent key in ${home()}
+  whoami        show your public keys
+  grant         sign a grant (your policy) from your principal to an agent
+  grant-import  save a grant issued to this machine's agent key elsewhere
+  delegate      narrow a grant for a sub-agent
+  inspect       decode a grant chain
+  approve       review a proposal and sign a one-time consent for it
+  service-id    an MCP server's service id, for yea grant --to
 
-talk to a service  (url: yea://host:port · yeas://… · http(s)://…/yea · "stdio:cmd args")
-  yea hello  <url>
-  yea ask    <url> <capability> [key=value …]
-  yea intent <url> <capability> [key=value …] [--goal "…"]
-  yea commit <url> <proposal-id> <hash>
-  yea undo   <url> <receipt-id>
-  yea expand <url> <handle>
-  yea do     <url> <capability> [key=value …]   intent → choose → commit, with consent prompts
+talk to a service   <url>: yea://host:port · yeas://… · http(s)://…/yea · "stdio:cmd args"
+  hello         a service's brief: who it is and what it can do
+  ask           call a read-only capability
+  intent        get proposals, without acting
+  commit        carry out a proposal
+  undo          undo a committed action
+  expand        fetch more of a reply that was cut to its budget
+  do            intent → choose → commit, with consent prompts
 
 try it
-  yea test-drive [--model m] ["task"]  watch a real Claude model use YEA live (needs an Anthropic API key; @yea-protocol/cli)
-  yea demo                              narrated end-to-end demo (two services, consent, undo, sub-agents)
-  yea examples [--port 7447] [--host]            serve the example calendar (7447), shop (7449) and billing (7451), trusting your principal
+  test-drive    watch a real Claude model use YEA live (needs an Anthropic API key)
+  demo          a narrated end-to-end demo, no API key needed
+  examples      serve the example calendar, shop and billing services
 
 bridges
-  yea mcp <url> [<url> …] [--tools generic|per-capability]
-                                           run an MCP server (stdio): one tool per capability (@yea-protocol/cli)
-  yea openapi <spec.json|url> [--base <url>] [--header "K: V"] [--port 7447] [--http 8080] [--preset github|petstore]
-                                           serve any REST API as a YEA service (writes become proposals)
+  mcp           the MCP server your AI tools run
+  openapi       serve any REST API as a YEA service
 
-caveats: --svc <id> --can <pattern> --verbs ASK,INTENT --exp 24h --each spend=50.00USD --total emails=20 --risk low|medium|high
-options: --budget <tokens> --json`;
+flags
+  -h, --help     show this help
+  -v, --version  print the version
 
-const COMMANDS = new Map<string, Command>([
-  ['init', cmdInit],
-  ['whoami', cmdWhoami],
-  ['service-id', cmdServiceId],
-  ['grant', cmdGrant],
-  ['grant-import', cmdGrantImport],
-  ['delegate', cmdDelegate],
-  ['inspect', cmdInspect],
-  ['approve', cmdApprove],
-  ['test-drive', cmdTestDrive],
-  ['demo', cmdDemo],
-  ['examples', cmdExamples],
-  ['openapi', cmdOpenapi],
-  ['mcp', cmdMcp],
-  ['add', cmdAdd],
-  ['remove', cmdRemove],
-  ['services', cmdServices],
-  ['setup', cmdInstall],
-  ['install', cmdInstall],
-  ['uninstall', cmdUninstall],
-  ['doctor', cmdDoctor],
-]);
+run 'yea help <command>' for a command's flags and an example`;
 
-const SERVICE_COMMANDS = new Map<string, ServiceCommand>([
-  ['hello', cmdHello],
-  ['ask', cmdAsk],
-  ['intent', cmdIntent],
-  ['commit', cmdCommit],
-  ['undo', cmdUndo],
-  ['expand', cmdExpand],
-  ['do', cmdDo],
-]);
+/** The flags `yea` takes before a command. */
+const TOP_FLAGS = ['--help', '-h', '--version', '-v'];
 
-async function main(o: Options, args: string[], argv: string[]) {
-  const [cmd, ...rest] = args;
+/** This package's version, which is the `yea` command's: the npm packages share one version. */
+function version(): string {
+  const pkg: unknown = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  );
 
-  if (!cmd || o.help) {
+  return isObject(pkg) && typeof pkg.version === 'string'
+    ? pkg.version
+    : 'unknown';
+}
+
+/** The command called `name`, or a `UsageError` naming the closest one. */
+function find(name: string): Command {
+  const command = COMMANDS.get(name);
+
+  if (command) {
+    return command;
+  }
+
+  if (name.startsWith('-')) {
+    throw new UsageError(`unknown option ${name}`, closest(name, TOP_FLAGS));
+  }
+
+  const near = closest(name, [...COMMANDS.keys(), 'help']);
+
+  throw new UsageError(`unknown command '${name}'`, near && `'${near}'`);
+}
+
+async function main(argv: string[], runners: Readonly<Record<string, Runner>>) {
+  const [name, ...rest] = argv;
+
+  if (name === undefined || name === '--help' || name === '-h') {
     return console.log(help());
   }
 
-  const command = COMMANDS.get(cmd);
-
-  if (command) {
-    return command(rest, o, argv);
+  if (name === '--version' || name === '-v') {
+    return console.log(version());
   }
 
-  const [url, ...more] = rest;
-
-  if (!url) {
-    die(help());
+  if (name === 'help') {
+    return console.log(rest[0] ? commandHelp(find(rest[0])) : help());
   }
 
-  const c = await client(url, o);
+  const command = find(name);
 
   try {
-    const talk =
-      SERVICE_COMMANDS.get(cmd) ?? die(`unknown command ${cmd}\n\n${help()}`);
+    const { args, values, help: wantsHelp } = parseCommand(command, rest);
 
-    await talk(c, more, o);
-  } finally {
-    c.close();
+    if (wantsHelp) {
+      return console.log(commandHelp(command));
+    }
+
+    await (runners[name] ?? command.run)(args, values, argv);
+  } catch (e) {
+    fail(e, name);
   }
 }
 
 /**
- * Run the `yea` command line `argv` (the arguments after `yea`). A bad flag throws here, before
- * any command runs; a command's error is printed and exits with status 1, as `die` does.
+ * Print why the command line failed and exit: status 2 for a usage error (with the command it
+ * was made in, if any), else 1. YEA_DEBUG=1 also prints the stack trace.
  */
-export function run(argv: string[]): Promise<void> {
-  const { values: o, positionals: args } = parseCommandLine(argv);
+function fail(e: unknown, name?: string): never {
+  const debug = !!process.env.YEA_DEBUG && process.env.YEA_DEBUG !== '0';
+
+  if (debug && e instanceof Error && e.stack) {
+    console.error(e.stack.split('\n').map(printable).join('\n'));
+  }
+
+  if (e instanceof UsageError) {
+    console.error(usageMessage(e, name));
+    process.exit(2);
+  }
 
   // An error can quote a service's reply (a JSON.parse SyntaxError does), escapes and all.
-  return main(o, args, argv).catch((e) =>
-    die(`✗ ${printable((e as Error).message)}`),
-  );
+  return die(`✗ ${printable(e instanceof Error ? e.message : String(e))}`);
+}
+
+/**
+ * Run the `yea` command line `argv` (the arguments after `yea`). A mistake on the command line
+ * (an unknown command or flag) is printed with a hint and exits with status 2; a command's
+ * error is printed and exits with status 1, as `die` does. `runners` run the commands this
+ * package declares but can't run itself (`mcp` and `test-drive`, from @yea-protocol/cli).
+ */
+export function run(
+  argv: string[],
+  runners: Readonly<Record<string, Runner>> = {},
+): Promise<void> {
+  return main(argv, runners).catch((e) => fail(e));
 }
 
 /**

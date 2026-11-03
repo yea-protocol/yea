@@ -1,7 +1,18 @@
 /** Commands that launch something: the demo, the example services and bridges. */
 import { principalKey } from '../home.js';
 import { DEFAULT_PORT, listen, serveHttp } from '../node.js';
-import { die, type Options } from './shared.js';
+import { command, type Flags, type Values } from './command.js';
+import { die } from './shared.js';
+
+/** Where a local service listens. */
+const LISTEN_FLAGS = {
+  port: { type: 'string', value: 'port', help: 'the port (default 7447)' },
+  host: {
+    type: 'string',
+    value: 'host',
+    help: 'the address to listen on, such as 0.0.0.0 in a container (default 127.0.0.1)',
+  },
+} as const satisfies Flags;
 
 /** Principals whose grants a local service trusts: YEA_TRUST, else the principal key here. */
 async function trustedPrincipals(): Promise<string[]> {
@@ -17,14 +28,51 @@ async function trustedPrincipals(): Promise<string[]> {
 
 // ---- try it ----
 
-export async function cmdDemo() {
+export const cmdTestDrive = command({
+  summary:
+    'Watch a real Claude model use YEA live (needs an Anthropic API key; runs from @yea-protocol/cli).',
+  usage: 'test-drive ["task"] [flags]',
+  flags: {
+    model: {
+      type: 'string',
+      value: 'model',
+      help: 'the Claude model to drive (default claude-opus-5)',
+    },
+  },
+  example: 'yea test-drive "move my 3pm with Ana to tomorrow"',
+  // Overridden by @yea-protocol/cli, which runs it: it drives the bridge, which the SDK can't load.
+  run: async () =>
+    die(
+      'yea test-drive runs from @yea-protocol/cli: npx @yea-protocol/cli test-drive',
+    ),
+});
+
+export const cmdDemo = command({
+  summary:
+    'A narrated end-to-end demo: two services, consent, undo and sub-agents. No API key needed.',
+  usage: 'demo',
+  flags: {},
+  example: 'yea demo',
+  run: demo,
+});
+
+async function demo() {
   const { runDemo } = await import('../examples/demo.js');
 
   await runDemo();
   process.exit(0);
 }
 
-export async function cmdExamples(_rest: string[], o: Options) {
+export const cmdExamples = command({
+  summary:
+    'Serve the example calendar (on the port), shop (port + 2) and billing (port + 4), trusting your principal.',
+  usage: 'examples [flags]',
+  flags: LISTEN_FLAGS,
+  example: 'yea examples --port 7447',
+  run: (_args, o) => examples(o),
+});
+
+async function examples(o: Values<typeof LISTEN_FLAGS>) {
   const { calendar, shop, billing } = await import('../examples/index.js');
   const trust = await trustedPrincipals();
   const port = Number(o.port ?? DEFAULT_PORT);
@@ -39,7 +87,47 @@ export async function cmdExamples(_rest: string[], o: Options) {
 
 // ---- bridges ----
 
-export async function cmdOpenapi(rest: string[], o: Options) {
+const OPENAPI_FLAGS = {
+  base: {
+    type: 'string',
+    value: 'url',
+    help: "the API's base URL, if not the spec's",
+  },
+  header: {
+    type: 'string',
+    multiple: true,
+    value: 'K: V',
+    help: 'a header for every upstream call, such as a credential (never shown to the model)',
+  },
+  id: { type: 'string', value: 'id', help: "the service's id" },
+  prefix: {
+    type: 'string',
+    value: 'prefix',
+    help: 'the prefix of every capability name',
+  },
+  ...LISTEN_FLAGS,
+  http: {
+    type: 'string',
+    value: 'port',
+    help: 'also serve YEA over HTTP on this port',
+  },
+  preset: {
+    type: 'string',
+    value: 'github|petstore',
+    help: 'a curated API: its spec, operations, risks and credentials',
+  },
+} as const satisfies Flags;
+
+export const cmdOpenapi = command({
+  summary:
+    'Serve a REST API as a YEA service, from its OpenAPI spec: reads become asks, writes become proposals.',
+  usage: 'openapi <spec.json|url> [flags]',
+  flags: OPENAPI_FLAGS,
+  example: 'yea openapi --preset petstore',
+  run: openapi,
+});
+
+async function openapi(rest: string[], o: Values<typeof OPENAPI_FLAGS>) {
   const { fromOpenAPI, loadOpenAPI } = await import('../openapi.js');
   const { PRESETS, presetOptions } = await import('../presets.js');
   const preset = o.preset
@@ -96,7 +184,7 @@ export async function cmdOpenapi(rest: string[], o: Options) {
 }
 
 /** --header "K: V" flags as a header map. */
-const headerFlags = (o: Options) =>
+const headerFlags = (o: { header?: string[] }) =>
   Object.fromEntries(
     (o.header ?? []).map((h) => [
       h.slice(0, h.indexOf(':')).trim(),
@@ -104,16 +192,35 @@ const headerFlags = (o: Options) =>
     ]),
   );
 
-/** `yea mcp` lives in @yea-protocol/cli, which depends on @yea-protocol/mcp; the SDK can't. */
-export async function cmdMcp() {
-  die(
-    'yea mcp runs from @yea-protocol/cli: npx -y @yea-protocol/cli mcp [<url> …]',
-  );
-}
-
-/** `yea test-drive` drives the bridge, so it lives in @yea-protocol/cli too. */
-export async function cmdTestDrive() {
-  die(
-    'yea test-drive runs from @yea-protocol/cli: npx @yea-protocol/cli test-drive',
-  );
-}
+export const cmdMcp = command({
+  summary:
+    'Run the MCP server (stdio) your AI tools use: one tool per capability. With no URLs, it serves yea services.',
+  usage: 'mcp [<url> …] [flags]',
+  flags: {
+    tools: {
+      type: 'string',
+      value: 'generic|per-capability',
+      help: 'force one tool mode (default: per capability, generic past 25)',
+    },
+    budget: {
+      type: 'string',
+      value: 'tokens',
+      help: 'the default token budget for replies',
+    },
+    name: {
+      type: 'string',
+      value: 'name',
+      help: 'the agent name services see (default yea-mcp)',
+    },
+    'approve-here': {
+      type: 'boolean',
+      help: 'approve in the AI tool (not available yet; use yea approve)',
+    },
+  },
+  example: 'claude mcp add yea -- npx -y @yea-protocol/cli mcp',
+  // Overridden by @yea-protocol/cli, which runs it: it depends on @yea-protocol/mcp; the SDK can't.
+  run: async () =>
+    die(
+      'yea mcp runs from @yea-protocol/cli: npx -y @yea-protocol/cli mcp [<url> …]',
+    ),
+});

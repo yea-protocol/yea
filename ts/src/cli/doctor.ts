@@ -6,13 +6,23 @@ import { fmtTime, untrustedLens } from '../lens.js';
 import { CLIENTS, listServices } from '../setup.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
-import { client, installScope, type Options } from './shared.js';
+import { command } from './command.js';
+import { client, installScope, LOCAL_FLAG } from './shared.js';
 
 const ok = (m: string) => console.log(`✓ ${m}`);
 const warn = (m: string) => console.log(`! ${m}`);
 const bad = (m: string) => console.log(`✗ ${m}`);
 
-export async function cmdDoctor(_rest: string[], o: Options) {
+export const cmdDoctor = command({
+  summary:
+    'Check your node version, keys, grants, services and which AI tools YEA is registered with.',
+  usage: 'doctor [flags]',
+  flags: { local: LOCAL_FLAG },
+  example: 'yea doctor',
+  run: (_args, o) => doctor(o),
+});
+
+async function doctor(o: { local?: boolean }) {
   const major = Number(process.versions.node.split('.')[0]);
 
   if (major >= 20) {
@@ -40,7 +50,7 @@ export async function cmdDoctor(_rest: string[], o: Options) {
   }
 
   await reportGrants(a);
-  await checkServices(o);
+  await checkServices();
   checkRegistration(o);
 }
 
@@ -85,7 +95,7 @@ function reportGrant(info: GrantInfo, a: KeyPair | null) {
   }
 }
 
-async function checkServices(o: Options) {
+async function checkServices() {
   const services = listServices();
 
   if (!services.length) {
@@ -96,7 +106,7 @@ async function checkServices(o: Options) {
     const t0 = Date.now();
 
     try {
-      const c = await client(u, o);
+      const c = await client(u, {});
       const b = await c.hello(200);
 
       c.close();
@@ -112,7 +122,7 @@ async function checkServices(o: Options) {
   }
 }
 
-function checkRegistration(o: Options) {
+function checkRegistration(o: { local?: boolean }) {
   const scope = installScope(o);
   const installed = Object.values(CLIENTS)
     .filter((t) => {

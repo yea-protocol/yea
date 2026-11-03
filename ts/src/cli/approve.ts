@@ -16,9 +16,25 @@ import { effectLine, fmtDuration, fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import { fmtUses, isUses } from '../uses.js';
 import { unixNow } from '../util.js';
-import { confirm, die, type Options } from './shared.js';
+import { command } from './command.js';
+import { confirm, die } from './shared.js';
 
-export async function cmdApprove(rest: string[], o: Options) {
+export const cmdApprove = command({
+  summary:
+    "Review a proposal's real effects and sign a one-time consent for it, to paste back to the agent.",
+  usage: 'approve <code> [flags]',
+  flags: {
+    to: {
+      type: 'string',
+      value: 'key',
+      help: "the agent key the consent is for, if not this machine's (check its fingerprint first)",
+    },
+  },
+  example: 'yea approve pc1.…',
+  run: approve,
+});
+
+async function approve(rest: string[], o: { to?: string }) {
   const code = rest[0] ?? die('usage: yea approve <pc1.… code>');
   const consent = decodeConsentCode(code);
 

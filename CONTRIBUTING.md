@@ -151,7 +151,8 @@ host signs outside it, as test-drive's person loop does with the bridge
   (a note, where the job has none); then the `xJob` factory. Its helpers live in `jobs/<job>/`;
 - a service verb: one that needs collaborators or private helpers is a `<Verb>Handler` class
   holding a `Pick<ServiceState>`; a stateless verb is `on<Verb>(state, req, budget)`;
-- a CLI command module: one exported `cmdX` per command, sharing `cli/shared.ts`;
+- a CLI command module: one exported `cmdX = command({ summary, usage, flags, example, run })` per
+  command, so its help sits beside its flags, sharing `cli/shared.ts`;
 - a bridge tool module: the spec, then the handler.
 
 **Tests** are named after the module they cover (`test/refund.test.ts` for

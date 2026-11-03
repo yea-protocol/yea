@@ -2,7 +2,6 @@
  * `yea mcp [<url> …]`: YEA services as MCP tools over stdio, one per capability
  * (docs/framework/SPEC-bridge.md). With no URLs it serves the services added with `yea add`.
  */
-import { parseArgs } from 'node:util';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { bridge } from '@yea-protocol/mcp/bridge';
 import { die } from '@yea-protocol/sdk/cli';
@@ -13,33 +12,13 @@ import {
   loadGrants,
 } from '@yea-protocol/sdk/node';
 
-const USAGE =
-  'usage: yea mcp [<url> …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]';
-
 const MODES = ['generic', 'per-capability'];
 
 /**
- * The command's options and URLs, checked; exits on a bad one.
- * @param {string[]} argv the arguments after `mcp`
+ * The command's options, checked; exits on a bad one. `yea` has already refused unknown flags.
+ * @param {{ tools?: string, budget?: string, 'approve-here'?: boolean }} o the flags
  */
-function options(argv) {
-  const { values: o, positionals: urls } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      tools: { type: 'string' },
-      budget: { type: 'string' },
-      name: { type: 'string' },
-      'approve-here': { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-    },
-  });
-
-  if (o.help) {
-    console.log(USAGE);
-    process.exit(0);
-  }
-
+function check(o) {
   // TODO(#73): --approve-here (typed approval in the client, signed with a principal key on
   // this machine) waits for James (SPEC-bridge decision 4). Until then approvals use codes.
   if (o['approve-here']) {
@@ -47,7 +26,7 @@ function options(argv) {
   }
 
   if (o.tools !== undefined && !MODES.includes(o.tools)) {
-    die(`yea mcp: --tools must be one of ${MODES.join(', ')}\n${USAGE}`);
+    die(`yea mcp: --tools must be one of ${MODES.join(', ')}`);
   }
 
   // Digits only: Number() alone would also take 0x10, 1e3 or " 5 ".
@@ -58,18 +37,20 @@ function options(argv) {
     o.budget !== undefined &&
     !(budget !== undefined && Number.isSafeInteger(budget) && budget > 0)
   ) {
-    die(`yea mcp: --budget must be a positive integer\n${USAGE}`);
+    die('yea mcp: --budget must be a positive integer');
   }
 
-  return { o, urls, budget };
+  return budget;
 }
 
 /**
  * Connect to each service and serve the bridge over stdio until stdin closes.
- * @param {string[]} argv the arguments after `mcp`
+ * @param {string[]} urls the services; none means those added with `yea add`
+ * @param {{ tools?: string, budget?: string, name?: string, 'approve-here'?: boolean }} o
+ *   the flags, parsed by `yea` against `mcp`'s declaration in the SDK (cli/launch.ts)
  */
-export async function runMcp(argv) {
-  const { o, urls, budget } = options(argv);
+export async function runMcp(urls, o) {
+  const budget = check(o);
   const agent = await agentKey();
   // Grants only: the bridge reads each consent from ~/.yea/consents for the proposal it commits.
   const grants = loadGrants('grants');

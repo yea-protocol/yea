@@ -7,7 +7,14 @@ import { principalKey } from '../home.js';
 import { untrustedLens } from '../lens.js';
 import { jsonPrintable } from '../text.js';
 import type { Proposal, Reply } from '../types.js';
-import { die, type Options } from './shared.js';
+import {
+  command,
+  type Flag,
+  type Flags,
+  UsageError,
+  type Values,
+} from './command.js';
+import { CONNECT_FLAGS, client, die } from './shared.js';
 
 /** `key=value` arguments as params; a value that parses as JSON is JSON. */
 function kv(pairs: string[]): Record<string, unknown> {
@@ -36,7 +43,7 @@ function kv(pairs: string[]): Record<string, unknown> {
 const say = (r: Reply) => console.log(untrustedLens(r));
 
 /** A service's reply as `--json` (without its `lens`, invisible characters escaped), or as escaped Lens. */
-const show = (r: Reply, o: Options) =>
+const show = (r: Reply, o: { json?: boolean }) =>
   o.json
     ? console.log(
         jsonPrintable(JSON.stringify({ ...r, lens: undefined }, null, 2)),
@@ -46,61 +53,133 @@ const show = (r: Reply, o: Options) =>
 /** A reply's progress events, on stderr and escaped like the reply itself. */
 const onEvent = (e: Reply) => console.error(untrustedLens(e));
 
-const budgetFlag = (o: Options) => (o.budget ? Number(o.budget) : undefined);
+const budgetFlag = (o: { budget?: string }) =>
+  o.budget ? Number(o.budget) : undefined;
 
-export async function cmdHello(c: Client, _args: string[], o: Options) {
-  show(await c.hello(budgetFlag(o)), o);
-}
+/** The flags of a command that prints a service's reply. */
+const REPLY_FLAGS = {
+  ...CONNECT_FLAGS,
+  json: { type: 'boolean', help: 'print the reply as JSON instead of Lens' },
+} as const satisfies Flags;
 
-export async function cmdAsk(
-  c: Client,
-  [capability, ...params]: string[],
-  o: Options,
+const GOAL_FLAG = {
+  type: 'string',
+  value: 'text',
+  help: 'what you are trying to do, so the service can propose better',
+} as const satisfies Flag;
+
+/**
+ * Connect to the service at `args[0]`, give `talk` the client and the other arguments, and
+ * hang up.
+ */
+async function withService(
+  args: string[],
+  o: Values<typeof CONNECT_FLAGS>,
+  talk: (c: Client, rest: string[]) => Promise<void>,
 ) {
-  show(await c.ask(capability, kv(params), { budget: budgetFlag(o) }), o);
+  const [url, ...rest] = args;
+
+  if (!url) {
+    throw new UsageError('missing <url>');
+  }
+
+  const c = await client(url, o);
+
+  try {
+    await talk(c, rest);
+  } finally {
+    c.close();
+  }
 }
 
-export async function cmdIntent(
-  c: Client,
-  [capability, ...params]: string[],
-  o: Options,
-) {
-  show(
-    await c.intent(capability, kv(params), {
-      goal: o.goal,
-      budget: budgetFlag(o),
-    }),
-    o,
-  );
-}
+export const cmdHello = command({
+  summary: "Show a service's brief: who it is and what it can do.",
+  usage: 'hello <url> [flags]',
+  flags: REPLY_FLAGS,
+  example: 'yea hello yea://127.0.0.1:7447',
+  run: (args, o) =>
+    withService(args, o, async (c) => show(await c.hello(budgetFlag(o)), o)),
+});
 
-export async function cmdCommit(c: Client, [id, hash]: string[], o: Options) {
-  show(await c.commit({ id, hash }, { onEvent }), o);
-}
+export const cmdAsk = command({
+  summary: 'Call a read-only capability.',
+  usage: 'ask <url> <capability> [key=value …] [flags]',
+  flags: REPLY_FLAGS,
+  example: 'yea ask yea://127.0.0.1:7447 calendar.free day=2026-09-24',
+  run: (args, o) =>
+    withService(args, o, async (c, [capability, ...params]) =>
+      show(await c.ask(capability, kv(params), { budget: budgetFlag(o) }), o),
+    ),
+});
 
-export async function cmdUndo(c: Client, [receipt]: string[], o: Options) {
-  show(await c.undo(receipt, { onEvent }), o);
-}
+export const cmdIntent = command({
+  summary: 'Ask a service to propose an action, without doing it.',
+  usage: 'intent <url> <capability> [key=value …] [flags]',
+  flags: { ...REPLY_FLAGS, goal: GOAL_FLAG },
+  example: 'yea intent yea://127.0.0.1:7447 calendar.reschedule event=Ana',
+  run: (args, o) =>
+    withService(args, o, async (c, [capability, ...params]) =>
+      show(
+        await c.intent(capability, kv(params), {
+          goal: o.goal,
+          budget: budgetFlag(o),
+        }),
+        o,
+      ),
+    ),
+});
 
-export async function cmdExpand(c: Client, [handle]: string[], o: Options) {
-  show(await c.expand(handle, { budget: budgetFlag(o) }), o);
-}
+export const cmdCommit = command({
+  summary: 'Carry out a proposal, by its id and hash.',
+  usage: 'commit <url> <proposal-id> <hash> [flags]',
+  flags: REPLY_FLAGS,
+  example: 'yea commit yea://127.0.0.1:7447 p_HGgxOZ4L <hash>',
+  run: (args, o) =>
+    withService(args, o, async (c, [id, hash]) =>
+      show(await c.commit({ id, hash }, { onEvent }), o),
+    ),
+});
 
-/** `yea do <url> <capability> [key=value …]`. */
-export async function cmdDo(
-  c: Client,
-  [capability, ...params]: string[],
-  o: Options,
-) {
-  await interactive(c, capability, kv(params), o);
-}
+export const cmdUndo = command({
+  summary: 'Undo a committed action, by its receipt id.',
+  usage: 'undo <url> <receipt-id> [flags]',
+  flags: REPLY_FLAGS,
+  example: 'yea undo yea://127.0.0.1:7447 <receipt-id>',
+  run: (args, o) =>
+    withService(args, o, async (c, [receipt]) =>
+      show(await c.undo(receipt, { onEvent }), o),
+    ),
+});
+
+export const cmdExpand = command({
+  summary: 'Fetch more of a reply that was cut to fit its budget.',
+  usage: 'expand <url> <handle> [flags]',
+  flags: REPLY_FLAGS,
+  example: 'yea expand yea://127.0.0.1:7447 <handle> --budget 2000',
+  run: (args, o) =>
+    withService(args, o, async (c, [handle]) =>
+      show(await c.expand(handle, { budget: budgetFlag(o) }), o),
+    ),
+});
+
+export const cmdDo = command({
+  summary:
+    'Intent, choose, commit: do something at the terminal, answering questions and consent prompts.',
+  usage: 'do <url> <capability> [key=value …] [flags]',
+  flags: { ...CONNECT_FLAGS, goal: GOAL_FLAG },
+  example: 'yea do yea://127.0.0.1:7447 calendar.reschedule event=Ana',
+  run: (args, o) =>
+    withService(args, o, (c, [capability, ...params]) =>
+      interactive(c, capability, kv(params), o),
+    ),
+});
 
 /** `yea do`: intent → choose → commit, answering questions and consent prompts at the terminal. */
 async function interactive(
   c: Client,
   capability: string,
   params: Record<string, unknown>,
-  o: Options,
+  o: { goal?: string },
 ) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 

@@ -20,6 +20,19 @@ This is its own help text, generated from the source at build time:
 
 <<< @/.vitepress/generated/cli-help.txt{text}
 
+Every command has its own help: `yea <command> --help` (or `-h`, or `yea help <command>`) shows its synopsis, each flag it takes and an example. `yea --version` (or `-v`) prints the version.
+
+A mistake on the command line (an unknown command or flag, or a flag without its value) says what went wrong and suggests the closest match, then exits with status 2:
+
+```text
+$ yea grant --tx ed25519:…
+yea: unknown option --tx for 'grant'
+did you mean --to?
+run 'yea grant --help' for usage
+```
+
+Any other error exits with status 1. Set `YEA_DEBUG=1` to see the stack trace as well.
+
 ## Get started
 
 ### `yea install`
@@ -36,12 +49,13 @@ Sets YEA up for your AI tools in one step (alias: `setup`):
 | `--target a,b` | Only these tools: `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini` |
 | `--local` | Write project files (`.mcp.json`, `.cursor/mcp.json`, `CLAUDE.md`, `AGENTS.md` …) instead of user-level ones |
 | `--with-principal` | Also create a principal key on this machine, for trying things out. For real use, issue the grant on another device and `yea grant-import` it |
+| `-y`, `--yes` | Don't ask. Without `--with-principal`, no principal key is created |
 
 It never auto-approves YEA's tools in any client. Exactly what gets written where is on the [integrations](/guide/integrations) page.
 
 ### `yea uninstall`
 
-Removes the bridge and the `YEA` instruction blocks from each tool (or those in `--target`). Keys and grants in `~/.yea` are left in place.
+Removes the bridge and the `YEA` instruction blocks from each tool (or those in `--target`; `--local` for the project's files). Keys and grants in `~/.yea` are left in place.
 
 ### `yea add`, `remove`, `services`
 
@@ -49,7 +63,7 @@ Removes the bridge and the `YEA` instruction blocks from each tool (or those in 
 
 ### `yea doctor`
 
-Checks your node version, the agent key, **whether the principal key is readable on this machine** (a warning, since agents could read it too), each grant's scope, expiry and holder, each service's reachability, and which AI tools YEA is registered with. See [Troubleshooting](/guide/troubleshooting).
+Checks your node version, the agent key, **whether the principal key is readable on this machine** (a warning, since agents could read it too), each grant's scope, expiry and holder, each service's reachability, and which AI tools YEA is registered with (with `--local`, in this project's files). See [Troubleshooting](/guide/troubleshooting).
 
 ## Identity and policy
 
@@ -70,6 +84,22 @@ Checks your node version, the agent key, **whether the principal key is readable
 
 `yea delegate <token> --to <key> [caveats]` narrows a grant for a sub-agent. `yea approve <pc1.code> [--to <key>]` shows a proposal's real effects, re-checks its hash, asks for confirmation, and signs a one-time consent for it, printing it to paste back to the agent. It refuses a code that doesn't carry its proposal, since the service-written summary alone is not enough to sign. A code from `yea mcp` suggests the agent key the consent is for. It's unsigned, so unless it's this machine's own agent key, pass it with `--to` after checking its fingerprint with the agent.
 
+## Talk to a service
+
+These take the service's URL first: `yea://host:port`, `yeas://…`, `http(s)://…/yea` or `"stdio:cmd args"`.
+
+| Command | Does |
+|---|---|
+| `yea hello <url>` | Shows the service's brief: who it is and what it can do |
+| `yea ask <url> <capability> [key=value …]` | Calls a read-only capability |
+| `yea intent <url> <capability> [key=value …]` | Gets proposals, without acting |
+| `yea commit <url> <proposal-id> <hash>` | Carries out a proposal |
+| `yea undo <url> <receipt-id>` | Undoes a committed action |
+| `yea expand <url> <handle>` | Fetches more of a reply that was cut to its budget |
+| `yea do <url> <capability> [key=value …]` | Intent, choose, commit at the terminal, with consent prompts |
+
+A `key=value` value that parses as JSON is JSON. Each takes `--budget <tokens>` (the default token budget for replies) and `--name <name>` (the agent name the service sees); all but `do` take `--json` to print the reply as JSON instead of Lens, and `intent` and `do` take `--goal "…"`.
+
 ## Environment
 
 | Variable | Meaning |
@@ -78,6 +108,7 @@ Checks your node version, the agent key, **whether the principal key is readable
 | `YEA_PRINCIPAL_HOME` | Where the principal key lives, if not `YEA_HOME`. Point it at another user's or device's storage |
 | `YEA_TRUST` | Comma-separated principal keys that `yea examples` and `yea openapi` trust for writes (default: your own) |
 | `ANTHROPIC_API_KEY` | For `yea test-drive` (or an `ant auth login` profile) |
+| `YEA_DEBUG` | Set to `1` to print the stack trace with any error |
 | `YEA_TEST_DRIVE_REEXEC` | Set by `yea test-drive` on the `yea` it re-runs through npx to fetch the Anthropic SDK; that run won't re-run again |
 
 ## Try it
@@ -90,5 +121,5 @@ See the [test drive walkthrough](/guide/test-drive) for more.
 
 ## Bridges
 
-- `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. It's in `@yea-protocol/cli`, not the SDK.
+- `yea mcp [url …] [--tools generic|per-capability] [--budget <tokens>] [--name <agent name>]`: the MCP server your AI tools run, one tool per capability (a service past 25 capabilities gets two generic tools; `--tools` forces one mode). With no URLs it serves `yea services`. It's in `@yea-protocol/cli`, not the SDK.
 - `yea openapi <spec|url> [--base] [--header "K: V"] [--id] [--prefix] [--port] [--http] [--host] [--preset github|petstore]`: serve a REST API as a YEA service. See [Wrap any REST API](/guide/openapi).
