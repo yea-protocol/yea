@@ -2,10 +2,13 @@
  * Where the tokens of `yea mcp`'s tool definitions go, part by part, counted as bench/run.ts
  * counts them: each tool's name, description and inputSchema as JSON, then the instructions, in
  * o200k_base. A part's figure is what leaving it out saves; "names and JSON" is the rest, so the
- * rows sum to the total. `npm run bench:definitions` runs it (and `npm run bench` ends with it).
+ * rows sum to the total. It writes the table as the last section of bench/RESULTS.md, replacing
+ * the one there, so CI's diff of that file catches a definition that grew.
+ * `npm run bench:definitions` runs it, and `npm run bench` ends with it (after run.ts writes the
+ * rest of the file).
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client as McpClient } from '@modelcontextprotocol/client';
@@ -36,6 +39,9 @@ interface Part {
 }
 
 const JOB_FIELDS = ['goal', 'preview', 'proposal'];
+
+const RESULTS = new URL('./RESULTS.md', import.meta.url);
+const HEADING = "## Where YEA's definition tokens go";
 
 /** A capability tool's description ends in its service, in parentheses. */
 const SUFFIX = / \([^()]*\)$/;
@@ -141,7 +147,8 @@ function instructionParts(d: Defs): Part[] {
   const blank = lines.indexOf('');
   const header = lines.slice(0, blank === -1 ? lines.length : blank);
   const lineParts = header.map((line, i) => ({
-    label: `instructions: "${line.slice(0, 40)}…"`,
+    // Backticks dropped, so a cut can't leave a code span open in the table.
+    label: `instructions: "${line.replaceAll('`', '').slice(0, 40)}…"`,
     without: (e: Defs) => ({
       ...e,
       instructions: lines.filter((_, j) => j !== i).join('\n'),
@@ -171,15 +178,27 @@ function table(d: Defs): string {
   return [
     '| Part | Tokens |',
     '|---|---|',
-    ...rows.map(([label, n]) => `| ${label} | ${n} |`),
-    `| tool names and JSON | ${rest} |`,
-    `| **Total** | **${total}** |`,
+    ...rows.map(([label, n]) => `| ${label} | ${n.toLocaleString('en-US')} |`),
+    `| tool names and JSON | ${rest.toLocaleString('en-US')} |`,
+    `| **Total** | **${total.toLocaleString('en-US')}** |`,
   ].join('\n');
+}
+
+/** RESULTS.md with this section, last, in place of any earlier copy of it. */
+function withSection(results: string, body: string): string {
+  const at = results.indexOf(`\n${HEADING}\n`);
+  const before = (at === -1 ? results : results.slice(0, at)).trimEnd();
+
+  return `${before}\n\n${HEADING}\n\n${body}\n`;
 }
 
 const home = mkdtempSync(join(tmpdir(), 'yea-bench-'));
 
 process.env.YEA_HOME = home;
-console.log(table(await served()));
+
+const body = `What each part of the definitions above costs, with \`yea mcp\`'s defaults: a part's figure is what leaving it out saves, and the names and JSON around them are the rest. Regenerate with \`npm run bench:definitions\`.\n\n${table(await served())}`;
+
+console.log(body);
+writeFileSync(RESULTS, withSection(readFileSync(RESULTS, 'utf8'), body));
 rmSync(home, { recursive: true, force: true });
 process.exit(0);

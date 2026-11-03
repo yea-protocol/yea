@@ -79,7 +79,7 @@ mostly smaller, but the tool definitions `yea mcp` ships are about 1.5 times RES
 every turn re-reads them. We used to publish 32% fewer, measured on an older, smaller tool
 surface that `yea mcp` doesn't serve; [#297](https://github.com/yea-protocol/yea/issues/297)
 fixed the measurement (21% more), and [#300](https://github.com/yea-protocol/yea/issues/300)
-cut the definitions from 1,466 tokens to 1,130.
+cut the definitions from 1,466 tokens to 1,136.
 
 Then we ran real agents, and the numbers got humbler. In headless Claude Code, the same
 tasks cost about the same through YEA as through a REST MCP server: 3–15% more, with

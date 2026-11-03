@@ -13,7 +13,7 @@ import type { ToolSpec } from './types.js';
 const HEADER = `YEA acts for the user under a policy they signed.
 - Read-only tools never change anything. Destructive tools act: call one with what the user asked for (names and days are fine; no lookups needed). It commits at once if the user's grant allows it (a ✓ receipt); otherwise it returns proposals, and nothing has happened.
 - A proposal over the grant comes with a consent code: ask the user to run \`yea approve <code>\` where their principal key is, and pass the consent they paste back to yea_consent. Never split or restructure a purchase to get under a limit.
-- \`preview: true\` only shows proposals; \`proposal: "<id>"\` commits one, with the same arguments, if the grant allows it; \`goal\` is the user's words. Commit only what the user asked for.`;
+- \`preview: true\` only shows proposals (their ids can't be committed); \`proposal: "<id>"\` commits one, with the same arguments, if the grant allows it; \`goal\` is the user's words. Commit only what the user asked for.`;
 
 const NONE =
   'No YEA services are configured. Tell the user to run `npx @yea-protocol/cli add <url>` and restart.';

@@ -54,14 +54,14 @@ export const LIVE = {
  */
 export const PAYLOAD = {
   restMinified: 12902,
-  yea: 12613,
+  yea: 12667,
   /** YEA's saving against minified and against pretty-printed JSON, in percent. */
   savedVsMinified: 2,
   savedVsPretty: 17,
   /** The reschedule row's saving against REST's CRUD calls, and against one outcome-level endpoint. */
-  crudRescheduleSaving: 37,
-  outcomeEndpointSaving: -50,
+  crudRescheduleSaving: 36,
+  outcomeEndpointSaving: -51,
   /** Tool definitions in context every turn, in tokens. */
   restDefs: 761,
-  yeaDefs: 1130,
+  yeaDefs: 1136,
 } as const;

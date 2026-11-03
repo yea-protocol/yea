@@ -229,7 +229,7 @@ model reads. The human's taps are simulated in code. Excerpt from
 
 These numbers measure the protocol and the bridge (`yea mcp`). Servers built directly with `@yea-protocol/mcp` haven't been benchmarked.
 
-> **In live runs with a real model, YEA costs about the same as a REST-style MCP server (+3–15% per task, same success rate) while adding an enforced policy, previews and undo.** Its replies are mostly smaller than JSON, but the bridge's tool definitions are about 1.5 times a REST server's, so in a scripted benchmark it sends about the same in total: 2% fewer tokens, after [#300](https://github.com/yea-protocol/yea/issues/300) cut the definitions from 1,466 tokens to 1,130. When a model hands its goal straight to an intent, a reschedule takes 1 call instead of 3. We publish where it loses, too.
+> **In live runs with a real model, YEA costs about the same as a REST-style MCP server (+3–15% per task, same success rate) while adding an enforced policy, previews and undo.** Its replies are mostly smaller than JSON, but the bridge's tool definitions are about 1.5 times a REST server's, so in a scripted benchmark it sends about the same in total: 2% fewer tokens, after [#300](https://github.com/yea-protocol/yea/issues/300) cut the definitions from 1,466 tokens to 1,136. When a model hands its goal straight to an intent, a reschedule takes 1 call instead of 3. We publish where it loses, too.
 
 ### Live agents
 
@@ -263,17 +263,17 @@ The same tasks as a scripted token count (o200k), isolating what each protocol s
 
 | Task | Calls (REST → YEA) | Total input: REST minified JSON | REST pretty JSON | YEA | Saved vs minified | vs pretty |
 |---|---|---|---|---|---|---|
-| Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 2,414 | **37%** | 39% |
-| Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 2,414 | **-50%** | -48% |
-| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 3,986 | **-26%** | -10% |
-| Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 3,365 | **3%** | 26% |
-| Skim the menu (first 30 items: REST limit=30, YEA on a second bridge at --budget 800) | 1 → 1 | 2,467 | 3,027 | 2,848 | **-15%** | 6% |
-| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 12,613 | **2%** | 17% |
+| Reschedule a meeting (REST: search → free slots → update) | 3 → 1 | 3,807 | 3,962 | 2,426 | **36%** | 39% |
+| Reschedule a meeting (REST: one outcome-level endpoint) | 1 → 1 | 1,609 | 1,630 | 2,426 | **-51%** | -49% |
+| Find vegan meals < 700 kcal and order four | 2 → 2 | 3,176 | 3,638 | 4,004 | **-26%** | -10% |
+| Read the full 60-item menu | 1 → 1 | 3,452 | 4,552 | 3,377 | **2%** | 26% |
+| Skim the menu (first 30 items: REST limit=30, YEA on a second bridge at --budget 800) | 1 → 1 | 2,467 | 3,027 | 2,860 | **-16%** | 6% |
+| **All tasks** (CRUD reschedule row) | | 12,902 | 15,179 | 12,667 | **2%** | 17% |
 
-- **These numbers changed in [#297](https://github.com/yea-protocol/yea/issues/297) and [#300](https://github.com/yea-protocol/yea/issues/300).** The benchmark used to count `yea test-drive`'s 4 generic tools (687 tokens of definitions), a surface no `yea mcp` user gets, and published 32% fewer tokens than minified REST. Since #297 it measures the bridge `yea mcp` ships, with its default options: 12 tools and its instructions, then 1,466 tokens of definitions against REST's 761, which made YEA 21% more. #300 cut the bridge's wording (not what's counted) to 1,130 tokens, and YEA now sends 2% fewer. Its replies are smaller in four of five rows (1,095 tokens against 1,919 for the full menu); the definitions, re-read every turn, are still its cost.
-- Definitions count each tool's name, description and input schema, and results count the text a call returns. Counting all of `tools/list` (1,570 tokens) and `structuredContent` too, YEA sends 55% more than minified REST. [Details →](https://github.com/yea-protocol/yea/blob/main/bench/RESULTS.md)
+- **These numbers changed in [#297](https://github.com/yea-protocol/yea/issues/297) and [#300](https://github.com/yea-protocol/yea/issues/300).** The benchmark used to count `yea test-drive`'s 4 generic tools (687 tokens of definitions), a surface no `yea mcp` user gets, and published 32% fewer tokens than minified REST. Since #297 it measures the bridge `yea mcp` ships, with its default options: 12 tools and its instructions, then 1,466 tokens of definitions against REST's 761, which made YEA 21% more. #300 cut the bridge's wording (not what's counted) to 1,136 tokens, and YEA now sends 2% fewer. Its replies are smaller in four of five rows (1,095 tokens against 1,919 for the full menu); the definitions, re-read every turn, are still its cost.
+- Definitions count each tool's name, description and input schema, and results count the text a call returns. Counting all of `tools/list` (1,576 tokens) and `structuredContent` too, YEA sends 55% more than minified REST. [Details →](https://github.com/yea-protocol/yea/blob/main/bench/RESULTS.md)
 - Minified JSON is the fair baseline. Pretty-printed JSON is shown because many servers return it.
-- The reschedule row's saving is API design (an outcome-level intent). Against a REST server with an equivalent endpoint, YEA sends 50% more.
+- The reschedule row's saving is API design (an outcome-level intent). Against a REST server with an equivalent endpoint, YEA sends 51% more.
 - The skim row runs on a second bridge started with `--budget 800`: at the default budget the whole menu fits in one reply.
 - An early version of this benchmark had YEA *losing* on multi-step tasks. That led to [policy-gated auto-commit](https://github.com/yea-protocol/yea/blob/main/SPEC.md#431-policy-gated-auto-commit) and to hoisting shared attributes in Lens.
 

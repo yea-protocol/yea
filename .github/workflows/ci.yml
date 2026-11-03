@@ -23,7 +23,7 @@ jobs:
         run: cd ts && node scripts/vectors.mjs && git diff --exit-code ../conformance
       - name: demo and benchmark run
         if: matrix.node == 22
-        run: npm run demo && npm run bench
+        run: npm run demo && npm run bench && git diff --exit-code bench/RESULTS.md
   python:
     runs-on: ubuntu-latest
     strategy:
