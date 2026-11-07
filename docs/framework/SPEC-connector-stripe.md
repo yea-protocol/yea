@@ -373,7 +373,8 @@ What the build (#71) found, and where it chose the closest safe behaviour:
   included), and "now" only when the schedule has no later phase, since that phase would undo
   it, and no pause (#379). Otherwise the job is refused, saying why. Likewise "cancel at period
   end" through a schedule is offered only when its current phase is its last and ends at the
-  period end, it has no pause, and its `end_behavior` is `release`.
+  period end, and its `end_behavior` is `release`. A schedule with a pause refuses
+  `cancel_subscription` too (#379).
 - **Also refused:** a change to another currency (Stripe can't change a subscription's
   currency). "At renewal" isn't offered on a subscription with discounts (copying them into
   the new phase isn't confirmed) or with a pending cancellation (it ends at renewal).
@@ -494,18 +495,24 @@ After `stripe` 23.1 (#379):
 - **Version.** `stripe` 23.1 pins `2026-10-28.endive`. Stripe's endive changelog
   (docs.stripe.com/changelog/endive, checked 2026-11-07) says: "As the first version in the
   Endive release, `2026-09-30.endive` introduces both breaking changes and new features.
-  Subsequent Endive versions will include only additive changes." Every `2026-10-28.endive`
-  entry there is marked non-breaking. The only one that touches a call the connector makes is
-  a new error code, `subscription_update_trial_after_billing_cycle_anchor`, on subscription
-  updates and invoice previews. It fires only when a request sets `billing_cycle_anchor` earlier
-  than `trial_end`; the connector never sends `billing_cycle_anchor`, and would report the code
-  like any other Stripe error.
-- **Pause schedules.** The SDK now types a subscription schedule's `pause_schedules` as always
-  present. A pause is a pending change the plans don't show, so a schedule with any pause
-  counts as having changes pending: "cancel at period end" isn't offered (only "now" is), and
-  `change_plan` is refused with the same reason as for a later phase. That holds whatever the
-  pause's status, so a pause that has already ended refuses too; that is the safe side until
-  test mode shows how long Stripe keeps one on the schedule.
+  Subsequent Endive versions will include only additive changes." Every entry in its
+  `2026-10-28.endive` (GA) table is marked non-breaking; the breaking rows in the
+  `2026-10-28.preview` table are v2 money-management APIs the connector doesn't call. The only
+  GA entry that touches a call the connector makes is a new error code,
+  `subscription_update_trial_after_billing_cycle_anchor`, on subscription updates and invoice
+  previews. It fires only when a request sets `billing_cycle_anchor` earlier than `trial_end`;
+  the connector never sends `billing_cycle_anchor`, and would report the code like any other
+  Stripe error.
+- **Pause schedules.** `pause_schedules` has been on a subscription schedule since
+  `2026-09-30.endive` (`stripe` 23.0 typed it optional; 23.1 types it as always present), and
+  the connector ignored it until now: the gap was live under 23.0 too, and this move only made
+  it visible. A pause is a pending change the plans don't show, so a schedule with any pause
+  counts as having changes pending: `change_plan` and `cancel_subscription` are both refused
+  with the same reason `change_plan` gives for a later phase, "… has changes pending on
+  subscription schedule …; undo that change or edit the schedule in the Stripe dashboard
+  first". Cancelling isn't narrowed to "now" without a word, since "now" can't be undone. That
+  holds whatever the pause's status, so a pause that has already ended refuses too; that is
+  the safe side until test mode shows how long Stripe keeps one on the schedule.
 
 ## Decisions
 

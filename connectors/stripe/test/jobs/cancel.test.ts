@@ -249,16 +249,24 @@ describe('cancel_subscription plans', () => {
     expectOwnFreshKeys(s.stripe);
   });
 
-  it('on a schedule with a later phase, a pause scheduled, or already cancelling, only "now"', async () => {
+  it('on a schedule with a later phase, or already cancelling, only "now"', async () => {
     for (const s of [
       scheduled({ later: true }),
-      scheduled({ paused: true }),
       scheduled({ end_behavior: 'cancel' }),
     ]) {
       const plans = await plansOf(cancelJob(s.ctx), chen);
 
       expect(plans.map((p) => p.summary.includes(' now;'))).toEqual([true]);
     }
+  });
+
+  it('on a schedule with a pause scheduled, refuses, saying why, rather than offer only "now"', async () => {
+    const s = scheduled({ paused: true });
+
+    await expect(cancelJob(s.ctx).plan(chen)).rejects.toThrow(
+      'sub_chen has changes pending on subscription schedule sub_sched_theirs; undo that change or edit the schedule in the Stripe dashboard first',
+    );
+    expect(s.stripe.writes()).toEqual([]);
   });
 
   it('refuses a subscription with more than one item', async () => {

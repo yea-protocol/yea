@@ -217,7 +217,9 @@ billing interval or currency, inactive prices, customers with more than 100 subs
 (unless you name the `sub_` id), and "at renewal" on a subscription that already has a
 schedule, has discounts, or has any of automatic tax, custom invoice settings, billing
 thresholds, `on_behalf_of`, `transfer_data`, an application fee or pending invoice items
-(the schedule copy can't carry those yet).
+(the schedule copy can't carry those yet). On a subscription with a schedule, a pending pause
+refuses both jobs, and a later phase refuses `change_plan` and leaves `cancel_subscription`
+only "now": edit the schedule in the Stripe dashboard first.
 
 ## As a library
 

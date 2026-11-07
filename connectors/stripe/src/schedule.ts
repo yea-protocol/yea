@@ -31,15 +31,25 @@ function onlyCurrentPhase(
 }
 
 /**
- * Whether nothing on the schedule is pending: it's in its last phase, ending at `end`, and has
- * no pause. Any pause counts, whatever its status, so one we can't read fails closed.
+ * Whether the schedule has a pause, which no plan shows. Any pause counts, whatever its status,
+ * so one we can't read fails closed.
  */
+export const hasPause = (s: Stripe.SubscriptionSchedule) =>
+  s.pause_schedules.length > 0;
+
+/** Whether nothing on the schedule is pending: it's in its last phase, ending at `end`, unpaused. */
 export function nothingElsePending(
   s: Stripe.SubscriptionSchedule,
   end: number,
 ): boolean {
-  return onlyCurrentPhase(s, end) && s.pause_schedules.length === 0;
+  return onlyCurrentPhase(s, end) && !hasPause(s);
 }
+
+/** The refusal when a schedule has changes pending that a plan would leave out. */
+export const changesPending = (sub: string, s: Stripe.SubscriptionSchedule) =>
+  new Error(
+    `${sub} has changes pending on subscription schedule ${s.id}; undo that change or edit the schedule in the Stripe dashboard first`,
+  );
 
 /** The settings a phase carries that the new phase keeps too. */
 function billingOf(p: Phase) {

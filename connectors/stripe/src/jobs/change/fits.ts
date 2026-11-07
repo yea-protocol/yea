@@ -5,7 +5,12 @@
  */
 import { cancelling, idOf, period, type Stripe } from '../../api.js';
 import type { Ctx } from '../../context.js';
-import { getSchedule, nothingElsePending, uncopied } from '../../schedule.js';
+import {
+  changesPending,
+  getSchedule,
+  nothingElsePending,
+  uncopied,
+} from '../../schedule.js';
 
 const discounted = (sub: Stripe.Subscription, item: Stripe.SubscriptionItem) =>
   sub.discounts.length > 0 || item.discounts.length > 0;
@@ -33,9 +38,7 @@ export async function whatFits(
   const s = await getSchedule(ctx, idOf(sub.schedule));
 
   if (!nothingElsePending(s, period(sub).end)) {
-    throw new Error(
-      `${sub.id} has changes pending on subscription schedule ${s.id}; undo that change or edit the schedule in the Stripe dashboard first`,
-    );
+    throw changesPending(sub.id, s);
   }
 
   return { renewal: false, now: true };
