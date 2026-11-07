@@ -46,7 +46,7 @@ describe('the Stripe client', () => {
       'POST',
       'DELETE',
     ]);
-    expect(STRIPE_VERSION).toBe('2026-09-30.endive');
+    expect(STRIPE_VERSION).toBe('2026-10-28.endive');
 
     for (const c of f.calls) {
       expect(c.version).toBe(STRIPE_VERSION);

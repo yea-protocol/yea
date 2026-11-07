@@ -91,8 +91,8 @@ wants a real API rather than a demo.
 - **Refused in v0, with a clear reason:** subscriptions with more than one item, and price
   changes that alter the billing interval (Stripe then resets the billing date and charges
   regardless).
-- **API version.** Every request sends `Stripe-Version: 2026-09-30.endive`, the version the
-  connector is tested against and the one `stripe` 23.0 pins. The connector passes it to the SDK
+- **API version.** Every request sends `Stripe-Version: 2026-10-28.endive`, the version the
+  connector is tested against and the one `stripe` 23.1 pins. The connector passes it to the SDK
   as `apiVersion`, typed as the SDK's `LatestApiVersion`, so an SDK update that moves to another
   version fails the build instead of changing what's sent. Subscription periods are read from
   `items.data[].current_period_end`, where Stripe has kept them since `2025-03-31.basil`.
@@ -371,9 +371,9 @@ What the build (#71) found, and where it chose the closest safe behaviour:
   a period end read from one item could be wrong for the others.
 - **`change_plan` on a scheduled subscription:** never "at renewal" (any schedule, ours
   included), and "now" only when the schedule has no later phase, since that phase would undo
-  it. Otherwise the job is refused, saying why. Likewise "cancel at period end" through a
-  schedule is offered only when its current phase is its last and ends at the period end, and
-  its `end_behavior` is `release`.
+  it, and no pause (#379). Otherwise the job is refused, saying why. Likewise "cancel at period
+  end" through a schedule is offered only when its current phase is its last and ends at the
+  period end, it has no pause, and its `end_behavior` is `release`.
 - **Also refused:** a change to another currency (Stripe can't change a subscription's
   currency). "At renewal" isn't offered on a subscription with discounts (copying them into
   the new phase isn't confirmed) or with a pending cancellation (it ends at renewal).
@@ -488,6 +488,24 @@ After `stripe` 23 (#264):
 - **A cut-off answer** (a response that breaks off partway through its body) is now a
   `StripeConnectionError`, not a `StripeAPIError`. It's retried with the same idempotency key,
   then reported as "no answer"; on a write it still may have happened, as before.
+
+After `stripe` 23.1 (#379):
+
+- **Version.** `stripe` 23.1 pins `2026-10-28.endive`. Stripe's endive changelog
+  (docs.stripe.com/changelog/endive, checked 2026-11-07) says: "As the first version in the
+  Endive release, `2026-09-30.endive` introduces both breaking changes and new features.
+  Subsequent Endive versions will include only additive changes." Every `2026-10-28.endive`
+  entry there is marked non-breaking. The only one that touches a call the connector makes is
+  a new error code, `subscription_update_trial_after_billing_cycle_anchor`, on subscription
+  updates and invoice previews. It fires only when a request sets `billing_cycle_anchor` earlier
+  than `trial_end`; the connector never sends `billing_cycle_anchor`, and would report the code
+  like any other Stripe error.
+- **Pause schedules.** The SDK now types a subscription schedule's `pause_schedules` as always
+  present. A pause is a pending change the plans don't show, so a schedule with any pause
+  counts as having changes pending: "cancel at period end" isn't offered (only "now" is), and
+  `change_plan` is refused with the same reason as for a later phase. That holds whatever the
+  pause's status, so a pause that has already ended refuses too; that is the safe side until
+  test mode shows how long Stripe keeps one on the schedule.
 
 ## Decisions
 

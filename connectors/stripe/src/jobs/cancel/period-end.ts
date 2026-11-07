@@ -6,7 +6,7 @@
 import { type Effect, update } from '@yea-protocol/sdk';
 import { cancelling, period, type Stripe } from '../../api.js';
 import { type Ctx, day } from '../../context.js';
-import { onlyCurrentPhase } from '../../schedule.js';
+import { nothingElsePending } from '../../schedule.js';
 
 /** What at-period-end changes, and the write that changes it. */
 export interface PeriodEnd {
@@ -29,7 +29,7 @@ export function canEndAtPeriodEnd(
   return (
     !sched ||
     (sched.end_behavior === 'release' &&
-      onlyCurrentPhase(sched, period(sub).end))
+      nothingElsePending(sched, period(sub).end))
   );
 }
 

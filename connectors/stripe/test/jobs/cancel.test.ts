@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { cancelJob } from '../../src/jobs/cancel.js';
-import { price, type Schedule, subscription } from '../fake-stripe.js';
+import { pauseAt, price, type Schedule, subscription } from '../fake-stripe.js';
 import { D, expectOwnFreshKeys, NOW, plansOf, setup } from '../helpers.js';
 
 const chen = { customer: 'chen@wei.studio' };
 
-/** A schedule on sub_chen, in its last phase, ending at the period end, unless `later` adds one. */
-function scheduled(o: { later?: boolean; end_behavior?: string } = {}) {
+/**
+ * A schedule on sub_chen, in its last phase, ending at the period end, unless `later` adds one
+ * or `paused` schedules a pause.
+ */
+function scheduled(
+  o: { later?: boolean; paused?: boolean; end_behavior?: string } = {},
+) {
   return setup({
     state: (b) => {
       const sub = b.subs[0];
@@ -35,6 +40,7 @@ function scheduled(o: { later?: boolean; end_behavior?: string } = {}) {
               },
             ]
           : [phase],
+        pause_schedules: o.paused ? [pauseAt(phase.end_date - 5 * D)] : [],
       };
 
       return { subs: [{ ...sub, schedule: s.id }], schedules: [s] };
@@ -243,9 +249,10 @@ describe('cancel_subscription plans', () => {
     expectOwnFreshKeys(s.stripe);
   });
 
-  it('on a schedule with a later phase, or already cancelling, only "now"', async () => {
+  it('on a schedule with a later phase, a pause scheduled, or already cancelling, only "now"', async () => {
     for (const s of [
       scheduled({ later: true }),
+      scheduled({ paused: true }),
       scheduled({ end_behavior: 'cancel' }),
     ]) {
       const plans = await plansOf(cancelJob(s.ctx), chen);

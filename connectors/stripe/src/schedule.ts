@@ -15,8 +15,8 @@ const ids = (rs: { id: string }[] | null | undefined) => (rs ?? []).map(idOf);
 export const getSchedule = (ctx: Ctx, id: string) =>
   ctx.stripe.read((s) => s.subscriptionSchedules.retrieve(id));
 
-/** Whether the schedule is in its last phase, ending at `end`: nothing else is pending. */
-export function onlyCurrentPhase(
+/** Whether the schedule is in its last phase, ending at `end`. */
+function onlyCurrentPhase(
   s: Stripe.SubscriptionSchedule,
   end: number,
 ): boolean {
@@ -28,6 +28,17 @@ export function onlyCurrentPhase(
     last.start_date === s.current_phase.start_date &&
     last.end_date === end
   );
+}
+
+/**
+ * Whether nothing on the schedule is pending: it's in its last phase, ending at `end`, and has
+ * no pause. Any pause counts, whatever its status, so one we can't read fails closed.
+ */
+export function nothingElsePending(
+  s: Stripe.SubscriptionSchedule,
+  end: number,
+): boolean {
+  return onlyCurrentPhase(s, end) && s.pause_schedules.length === 0;
 }
 
 /** The settings a phase carries that the new phase keeps too. */

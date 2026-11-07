@@ -5,15 +5,15 @@
  */
 import { cancelling, idOf, period, type Stripe } from '../../api.js';
 import type { Ctx } from '../../context.js';
-import { getSchedule, onlyCurrentPhase, uncopied } from '../../schedule.js';
+import { getSchedule, nothingElsePending, uncopied } from '../../schedule.js';
 
 const discounted = (sub: Stripe.Subscription, item: Stripe.SubscriptionItem) =>
   sub.discounts.length > 0 || item.discounts.length > 0;
 
 /**
  * Which plans a subscription can have. With a schedule: never "at renewal" (releasing would drop
- * phases we didn't make), and "now" only when nothing else is pending, since a later phase
- * would undo it.
+ * phases we didn't make), and "now" only when nothing else is pending: a later phase would undo
+ * it, and the plan wouldn't show a pause.
  */
 export async function whatFits(
   ctx: Ctx,
@@ -32,7 +32,7 @@ export async function whatFits(
 
   const s = await getSchedule(ctx, idOf(sub.schedule));
 
-  if (!onlyCurrentPhase(s, period(sub).end)) {
+  if (!nothingElsePending(s, period(sub).end)) {
     throw new Error(
       `${sub.id} has changes pending on subscription schedule ${s.id}; undo that change or edit the schedule in the Stripe dashboard first`,
     );
