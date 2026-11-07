@@ -1472,7 +1472,7 @@ const replies = [
     }),
   ],
   [
-    'proposals: an undo window that is not a positive integer is never',
+    'proposals: an undo window that is not an integer from 1 to 2^52 is never',
     r({
       kind: 'PROPOSALS',
       proposals: [
@@ -1481,6 +1481,9 @@ const replies = [
         { ...baseP, id: 'p_3', undo: { window: '3600' } },
         { ...baseP, id: 'p_4', undo: { window: 9007199254740992 } },
         { ...baseP, id: 'p_5', undo: { window: 1 } },
+        { ...baseP, id: 'p_6', undo: { window: null } },
+        { ...baseP, id: 'p_7', undo: { window: 2 ** 52 + 1 } },
+        { ...baseP, id: 'p_8', undo: { window: 2 ** 52 } },
       ],
     }),
   ],

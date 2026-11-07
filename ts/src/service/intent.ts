@@ -136,11 +136,11 @@ export class IntentHandler {
 }
 
 /**
- * A proposal's `undo` (SPEC §5.1): with a `revert`, the plan's window, a day when it sets none.
- * A window that isn't a positive integer can't be used, so the proposal is irreversible.
+ * A proposal's `undo` (SPEC §5.1): with a `revert`, the plan's window, a day when it leaves it
+ * out. A value that isn't an undo window, `null` included, makes the proposal irreversible.
  */
 function undoOf(plan: Plan): Proposal['undo'] {
-  const window = plan.undoWindow ?? DAY;
+  const window = plan.undoWindow === undefined ? DAY : plan.undoWindow;
 
   return plan.revert && isUndoWindow(window) ? { window } : null;
 }

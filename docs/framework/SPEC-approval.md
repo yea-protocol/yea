@@ -120,10 +120,10 @@ planHash = b64url(sha256(canonical({ tool, input, summary, effects, uses, risk, 
   than 32 levels deep (that object being the first) gets no plan hash and fails closed, and
   `yea approve` refuses a consent code carrying one: the form would cut part of what the person
   approves (SPEC.md §6.6, §9.1).
-- A plan is **undoable** if and only if its `undoWindow` is a positive safe integer (1 to
-  2^53−1 seconds) and its tool has `revert` (§7). Any other `undoWindow` (zero, negative, a
-  fraction, a string, anything that isn't a number) leaves the plan not undoable, as having no
-  window does.
+- A plan is **undoable** if and only if its `undoWindow` is a positive integer of at most 2^52
+  seconds (so a commit time plus it is still a safe integer, SPEC.md §5.1) and its tool has
+  `revert` (§7). Any other `undoWindow` (zero, negative, a fraction, a larger number, a string,
+  `null`, anything that isn't a number) leaves the plan not undoable, as having no window does.
 - The preimage carries `undoWindow` only when the plan is undoable, so a plan that isn't hashes
   as if it had no window. Everything that shows a plan (the form, the MCP results and
   `yea approve`) reads its undo from that one field: the window as a duration when it is there

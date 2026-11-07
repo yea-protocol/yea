@@ -43,9 +43,10 @@ class Plan:
     expires_in: int | None = None  # seconds; default is the service's proposal_ttl
     data: Any = _UNSET
     revert: Callable[[CommitCtx], Any] | None = None  # makes the proposal undoable
-    # Seconds, with revert: a day if left out. It must be a positive integer; any other value, zero
-    # included, makes the proposal irreversible (undo: null).
-    undo_window: int | None = None
+    # Seconds, with revert: a day if left out. It must be an undo window (is_undo_window: a positive
+    # integer of at most 2^52); any other value, zero and None included, makes the proposal
+    # irreversible (undo: null).
+    undo_window: int | None = _UNSET
 
 
 @dataclass

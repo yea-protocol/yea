@@ -7,6 +7,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   clip as clipText,
+  isUndoWindow,
   oneLine,
   type Proposal,
   printable,
@@ -38,5 +39,15 @@ export function replyResult(
   };
 }
 
-/** A proposal as data for `structuredContent`: never its `data`, which may be large. */
-export const proposalView = ({ data: _d, ...p }: Proposal) => oneLine(p) as Obj;
+/**
+ * A proposal as data for `structuredContent`: never its `data`, which may be large, and its
+ * `undo` as the Lens reads it, `null` unless its `window` is an undo window (SPEC §5.1).
+ */
+export function proposalView({ data: _d, ...p }: Proposal): Obj {
+  const window = p.undo?.window;
+
+  return oneLine({
+    ...p,
+    undo: isUndoWindow(window) ? { window } : null,
+  }) as Obj;
+}

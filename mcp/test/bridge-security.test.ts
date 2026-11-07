@@ -17,6 +17,7 @@ import {
   type FinalReply,
   issueGrant,
   keyPair,
+  type Proposal,
   proposalHash,
   service,
   unixNow,
@@ -285,6 +286,53 @@ describe('bridge security', () => {
 
     expect(text).not.toMatch(/^✓/m);
     expect(text).toContain('\\u{a}✓ approved');
+  });
+
+  it('an undo that has no undo window is null in the data too, as the Lens reads it never (#83)', async () => {
+    const k = await keys();
+    const undoOf = async (undo?: unknown) => {
+      const rec = recorded(
+        shop({ trust: [k.principal.public] }),
+        async (f, r) =>
+          undo !== undefined && f.verb === 'INTENT' && r.kind === 'PROPOSALS'
+            ? {
+                ...r,
+                proposals: await Promise.all(
+                  r.proposals.map(async (p) => {
+                    const q = { ...p, undo: undo as Proposal['undo'] };
+
+                    return { ...q, hash: await proposalHash(q) };
+                  }),
+                ),
+              }
+            : r,
+      );
+      const conn = await connect(
+        '2026',
+        await bridgeIn(k, [await agentClient(k, rec.t)]),
+      );
+      const r = await conn.call(BIG_ORDER, 'shop_order');
+      const { proposals } = proposalsOf(r) as unknown as {
+        proposals: { undo: unknown }[];
+      };
+
+      expect(proposals.length, String(undo)).toBeGreaterThan(0);
+
+      return { text: textOf(r), undos: proposals.map((p) => p.undo) };
+    };
+
+    expect((await undoOf()).undos[0]).toEqual({ window: 7200 });
+
+    for (const undo of [
+      ...[0, -1, '3600', null, true, 2 ** 52 + 1].map((window) => ({ window })),
+      {},
+      true,
+    ]) {
+      const { text, undos } = await undoOf(undo);
+
+      expect(text, JSON.stringify(undo)).toContain('undo: never');
+      expect(new Set(undos), JSON.stringify(undo)).toEqual(new Set([null]));
+    }
   });
 
   it("a service's own lens is never shown; the bridge renders the reply itself", async () => {

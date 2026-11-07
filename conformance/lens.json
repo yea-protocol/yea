@@ -1205,7 +1205,7 @@
     "lens": "6 proposals — risk: low:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never · expires: 1.5\n[p_2] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never · expires: tomorrow\n[p_3] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never · expires: -1\n[p_4] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never · expires: 10000000000000\n[p_5] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: 1h · expires: true\n[p_6] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: 1h · expires: -"
   },
   {
-    "name": "proposals: an undo window that is not a positive integer is never",
+    "name": "proposals: an undo window that is not an integer from 1 to 2^52 is never",
     "type": "reply",
     "input": {
       "yea": 1,
@@ -1332,10 +1332,82 @@
             "window": 1
           },
           "expires": 1790000600
+        },
+        {
+          "id": "p_6",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": null
+          },
+          "expires": 1790000600
+        },
+        {
+          "id": "p_7",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 4503599627370497
+          },
+          "expires": 1790000600
+        },
+        {
+          "id": "p_8",
+          "capability": "calendar.reschedule",
+          "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+          "effects": [
+            {
+              "op": "update",
+              "target": "event/e42",
+              "field": "start",
+              "from": "2026-09-22T14:00:00Z",
+              "to": "2026-09-24T15:00:00Z"
+            },
+            {
+              "op": "send",
+              "target": "ana@example.com",
+              "detail": "update notification"
+            }
+          ],
+          "risk": "low",
+          "undo": {
+            "window": 4503599627370496
+          },
+          "expires": 1790000600
         }
       ]
     },
-    "lens": "5 proposals — risk: low · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_2] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_3] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_4] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_5] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: 1s"
+    "lens": "8 proposals — risk: low · expires: 2026-09-21T14:23:20Z:\n[p_1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_2] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_3] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_4] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_5] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: 1s\n[p_6] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_7] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: never\n[p_8] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 2026-09-22T14:00:00Z → 2026-09-24T15:00:00Z\n  > send ana@example.com — update notification\n  undo: 4503599627370496s"
   },
   {
     "name": "receipt: malformed undo",

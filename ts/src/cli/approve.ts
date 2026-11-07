@@ -5,7 +5,6 @@
 import { createInterface } from 'node:readline/promises';
 import { approveConsentCode } from '../approve.js';
 import {
-  type JobConsent,
   phraseMatches,
   planLines,
   readJobConsent,
@@ -184,4 +183,3 @@ async function orRefuse<T>(f: () => Promise<T>): Promise<T> {
     return die(`✗ ${printable((e as Error).message)}: refusing`);
   }
 }
-

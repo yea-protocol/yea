@@ -319,6 +319,90 @@
       "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
     },
     {
+      "name": "nullWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": null
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "tooLongWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 4503599627370497
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "longestWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 4503599627370496
+      },
+      "risk": "low",
+      "undoable": true,
+      "planHash": "uiIHeuFA8ko1lNeu3eQoSIILnoLVsbsaSWRArdEoiTc"
+    },
+    {
       "name": "a non-integer input fails closed",
       "tool": {
         "name": "refund",

@@ -5308,11 +5308,22 @@ describe('an INTENT no grant authorized (#287)', async () => {
   });
 });
 
-// #83: only a positive integer is an undo window. A plan or proposal with any other window,
-// zero included, can't be undone, so it never runs or commits on its own and reads `never`.
+// #83: only an integer from 1 to 2^52 is an undo window. A plan or proposal with any other
+// window, zero and null included, can't be undone, so it never runs or commits on its own and
+// reads `never`.
 describe('an undo window is a positive integer, or there is none (#83)', async () => {
   const server = await P.keyPair();
-  const notWindows = [0, -1, 1.5, '3600', Number.NaN, 2 ** 53, true];
+  const notWindows = [
+    0,
+    -1,
+    1.5,
+    '3600',
+    Number.NaN,
+    2 ** 52 + 1,
+    2 ** 53,
+    true,
+    null,
+  ];
   const move = {
     summary: 'Move standup',
     effects: [P.update('event/e1', 'start', '14:00', '15:00')],
@@ -5414,34 +5425,57 @@ describe('an undo window is a positive integer, or there is none (#83)', async (
     }
   });
 
+  /** An auto INTENT to a service whose one plan has `revert` and this undo window. */
+  const autoMove = async (undoWindow: unknown) => {
+    const apply = vi.fn(() => null);
+    const svc = P.service({
+      id: 'cal',
+      name: 'Cal',
+      summary: 'cal',
+      trust: [principal.public],
+    }).intent('cal.move', {
+      summary: 'move',
+      plan: () => ({
+        summary: 'move it',
+        effects: [P.update('event/1', 'start', 'a', 'b')],
+        undoWindow: undoWindow as number,
+        apply,
+        revert: () => null,
+      }),
+    });
+    const r = await (await client(svc, agent, principal)).intent(
+      'cal.move',
+      {},
+      { auto: true },
+    );
+
+    return { r, apply };
+  };
+
   it('a service sends undo: null for any other window, and never auto-commits it', async () => {
     for (const w of notWindows) {
-      const apply = vi.fn(() => null);
-      const svc = P.service({
-        id: 'cal',
-        name: 'Cal',
-        summary: 'cal',
-        trust: [principal.public],
-      }).intent('cal.move', {
-        summary: 'move',
-        plan: () => ({
-          summary: 'move it',
-          effects: [P.update('event/1', 'start', 'a', 'b')],
-          undoWindow: w as number,
-          apply,
-          revert: () => null,
-        }),
-      });
-      const r = await (await client(svc, agent, principal)).intent(
-        'cal.move',
-        {},
-        { auto: true },
-      );
+      const { r, apply } = await autoMove(w);
 
       expect(r.kind === 'PROPOSALS' && r.proposals[0].undo, String(w)).toBe(
         null,
       );
       expect(apply, String(w)).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a window of up to 2^52 auto-commits, and its receipt's until is a safe integer", async () => {
+    for (const w of [undefined, 60, 2 ** 52]) {
+      const { r, apply } = await autoMove(w);
+
+      if (r.kind !== 'RECEIPT') {
+        throw new Error(`${String(w)}: ${r.lens}`);
+      }
+
+      const until = r.receipt.undo?.until;
+
+      expect(apply, String(w)).toHaveBeenCalledOnce();
+      expect(until, String(w)).toBe(r.receipt.at + (w ?? 86400));
+      expect(Number.isSafeInteger(until), String(w)).toBe(true);
     }
   });
 

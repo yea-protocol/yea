@@ -43,9 +43,9 @@ async def on_intent(state: ServiceState, req: VerifiedIntent, emit: Emit) -> dic
 
 
 def _undo_of(plan: Plan) -> dict | None:
-    """A proposal's ``undo`` (SPEC §5.1): with a ``revert``, the plan's window, a day when it sets
-    none. A window that isn't a positive integer can't be used, so the proposal is irreversible."""
-    window = undo_window_of(DAY if plan.undo_window is None else plan.undo_window)
+    """A proposal's ``undo`` (SPEC §5.1): with a ``revert``, the plan's window, a day when it leaves
+    it out. A value that isn't an undo window, None included, makes the proposal irreversible."""
+    window = undo_window_of(DAY if plan.undo_window is _UNSET else plan.undo_window)
     return {"window": window} if plan.revert and window is not None else None
 
 

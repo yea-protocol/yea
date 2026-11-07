@@ -237,12 +237,23 @@ plans.emptyUses = {
   plan: { ...plans.move.plan, uses: {} },
 };
 
-// Only a positive integer is an undo window (§1, #83): with any other, the plan is not undoable
-// and hashes as if it had none, as does a window on a tool without revert.
+// Only an integer from 1 to 2^52 is an undo window (§1, #83): with any other, the plan is not
+// undoable and hashes as if it had none, as does a window on a tool without revert.
 const { undoWindow: _w, ...noWindow } = plans.move.plan;
-const notWindows = { zero: 0, negative: -1, fraction: 1.5, string: '3600' };
+const notWindows = {
+  zero: 0,
+  negative: -1,
+  fraction: 1.5,
+  string: '3600',
+  null: null,
+  tooLong: 2 ** 52 + 1,
+};
 
 plans.noWindow = { tool: plans.move.tool, plan: noWindow };
+plans.longestWindow = {
+  tool: plans.move.tool,
+  plan: { ...noWindow, undoWindow: 2 ** 52 },
+};
 
 for (const [name, undoWindow] of Object.entries(notWindows)) {
   plans[`${name}Window`] = {
@@ -260,6 +271,7 @@ const hashKeys = [
   'noRevert',
   'noWindow',
   ...Object.keys(notWindows).map((name) => `${name}Window`),
+  'longestWindow',
 ];
 
 for (const key of hashKeys) {
@@ -318,6 +330,12 @@ for (const name of Object.keys(notWindows)) {
     hashCase('noWindow').planHash,
   );
 }
+
+must(
+  'the longest window, 2^52, is undoable',
+  hashCase('longestWindow').undoable,
+  true,
+);
 
 const { undoWindow: _nw, ...noRevertNoWindow } = plans.noRevert.plan;
 const [revertless] = await P.hashPlans(plans.noRevert.tool, input, [

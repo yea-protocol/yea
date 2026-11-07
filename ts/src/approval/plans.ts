@@ -17,8 +17,8 @@ export interface JobPlan {
   uses?: Uses;
   risk?: Risk;
   /**
-   * Seconds the job can be undone for: a positive integer, and the tool needs `revert` too.
-   * Anything else, zero included, leaves the plan not undoable.
+   * Seconds the job can be undone for: a positive integer of at most 2^52 (`isUndoWindow`), and
+   * the tool needs `revert` too. Anything else, zero included, leaves the plan not undoable.
    */
   undoWindow?: number;
   data?: unknown;
@@ -136,7 +136,8 @@ export const planHashOf = (preimage: Record<string, unknown>) =>
 
 /**
  * Hash each plan and resolve its risk (plan, else the tool's, else `medium`). A plan is undoable
- * if and only if its `undoWindow` is a positive integer and the tool has `revert` (§1, §7).
+ * if and only if its `undoWindow` is an undo window (`isUndoWindow`) and the tool has `revert`
+ * (§1, §7).
  */
 export function hashPlans(
   tool: { name: string; risk?: Risk; revert?: unknown },

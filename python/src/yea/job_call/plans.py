@@ -16,8 +16,8 @@ from .outcome import JobCall, JobTool, Outcome
 
 def hash_plans(tool: JobTool, input: dict, plans: list[Any]) -> list[HashedPlan]:
     """Hash each plan and resolve its risk (plan, else the tool's, else ``medium``). A plan is
-    undoable if and only if its ``undo_window`` is a positive integer and the tool has ``revert``
-    (§1, §7). An unknown risk, or a plan that isn't a ``yea.Plan``, refuses the call."""
+    undoable if and only if its ``undo_window`` is an undo window (``is_undo_window``) and the tool
+    has ``revert`` (§1, §7). An unknown risk, or a plan that isn't a ``yea.Plan``, refuses the call."""
     out = []
     for p in plans:
         if not isinstance(p, Plan):

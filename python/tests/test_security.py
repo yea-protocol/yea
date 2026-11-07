@@ -14,7 +14,7 @@ from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
     lens, local, serve_http, verify_grant,
 )
-from yea._json import b64url_encode
+from yea._json import MAX_SAFE_INT, b64url_encode
 from yea.approval import Policy, Tightening, load_policy, reserve_all
 from yea.errors import YeaError
 from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
@@ -829,10 +829,11 @@ def test_an_intent_a_grant_authorized_still_auto_commits_under_its_principal():
     run(go())
 
 
-# #83: only a positive integer is an undo window. A plan or proposal with any other window, zero
-# included, can't be undone, so it never runs or commits on its own and reads ``never``. Mirrors
-# ts/test/security.test.ts, "an undo window is a positive integer, or there is none".
-NOT_WINDOWS = (0, -1, 1.5, "3600", float("nan"), 2**53, True)
+# #83: only an integer from 1 to 2^52 is an undo window. A plan or proposal with any other window,
+# zero and None included, can't be undone, so it never runs or commits on its own and reads
+# ``never``. Mirrors ts/test/security.test.ts, "an undo window is a positive integer, or there is
+# none".
+NOT_WINDOWS = (0, -1, 1.5, "3600", float("nan"), 2**52 + 1, 2**53, True, None)
 SERVER = key_from_seed(bytes([5]) * 32)
 
 
@@ -859,32 +860,51 @@ def test_83_a_job_plan_with_any_other_window_is_not_undoable_so_the_policy_asks(
 
 
 def test_83_its_plan_hash_is_the_same_as_with_no_window_as_is_a_window_on_a_tool_without_revert():
-    def hashed(w, revert=True):
+    def hashed(revert=True, **window):
         [hp] = hash_plans(JobTool("reschedule", revert=(lambda _: None) if revert else None), {},
-                          [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=w)])
+                          [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", **window)])
         return hp
 
-    none = hashed(None).plan_hash
+    none = hashed().plan_hash
     for w in NOT_WINDOWS:
-        assert (hashed(w).undoable, hashed(w).plan_hash) == (False, none), w
-    assert (hashed(60, revert=False).undoable, hashed(60, revert=False).plan_hash) == (False, none)
-    assert hashed(60).plan_hash != none
+        assert (hashed(undo_window=w).undoable, hashed(undo_window=w).plan_hash) == (False, none), w
+    no_revert = hashed(revert=False, undo_window=60)
+    assert (no_revert.undoable, no_revert.plan_hash) == (False, none)
+    assert hashed(undo_window=60).plan_hash != none
+
+
+async def _auto_move(**window):
+    """An auto INTENT to a service whose one plan has ``revert`` and this undo window: the reply, and
+    how many times the plan was applied."""
+    applied = []
+    svc = Service("cal", "Cal", "cal", trust=[PRINCIPAL.public])
+
+    @svc.intent("cal.move", "move")
+    def move(ctx):
+        return Plan("move it", [create("event/1")], apply=lambda c: applied.append(1), revert=lambda c: None,
+                    **window)
+
+    return await client(svc).intent("cal.move", {}, auto=True), len(applied)
 
 
 def test_83_a_service_sends_undo_null_for_any_other_window_and_never_auto_commits_it():
     async def go():
         for w in NOT_WINDOWS:
-            applied = []
-            svc = Service("cal", "Cal", "cal", trust=[PRINCIPAL.public])
-
-            @svc.intent("cal.move", "move")
-            def move(ctx, w=w):
-                return Plan("move it", [create("event/1")], apply=lambda c: applied.append(1), undo_window=w,
-                            revert=lambda c: None)
-
-            r = await client(svc).intent("cal.move", {}, auto=True)
+            r, applied = await _auto_move(undo_window=w)
             assert r.kind == "PROPOSALS" and r.proposals[0]["undo"] is None, (w, r.lens)
-            assert applied == [], w
+            assert applied == 0, w
+
+    run(go())
+
+
+def test_83_a_window_of_up_to_2_52_auto_commits_and_its_receipts_until_is_a_safe_integer():
+    async def go():
+        for window, seconds in (({}, 86400), ({"undo_window": 60}, 60), ({"undo_window": 2**52}, 2**52)):
+            r, applied = await _auto_move(**window)
+            assert r.kind == "RECEIPT", (window, r.lens)
+            assert applied == 1, window
+            until = r.receipt["undo"]["until"]
+            assert until == r.receipt["at"] + seconds and until <= MAX_SAFE_INT, window
 
     run(go())
 
