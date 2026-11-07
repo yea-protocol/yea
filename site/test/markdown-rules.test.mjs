@@ -7,12 +7,11 @@
  * approval claim on a page adopters read links to what an approval proves (#337).
  */
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { adopterPages, ROOT, units } from './adopter-pages.mjs';
 
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 /**
  * A claim that the model can't approve, that the person is asked, or approves in their client, or
  * that nothing goes back through the chat (#325's short ids). Also what #324 found in a draft
@@ -142,21 +141,6 @@ test('other languages, plaintext and no-lens fences stay plain', {
   }
 });
 
-/**
- * The units a claim must carry its own link in: paragraphs, then each table row, each list item
- * and each block element (`<p>`, `<li>`, …) on its own, so one link can't excuse a whole table,
- * list or template.
- */
-function units(text) {
-  return text
-    .split(/\n\s*\n/)
-    .flatMap((p) =>
-      p.split(
-        /\n(?=\s*\|)|\n(?=\s*(?:[-*+]|\d+\.)\s)|(?=<(?:p|li|h[1-6]|td|th|dd|blockquote)\b)/,
-      ),
-    );
-}
-
 /** The units of `text` that make an approval claim without linking to what it proves. */
 function bareClaims(text) {
   return units(text).filter((p) => {
@@ -165,30 +149,6 @@ function bareClaims(text) {
 
     return CLAIM.test(flat) && !PROOF.test(flat);
   });
-}
-
-/** Every `README.md` one level under `dir`, such as each connector's npm page. */
-const readmesUnder = (dir) =>
-  readdirSync(join(ROOT, dir), { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => join(ROOT, dir, d.name, 'README.md'))
-    .filter((f) => existsSync(f));
-
-/** The pages adopters read: the READMEs, the site's pages and its landing components. */
-function adopterPages() {
-  const site = join(ROOT, 'site');
-  const pages = readdirSync(site, { recursive: true, encoding: 'utf8' })
-    .filter((f) => !/(^|\/)(node_modules|dist|cache)\//.test(f))
-    .filter((f) => f.endsWith('.md') || /^\.vitepress\/theme\/.*\.vue$/.test(f))
-    .map((f) => join(site, f));
-
-  return [
-    join(ROOT, 'README.md'),
-    join(ROOT, 'cli', 'README.md'),
-    join(ROOT, 'python', 'mcp', 'README.md'),
-    ...readmesUnder('connectors'),
-    ...pages,
-  ];
 }
 
 test('an approval claim without a link to what it proves is caught', () => {

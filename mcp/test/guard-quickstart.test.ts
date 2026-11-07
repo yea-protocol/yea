@@ -2,11 +2,18 @@
  * The README's quickstart (examples/guard-quickstart.ts, shown there whole) does what the README
  * says: `send_email` shows the server's plan and asks for the recipient, a wrong phrase asks
  * again, and the right one sends. Three wrong phrases, or a client that can't show forms, send
- * nothing. The handler logs to stderr, since stdout is the MCP transport.
+ * nothing. The handler logs to stderr, since stdout is the MCP transport. The file also runs as
+ * its own process, as Claude Code starts it: the lines that start it are in the README too.
  */
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer } from '../../examples/guard-quickstart.js';
-import { connect, type Kind, textOf, world } from './helpers.js';
+import { connectProcess } from './harness.js';
+import { connect, type Kind, textOf, tmp, world } from './helpers.js';
+
+const EXAMPLE = fileURLToPath(
+  new URL('../../examples/guard-quickstart.ts', import.meta.url),
+);
 
 const email = { to: 'ana@example.com', subject: 'Q3 report' };
 const sent = 'email ana@example.com: Q3 report';
@@ -86,4 +93,28 @@ it('sends nothing to a client that cannot show forms', async () => {
   expect(r.isError).toBe(true);
   expect(textOf(r)).toContain('yea approve');
   expect(m.logged()).toBe(0);
+});
+
+// Node runs the file itself with type stripping (22.18+), so this skips on Node 20.
+describe.skipIf(!process.features.typescript)('run as its own process', () => {
+  it('starts on stdio, asks, and sends once the recipient is typed', async () => {
+    const m = await connectProcess(process.execPath, [EXAMPLE], {
+      YEA_HOME: tmp(),
+    });
+
+    try {
+      m.answers.push(wrong, {
+        action: 'accept',
+        content: { confirm: 'ana@example.com' },
+      });
+
+      const r = await m.call(email, 'send_email');
+
+      expect(textOf(r)).toBe('sent to ana@example.com');
+      expect(m.elicited).toHaveLength(2);
+      await vi.waitFor(() => expect(m.stderr()).toContain(sent));
+    } finally {
+      await m.close();
+    }
+  }, 20_000);
 });

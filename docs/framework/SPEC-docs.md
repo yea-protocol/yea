@@ -35,7 +35,8 @@ to implement the protocol.
 section. Both have the same steps. The five-minute claim covers steps 1–3 only.
 
 1. **Install.**
-   - TypeScript: `npm i @yea-protocol/mcp @yea-protocol/sdk @modelcontextprotocol/server zod`.
+   - TypeScript: `npm i @yea-protocol/mcp @yea-protocol/sdk @modelcontextprotocol/server zod@4`
+     (`zod@4`, since `npm i zod` leaves a zod 3 project on zod 3).
    - Python: `uv add yea-mcp`, or `uv add 'yea-mcp[fastmcp]'` for FastMCP, after the release.
      Until then, a repo install needs both distributions, since `yea-mcp` depends on
      `yea-sdk`: `uv add "yea-sdk @ git+https://github.com/yea-protocol/yea#subdirectory=python"
@@ -50,9 +51,10 @@ section. Both have the same steps. The five-minute claim covers steps 1–3 only
    same calls work on a `fastmcp.FastMCP` server (guard a mounted server's tool on the server
    that defines it).
 3. **Run it in your client.** `claude mcp add files -- npx tsx server.ts` for Claude Code
-   (Node 22.18 or later can run `node server.ts` directly), plus the matching config for
-   Cursor and VS Code. The page shows what the person then sees: the plan, and a field that
-   says *Type "report.pdf" to approve*. **This is the five-minute point.** The page also says:
+   (Node 22.18 or later can run `node server.ts` directly when `package.json` has
+   `"type": "module"`), plus the matching config for Cursor and VS Code. The page shows what
+   the person then sees: the plan, and a field that says *Type "report.pdf" to approve*.
+   **This is the five-minute point.** The page also says:
    - a stderr warning that no principal key is pinned is expected at this stage;
    - the client must support form elicitation (the client table says which do);
    - a tool marked `risk: 'high'`, or an `outOfBand` in `~/.yea/policy.json`, sends it to
@@ -118,10 +120,12 @@ The README's first screen is for someone who builds MCP servers (#324); the prot
     wording is James's to approve;
   - one "Unreleased" banner, until the release;
   - a "Which package?" row, since this README is also the SDK's npm page;
-  - the install line, then the whole of `examples/guard-quickstart.ts`: a guarded `send_email`
+  - the install line, with `zod@4` (`npm i zod` leaves a zod 3 project on zod 3) and the `tsx`
+    the run line uses, then the whole of `examples/guard-quickstart.ts`: a guarded `send_email`
     that only logs, to stderr, since stdout is the MCP transport. It's one region that spans
     the file, so the drift check pins all of it;
-  - how to run it in Claude Code, and a link to its Python twin.
+  - how to run it in Claude Code (`npx tsx`, from the folder that holds it), and a link to its
+    Python twin.
 
   It makes no time claim until the release's timed run exists. The npm and PyPI badges wait in
   an HTML comment until the packages are published (#319).
@@ -207,9 +211,15 @@ with its worked example on the framework API:
     `python/mcp/examples/guard_quickstart.py`, each get a test (`mcp/test/guard-quickstart.test.ts`,
     `python/mcp/tests/test_guard_quickstart.py`) that drives ask, a wrong phrase, the typed
     phrase and the run, checks that three wrong phrases or a client without forms send nothing,
-    and that the handler writes nothing to stdout.
+    and that the handler writes nothing to stdout. The TypeScript test also starts the file as
+    its own process over stdio, which reaches the lines that start it (on Node 22.18 or later,
+    so it skips on Node 20).
 - **Drift checks** in CI:
   - the README snippet against the example's region;
+  - the install and run lines adopters follow (`site/test/instructions.test.mjs`): zod pinned
+    to 4, `node server.ts` only with `"type": "module"`, the README's quickstart installing what
+    it imports and runs, and a page promising code only when the README region it includes has
+    some;
   - the landing's numbers (`landing/numbers.ts`) against `bench/RESULTS.md` and
     `bench/agent-eval/RESULTS*.md`.
 - **The site builds** (`npm run site`, already in CI). Relative links are ignored by the

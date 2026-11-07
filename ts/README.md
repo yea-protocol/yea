@@ -52,7 +52,7 @@ below. `@yea-protocol/sdk` (`yea-sdk`) builds YEA services and the agents that c
 ([quickstart](#quickstart)). `@yea-protocol/cli` is the `yea` command and the bridge, `yea mcp`.
 
 ```sh
-npm i @yea-protocol/mcp @yea-protocol/sdk @modelcontextprotocol/server zod
+npm i @yea-protocol/mcp @yea-protocol/sdk @modelcontextprotocol/server zod@4 tsx
 ```
 
 <!-- snippet: examples/guard-quickstart.ts#quickstart -->
@@ -99,11 +99,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
 }
 ```
 
-Save it as `server.ts`, add it to Claude Code with `claude mcp add mail -- npx tsx server.ts`,
-and ask Claude to email ana@example.com about the Q3 report. Before anything is sent, Claude
-Code shows the plan, such as *Email ana@example.com: Q3 report*, and a field that says *Type
-"ana@example.com" to approve*. It needs no keys, policy or account to set up. The same server
-in Python is [`guard_quickstart.py`](https://github.com/yea-protocol/yea/blob/main/python/mcp/examples/guard_quickstart.py).
+Save it as `server.ts`, and in that folder add it to Claude Code with
+`claude mcp add mail -- npx tsx server.ts`. Then ask Claude to email ana@example.com about the
+Q3 report. Before anything is sent, Claude Code shows the plan, such as
+*Email ana@example.com: Q3 report*, and a field that says *Type "ana@example.com" to approve*.
+It needs no keys, policy or account to set up. The same server in Python is
+[`guard_quickstart.py`](https://github.com/yea-protocol/yea/blob/main/python/mcp/examples/guard_quickstart.py).
 
 ## Get started
 
