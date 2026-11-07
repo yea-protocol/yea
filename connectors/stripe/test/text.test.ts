@@ -53,7 +53,7 @@ describe('customer text is untrusted', () => {
 
   it('escapes `\\` and `"` before printable, which keeps that escaping', () => {
     // printable never escapes a backslash (SPEC-approval §3), so the quoting survives it.
-    expect(quoted('a\\b "q" ​')).toBe('"a\\\\b \\"q\\" \\u{200b}"');
+    expect(quoted('a\\b "q" \u200b')).toBe('"a\\\\b \\"q\\" \\u{200b}"');
   });
 
   it('the phrase to type is the email only when it can be read and typed as it is', () => {
