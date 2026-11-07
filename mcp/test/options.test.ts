@@ -112,7 +112,7 @@ describe('yea() refuses options it does not take', () => {
     );
   });
 
-  it('a missing required key, an unlisted transport, and options that are not an object', () => {
+  it('a missing required key, an unlisted transport, and options that are not a plain object', () => {
     expect(thrown(start({ name: undefined }).run)).toBe(
       'yea(): name is required: a string',
     );
@@ -120,9 +120,23 @@ describe('yea() refuses options it does not take', () => {
       "yea(): transport must be 'stdio' or 'http'",
     );
 
-    for (const o of [undefined, null, 'billing', ['billing']]) {
+    // A Map, an un-awaited Promise or a class instance: none is read as the options it holds.
+    const options = { name: 'billing', transport: 'stdio' };
+
+    for (const o of [
+      undefined,
+      null,
+      'billing',
+      ['billing'],
+      new Map(Object.entries(options)),
+      Promise.resolve(options),
+      new (class {
+        name = 'billing';
+        transport = 'stdio';
+      })(),
+    ]) {
       expect(thrown(() => yea(o as unknown as YeaOptions))).toBe(
-        'yea(): the options must be an object',
+        'yea(): the options must be a plain object',
       );
     }
   });
@@ -149,6 +163,17 @@ describe('yea() refuses options it does not take', () => {
         requireInteraction: false,
       }).run,
     ).not.toThrow();
+  });
+
+  it('takes a plain object without a prototype, and a frozen one', () => {
+    const bare = Object.assign(Object.create(null), {
+      name: 'billing',
+      transport: 'stdio',
+      home: tmp(),
+      tighten: Object.freeze({ deny: ['refund'] }),
+    });
+
+    expect(() => yea(bare)).not.toThrow();
   });
 });
 
@@ -182,17 +207,61 @@ describe('job() refuses a config it does not take, and registers nothing', () =>
     expect(thrown(job({ annotations: { destructiveHint: 'no' } }))).toBe(
       'job(): annotations.destructiveHint must be true or false',
     );
-    expect(thrown(job({ icons: [{ source: 'x' }] }))).toBe(
-      'job(): icons must be an array of icons, each with a string src',
+    expect(thrown(job({ _meta: 'x' }))).toBe(
+      'job(): _meta must be a plain object',
     );
-    expect(thrown(job({ _meta: 'x' }))).toBe('job(): _meta must be an object');
+    // Spread into the listing, a Map's entries would be dropped without a word.
+    expect(thrown(job({ _meta: new Map([['example.com/own', 1]]) }))).toBe(
+      'job(): _meta must be a plain object',
+    );
+    expect(
+      thrown(job({ annotations: new Map([['readOnlyHint', true]]) })),
+    ).toBe('job(): annotations must be a plain object');
     // Nothing was registered, not even undo.
+    expect(Object.keys(await listed(server))).toEqual(['charge']);
+  });
+
+  it("refuses an icon the SDK's Icon doesn't take, so the listing still works", async () => {
+    const { w, server } = await onServer();
+    const job = (icons: unknown) => () =>
+      w.approvals.job(server, 'refund', { ...refundJob(w), icons } as Refund);
+
+    // A client rejects the whole tools/list over one bad icon, so each is closed.
+    expect(thrown(job([{ src: 'x', theme: 'blue' }]))).toBe(
+      "job(): icons[0].theme must be 'light' or 'dark'",
+    );
+    expect(thrown(job([{ src: 'x' }, { src: 'y', sizes: '48x48' }]))).toBe(
+      'job(): icons[1].sizes must be an array of strings',
+    );
+    expect(thrown(job([{ src: 'x', mimeType: 1 }]))).toBe(
+      'job(): icons[0].mimeType must be a string',
+    );
+    expect(thrown(job([{ source: 'x' }]))).toBe(
+      'job(): unknown option "icons[0].source"; known: icons[0].src, icons[0].mimeType, icons[0].sizes, icons[0].theme',
+    );
+    expect(thrown(job([{ theme: 'dark' }]))).toBe(
+      'job(): icons[0].src is required: a string',
+    );
+    expect(thrown(job([undefined]))).toBe(
+      'job(): icons[0] is required: a plain object',
+    );
+    expect(thrown(job({ src: 'x' }))).toBe(
+      'job(): icons must be an array of icons',
+    );
     expect(Object.keys(await listed(server))).toEqual(['charge']);
   });
 
   it("passes _meta and icons on, and YEA's own _meta keys win", async () => {
     const { w, server } = await onServer();
-    const icons = [{ src: 'https://example.com/refund.png' }];
+    const icons = [
+      { src: 'https://example.com/refund.png' },
+      {
+        src: 'https://example.com/refund-dark.png',
+        mimeType: 'image/png',
+        sizes: ['48x48'],
+        theme: 'dark' as const,
+      },
+    ];
 
     w.approvals.job(server, 'refund', {
       ...refundJob(w),
@@ -265,6 +334,17 @@ describe('bridge() refuses options it does not take, before greeting a service',
     expect(await refusal({ tighten: { dney: [] } })).toBe(
       'bridge(): unknown option "tighten.dney"; known: tighten.deny',
     );
+  });
+
+  it('options that are an un-awaited Promise or a Map: no key is required, so nothing else would catch them', async () => {
+    const k = await keys();
+    const o = { home: k.home, tighten: { deny: ['shop.order'] } };
+
+    for (const given of [Promise.resolve(o), new Map(Object.entries(o))]) {
+      await expect(bridge([], given as never)).rejects.toThrow(
+        'bridge(): the options must be a plain object',
+      );
+    }
   });
 });
 
@@ -351,6 +431,7 @@ describe("the known keys are the spec's", () => {
       ['yea({ tighten })', start({ tighten: { x: 1 } }).run],
       ['approvals.job(server, name, config)', refund({ x: 1 })],
       ['job({ annotations })', refund({ annotations: { x: 1 } })],
+      ['job({ icons })', refund({ icons: [{ src: 'x', x: 1 }] })],
       [
         'approvals.guard(server, tool, config)',
         () => w.approvals.guard(server, tool, { x: 1 } as never),

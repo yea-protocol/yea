@@ -20,13 +20,16 @@ import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import {
   aBoolean,
   aFunction,
-  anObject,
+  aPlainObject,
   aRisk,
+  arrayOf,
   aString,
   nested,
+  oneOf,
   type Rule,
   refused,
   required,
+  strings,
 } from './options.js';
 import { jobAnnotations, jobMeta } from './result.js';
 import { previewSchema, takePreview } from './schema.js';
@@ -73,6 +76,14 @@ const isStandardSchema = (v: unknown) =>
   v !== null &&
   isObject((v as Obj)['~standard']);
 
+/** One icon, as the SDK's `Icon` takes it: a client rejects the whole `tools/list` over a bad one. */
+const ICON = {
+  src: required(aString),
+  mimeType: aString,
+  sizes: strings,
+  theme: oneOf('light', 'dark'),
+} satisfies Record<keyof Icon, Rule>;
+
 /** `registerTool`'s annotations, each of its type. */
 const ANNOTATIONS = {
   title: aString,
@@ -90,13 +101,8 @@ export const JOB_CONFIG = {
   title: aString,
   description: aString,
   annotations: nested(ANNOTATIONS),
-  icons: {
-    is: 'an array of icons, each with a string src',
-    ok: (v) =>
-      Array.isArray(v) &&
-      v.every((i) => isObject(i) && typeof i.src === 'string'),
-  },
-  _meta: anObject,
+  icons: arrayOf('an array of icons', nested(ICON)),
+  _meta: aPlainObject,
   inputSchema: required({ is: 'a Standard Schema', ok: isStandardSchema }),
   risk: aRisk,
   requireInteraction: aBoolean,

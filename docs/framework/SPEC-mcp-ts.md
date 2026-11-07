@@ -126,7 +126,7 @@ Registers a job tool. `config`:
 
 | Field | Meaning |
 |---|---|
-| `title`, `description`, `annotations`, `icons` | As in `registerTool`. Annotation defaults are under Results. |
+| `title`, `description`, `annotations`, `icons` | As in `registerTool`. Annotation defaults are under Results. Each icon is closed as the SDK's `Icon` (`src`, and optional `mimeType`, `sizes` and `theme`): a client rejects the whole `tools/list` over one bad icon, so `job()` refuses it instead. |
 | `_meta` | Optional. The tool's own `_meta`. YEA's keys (under Results) are merged over it, and win. |
 | `inputSchema` | A Standard Schema that exposes JSON Schema (`~standard.jsonSchema`): zod ≥ 4.2, ArkType, Valibot, or `fromJsonSchema`. Its root must be a plain object without a `preview` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
@@ -290,12 +290,18 @@ takes:
 ```
 yea(): unknown option "requireInteractio"; known: name, transport, home, …
 yea(): tighten.deny must be an array of strings
+job(): icons[0].theme must be 'light' or 'dark'
 httpApp(): loopback is required: true or false
 ```
 
 A key set to `undefined` counts as absent, so spreading a config with optional keys left
-undefined is fine, but an unknown key is refused whatever its value. A JavaScript author, or one
-spreading a config built at run time, can't believe a protection is on when a typo left it off.
+undefined is fine, but an unknown key is refused whatever its value. The options, and each
+object nested in them (`tighten`, `annotations`, `_meta`, an icon), must be plain objects: a
+literal, or one made by `Object.create(null)`. A Map, an un-awaited Promise or a class instance
+is refused, because the check reads a key through the prototype and the code that applies a
+rule may read own keys only (`readTightening` does), so the two would see different rules. A
+JavaScript author, or one spreading a config built at run time, can't believe a protection is
+on when a typo left it off.
 
 The accepted keys (required ones in bold):
 
@@ -305,6 +311,7 @@ The accepted keys (required ones in bold):
 | `yea({ tighten })` | `deny` (an array of strings), `outOfBand` (a risk) |
 | `approvals.job(server, name, config)` | `title`, `description`, `annotations`, `icons`, `_meta`, **`inputSchema`**, `risk`, `requireInteraction`, **`plan`**, `revert`, `confirmWith` |
 | `job({ annotations })` | `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
+| `job({ icons })` | each icon: **`src`**, `mimeType`, `sizes` (an array of strings), `theme` (light or dark) |
 | `approvals.guard(server, tool, config)` | **`describe`**, `risk`, `requireInteraction`, `revert`, `confirmWith` |
 | `httpApp(factory, options)` | **`token`**, **`sub`**, **`loopback`**, `clientId`, `maxBody` |
 | `httpGate(options)` | **`token`**, `sub`, **`loopback`**, `clientId`, `maxBody` |
@@ -544,8 +551,9 @@ can't elicit. For each:
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
 - the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
 - closed options (`mcp/test/options.test.ts`): each function refuses an unknown key, a missing
-  required one and a value not of its type, naming it, before it registers, writes or serves
-  anything, and its known keys are this spec's;
+  required one, a value not of its type and options that aren't a plain object, naming it,
+  before it registers, writes or serves anything, and its known keys are this spec's; an icon
+  the SDK's `Icon` doesn't take is refused, so `tools/list` still works;
 - the start-up line, once, on stderr;
 - two servers in one process with different `home`s read their own `policy.json` deny lists
   and keep their own default stores; without `home`, `yea()` reads `YEA_HOME` once, at
@@ -578,8 +586,8 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a verified state without our `yea` key, a state from another job on the same server, and an
   HTTP state replayed by another `sub` (through the codec's bind, and through `checkState` when
   an author's codec doesn't bind `sub`) run nothing;
-- a `tighten` option that can't be read refuses start-up, rather than warning and dropping the
-  rule (#368);
+- a `tighten` option that can't be read, or isn't a plain object (a Map, an un-awaited
+  Promise, a class with a `deny` getter), refuses start-up, rather than dropping the rule (#368);
 - `httpApp` and `httpGate` refuse a `loopback` that's missing, misspelt or not a boolean, so the
   Host and Origin checks are never silently off (#368).
 

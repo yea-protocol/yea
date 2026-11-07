@@ -1,5 +1,5 @@
 /**
- * Closed options (SPEC-mcp-ts, "Option refusals"). Every options object an author passes is
+ * Closed options (SPEC-mcp-ts, "Closed options"). Every options object an author passes is
  * checked before anything is registered, served or written: an unknown key, a missing required
  * one, or a value not of its documented type (an unlisted enum value included) throws a
  * TypeError naming the key and what it takes. So a typo'd protection can't be silently off.
@@ -16,6 +16,8 @@ export interface Rule {
   refused?: boolean;
   /** A nested object's own rules, so its keys are closed too. */
   fields?: Rules;
+  /** An array's rule for each item, so each is checked too. */
+  items?: Rule;
 }
 
 export type Rules = Record<string, Rule>;
@@ -29,10 +31,25 @@ const listed = (values: readonly string[]) =>
     .join(', ')
     .replace(/, ([^,]*)$/, ' or $1');
 
+/**
+ * A literal, or an object made by `Object.create(null)`. Not a Map, a Promise or a class instance:
+ * these checks read a key through the prototype, while the code that uses the options may read
+ * own keys only (`readTightening` does), so the two would see different rules.
+ */
+const isPlainObject = (v: unknown): v is Obj => {
+  if (!isObject(v)) {
+    return false;
+  }
+
+  const proto: unknown = Object.getPrototypeOf(v);
+
+  return proto === Object.prototype || proto === null;
+};
+
 export const aString = rule('a string', (v) => typeof v === 'string');
 export const aBoolean = rule('true or false', (v) => typeof v === 'boolean');
 export const aFunction = rule('a function', (v) => typeof v === 'function');
-export const anObject = rule('an object', isObject);
+export const aPlainObject = rule('a plain object', isPlainObject);
 export const aRisk = rule(listed(['low', 'medium', 'high']), isRisk);
 
 export const strings = rule(
@@ -69,8 +86,15 @@ export const refused = (why: string): Rule => ({
 
 /** An object whose keys are checked against `rules` too; an error names the path (`tighten.deny`). */
 export const nested = (rules: Rules): Rule => ({
-  ...anObject,
+  ...aPlainObject,
   fields: rules,
+});
+
+/** An array each of whose items `item` takes; an error names the item (`icons[0].theme`). */
+export const arrayOf = (is: string, item: Rule): Rule => ({
+  is,
+  ok: (v) => Array.isArray(v),
+  items: required(item),
 });
 
 /** Throws for a value `r` doesn't take; undefined is absent, which only a required key refuses. */
@@ -94,6 +118,12 @@ function checkValue(where: string, name: string, v: unknown, r: Rule) {
   if (r.fields && isObject(v)) {
     checkKeys(where, v, r.fields, `${name}.`);
   }
+
+  if (r.items && Array.isArray(v)) {
+    for (const [i, item] of v.entries()) {
+      checkValue(where, `${name}[${i}]`, item, r.items);
+    }
+  }
 }
 
 /** Throws for a key `rules` doesn't list (one set to undefined included), then checks each value. */
@@ -113,10 +143,13 @@ function checkKeys(where: string, o: Obj, rules: Rules, path: string) {
   }
 }
 
-/** Throws unless `o` is an object `rules` takes; `where` names the function, as in `yea()`. */
+/**
+ * Throws unless `o` is a plain object `rules` takes; `where` names the function, as in `yea()`.
+ * An un-awaited Promise or a Map of options is refused too, rather than read as no options.
+ */
 export function checkOptions(where: string, o: unknown, rules: Rules) {
-  if (!isObject(o)) {
-    throw new TypeError(`${where}: the options must be an object`);
+  if (!isPlainObject(o)) {
+    throw new TypeError(`${where}: the options must be a plain object`);
   }
 
   checkKeys(where, o, rules, '');

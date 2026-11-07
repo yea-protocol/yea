@@ -379,8 +379,9 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   - a state replayed after use commits nothing;
   - a proposal that fails its hash check is never shown or signed;
   - a hostile service's names and summaries can't shadow utility tools or forge lines;
-  - a `tighten` option it can't read (a bad `deny`, an unknown key) or can't honour
-    (`outOfBand`) refuses start-up, before any service is greeted (#368).
+  - a `tighten` option it can't read (a bad `deny`, an unknown key, a Map or an un-awaited
+    Promise) or can't honour (`outOfBand`) refuses start-up, before any service is greeted
+    (#368).
 
 ## Boundaries
 

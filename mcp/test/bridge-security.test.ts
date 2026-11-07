@@ -411,6 +411,9 @@ describe('bridge security', () => {
       { dney: ['shop.order'] },
       { outOfBand: 'low' },
       null,
+      // Not plain objects: the check and the reader (own keys only) would see different keys.
+      new Map([['deny', ['shop.order']]]),
+      Promise.resolve({ deny: ['shop.order'] }),
     ]) {
       await expect(
         bridgeIn(k, ex.clients, { tighten } as never),

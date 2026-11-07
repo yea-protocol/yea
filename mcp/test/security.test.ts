@@ -712,6 +712,26 @@ describe('options that would leave a protection off', () => {
       expect(() => httpGate(o as never), JSON.stringify(o)).toThrow(TypeError);
     }
   });
+
+  it('[M20] a tighten that is not a plain object refuses start-up: its deny would be read as empty', async () => {
+    const rule = { deny: ['refund'] };
+    // A getter on the prototype: the check would see deny, readTightening (own keys) wouldn't.
+    const Tighten = class {
+      get deny() {
+        return ['refund'];
+      }
+    };
+
+    for (const tighten of [
+      new Map(Object.entries(rule)),
+      Promise.resolve(rule),
+      new Tighten(),
+    ]) {
+      await expect(world({ tighten } as never)).rejects.toThrow(
+        'yea(): tighten must be a plain object',
+      );
+    }
+  });
 });
 
 describe('an unprintable phrase', () => {
