@@ -2,8 +2,8 @@
 looked up and its proof and grants checked. It says who is acting (the holder), for whom (the
 principal) and, for a COMMIT, from which requester. Handlers get this, never the raw frame.
 
-It checks every caveat but ``each``, ``total`` and ``risk`` (ADR-0002). Until #279 moves them to the
-commit ledger, a COMMIT's ``limits()`` and an auto INTENT's ``auto.grant()`` check those here. Like
+It checks every caveat but ``each``, ``total`` and ``risk`` (ADR-0002). The commit ledger checks those
+three, with the grant evaluation a COMMIT or an auto INTENT carries as ``admit``. Like
 ts/src/service/verified-request.ts."""
 
 from __future__ import annotations

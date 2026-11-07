@@ -50,8 +50,9 @@ nothing yet about whether those limits admit a given proposal.
 _Avoid_: authorized request, actor
 
 **Commit ledger**:
-A service's record of each proposal's life: proposed, committed, receipted, undone or expired.
-It decides replays and whether a proposal's `each`, `risk` and `total` limits admit it.
+A service's record of each proposal's life: proposed, committed, receipted, undone, expired, or
+in doubt when its commit was cut off after it started and may have taken effect. It decides replays
+and whether a proposal's `each`, `risk` and `total` limits admit it.
 _Avoid_: commit store, service state
 
 **Usage ledger**:
