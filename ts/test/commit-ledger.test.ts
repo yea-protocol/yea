@@ -7,6 +7,7 @@ import * as P from '../src/index.js';
 import { onCommit } from '../src/service/commit.js';
 import { onUndo } from '../src/service/undo.js';
 import type { FinalReply, More } from '../src/types.js';
+import { exact } from '../src/uses.js';
 import {
   codeOf,
   commitOf,
@@ -87,6 +88,19 @@ describe('a new commit', () => {
     ).toBe('expired');
   });
 
+  it('refuses an expired proposal before its limits, so it never asks for consent', async () => {
+    const { ledger, propose, advance } = ledgerFixture();
+    const grant = totalGrant(5);
+    const p = propose(10);
+
+    advance(600);
+
+    expect(
+      await codeOf(ledger.commit(commitOf(p, grant.admit), noEvents)),
+    ).toBe('expired');
+    expect(grant.calls).toBe(0);
+  });
+
   it('settles the spend of a commit that applied', async () => {
     const { ledger, propose } = ledgerFixture();
     const grant = totalGrant(100);
@@ -96,6 +110,23 @@ describe('a new commit', () => {
     expect(await commit(70)).toBe('ok');
     expect(await commit(31)).toBe('consent_required');
     expect(await commit(30)).toBe('ok');
+  });
+
+  it('counts a limit a block repeats once, under its smallest max', async () => {
+    const { ledger, propose } = ledgerFixture();
+    const admit = async () => ({
+      iss: 'alice',
+      totals: [100, 50, 70].map((cents) => ({
+        id: 'b_1',
+        of: 'spend',
+        max: exact({ amount: cents, scale: 2 }),
+      })),
+    });
+    const commit = (cents: number) =>
+      codeOf(ledger.commit(commitOf(propose(cents), admit), noEvents));
+
+    expect(await commit(60)).toBe('consent_required');
+    expect(await commit(50)).toBe('ok');
   });
 
   it('sends the plan’s progress as EVENTs on the frame it answers', async () => {
@@ -142,7 +173,11 @@ describe('sweep', () => {
     ledger.sweep();
     expect(ledger.receipt(id)?.principal).toBe('alice');
 
-    advance(DAY + 1);
+    advance(DAY);
+    ledger.sweep();
+    expect(ledger.receipt(id)?.principal).toBe('alice');
+
+    advance(1);
     ledger.sweep();
     expect([ledger.proposal(p.proposal.id), ledger.receipt(id)]).toEqual([
       undefined,
@@ -227,6 +262,13 @@ describe('undo', () => {
     expect((await undo()).kind).toBe('ERROR');
     expect((await undo()).kind).toBe('RECEIPT');
     expect(reverts.n).toBe(2);
+  });
+
+  it('undoes at the last second of the undo window', async () => {
+    const { undo, advance } = await receipted();
+
+    advance(600);
+    expect((await undo()).kind).toBe('RECEIPT');
   });
 
   it('refuses once the undo window closes, and for a plan with no revert', async () => {
