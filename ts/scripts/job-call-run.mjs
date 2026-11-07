@@ -5,8 +5,7 @@
  * entries it lists are the ones each snapshot reads. The generator (job-call-vectors.mjs) and the TS conformance
  * test share it; python/tests/test_job_call_conformance.py is its Python twin.
  *
- * The store is a MemoryStore behind a plain object (so the session doesn't treat it as one: it
- * issues consent codes) that records each id it consumes. A step's `race` is reserved by
+ * The store is a MemoryStore behind a plain object that records each id it consumes. A step's `race` is reserved by
  * "another call" just before the session's first reservation, after the policy has decided.
  */
 
@@ -171,6 +170,7 @@ export async function runCall(P, call) {
         policy: step.policy,
         canAsk: step.canAsk,
         ...(step.unpinned ? { unpinned: step.unpinned } : {}),
+        ...(step.consent === undefined ? {} : { consent: step.consent }),
       },
       s.store,
       retry,

@@ -22,7 +22,7 @@ from yea import Plan, create, issue_grant
 from yea.approval import consent_hash_of
 from yea.store import FileStore
 
-from conftest import PRINCIPAL, Person, make_world, text
+from conftest import PRINCIPAL, Person, make_world, printed_consent, text
 from import_audit import REPO, import_audit, reachable, signers
 from yea_mcp import yea
 
@@ -98,6 +98,51 @@ async def test_a_consent_for_one_plan_never_runs_another(world):
     async with world.client("auto") as c:
         r = await c.call_tool("refund", {"amount": 6})
     assert r.is_error and done == []
+
+
+def _tampered(s: str) -> str:
+    """``s`` with one character in the middle changed (the last ones can carry only padding bits)."""
+    i = len(s) // 2
+    return s[:i] + ("B" if s[i] == "A" else "A") + s[i + 1:]
+
+
+async def test_a_yea_consent_for_one_plan_never_runs_another_and_a_tampered_one_never_falls_to_the_policy(world):
+    """[M18] A consent on the call is checked exactly as one from the store (#358)."""
+    done = []
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def reschedule(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event), undo_window=60)]
+
+    async with world.client("auto") as c:  # can't ask
+        r = await c.call_tool("reschedule", {"event": "e1"})
+        consent = printed_consent(r.structured_content["codes"][0])
+        other = await c.call_tool("reschedule", {"event": "e2", "yea_consent": consent})
+        assert other.is_error and "can't be used: it approves none of these plans" in text(other)
+        world.grant({"can": ["reschedule"]}, {"risk": "low"})  # the policy alone would now run e1
+        forged = await c.call_tool("reschedule", {"event": "e1", "yea_consent": _tampered(consent)})
+        assert forged.is_error and "the consent passed as yea_consent can't be used" in text(forged) and done == []
+        assert not (await c.call_tool("reschedule", {"event": "e1", "yea_consent": consent})).is_error
+    assert done == ["e1"]
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid") or os.getuid() == 0, reason="needs a user that file modes apply to")
+async def test_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_the_result(world, capsys):
+    """[M19] What an agent with the store could plant: a file the server can't read (#358)."""
+    done = []
+    jobs(world, done)
+    (h, _) = await plan_hashes(world, "refund", {"amount": 5})
+    await world.store.put_consent(h, "pg1.x")
+    planted = world.store.root / "consents" / h
+    planted.chmod(0)
+    try:
+        async with world.client("auto") as c:
+            r = await c.call_tool("refund", {"amount": 5})
+        assert r.is_error and text(r).startswith("✗ approval needed") and done == []
+        assert "EACCES" not in r.model_dump_json() and "consents/" not in r.model_dump_json()
+        assert "can't be read (EACCES), so it counts as absent" in capsys.readouterr().err
+    finally:
+        planted.chmod(0o600)
 
 
 async def test_a_stored_copy_of_the_policy_grant_never_counts_as_a_consent(world):

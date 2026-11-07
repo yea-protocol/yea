@@ -1,6 +1,7 @@
 /**
- * A job call's first round (SPEC-approval §2, §5, §6): a consent from `yea approve`, consumed;
- * else the policy decision, reserving after deciding; else ask.
+ * A job call's first round (SPEC-approval §2, §5, §6): a consent on the call, which alone
+ * decides; else a consent from `yea approve` in the store, consumed; else the policy decision,
+ * reserving after deciding; else ask.
  */
 import {
   checkJobConsent,
@@ -9,19 +10,9 @@ import {
   OTHER_PHRASE,
   reserveAll,
 } from '../approval.js';
-import { decodeGrant } from '../grants.js';
-import { isObject } from '../util.js';
 import { ask } from './ask.js';
+import { carriedRound } from './carried.js';
 import type { JobCallOutcome, Round } from './types.js';
-
-/** The expiry of a consent grant (its root `exp` caveat), to consume it until then. */
-function consentExp(grant: string): number | null {
-  const exp = decodeGrant(grant)[0]?.p.caveats.find(
-    (c) => isObject(c) && Object.hasOwn(c, 'exp'),
-  ) as { exp?: unknown } | undefined;
-
-  return Number.isSafeInteger(exp?.exp) ? Number(exp?.exp) : null;
-}
 
 /**
  * What the person is told when a stored consent was signed, validly, for a different phrase (§6):
@@ -36,15 +27,7 @@ async function storedConsent(r: Round, hp: HashedPlan) {
   const grant = await r.store.getConsent(hp.planHash);
 
   return grant
-    ? {
-        grant,
-        check: await checkJobConsent(grant, {
-          hp,
-          phrase: r.phraseFor(hp),
-          policy,
-          now,
-        }),
-      }
+    ? checkJobConsent(grant, { hp, phrase: r.phraseFor(hp), policy, now })
     : null;
 }
 
@@ -63,15 +46,9 @@ async function consented(
   }
 
   for (const hp of r.plans) {
-    const stored = await storedConsent(r, hp);
-    const check = stored?.check;
-    const exp = stored && check?.ok ? consentExp(stored.grant) : null;
+    const check = await storedConsent(r, hp);
 
-    if (
-      check?.ok &&
-      exp !== null &&
-      (await r.store.consumeOnce(check.id, exp))
-    ) {
+    if (check?.ok && (await r.store.consumeOnce(check.id, check.exp))) {
       return { plan: hp, note: null };
     }
 
@@ -83,8 +60,15 @@ async function consented(
   return { plan: null, note };
 }
 
-/** A first round: a stored consent runs its plan; else the policy decides; else ask. */
+/**
+ * A first round: a consent on the call runs its plan or asks again; else a stored consent runs
+ * its plan; else the policy decides; else ask. With no plans, a consent changes nothing.
+ */
 export async function firstRound(r: Round): Promise<JobCallOutcome> {
+  if (r.call.consent !== undefined && r.plans.length > 0) {
+    return carriedRound(r, r.call.consent);
+  }
+
   const { plan: approved, note } = await consented(r);
 
   if (approved) {

@@ -11,7 +11,7 @@ import mcp_types as t
 import pytest
 from mcp import Client
 from mcp.server.mcpserver import MCPServer
-from yea import issue_grant, key_from_seed
+from yea import decode_consent_code, issue_grant, key_from_seed
 from yea.store import FileStore, MemoryStore
 
 from yea_mcp import yea
@@ -73,6 +73,16 @@ def make_world(tmp_path: Any) -> World:
                     server_key=tmp_path / "server.key", principal=PRINCIPAL.public, policy=str(policy))
     server = MCPServer("billing", request_state_security=approvals.request_state_security())
     return World(approvals, server, store, str(home), policy)
+
+
+def printed_consent(code: dict) -> str:
+    """The consent ``yea approve`` prints for a consent-code result's ``code``, to pass back as
+    ``yea_consent``: signed where no store the server reads is, as under another OS user or on
+    another machine."""
+    c = decode_consent_code(code["code"])
+    return issue_grant(PRINCIPAL, c["service"], [{"svc": [c["service"]]}, {"verbs": ["COMMIT"]},
+                                                  {"can": [c["capability"]]}, {"only": c["hash"]},
+                                                  {"exp": c["expires"]}]).encode()
 
 
 def text(r: Any) -> str:

@@ -229,3 +229,14 @@ export async function approve(
 
   return j;
 }
+
+/**
+ * The consent `yea approve <code>` prints, to paste back as `yea_consent`: checked and signed
+ * where no store the server reads is, as under another OS user or on another machine.
+ */
+export async function printedConsent(
+  w: { principal: KeyPair },
+  code: string,
+): Promise<string> {
+  return signJobConsent(w.principal, await readJobConsent(code, unixNow()));
+}

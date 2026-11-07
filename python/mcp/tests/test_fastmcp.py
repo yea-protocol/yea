@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from conftest import MODES, text
+from conftest import MODES, printed_consent, text
 from fastmcp import Client, FastMCP
 from fastmcp.tools.tool_transform import ArgTransform, TransformedTool
 from yea import Plan, create, quantity
@@ -46,14 +46,20 @@ async def test_a_job_asks_and_runs_and_can_be_undone(world, fm, mode):
     assert text(u).startswith(f"↶ undid {rid}") and done[-1] == ("revert", {"to": "ana"})
 
 
-async def test_a_client_that_cant_ask_gets_codes(world, fm):
+async def test_a_client_that_cant_ask_gets_codes_and_the_consent_passed_back_runs_once(world, fm):
+    sent = []
+
     @world.approvals.job(fm, risk="low")
     async def send(to: str) -> list[Plan]:
-        return [Plan(f"Send to {to}", [create("mail/x")], apply=lambda: None)]
+        return [Plan(f"Send to {to}", [create("mail/x")], apply=lambda: sent.append(to))]
 
     async with Client(fm) as c:
         r = await c.call_tool("send", {"to": "ana"}, raise_on_error=False)
-    assert r.is_error and "yea approve" in text(r)
+        assert r.is_error and "yea approve" in text(r)
+        consent = printed_consent(r.structured_content["codes"][0])
+        ran = await c.call_tool("send", {"to": "ana", "yea_consent": consent}, raise_on_error=False)
+        again = await c.call_tool("send", {"to": "ana", "yea_consent": consent}, raise_on_error=False)
+    assert not ran.is_error and again.is_error and sent == ["ana"]
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -69,7 +75,7 @@ async def test_guard_wraps_an_existing_tool(world, fm, mode):
                           confirm_with=lambda hp, i: i["target"])
     async with Client(fm, mode=mode, elicitation_handler=person(["db"])) as c:
         listed = {tl.name: tl for tl in await c.list_tools()}
-        assert "preview" in listed["wipe"].input_schema["properties"]
+        assert {"preview", "yea_consent"} <= set(listed["wipe"].input_schema["properties"])
         pv = await c.call_tool("wipe", {"target": "db", "preview": True}, raise_on_error=False)
         assert pv.is_error and calls == []  # an output-schema tool's own results are errors
         r = await c.call_tool("wipe", {"target": "db"})

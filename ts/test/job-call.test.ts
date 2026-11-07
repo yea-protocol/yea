@@ -8,7 +8,7 @@ const now = 1790000000;
 const principal = await P.keyPair();
 const server = await P.keyPair();
 
-/** A call outside any policy from a client that can ask, on a store `yea approve` can reach. */
+/** A call outside any policy from a client that can ask. */
 const call = (over: Partial<P.JobCall> = {}): P.JobCall => ({
   tool: { name: 'refund' },
   input: { who: 'Chen' },
@@ -28,8 +28,8 @@ const call = (over: Partial<P.JobCall> = {}): P.JobCall => ({
   ...over,
 });
 
-/** A MemoryStore the session doesn't treat as one, so it issues consent codes. */
-function fileLike(): P.ApprovalStore {
+/** A MemoryStore's methods as a plain object, so a test can replace one. */
+function storeOf(): P.ApprovalStore {
   const s = new P.MemoryStore();
 
   return {
@@ -50,7 +50,7 @@ function fileLike(): P.ApprovalStore {
 
 describe('job call session', () => {
   it('an ask carries what to return instead when the client turns out to be unreachable', async () => {
-    const o = await P.jobCall(call(), fileLike());
+    const o = await P.jobCall(call(), storeOf());
 
     if (o.kind !== 'ask') {
       throw new Error(o.kind);
@@ -64,12 +64,11 @@ describe('job call session', () => {
     expect(instead.unavailable).toBeNull();
   });
 
-  it('a MemoryStore gets no consent codes: yea approve could never reach it', async () => {
+  it('a MemoryStore gets consent codes too: their consents come back on the call', async () => {
     const o = await P.jobCall(call({ canAsk: false }), new P.MemoryStore());
 
-    expect(o.kind === 'consent-codes' && o.unavailable).toMatch(
-      /keeps approvals in memory/,
-    );
+    expect(o).toMatchObject({ kind: 'consent-codes', unavailable: null });
+    expect(o.kind === 'consent-codes' && o.codes).toHaveLength(1);
   });
 
   it('a non-integer input throws before the handler runs', async () => {
@@ -106,7 +105,7 @@ describe('job call session', () => {
   });
 
   it('a store that fails while consuming a state throws, and nothing runs', async () => {
-    const store = fileLike();
+    const store = storeOf();
     const asked = await P.jobCall(call(), store);
 
     if (asked.kind !== 'ask') {

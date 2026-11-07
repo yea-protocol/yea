@@ -35,6 +35,11 @@ export interface JobCall {
   canAsk: boolean;
   /** Why no principal key is pinned, when `policy.principal` is empty: no consent counts then. */
   unpinned?: string;
+  /**
+   * The consent the call carries (`yea_consent`, SPEC-approval §6), as the model passed it. On a
+   * first round it alone decides whether anything runs; a preview and a retry ignore it.
+   */
+  consent?: string;
 }
 
 /** A retry: the state the last round handed out, as it came back, and the person's answer. */

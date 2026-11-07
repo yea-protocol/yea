@@ -15,7 +15,8 @@ from .plan import HashedPlan, plan_preimage
 from .policy import Policy
 
 CONSENT_TTL = 600
-_NOT_A_CONSENT = "not a consent for this plan"
+# A consent that isn't shaped like one (§6).
+NOT_A_CONSENT = "not a consent for this plan"
 # A consent the principal signed, validly, for another phrase: the tool's phrase changed, or the
 # code the person approved was edited (§6).
 OTHER_PHRASE = "not a consent for this phrase"
@@ -77,19 +78,16 @@ class ConsentCheck:
 
 
 def check_job_consent(token: Any, p: HashedPlan, phrase: str, policy: Policy, now: int) -> ConsentCheck:
-    """Whether ``token`` is a consent from ``yea approve`` for exactly this plan and ``phrase``: a
-    grant with an ``only`` equal to their consent hash and an ``exp``, signed by the pinned
-    principal, issued to this server's key, and valid as a COMMIT of the tool here now. A copied
-    policy grant isn't shaped like a consent. One that is valid but binds another hash is refused
-    with ``OTHER_PHRASE``, so the caller can say why."""
-    try:
-        g = decode_grant(token) if isinstance(token, str) else None
-    except ValueError:
-        g = None
+    """Whether ``token``, a consent from ``yea approve`` in the store or on the call, may run exactly
+    this plan with ``phrase``: a grant with an ``only`` equal to their consent hash and an ``exp``,
+    signed by the pinned principal, issued to this server's key, and valid as a COMMIT of the tool
+    here now. A copied policy grant isn't shaped like a consent. One that is valid but binds another
+    hash is refused with ``OTHER_PHRASE``, so the caller can say why."""
+    g = _decoded(token)
     bound = _bound_hash(g) if g is not None else None
     exp = _expiry(g) if g is not None else None
     if g is None or bound is None or exp is None:
-        return ConsentCheck(False, why=_NOT_A_CONSENT)
+        return ConsentCheck(False, why=NOT_A_CONSENT)
     # Checked against the hash it binds, so a valid consent for another phrase is told apart.
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": bound, "risk": p.risk, **({"uses": uses} if uses is not None else {})}
@@ -100,6 +98,21 @@ def check_job_consent(token: Any, p: HashedPlan, phrase: str, policy: Policy, no
     if bound != consent_hash_of(p.plan_hash, phrase):
         return ConsentCheck(False, why=OTHER_PHRASE)
     return ConsentCheck(True, id=g.id, exp=exp)
+
+
+def consent_expiry(token: Any) -> int | None:
+    """When a consent grant expires: its earliest ``exp``, read without checking anything else, or
+    None if it isn't shaped like a consent. To tell an expired consent from a forged one when the
+    grant check fails (§6)."""
+    g = _decoded(token)
+    return _expiry(g) if g is not None and _bound_hash(g) is not None else None
+
+
+def _decoded(token: Any) -> Grant | None:
+    try:
+        return decode_grant(token) if isinstance(token, str) else None
+    except ValueError:
+        return None
 
 
 def _bound_hash(g: Grant) -> str | None:

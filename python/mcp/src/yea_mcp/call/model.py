@@ -55,6 +55,21 @@ class JobDef:
     with_note: Callable[[Any, str], Any] = _unadapted
 
 
+@dataclass(frozen=True)
+class Reserved:
+    """What a job call takes beside the tool's own input: ``preview``, and the consent ``yea approve``
+    printed, passed back as ``yea_consent`` (SPEC-approval §6)."""
+
+    preview: bool = False
+    consent: str | None = None
+
+
+# The reserved arguments' names, which a tool's own input can't have.
+RESERVED_ARGS = frozenset({"preview", "yea_consent"})
+CONSENT_DESCRIPTION = ("The consent (pg1.…) the user got from `yea approve` and pasted back, exactly as printed. "
+                       "Only when calling again after a result asked for approval.")
+
+
 @dataclass
 class Req:
     """What the routine needs from the request, whichever SDK surface it came through."""

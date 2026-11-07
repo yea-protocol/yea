@@ -17,7 +17,7 @@ import type {
 } from '@yea-protocol/sdk';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import { jobAnnotations, jobMeta } from './result.js';
-import { previewSchema, takePreview } from './schema.js';
+import { jobInputSchema, takeReserved } from './schema.js';
 
 export interface JobConfig<S extends StandardSchemaWithJSON> {
   title?: string;
@@ -58,7 +58,7 @@ export function registerJob<S extends StandardSchemaWithJSON>(
   name: string,
   config: JobConfig<S>,
 ): RegisteredTool {
-  const schema = previewSchema(config.inputSchema);
+  const schema = jobInputSchema(config.inputSchema);
   const def: JobDef = {
     name,
     risk: config.risk,
@@ -85,9 +85,9 @@ export function registerJob<S extends StandardSchemaWithJSON>(
       ),
     },
     (args: unknown, ctx: ServerContext) => {
-      const { input, preview } = takePreview(args);
+      const { input, ...reserved } = takeReserved(args);
 
-      return runJob({ y, server, job: def, input, ctx }, preview);
+      return runJob({ y, server, job: def, input, ctx }, reserved);
     },
   );
 }

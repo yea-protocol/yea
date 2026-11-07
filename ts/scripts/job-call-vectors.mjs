@@ -61,6 +61,14 @@ const consentGrant = await P.issueGrant({
   ],
 });
 const consentId = await P.sha256(P.decodeGrant(consentGrant)[0].s);
+/** The refund's consent, signed by the server's own key instead of the principal's. */
+const forgedConsent = await P.issueGrant({
+  principal: server,
+  to: server.public,
+  iat: now,
+  nonce: 'job-calls-forged',
+  caveats: P.decodeGrant(consentGrant)[0].p.caveats,
+});
 
 /** The person's standing rules: no signed policy unless `grant` is given. */
 const policy = (o = {}) => ({
@@ -93,6 +101,9 @@ const retry = (fromStep, answer) => ({ state: { fromStep }, answer });
 const empty = { used: {}, consumed: [] };
 /** The reason a call gives when a stored consent was signed for another phrase (§6). */
 const phraseChanged = 'consent for this plan was signed for a different phrase';
+/** The reason a call gives when the consent it carries can't be used (§6). */
+const carried = (why) =>
+  `the consent passed as yea_consent can't be used: ${why}`;
 
 const calls = [
   {
@@ -233,6 +244,78 @@ const calls = [
         canAsk: false,
         policy: policy({ principal: '' }),
         unpinned: 'YEA_PRINCIPAL_PUB is not set',
+      }),
+    ],
+  },
+  {
+    name: 'a consent on the call runs its plan once, and a second use asks',
+    before: empty,
+    steps: [
+      step('run', { consent: consentGrant }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: consentGrant,
+        says: carried('it was already used'),
+      }),
+    ],
+  },
+  {
+    name: 'a consent on the call for another plan asks, and never falls through to the policy',
+    before: { used: { [spendKey]: '0' }, consumed: [] },
+    steps: [
+      step('ask', {
+        plans: [credit],
+        policy: allowed,
+        consent: consentGrant,
+        says: carried('it approves none of these plans'),
+      }),
+    ],
+  },
+  {
+    name: 'a mangled, expired or forged consent on the call asks, and says why',
+    before: empty,
+    steps: [
+      step('ask', {
+        consent: consentGrant.slice(0, 60),
+        says: carried("it isn't a consent from yea approve"),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        now: now + 600,
+        consent: consentGrant,
+        says: carried('it has expired'),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: forgedConsent,
+        says: carried(
+          "it isn't signed by the pinned principal for this tool at this server",
+        ),
+      }),
+    ],
+  },
+  {
+    name: 'with no pinned principal key, a consent on the call counts for nothing',
+    before: empty,
+    steps: [
+      step('consent-codes', {
+        canAsk: false,
+        policy: policy({ principal: '' }),
+        unpinned: 'YEA_PRINCIPAL_PUB is not set',
+        consent: consentGrant,
+        says: carried('YEA_PRINCIPAL_PUB is not set'),
+      }),
+    ],
+  },
+  {
+    name: 'a preview and a retry ignore a consent on the call',
+    before: empty,
+    steps: [
+      step('preview', { preview: true, consent: consentGrant }),
+      step('ask', { consent: 'pg1.nope' }),
+      step('run', {
+        consent: 'pg1.nope',
+        retry: retry(2, accept('approve')),
       }),
     ],
   },

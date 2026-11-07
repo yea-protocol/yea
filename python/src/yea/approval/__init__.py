@@ -14,8 +14,10 @@ from ..grants import RISK_ORDER  # re-exported: callers read the order from here
 from ..risk import at_least  # re-exported: yea.risk's, which the decision and judge use
 from .consent import (
     CONSENT_TTL,
+    NOT_A_CONSENT,
     ConsentCheck,
     check_job_consent,
+    consent_expiry,
     OTHER_PHRASE,
     PHRASE_CHANGED,
     StoredConsent,
@@ -81,9 +83,11 @@ __all__ = [
     "consent_hash_of",
     "StoredConsent",
     "OTHER_PHRASE",
+    "NOT_A_CONSENT",
     "PHRASE_CHANGED",
     "ConsentCheck",
     "check_job_consent",
+    "consent_expiry",
     "reserve_all",
     "spent",
     "settle_all",

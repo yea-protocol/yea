@@ -52,13 +52,21 @@ def preview_result(plans: list[HashedPlan], as_error: bool) -> t.CallToolResult:
     )
 
 
+# The two ways a consent from `yea approve` reaches this server (SPEC-approval §6): on the call, which
+# works anywhere, or through the store, where `yea approve` shares it.
+_APPROVE_LINES = [
+    "Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints (pg1.…), "
+    "then call again with the same input and `yea_consent` set to it.",
+    "If `yea approve` saved the consent where this server reads approvals, calling again without it works too.",
+]
+
+
 def consent_result(why: str, plans: list[HashedPlan], codes: list[dict], unavailable: str | None) -> t.CallToolResult:
     """No approval could be asked for here: the plans, and a consent code for each."""
     if unavailable:
         tail = [f"No consent can be accepted: {unavailable}."]
     else:
-        tail = ["Ask the user to run `yea approve <code>` in their terminal, then call again.",
-                *(f"  code for [{_number(plans, c)}]: {c['code']}" for c in codes)]
+        tail = [*_APPROVE_LINES, *(f"  code for [{_number(plans, c)}]: {c['code']}" for c in codes)]
     return error_result([f"✗ approval needed: {printable(why)}; nothing was run", *plans_text(plans), *tail],
                         {"plans": [plan_view(hp) for hp in plans], "codes": codes})
 

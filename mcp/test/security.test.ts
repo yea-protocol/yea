@@ -3,7 +3,7 @@
  * regression tests are in ts/test/security.test.ts.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
   createRequestStateCodec,
@@ -28,6 +28,7 @@ import {
   grantPolicy,
   type Kind,
   ledgerKeyOf,
+  printedConsent,
   refundJob,
   refundServer,
   textOf,
@@ -172,6 +173,67 @@ describe('MCP-side approval security', () => {
     expect((await conn.call(ch1)).isError).toBeFalsy();
     expect(w.applied).toEqual(['ch_1']);
   });
+
+  it('[M18] a yea_consent for one plan never runs another, and a tampered one runs nothing, even where the policy would (#358)', async () => {
+    const w = await world();
+    const conn = await connect('2025-no-elicit', refundServer(w));
+    const [one] = await codesFor(conn, ch1);
+    const consent = await printedConsent(w, one.code);
+
+    // For ch_1, passed on a call for ch_2: it approves none of that call's plans.
+    const other = await conn.call({ charge: 'ch_2', yea_consent: consent });
+
+    expect(textOf(other)).toContain(
+      "the consent passed as yea_consent can't be used: it approves none of these plans",
+    );
+
+    // The policy would run ch_1 by itself; a tampered consent never falls through to it.
+    await grantPolicy(w);
+
+    const forged = await conn.call({ ...ch1, yea_consent: tampered(consent) });
+
+    expect(forged.isError).toBe(true);
+    expect(textOf(forged)).toMatch(
+      /the consent passed as yea_consent can't be used/,
+    );
+    expect(w.applied).toEqual([]);
+
+    // The real one still runs its own plan, once.
+    expect(
+      (await conn.call({ ...ch1, yea_consent: consent })).isError,
+    ).toBeFalsy();
+    expect(w.applied).toEqual(['ch_1']);
+  });
+
+  it.skipIf(!process.getuid || process.getuid() === 0)(
+    '[M19] an unreadable consent in the store asks again, with no fs error in the result (#358)',
+    async () => {
+      const w = await world();
+      const conn = await connect('2025-no-elicit', refundServer(w));
+      const [c] = await codesFor(conn);
+      const planted = join(w.storeDir, 'consents', c.planHash);
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      // What an agent with the store could plant: a file the server can't read.
+      await w.store.putConsent(c.planHash, 'pg1.x');
+      chmodSync(planted, 0);
+
+      try {
+        const r = await conn.call(ch1);
+
+        expect(r.isError).toBe(true);
+        expect(textOf(r)).toMatch(/^✗ approval needed/);
+        expect(JSON.stringify(r)).not.toMatch(/EACCES|consents\//);
+        expect(logged).toHaveBeenCalledWith(
+          expect.stringMatching(/consent at .* can't be read \(EACCES\)/),
+        );
+        expect(w.applied).toEqual([]);
+      } finally {
+        logged.mockRestore();
+        chmodSync(planted, 0o600);
+      }
+    },
+  );
 
   it('[M5] a stored copy of the policy grant never counts as a consent', async () => {
     const w = await world();

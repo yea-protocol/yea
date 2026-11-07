@@ -11,7 +11,7 @@ import type { HashedPlan } from './plans.js';
 import type { Policy } from './policy.js';
 
 /** Why a stored consent is refused when it isn't shaped like one (§6). */
-const NOT_A_CONSENT = 'not a consent for this plan';
+export const NOT_A_CONSENT = 'not a consent for this plan';
 
 /**
  * Why a stored consent is refused when the principal signed it, validly, for another phrase: the
@@ -26,27 +26,48 @@ export const OTHER_PHRASE = 'not a consent for this phrase';
 export const consentHashOf = (planHash: string, phrase: string) =>
   sha256(canonical({ plan: planHash, phrase: effectivePhrase(phrase) }));
 
+/** The earliest integer `exp` among `caveats`, or null if there's none. */
+function earliestExp(caveats: unknown[]): number | null {
+  const exps = caveats
+    .map((c) => caveatOf(c, 'exp'))
+    .filter((v): v is number => Number.isSafeInteger(v));
+
+  return exps.length ? Math.min(...exps) : null;
+}
+
 /**
- * The hash a consent binds: the `only` of its one root block, which must carry an `exp` too. A
- * consent comes straight from the principal, so a delegated block can't turn another grant (the
- * policy) into one. Null when the grant isn't shaped like a consent.
+ * What a consent binds and until when: the `only` of its one root block, which must carry an
+ * `exp` too. A consent comes straight from the principal, so a delegated block can't turn
+ * another grant (the policy) into one. Null when the grant isn't shaped like a consent.
  */
-function boundHash(blocks: { caveats: unknown[] }[] | null): string | null {
+function consentShape(
+  blocks: { caveats: unknown[] }[] | null,
+): { only: string; exp: number } | null {
   const root = blocks?.length === 1 ? blocks[0] : null;
   const only = root?.caveats
     .map((c) => caveatOf(c, 'only'))
     .find((v) => v !== undefined);
-  const exp = root?.caveats.some((c) => caveatOf(c, 'exp') !== undefined);
+  const exp = root ? earliestExp(root.caveats) : null;
 
-  return typeof only === 'string' && exp ? only : null;
+  return typeof only === 'string' && exp !== null ? { only, exp } : null;
 }
 
 /**
- * Whether a stored consent may run this plan (SPEC-approval §6): it must be a consent grant for
- * exactly this plan and `phrase`, the one the tool names now (`only` = their consent hash, and
- * `exp` present), signed by the pinned principal and issued to the server. A copied policy
- * grant isn't shaped like a consent. One that is valid but binds another hash is refused with
- * `OTHER_PHRASE`, so the caller can say why. `id` is what to consume it by.
+ * When a consent grant expires: its earliest `exp`, read without checking anything else, or
+ * null if it isn't shaped like a consent. To tell an expired consent from a forged one when the
+ * grant check fails (§6).
+ */
+export async function consentExpiry(grant: string): Promise<number | null> {
+  return consentShape(await blocksOf(grant))?.exp ?? null;
+}
+
+/**
+ * Whether a consent, from the store or on the call, may run this plan (SPEC-approval §6): it
+ * must be a consent grant for exactly this plan and `phrase`, the one the tool names now
+ * (`only` = their consent hash, and `exp` present), signed by the pinned principal and issued
+ * to the server. A copied policy grant isn't shaped like a consent. One that is valid but binds
+ * another hash is refused with `OTHER_PHRASE`, so the caller can say why. `id` is what to
+ * consume it by, until `exp`.
  */
 export async function checkJobConsent(
   grant: string,
@@ -56,12 +77,14 @@ export async function checkJobConsent(
     policy: Pick<Policy, 'principal' | 'server'>;
     now?: number;
   },
-): Promise<{ ok: true; id: string } | { ok: false; why: string }> {
-  const bound = boundHash(await blocksOf(grant));
+): Promise<{ ok: true; id: string; exp: number } | { ok: false; why: string }> {
+  const shape = consentShape(await blocksOf(grant));
 
-  if (bound === null) {
+  if (shape === null) {
     return { ok: false, why: NOT_A_CONSENT };
   }
+
+  const bound = shape.only;
 
   // Checked against the hash it binds, so a valid consent for another phrase is told apart.
   const check = await checkGrant(grant, {
@@ -79,6 +102,6 @@ export async function checkJobConsent(
   }
 
   return bound === (await consentHashOf(o.hp.planHash, o.phrase))
-    ? { ok: true, id: check.id }
+    ? { ok: true, id: check.id, exp: shape.exp }
     : { ok: false, why: OTHER_PHRASE };
 }

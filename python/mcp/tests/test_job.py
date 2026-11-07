@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from yea import Plan, create, decode_consent_code, decode_grant, issue_grant, quantity
 from yea.store import LedgerKey
 
-from conftest import MODES, PRINCIPAL, Person, text
+from conftest import MODES, PRINCIPAL, Person, printed_consent, text
 
 pytestmark = pytest.mark.anyio
 
@@ -108,6 +108,32 @@ async def test_a_client_that_cant_ask_gets_consent_codes_and_a_signed_consent_ru
         assert not (await c.call_tool("send", {"to": "ana"})).is_error
         assert (await c.call_tool("send", {"to": "ana"})).is_error  # used once
     assert done == [("send", "ana")]
+
+
+async def test_the_consent_yea_approve_printed_passed_back_as_yea_consent_runs_once(world):
+    done = []
+    register(world, done)
+    async with world.client("auto") as c:
+        r = await c.call_tool("send", {"to": "ana"})
+        assert ("Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints "
+                "(pg1.…), then call again with the same input and `yea_consent` set to it.\nIf `yea approve` saved "
+                "the consent where this server reads approvals, calling again without it works too.") in text(r)
+        consent = printed_consent(r.structured_content["codes"][0])
+        ran = await c.call_tool("send", {"to": "ana", "yea_consent": consent})
+        # The consent is no part of the input the receipt keeps, or the plan hash binds.
+        assert not ran.is_error and ran.structured_content["receipt"]["input"] == {"to": "ana"}
+        again = await c.call_tool("send", {"to": "ana", "yea_consent": consent})
+        assert again.is_error and "can't be used: it was already used" in text(again)
+        bad = await c.call_tool("send", {"to": "ana", "yea_consent": 42})
+        assert bad.is_error
+    assert done == [("send", "ana")]
+
+
+async def test_a_plan_function_with_its_own_yea_consent_fails_registration(world):
+    with pytest.raises(TypeError, match="has its own yea_consent parameter, which job\\(\\) adds"):
+        @world.approvals.job(world.server)
+        async def send(to: str, yea_consent: str) -> list[Plan]:
+            return []
 
 
 @pytest.mark.parametrize("mode", MODES)

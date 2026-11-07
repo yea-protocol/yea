@@ -78,9 +78,10 @@ looks there before asking the person.
 _Avoid_: consent cache, consents dir
 
 **Job consent**:
-A person's consent to one job plan, given somewhere else (`yea approve`) and kept by plan hash
-in the job's store, where the job's server looks for it on the next identical call. The
-consent store keeps the other kind: consents to one proposal, for an agent's consent round.
+A person's consent to one job plan, given somewhere else (`yea approve`). It reaches the job's
+server on the next identical call, either kept by plan hash in the job's store or passed back on
+the call as `yea_consent`, and is checked the same way either way. The consent store keeps the
+other kind: consents to one proposal, for an agent's consent round.
 _Avoid_: consents dir (for either), round consent
 
 **Consent hash**:

@@ -187,7 +187,7 @@ The policy is only as strong as the place where your **private** principal key l
 
    `~` isn't expanded in client config files, so use a full path there, or `$HOME` in a shell as above. The policy is read on every call, so a new one applies without a restart.
 
-Now `move_to_trash` runs straight away and returns its receipt. `delete_file` still asks.
+Now `move_to_trash` runs straight away and returns its receipt. `delete_file` still asks. When a call needs `yea approve` (section 6), run it as the key's user and paste the consent it prints back into the chat.
 
 ### Trying it on one account (best effort)
 
@@ -220,13 +220,17 @@ Some clients don't support form elicitation. For them, a call that needs approva
 [1] Delete docs/report.pdf
   - delete file/docs/report.pdf
   risk: medium · undo: never
-Ask the user to run `yea approve <code>` in their terminal, then call again.
+Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints (pg1.…), then call again with the same input and `yea_consent` set to it.
+If `yea approve` saved the consent where this server reads approvals, calling again without it works too.
   code for [1]: pc1.eyJjYXBhYmlsaXR5Ijoi…
 ```
 
-`yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
+`yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It prints the consent (`pg1.…`), which reaches the server one of two ways:
 
-So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account: that's the case our tests cover, and it's best effort, since an agent that runs as you can reach the key. With the key on another OS user or device, `yea approve` can't answer the code yet ([today's status](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
+- **Pasted back.** The person pastes it into the chat, and the model calls the tool again with the same input and the consent as `yea_consent`. This works wherever the key is: under another OS user, on another machine, or for a server that keeps its approvals in memory. The server checks it exactly as one from its store. It must be signed by the pinned key, for this server, this tool, this plan and its phrase, and not expired, and it runs once. A consent changed on the way, even by one character, is refused, and nothing runs.
+- **Through the store.** `yea approve` also saves the consent in its store (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When that's the store the server reads, as in the one-account setup, the model can call again without it.
+
+On one account both routes work, and that's best effort: an agent that runs as you can reach the key. With the key on another OS user (the real setup above), that user runs `yea approve` and the person pastes the consent back, so the two users needn't share a store. That route is tested in both languages: the shared job-call cases run the same signed consent through the TypeScript and Python servers' approval sessions, and each package's end-to-end tests pass one back through an MCP client, to a store `yea approve` never wrote. No test runs two OS users. The route doesn't touch the store, so which user ran `yea approve` doesn't change what the server checks. A second user writing straight into the server's store isn't supported yet ([#376](https://github.com/yea-protocol/yea/issues/376)).
 
 **Why the pinned key matters here:** the server accepts only consents signed by the pinned principal key. Without one it can't accept any, so it gives no codes and says why:
 
@@ -234,7 +238,7 @@ So `yea approve` needs both the principal key and the server's store. In the one
 No consent can be accepted: YEA_PRINCIPAL_PUB is not set.
 ```
 
-The same happens on a server whose store is in memory (the default over HTTP), because `yea approve` can't reach it.
+A server whose store is in memory (the default over HTTP) gives codes too: `yea approve` can't save where it reads, so its consents come back pasted.
 
 ## FastMCP
 

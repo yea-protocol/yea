@@ -118,10 +118,9 @@ whole server is [`examples/mcp-quickstart.ts`](https://github.com/yea-protocol/y
 This delete can't be undone, yet it's approved in the form: a guarded tool's risk is `medium`
 unless you say otherwise. Pass `risk: 'high'` to `guard()` to make it need a consent signed
 with `yea approve` instead, at the cost of a pinned principal key (guide step 5) and a
-`yea approve` for each delete. Today that's best effort too: `yea approve` has to run on the
-server's account, since a key on another OS user
-([#358](https://github.com/yea-protocol/yea/issues/358)) or device
-([#328](https://github.com/yea-protocol/yea/issues/328)) can't save the consent yet
+`yea approve` for each delete. With the key on the server's account that's best effort too;
+with the key under another OS user or on another device, the person runs `yea approve` there
+and pastes the consent back into the chat
 ([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 ### Client support

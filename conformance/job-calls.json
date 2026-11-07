@@ -2418,6 +2418,698 @@
       ]
     },
     {
+      "name": "a consent on the call runs its plan once, and a second use asks",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "run",
+            "plan": "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+            "how": "approved",
+            "held": []
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": [
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
+            ]
+          }
+        },
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": false,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ",
+          "before": {
+            "used": {},
+            "consumed": [
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
+            ]
+          },
+          "outcome": {
+            "kind": "consent-codes",
+            "why": "the consent passed as yea_consent can't be used: it was already used",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "codes": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "unavailable": null
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": [
+              "8uKDjc6dDgC9mqjMlhrYVHC73x3G09md5AjmfaK9buU"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a consent on the call for another plan asks, and never falls through to the policy",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Give Chen 30.00 USD of store credit",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "credit",
+                  "detail": "30.00 USD"
+                }
+              ],
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVmdW5kIl19LHsicmlzayI6ImxvdyJ9LHsidG90YWwiOnsibWF4Ijo1MDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJleHAiOjE3OTAwMDM2MDB9XSwiaWF0IjoxNzg5OTk5OTAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1wb2xpY3kiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkF3MUpmZmx3d25qWXdVTEIyb0YwdmdLOGRneVhoa2xSdkxFWENlclNUUnJJTEp4UnhrSXpIWU04OERuWHZDWHFibWdRU0FXNE9JMl9zYTlWN2NJZ0NnIn1d",
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ",
+          "before": {
+            "used": {
+              "PPb7LUUlxDE2alNNCSqmEcf_2Q49Mbdb-nPjVgj3xhk spend": "0"
+            },
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "ask",
+            "form": {
+              "message": "Approval needed: the consent passed as yea_consent can't be used: it approves none of these plans.\n\n[1] Give Chen 30.00 USD of store credit\n  + create credit — 30.00 USD\n  risk: low · undo: 1m\n  to approve, type: approve",
+              "requestedSchema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "string",
+                    "title": "Confirm",
+                    "description": "Type \"approve\" to approve."
+                  }
+                },
+                "required": [
+                  "confirm"
+                ]
+              },
+              "offered": [
+                "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg"
+              ]
+            },
+            "state": {
+              "v": 1,
+              "tool": "refund",
+              "inputHash": "884scU20cL4vsbzkrPdV8x9tq6xKMD-EZNO57bZcRBM",
+              "sub": "",
+              "plans": [
+                "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg"
+              ],
+              "round": 1,
+              "exp": 1790000600
+            }
+          },
+          "planned": true,
+          "after": {
+            "used": {
+              "PPb7LUUlxDE2alNNCSqmEcf_2Q49Mbdb-nPjVgj3xhk spend": "0"
+            },
+            "consumed": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a mangled, expired or forged consent on the call asks, and says why",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Nt",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "ask",
+            "form": {
+              "message": "Approval needed: the consent passed as yea_consent can't be used: it isn't a consent from yea approve.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+              "requestedSchema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "string",
+                    "title": "Confirm",
+                    "description": "Type \"approve\" to approve."
+                  }
+                },
+                "required": [
+                  "confirm"
+                ]
+              },
+              "offered": [
+                "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+              ]
+            },
+            "state": {
+              "v": 1,
+              "tool": "refund",
+              "inputHash": "884scU20cL4vsbzkrPdV8x9tq6xKMD-EZNO57bZcRBM",
+              "sub": "",
+              "plans": [
+                "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+              ],
+              "round": 1,
+              "exp": 1790000600
+            }
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        },
+        {
+          "now": 1790000600,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": false,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "consent-codes",
+            "why": "the consent passed as yea_consent can't be used: it has expired",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "codes": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "unavailable": null
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        },
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": false,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJub25jZSI6ImpvYi1jYWxscy1mb3JnZWQiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IjVGZVlkcmZERUVfeTVudUZhdTNJSnY4TlJPMy1xWlYxSlpZSkxsVGlIMHRlTWJBUVVJM0hyeTVhUGlmWmF6by1XbnFWSFRRVWI0VXVHWnJPelAteEFRIn1d",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "consent-codes",
+            "why": "the consent passed as yea_consent can't be used: it isn't signed by the pinned principal for this tool at this server",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "codes": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "unavailable": null
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "with no pinned principal key, a consent on the call counts for nothing",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": false,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "unpinned": "YEA_PRINCIPAL_PUB is not set",
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "consent-codes",
+            "why": "the consent passed as yea_consent can't be used: YEA_PRINCIPAL_PUB is not set",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ],
+            "codes": [],
+            "unavailable": "YEA_PRINCIPAL_PUB is not set"
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a preview and a retry ignore a consent on the call",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "preview": true,
+          "consent": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIl19LHsidmVyYnMiOlsiQ09NTUlUIl19LHsiY2FuIjpbInJlZnVuZCJdfSx7Im9ubHkiOiJXeWRjOXY5b2NzRHZnNFZNUVBzN3V5Y0JfT2ZLa28wNzNwa2laWDlMTW53In0seyJleHAiOjE3OTAwMDA2MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1jb25zZW50Iiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiIyYi0xd0R1VmZtNGJDRWFhRF9WUnNpOXhqQkhacEhHWUF1bWFkYm5UTDhsSjlDcGFtckl5M1A1WHpZcDVObU9qSmtuWUZMbkVvaVEwRU5ydGRQLXBCZyJ9XQ",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "preview",
+            "plans": [
+              "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+            ]
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        },
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.nope",
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "ask",
+            "form": {
+              "message": "Approval needed: the consent passed as yea_consent can't be used: it isn't a consent from yea approve.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+              "requestedSchema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "string",
+                    "title": "Confirm",
+                    "description": "Type \"approve\" to approve."
+                  }
+                },
+                "required": [
+                  "confirm"
+                ]
+              },
+              "offered": [
+                "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+              ]
+            },
+            "state": {
+              "v": 1,
+              "tool": "refund",
+              "inputHash": "884scU20cL4vsbzkrPdV8x9tq6xKMD-EZNO57bZcRBM",
+              "sub": "",
+              "plans": [
+                "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
+              ],
+              "round": 1,
+              "exp": 1790000600
+            }
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": []
+          }
+        },
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 60
+            }
+          ],
+          "policy": {
+            "grant": null,
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "consent": "pg1.nope",
+          "retry": {
+            "state": {
+              "fromStep": 2
+            },
+            "answer": {
+              "action": "accept",
+              "content": {
+                "confirm": "approve"
+              }
+            }
+          },
+          "before": {
+            "used": {},
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "run",
+            "plan": "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+            "how": "approved",
+            "held": []
+          },
+          "planned": true,
+          "after": {
+            "used": {},
+            "consumed": [
+              "nonce of step 2"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "a plan at or above outOfBand is listed but not offered in the form",
       "tool": {
         "name": "refund",

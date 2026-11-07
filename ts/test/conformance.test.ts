@@ -340,7 +340,8 @@ describe('conformance vectors', () => {
         now: c.now,
       });
 
-      expect(r, c.name).toEqual(c.expect);
+      // The vectors pin what to consume it by; `exp`, when it's valid, is read from the grant.
+      expect(r.ok ? { ok: true, id: r.id } : r, c.name).toEqual(c.expect);
     }
 
     for (const c of v.undo.cases) {

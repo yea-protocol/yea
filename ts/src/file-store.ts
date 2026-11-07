@@ -20,6 +20,7 @@ import type {
   LedgerKey,
   Reservation,
 } from './store.js';
+import { errno } from './util.js';
 
 /** An undo claimed but never finished (the process died) can be claimed again after this. */
 const STALE_CLAIM_MS = 600_000;
@@ -134,8 +135,23 @@ export class FileStore implements ApprovalStore {
     writeAtomic(this.consentPath(planHash), grant);
   }
 
+  /**
+   * The consent stored for a plan, or null. One that is there but can't be read (a mode or owner
+   * that shuts this user out, a directory in its place) counts as absent, with a line on stderr:
+   * it can only mean asking again, never an fs error in the model's context (SPEC-approval §8).
+   */
   async getConsent(planHash: string): Promise<string | null> {
-    return readOrNull(this.consentPath(planHash));
+    const path = this.consentPath(planHash);
+
+    try {
+      return readOrNull(path);
+    } catch (e) {
+      console.error(
+        `yea: the consent at ${path} can't be read (${errno(e) ?? String(e)}), so it counts as absent`,
+      );
+
+      return null;
+    }
   }
 
   // ---- paths: every name from outside is checked or hashed before it reaches one ----

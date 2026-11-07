@@ -47,8 +47,9 @@ serveStdio(() => {                                              // the SDK may c
 
 From the model's side, `refund` is an ordinary tool. A call either runs and returns a receipt,
 or the person sees the plan in their client and types the phrase to approve it, or (when the
-client can't ask) the call returns the plan and a consent code for `yea approve`. Adding
-`"preview": true` to any job call returns the plans and does nothing.
+client can't ask) the call returns the plan and a consent code for `yea approve`, whose
+printed consent the agent passes back as `yea_consent`. Adding `"preview": true` to any job
+call returns the plans and does nothing.
 
 **Users.** Authors of TypeScript MCP servers. They adopt YEA one tool at a time, without
 changing their transport or their other tools.
@@ -93,9 +94,10 @@ while keys, store and codec live in the one `yea()` context.
 as it does), and HTTP promises it with `singleProcess: true`, which the start-up refusal above
 requires, so there is no per-call check.
 
-**MemoryStore and consent codes.** `yea approve` writes consents to a `FileStore`, which a
-`MemoryStore` never reads. So on a `MemoryStore` (HTTP's default) the consent-code result
-carries no codes and says why, as it does without a pinned principal.
+**MemoryStore and consent codes.** `yea approve` saves consents to a `FileStore`, which a
+`MemoryStore` never reads. So on a `MemoryStore` (HTTP's default) a consent comes back on the
+call instead (`yea_consent`, SPEC-approval §6), and the consent-code result carries codes there
+as it does on a `FileStore`.
 
 A store is recognised as a `MemoryStore` by its brand (`isMemoryStore`, reading
 `yeaStore === 'memory'`), not `instanceof`, so a second copy of the SDK can't slip one past these
@@ -125,7 +127,7 @@ Registers a job tool. `config`:
 | Field | Meaning |
 |---|---|
 | `title`, `description`, `annotations` | As in `registerTool`. Annotation defaults are under Results. |
-| `inputSchema` | A Standard Schema that exposes JSON Schema (`~standard.jsonSchema`): zod ≥ 4.2, ArkType, Valibot, or `fromJsonSchema`. Its root must be a plain object without a `preview` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
+| `inputSchema` | A Standard Schema that exposes JSON Schema (`~standard.jsonSchema`): zod ≥ 4.2, ArkType, Valibot, or `fromJsonSchema`. Its root must be a plain object without a `preview` or `yea_consent` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `requireInteraction` | Optional. `yea()`'s `requireInteraction`, for this tool alone. On, it also marks the server's `undo`, whenever `undo` is registered. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
@@ -135,17 +137,20 @@ Registers a job tool. `config`:
 `JobPlan` is the SDK core's: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`, `data?`
 and `apply()`. `apply` runs at most once per approval, and only after the plan is allowed.
 
-**The input schema and `preview`.** The SDK validates `tools/call` arguments against the
-registered schema before the callback runs, and passes on the parsed value, so a plain
-`z.object` would silently drop `preview`. `job()` therefore registers a **wrapper** Standard
-Schema:
+**The input schema, `preview` and `yea_consent`.** The SDK validates `tools/call` arguments
+against the registered schema before the callback runs, and passes on the parsed value, so a
+plain `z.object` would silently drop `preview` and `yea_consent`. `job()` therefore registers a
+**wrapper** Standard Schema:
 
-- its JSON Schema is the author's, with `preview: { type: 'boolean' }` added to `properties`;
-- its `validate` takes `preview` off (anything but a boolean is an issue), validates the rest
-  with the author's schema, and returns `{ ...validated, [PREVIEW]: true }` under a symbol key
-  that can't come from JSON.
+- its JSON Schema is the author's, with `preview: { type: 'boolean' }` and
+  `yea_consent: { type: 'string' }` (each with a description for the model) added to
+  `properties`;
+- its `validate` takes both off (a `preview` that isn't a boolean, or a `yea_consent` that is
+  neither a string nor `null`, is an issue), validates the rest with the author's schema, and
+  returns `{ ...validated, [PREVIEW]: true, [CONSENT]: consent }` under symbol keys that
+  can't come from JSON, each only when given.
 
-The callback reads and removes that symbol. The SDK passes the validated value straight to
+The callback reads and removes those symbols. The SDK passes the validated value straight to
 the callback, so the symbol survives, and canonical JSON ignores symbol keys. `job()` and
 `guard` call the wrapper's `jsonSchema.input` once when registering, because the SDK only
 converts it later, when it lists tools; a schema that can't convert fails registration.
@@ -164,7 +169,7 @@ the name is what plans hash, `deny` lists and `can` caveats match. The server is
 finds the tool's name there through a narrow cast (an SDK seam), and throws if the tool isn't
 registered on that server.
 
-Like `job()`, `guard` throws for a tool whose input schema already has a `preview` property, or
+Like `job()`, `guard` throws for a tool whose input schema already has a `preview` or `yea_consent` property, or
 whose root isn't a plain object: the wrapper schema would shadow the tool's own argument. It
 throws when called, and the tool stays disabled. It also throws, before touching the tool, for
 a tool that is already a job (guarded before, or registered by `job()`): the wrapper would wrap
@@ -176,7 +181,8 @@ replaces the handler:
 1. note whether the tool was enabled, then `tool.disable()`, so the original handler can't
    run in between;
 2. `tool.update({ callback, paramsSchema })` with the guarded callback and the wrapper schema
-   (a tool registered without a schema keeps the `cb(ctx)` form, and gets no `preview`);
+   (a tool registered without a schema keeps the `cb(ctx)` form, and gets no `preview` or
+   `yea_consent`);
 3. if it was enabled, `tool.enable()`, only once the update succeeded. If anything throws,
    the tool stays disabled.
 
@@ -277,8 +283,8 @@ handler and the store; and it turns the outcome into a result: the preview, the
 `inputRequired` (with the session's state sealed by the codec), the consent codes, a refusal, or
 step 11 for a `run`.
 
-1. **Validate.** The wrapper schema has already validated the input and taken `preview` off.
-   Refuse non-integer numbers.
+1. **Validate.** The wrapper schema has already validated the input and taken `preview` and
+   `yea_consent` off. Refuse non-integer numbers.
 2. **Deny.** If the tool is in `deny`, return `isError` now, before `plan()` runs, before
    consents are read, and before a preview (a denied tool shows nothing).
 3. **Plan.** Call `plan(input, ctx)`, then `hashPlans`. A clarification is returned as text.
@@ -293,7 +299,10 @@ step 11 for a `run`.
      included, and for a denied tool the refusal names the state, not the deny list. A string
      means the codec isn't installed; an object without `yea` is another tool's state
      (possible with `yea({ codec })`).
-6. **Consents.** For each plan, in order:
+6. **Consents.** If the call carries `yea_consent`, it alone is checked, through the same
+   `checkJobConsent` and `consumeOnce` as below. It runs the plan it approves, or nothing this
+   round: the call asks (step 8) with the reason SPEC-approval §6 gives, and neither the store
+   nor the policy (step 7) is consulted. Otherwise, for each plan, in order:
    - look up `store.getConsent(planHash)`, and check it with
      `checkJobConsent(grant, { hp, phrase, policy, now })`, where `phrase` is the plan's checked
      phrase (`confirmWith`'s, through `checkedPhrase`, so after the `approve` fallback);
@@ -320,10 +329,11 @@ step 11 for a `run`.
    ```
    `round` is 1 on a first ask, and the verdict's round on an ask-again.
 9. **Fail closed.** Return `isError: true` with the plans in Lens, a `jobConsentCode` for each
-   plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their terminal,
-   then call again.* The result carries `structuredContent: { plans, codes }`. Without a pinned
-   principal key, or on a `MemoryStore`, no consent can be accepted, so there are no codes, and
-   the result says why.
+   plan that isn't denied, and SPEC-approval §6's lines: run `yea approve <code>`, paste back
+   the consent it prints, and call again with it as `yea_consent` (or without it, where
+   `yea approve` saved it in this server's store). The result carries
+   `structuredContent: { plans, codes }`. Without a pinned principal key no consent can be
+   accepted, so there are no codes, and the result says why.
 10. **Answer.**
     - `checkState(state.yea, { tool, inputHash, sub, now })`, then
       `consumeOnce(state.yea.nonce, state.yea.exp)`. Any failure refuses, with one message.
@@ -464,7 +474,7 @@ mcp/src/call.ts            the guarded callback: the session's facts in, its out
 mcp/src/call/context.ts    the approval context, the job as run, and who is calling and the policy
 mcp/src/call/round.ts      steps 5 and 8: the retry a request carries, and the sealed form
 mcp/src/call/apply.ts      step 11: apply once, settle, and record the receipt
-mcp/src/schema.ts          the wrapper Standard Schema that carries `preview`
+mcp/src/schema.ts          the wrapper Standard Schema that carries `preview` and `yea_consent`
 mcp/src/client.ts          can the client ask, per era
 mcp/src/server-key.ts      the server's name and key
 mcp/src/policy.ts          pinned principal, policy and tightening loading
@@ -487,7 +497,8 @@ can't elicit. For each:
   the third wrong one refuses. Decline, cancel and a missing answer run nothing;
 - the same state sent twice runs nothing the second time;
 - a client that can't ask gets consent codes. After `yea approve` (driven through
-  `readJobConsent` and `signJobConsent`), the next call runs, once;
+  `readJobConsent` and `signJobConsent`), the next call runs, once: with the consent in the
+  store, and with it passed as `yea_consent` on a `MemoryStore` (HTTP's default);
 - `preview: true` runs nothing and stores nothing, and a denied tool doesn't even preview;
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
   from another server sharing the store;
@@ -496,7 +507,7 @@ can't elicit. For each:
   and one that's on marks `undo` too, before or after `undo` is registered;
 - `guard` wraps an existing tool. The original callback runs only once approved, its result
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
-- the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
+- the start-up and per-call refusals listed under `yea()`;
 - the start-up line, once, on stderr;
 - two servers in one process with different `home`s read their own `policy.json` deny lists
   and keep their own default stores; without `home`, `yea()` reads `YEA_HOME` once, at
@@ -523,7 +534,11 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a denied tool never runs, even with a stored consent;
 - a `high` plan is never offered in the form;
 - an irreversible plan never auto-runs;
-- a consent for one plan never runs another;
+- a consent for one plan never runs another, from the store or as `yea_consent`;
+- a `yea_consent` that is forged, altered, expired, for another server or tool, or already
+  used runs nothing, and the call asks without consulting the policy;
+- an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
+  the result;
 - a stored copy of the policy grant never counts as a consent;
 - a `requestState` the codec didn't verify is refused;
 - a verified state without our `yea` key, a state from another job on the same server, and an
@@ -561,8 +576,8 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 
 Adopted for v0 under the standing go-ahead; any can be reopened.
 
-1. **`preview` is an input field, not a separate tool.** It rides on the wrapper schema, which
-   keeps one tool per job (the map's rule).
+1. **`preview` and `yea_consent` are input fields, not separate tools.** They ride on the
+   wrapper schema, which keeps one tool per job (the map's rule).
 2. **The server key lives in `~/.yea/server/<name>.key`.** SPEC-approval §9 lists what must be
    out of the agent's reach, and the server key isn't one of them. A consent can't be forged
    with it (consents are single-block grants from the principal), a policy can only be

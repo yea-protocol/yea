@@ -196,8 +196,10 @@ YEA_HTTP_TOKEN=$(openssl rand -hex 32) YEA_SUB=me@example.com \
 Streamable HTTP serves one person. Every request must carry `Authorization: Bearer
 $YEA_HTTP_TOKEN`, and a request that does is `YEA_SUB`. On loopback the `Host` header is
 checked too, and a request body over 1 MiB gets 413. **The server speaks plain HTTP:** off loopback, put TLS in front of it (a reverse
-proxy such as Caddy or nginx), or the bearer token crosses the network in the clear. Approvals live in memory, where `yea approve` can't reach them, so **live `high`
-plans (refunds, immediate changes) can't run over HTTP at all**: use stdio for those.
+proxy such as Caddy or nginx), or the bearer token crosses the network in the clear. Approvals live in memory, where `yea approve` can't save them, so **a live `high`
+plan (a refund, an immediate change) over HTTP runs only with its consent pasted back**: the
+person runs `yea approve <code>`, pastes the consent it prints into the chat, and the agent
+passes it as `yea_consent`.
 
 ## What it does in Stripe
 

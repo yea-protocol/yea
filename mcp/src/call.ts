@@ -17,6 +17,7 @@ import { askResult, retryOf } from './call/round.js';
 import { canAsk } from './client.js';
 import { clarifyResult, consentResult, previewResult } from './render.js';
 import { errorResult, NOTHING_RAN, refused } from './result.js';
+import type { Reserved } from './schema.js';
 import { errorMessage } from './util.js';
 
 export { isPartial, PartialApplyError } from './call/apply.js';
@@ -30,7 +31,7 @@ export {
 } from './call/context.js';
 
 /** The session's facts for this round, read from the call. */
-const factsOf = (call: Call, preview: boolean): JobCall => ({
+const factsOf = (call: Call, { preview, consent }: Reserved): JobCall => ({
   tool: call.job,
   input: call.input,
   plan: () => call.job.plan(call.input, call.ctx),
@@ -40,17 +41,18 @@ const factsOf = (call: Call, preview: boolean): JobCall => ({
   policy: call.policy,
   canAsk: canAsk(call.server, call.ctx),
   ...('why' in call.y.principal ? { unpinned: call.y.principal.why } : {}),
+  ...(consent === undefined ? {} : { consent }),
 });
 
 /** The guarded callback. Anything unexpected before `apply()` runs nothing. */
 export async function runJob(
   base: Pick<Call, 'y' | 'server' | 'job' | 'input' | 'ctx'>,
-  preview: boolean,
+  reserved: Reserved,
 ): Promise<Result> {
   try {
     const call = await begin(base);
-    const retry = preview ? undefined : retryOf(call.ctx);
-    const outcome = await jobCall(factsOf(call, preview), call.y.store, retry);
+    const retry = reserved.preview ? undefined : retryOf(call.ctx);
+    const outcome = await jobCall(factsOf(call, reserved), call.y.store, retry);
 
     return await resultOf(call, outcome);
   } catch (e) {

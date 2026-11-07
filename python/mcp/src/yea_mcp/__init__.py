@@ -31,6 +31,7 @@ from .call import (
     JobDef,
     PartialApplyError,
     Req,
+    Reserved,
     Yea,
     run_job,
 )
@@ -151,10 +152,10 @@ class Approvals:
                 self._undo_free(server)
             job = JobDef(tool_name, risk, revert, confirm_with)
 
-            async def run(input: dict, plan: Any, preview: bool, ctx: Context) -> Any:
+            async def run(input: dict, plan: Any, reserved: Reserved, ctx: Context) -> Any:
                 req = Req(ctx.request_context, ctx.session, ctx.request_context.request_id, ctx.protocol_version,
                           ctx.request_state, ctx.input_responses)
-                return await run_job(self._y, job, input, preview, req, plan)
+                return await run_job(self._y, job, input, reserved, req, plan)
 
             given = job_annotations(_as_dict(annotations))
             prompt = self._y.require_interaction if require_interaction is None else require_interaction

@@ -76,6 +76,15 @@ export function previewResult(
     : textResult(lines, structured);
 }
 
+/**
+ * The two ways a consent from `yea approve` reaches this server (SPEC-approval §6): on the call,
+ * which works anywhere, or through the store, where `yea approve` shares it.
+ */
+const APPROVE_LINES = [
+  'Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints (pg1.…), then call again with the same input and `yea_consent` set to it.',
+  'If `yea approve` saved the consent where this server reads approvals, calling again without it works too.',
+];
+
 /** No approval could be asked for here: the plans, and a consent code for each. */
 export function consentResult(
   why: string,
@@ -86,7 +95,7 @@ export function consentResult(
   const tail = unavailable
     ? [`No consent can be accepted: ${unavailable}.`]
     : [
-        'Ask the user to run `yea approve <code>` in their terminal, then call again.',
+        ...APPROVE_LINES,
         ...codes.map((c) => `  code for [${codeNumber(plans, c)}]: ${c.code}`),
       ];
 

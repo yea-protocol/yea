@@ -3,6 +3,7 @@ names the TS id it mirrors."""
 
 import asyncio
 import json
+import os
 import socket
 import time
 import urllib.error
@@ -15,12 +16,13 @@ from yea import (
     local, serve_http, verify_grant,
 )
 from yea._json import b64url_encode
-from yea.approval import Policy, reserve_all
+from yea.approval import Policy, Tightening, consent_hash_of, load_policy, reserve_all
 from yea.errors import YeaError
-from yea.job_call import JobCall, JobTool, Outcome, Retry, job_call
+from yea.grants import Grant
+from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
 from yea.keys import sign_proof
 from yea.service.verified_request import VerifiedIntent, verify_request
-from yea.store import LedgerKey, MemoryStore
+from yea.store import FileStore, LedgerKey, MemoryStore
 from yea.uses import quantity
 
 PRINCIPAL = key_from_seed(bytes([1]) * 32)
@@ -203,6 +205,111 @@ def test_a18_a_state_sent_again_runs_nothing_whatever_its_answer():
         assert await job_call(asking_call(), store, Retry(declined, ACCEPT)) == INVALID_STATE
 
     run(go())
+
+
+# [A22] A consent on the call (``yea_consent``) is checked exactly as one from the store (#358).
+SERVER = key_from_seed(bytes([6]) * 32)
+_REFUND = Plan("Refund 30.00 USD to Chen", [], apply=lambda c: None, risk="low", undo_window=60)
+_CREDIT = Plan("Give Chen store credit", [], apply=lambda c: None, risk="low", undo_window=60)
+_REFUND_TOOL = JobTool("refund", revert=lambda r: None)
+_REFUND_HASH = hash_plans(_REFUND_TOOL, {"who": "Chen"}, [_REFUND])[0].plan_hash
+# A policy that would run the refund without asking.
+_RUNS_REFUNDS = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["refund"]}, {"risk": "low"}, {"exp": NOW + 3600}]).encode()
+_NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
+
+
+def _consent(by=PRINCIPAL, svc: str | None = None, can: str = "refund", exp: int = NOW + 600) -> str:
+    """A consent for the refund as ``yea approve`` signs one, with ``by``, ``svc``, ``can`` or ``exp``
+    changed."""
+    return issue_grant(by, SERVER.public, [{"svc": [svc or SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [can]},
+                                           {"only": consent_hash_of(_REFUND_HASH, "approve")}, {"exp": exp}],
+                       iat=NOW).encode()
+
+
+def _carrying(consent: str | None, now: int = NOW, plans: tuple = (_REFUND,), principal: str | None = PRINCIPAL.public,
+              unpinned: str | None = None) -> JobCall:
+    """A refund call carrying ``consent``, from a client that can't ask, under a policy that would run it."""
+    async def plan():
+        return list(plans)
+    policy = load_policy(_RUNS_REFUNDS, SERVER.public, principal, Tightening((), "high"))
+    return JobCall(_REFUND_TOOL, {"who": "Chen"}, plan, "", now, policy, False, unpinned=unpinned, consent=consent)
+
+
+def _refused_for(why: str):
+    return lambda o: (o.kind, o.why) == ("consent-codes", f"the consent passed as yea_consent can't be used: {why}")
+
+
+def test_a22_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refused():
+    async def go():
+        store, token = MemoryStore(), _consent()
+        first = await job_call(_carrying(token), store)
+        assert (first.kind, first.how) == ("run", "approved")
+        assert _refused_for("it was already used")(await job_call(_carrying(token), store))
+
+    run(go())
+
+
+def test_a22_once_used_on_the_call_a_stored_copy_of_the_consent_is_used_too():
+    async def go():
+        store, token = MemoryStore(), _consent()
+        assert (await job_call(_carrying(token), store)).how == "approved"
+        await store.put_consent(_REFUND_HASH, token)
+        plain = _carrying(None)
+        no_policy = JobCall(plain.tool, plain.input, plain.plan, "", NOW, Policy(None, PRINCIPAL.public, SERVER.public),
+                            False)
+        assert (await job_call(no_policy, store)).kind == "consent-codes"
+
+    run(go())
+
+
+def _altered() -> str:
+    """The consent with its ``exp`` moved and the signature kept."""
+    g = decode_grant(_consent())
+    b = g.blocks[0]
+    return Grant(({**b, "p": {**b["p"], "caveats": [*b["p"]["caveats"][:4], {"exp": NOW + 9999}]}},)).encode()
+
+
+@pytest.mark.parametrize("name, token, why, now", [
+    ("forged", lambda: _consent(by=AGENT), _NOT_SIGNED, NOW),
+    ("altered", _altered, _NOT_SIGNED, NOW),
+    ("expired", lambda: _consent(), "it has expired", NOW + 600),
+    ("for another server", lambda: _consent(svc=AGENT.public), _NOT_SIGNED, NOW),
+    ("for another tool", lambda: _consent(can="delete_branch"), _NOT_SIGNED, NOW),
+    ("mangled", lambda: _consent()[:40], "it isn't a consent from yea approve", NOW),
+    ("empty", lambda: "", "it isn't a consent from yea approve", NOW),
+    ("the policy grant", lambda: _RUNS_REFUNDS, "it isn't a consent from yea approve", NOW),
+])
+def test_a22_a_bad_consent_on_the_call_runs_nothing_and_never_falls_through_to_the_policy(name, token, why, now):
+    """The policy alone would run the refund: a refused consent never falls through to it."""
+    assert _refused_for(why)(run(job_call(_carrying(token(), now=now), MemoryStore()))), name
+
+
+def test_a22_a_consent_on_the_call_for_one_plan_doesnt_commit_another():
+    o = run(job_call(_carrying(_consent(), plans=(_CREDIT,)), MemoryStore()))
+    assert _refused_for("it approves none of these plans")(o)
+
+
+def test_a22_a_consent_on_the_call_counts_for_nothing_without_a_pinned_principal():
+    o = run(job_call(_carrying(_consent(), principal=None, unpinned="YEA_PRINCIPAL_PUB is not set"), MemoryStore()))
+    assert _refused_for("YEA_PRINCIPAL_PUB is not set")(o) and o.codes == []
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid") or os.getuid() == 0, reason="needs a user that file modes apply to")
+def test_a23_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_the_result(tmp_path, capsys):
+    """[A23] What an agent with the store could plant: a file the server can't read (#358)."""
+    store = FileStore(tmp_path)
+    hp = hash_plans(JobTool("refund"), {"who": "Chen"}, [Plan("Refund", [], apply=lambda c: None, risk="low")])[0]
+    run(store.put_consent(hp.plan_hash, "pg1.x"))
+    planted = tmp_path / "consents" / hp.plan_hash
+    planted.chmod(0)
+    try:
+        call = asking_call()
+        o = run(job_call(JobCall(call.tool, call.input, call.plan, "", NOW,
+                                 Policy(None, PRINCIPAL.public, SERVER.public), False), store))
+        assert o.kind == "consent-codes" and "EACCES" not in repr(o)
+        assert "can't be read (EACCES), so it counts as absent" in capsys.readouterr().err
+    finally:
+        planted.chmod(0o600)
 
 
 @pytest.mark.parametrize("bad", [

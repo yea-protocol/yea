@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mcp_types as t
 import pytest
-from conftest import MODES, Person, text
+from conftest import MODES, Person, printed_consent, text
 from mcp.server.mcpserver import MCPServer
 from yea import Plan, create
 
@@ -60,12 +60,27 @@ async def test_an_output_schema_tools_own_results_are_errors_and_preview_never_r
     assert codes.is_error and "yea approve" in text(codes) and calls == []
 
 
+async def test_a_consent_passed_back_as_yea_consent_runs_the_original_once_which_never_sees_it(world):
+    calls = []
+    existing(world, calls)
+    async with world.client("auto") as c:  # can't ask
+        r = await c.call_tool("delete_branch", {"branch": "old-nav"})
+        consent = printed_consent(r.structured_content["codes"][0])
+        bad = await c.call_tool("delete_branch", {"branch": "old-nav", "yea_consent": 42})
+        ran = await c.call_tool("delete_branch", {"branch": "old-nav", "yea_consent": consent})
+        again = await c.call_tool("delete_branch", {"branch": "old-nav", "yea_consent": consent})
+    assert bad.is_error and "yea_consent must be a string" in text(bad)
+    assert not ran.is_error and ran.meta["dev.yea/receipt"]["input"] == {"branch": "old-nav"}
+    assert again.is_error and "it was already used" in text(again) and calls == ["old-nav"]
+
+
 async def test_the_listing_advertises_preview_and_the_job_annotations(world):
     existing(world, [])
     async with world.client("auto") as c:
         tools = {tl.name: tl for tl in (await c.list_tools()).tools}
     d = tools["delete_branch"]
     assert d.input_schema["properties"]["preview"]["type"] == "boolean"
+    assert {"type": "string"} in d.input_schema["properties"]["yea_consent"]["anyOf"]
     assert d.annotations.destructive_hint is True and d.meta["dev.yea/job"]["undoable"] is False
 
 
@@ -113,6 +128,20 @@ async def test_a_tool_with_its_own_preview_is_refused(world):
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("publish", {})
     assert r.is_error and "own preview argument" in text(r) and calls == []
+
+
+async def test_a_tool_with_its_own_yea_consent_is_refused(world):
+    calls = []
+
+    @world.server.tool()
+    async def publish(yea_consent: str = "") -> str:
+        calls.append(yea_consent)
+        return "published"
+
+    world.approvals.guard(world.server, "publish", describe=lambda a: {"summary": "Publish", "effects": []})
+    async with world.client("auto", Person()) as c:
+        r = await c.call_tool("publish", {})
+    assert r.is_error and "own yea_consent argument" in text(r) and calls == []
 
 
 async def test_guarding_one_server_doesnt_guard_another(world):

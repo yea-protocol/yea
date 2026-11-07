@@ -1792,6 +1792,211 @@ describe('approval security (SPEC-approval)', () => {
     expect(phraseMatches(`${bom}Approve${nbsp}`, 'approve')).toBe(true);
     expect(performance.now() - start).toBeLessThan(500);
   });
+
+  describe('[A22] a consent on the call is checked exactly as one from the store (#358)', async () => {
+    const refund = {
+      summary: 'Refund 30.00 USD to Chen',
+      effects: [],
+      risk: 'low',
+      undoWindow: 60,
+    } as const;
+    const credit = { ...refund, summary: 'Give Chen store credit' };
+    const tool = { name: 'refund', revert: () => null };
+    const input = { who: 'Chen' };
+    const [refundHp] = await P.hashPlans(tool, input, [
+      { ...refund, apply: () => null },
+    ]);
+    const only = await P.consentHashOf(refundHp.planHash, 'approve');
+    // A policy that would run the refund without asking.
+    const policyGrant = await P.issueGrant({
+      principal: B,
+      to: A.public,
+      caveats: [{ can: ['refund'] }, { risk: 'low' }, { exp: now + 3600 }],
+    });
+
+    /** A consent as `yea approve` signs one, with `o` changing a part of it. */
+    const consent = (
+      o: { by?: P.KeyPair; svc?: string; can?: string; exp?: number } = {},
+    ) =>
+      P.issueGrant({
+        principal: o.by ?? B,
+        to: A.public,
+        iat: now,
+        caveats: [
+          { svc: [o.svc ?? A.public] },
+          { verbs: ['COMMIT'] },
+          { can: [o.can ?? 'refund'] },
+          { only },
+          { exp: o.exp ?? now + 600 },
+        ],
+      });
+    /** A call carrying `token` from a client that can't ask, with the refund (or `plans`). */
+    const carrying = (token: string, o: Partial<P.JobCall> = {}) => {
+      const ran: string[] = [];
+      const call: P.JobCall = {
+        tool,
+        input,
+        plan: () =>
+          [refund].map((p) => ({ ...p, apply: () => ran.push(p.summary) })),
+        sub: '',
+        now,
+        policy: {
+          grant: policyGrant,
+          principal: B.public,
+          server: A.public,
+          deny: [],
+          outOfBand: 'high',
+        },
+        canAsk: false,
+        consent: token,
+        ...o,
+      };
+
+      return { call, ran };
+    };
+    const notSigned =
+      "it isn't signed by the pinned principal for this tool at this server";
+    const refusedFor = (why: string) => ({
+      kind: 'consent-codes',
+      why: `the consent passed as yea_consent can't be used: ${why}`,
+    });
+
+    it('runs its plan once, and a second use is refused', async () => {
+      const store = new P.MemoryStore();
+      const token = await consent();
+      const first = await P.jobCall(carrying(token).call, store);
+
+      expect(first).toMatchObject({ kind: 'run', how: 'approved' });
+      expect(await P.jobCall(carrying(token).call, store)).toMatchObject(
+        refusedFor('it was already used'),
+      );
+    });
+
+    it('is the one consent: once used on the call, a stored copy of it is used too', async () => {
+      const store = new P.MemoryStore();
+      const token = await consent();
+
+      expect(await P.jobCall(carrying(token).call, store)).toMatchObject({
+        kind: 'run',
+        how: 'approved',
+      });
+
+      // The same consent saved by `yea approve` afterwards, and a call without a policy.
+      await store.putConsent(refundHp.planHash, token);
+
+      const { consent: _none, ...plain } = carrying(token).call;
+      const again = await P.jobCall(
+        { ...plain, policy: { ...plain.policy, grant: null } },
+        store,
+      );
+
+      expect(again.kind).toBe('consent-codes');
+    });
+
+    it('refuses a forged, altered, expired, other-server or other-tool consent, and runs nothing', async () => {
+      const token = await consent();
+      const [block] = P.decodeGrant(token);
+      const altered = P.encodeGrant([
+        {
+          ...block,
+          p: {
+            ...block.p,
+            caveats: [...block.p.caveats.slice(0, 4), { exp: now + 9999 }],
+          },
+        },
+      ]);
+      const cases: [string, string, number?][] = [
+        [await consent({ by: other }), notSigned],
+        [altered, notSigned],
+        [token, 'it has expired', now + 600],
+        [await consent({ svc: other.public }), notSigned],
+        [await consent({ can: 'delete_branch' }), notSigned],
+        [token.slice(0, 40), "it isn't a consent from yea approve"],
+        ['', "it isn't a consent from yea approve"],
+        [policyGrant, "it isn't a consent from yea approve"],
+      ];
+
+      for (const [bad, why, at] of cases) {
+        const { call, ran } = carrying(bad, at ? { now: at } : {});
+
+        // The policy alone would run the refund: a refused consent never falls through to it.
+        expect(await P.jobCall(call, new P.MemoryStore())).toMatchObject(
+          refusedFor(why),
+        );
+        expect(ran).toEqual([]);
+      }
+    });
+
+    it("passed for one plan, doesn't commit another", async () => {
+      const { call, ran } = carrying(await consent(), {
+        plan: () => [{ ...credit, apply: () => ran.push(credit.summary) }],
+      });
+
+      expect(await P.jobCall(call, new P.MemoryStore())).toMatchObject(
+        refusedFor('it approves none of these plans'),
+      );
+      expect(ran).toEqual([]);
+    });
+
+    it('counts for nothing without a pinned principal', async () => {
+      const { call } = carrying(await consent());
+      const o = await P.jobCall(
+        {
+          ...call,
+          policy: { ...call.policy, principal: '' },
+          unpinned: 'YEA_PRINCIPAL_PUB is not set',
+        },
+        new P.MemoryStore(),
+      );
+
+      expect(o).toMatchObject({
+        ...refusedFor('YEA_PRINCIPAL_PUB is not set'),
+        codes: [],
+      });
+    });
+  });
+
+  it.skipIf(!process.getuid || process.getuid() === 0)(
+    '[A23] an unreadable consent in the store asks again, with no fs error in the result (#358)',
+    async () => {
+      const dir = tmp();
+      const store = new FileStore(dir);
+      const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
+        { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+      ]);
+      const planted = join(dir, 'consents', hp.planHash);
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      // What an agent with the store could plant: a file the server can't read.
+      await store.putConsent(hp.planHash, 'pg1.x');
+      chmodSync(planted, 0);
+
+      try {
+        const o = await P.jobCall(
+          askingCall({
+            policy: {
+              grant: null,
+              principal: B.public,
+              server: A.public,
+              deny: [],
+              outOfBand: 'high',
+            },
+            canAsk: false,
+          }),
+          store,
+        );
+
+        expect(o.kind).toBe('consent-codes');
+        expect(JSON.stringify(o)).not.toContain('EACCES');
+        expect(logged).toHaveBeenCalledWith(
+          expect.stringMatching(/consent at .* can't be read \(EACCES\)/),
+        );
+      } finally {
+        logged.mockRestore();
+        chmodSync(planted, 0o600);
+      }
+    },
+  );
 });
 
 // AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer

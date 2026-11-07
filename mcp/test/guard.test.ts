@@ -15,6 +15,7 @@ import {
   grantPolicy,
   type Kind,
   ledgerKeyOf,
+  printedConsent,
   textOf,
   type World,
   world,
@@ -119,6 +120,7 @@ describe.each<Kind>(['2026', '2025'])('guard on a %s client', (kind) => {
     const tool = tools.find((t) => t.name === 'charge');
 
     expect(tool?.inputSchema.properties).toHaveProperty('preview');
+    expect(tool?.inputSchema.properties).toHaveProperty('yea_consent');
     expect(tool?._meta?.['dev.yea/job']).toEqual({
       risk: 'medium',
       undoable: false,
@@ -150,6 +152,27 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
 
       expect(ran.isError).toBeFalsy();
       expect(ran.structuredContent).toEqual({ charged: '5' });
+      expect(c.charged).toEqual(['5']);
+    });
+
+    it('a consent passed back as yea_consent runs the original once, which never sees it', async () => {
+      const w = await world();
+      const c: Counter = { charged: [] };
+      const conn = await connect(kind, guarded(w, c));
+      const r = await conn.call({ amount: '5' }, 'charge');
+      const { codes } = r.structuredContent as { codes: { code: string }[] };
+      const yea_consent = await printedConsent(w, codes[0].code);
+      const ran = await conn.call({ amount: '5', yea_consent }, 'charge');
+
+      expect(ran.isError).toBeFalsy();
+      expect(c.charged).toEqual(['5']);
+      // The consent is no part of the input the receipt keeps, or the plan hash binds.
+      expect(ran._meta?.['dev.yea/receipt']).toHaveProperty('input', {
+        amount: '5',
+      });
+      expect(
+        (await conn.call({ amount: '5', yea_consent }, 'charge')).isError,
+      ).toBe(true);
       expect(c.charged).toEqual(['5']);
     });
   },
@@ -288,12 +311,13 @@ describe('guard failures', () => {
   });
 });
 
-describe('guard refuses schemas it can’t carry preview on', () => {
-  it('throws for a preview property or a root that isn’t a plain object, and leaves the tool off', async () => {
+describe('guard refuses schemas it can’t carry preview and yea_consent on', () => {
+  it('throws for a preview or yea_consent property or a root that isn’t a plain object, and leaves the tool off', async () => {
     const w = await world();
     const server = new McpServer({ name: 'b', version: '1' });
     const schemas = {
       withPreview: z.object({ amount: z.string(), preview: z.string() }),
+      withConsent: z.object({ amount: z.string(), yea_consent: z.string() }),
       union: z.union([
         z.object({ a: z.string() }),
         z.object({ b: z.string() }),
@@ -309,7 +333,7 @@ describe('guard refuses schemas it can’t carry preview on', () => {
       );
 
       expect(() => w.approvals.guard(server, tool, describeCharge)).toThrow(
-        /^guard\(\): a job input schema (may not have a field named preview|must be a plain object at its root)/,
+        /^guard\(\): a job input schema (may not have a field named (preview|yea_consent)|must be a plain object at its root)/,
       );
       expect(tool.enabled).toBe(false);
     }

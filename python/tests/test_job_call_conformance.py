@@ -2,8 +2,7 @@
 runs through ``yea.job_call`` a round per step, and each step's store before, outcome, whether the
 handler ran, and store after must match. The twin of ts/scripts/job-call-run.mjs.
 
-The store is a MemoryStore behind a plain class (so the session issues consent codes) that records
-each id it consumes. A step's ``race`` is reserved by "another call" just before the session's
+The store is a MemoryStore behind a plain class that records each id it consumes. A step's ``race`` is reserved by "another call" just before the session's
 first reservation, after the policy has decided."""
 
 from __future__ import annotations
@@ -133,7 +132,8 @@ async def _run(call: dict) -> list[dict]:
             retry = Retry(st, step["retry"]["answer"])
         s.race[:] = step.get("race", [])
         facts = JobCall(_tool(call["tool"]), step["input"], _handler(step, ran), step["sub"], step["now"],
-                        _policy(step["policy"]), step["canAsk"], step.get("preview", False), step.get("unpinned"))
+                        _policy(step["policy"]), step["canAsk"], step.get("preview", False), step.get("unpinned"),
+                        step.get("consent"))
         o = await job_call(facts, s, retry)
         if o.kind == "ask":
             states[i] = o.state

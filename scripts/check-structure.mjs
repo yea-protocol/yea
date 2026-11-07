@@ -42,6 +42,7 @@ export const LENGTH_EXEMPT = [
   'bench/',
   'ts/scripts/vectors.mjs',
   'ts/scripts/approval-vectors.mjs',
+  'ts/scripts/job-call-vectors.mjs',
 ];
 
 /**

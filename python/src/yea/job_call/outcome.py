@@ -27,7 +27,10 @@ class JobTool:
 class JobCall:
     """One round of a job call: its facts, read afresh on every round. ``plan`` is the tool's
     handler, which runs on every round and on preview, so it must change nothing. ``unpinned`` says
-    why no principal key is pinned, when ``policy.principal`` is empty: no consent counts then."""
+    why no principal key is pinned, when ``policy.principal`` is empty: no consent counts then.
+    ``consent`` is the consent the call carries (``yea_consent``, SPEC-approval §6), as the model
+    passed it: on a first round it alone decides whether anything runs; a preview and a retry
+    ignore it."""
 
     tool: JobTool
     input: dict
@@ -38,6 +41,7 @@ class JobCall:
     can_ask: bool
     preview: bool = False
     unpinned: str | None = None
+    consent: str | None = None
 
 
 @dataclass(frozen=True)

@@ -11,7 +11,7 @@ import type {
 import type { Effect, HashedPlan, Risk, Uses } from '@yea-protocol/sdk';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import { jobAnnotations, jobMeta } from './result.js';
-import { previewSchema, takePreview } from './schema.js';
+import { jobInputSchema, type Reserved, takeReserved } from './schema.js';
 import { errorMessage, registryOf } from './util.js';
 
 /** What a guarded tool's `describe(input)` returns: a plan without `apply`. */
@@ -52,7 +52,7 @@ function guardedCallback(
   const call = original.handler as (...a: unknown[]) => unknown;
   const run = (
     input: Record<string, unknown>,
-    preview: boolean,
+    reserved: Reserved,
     ctx: ServerContext,
   ) => {
     const apply = () => (original.withArgs ? call(input, ctx) : call(ctx));
@@ -61,26 +61,27 @@ function guardedCallback(
       plan: async (i) => [{ ...(await def.describe(i)), apply }],
     };
 
-    return runJob({ y, server, job, input, ctx }, preview);
+    return runJob({ y, server, job, input, ctx }, reserved);
   };
 
-  // A tool registered without a schema is called as cb(ctx), and gets no preview.
+  // A tool registered without a schema is called as cb(ctx), and gets no preview or consent.
   return original.withArgs
     ? (args: unknown, ctx: ServerContext) => {
-        const { input, preview } = takePreview(args);
+        const { input, ...reserved } = takeReserved(args);
 
-        return run(input, preview, ctx);
+        return run(input, reserved, ctx);
       }
-    : (ctx: ServerContext) => run({}, false, ctx);
+    : (ctx: ServerContext) => run({}, { preview: false }, ctx);
 }
 
 /**
  * The wrapper schema for a guarded tool. Like `job()`, it refuses a root that isn't a plain
- * object, or one that already has `preview`: the wrapper would shadow the tool's own argument.
+ * object, or one that already has `preview` or `yea_consent`: the wrapper would shadow the
+ * tool's own argument.
  */
 function guardSchema(schema: StandardSchemaWithJSON): StandardSchemaWithJSON {
   try {
-    return previewSchema(schema);
+    return jobInputSchema(schema);
   } catch (e) {
     throw new TypeError(`guard(): ${errorMessage(e)}`);
   }

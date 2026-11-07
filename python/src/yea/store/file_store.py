@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -127,7 +129,22 @@ class FileStore:
         _write_atomic(self.root / "consents" / _plan_hash(plan_hash), grant)
 
     async def get_consent(self, plan_hash: str) -> str | None:
-        return _read(self.root / "consents" / _plan_hash(plan_hash))
+        """The consent stored for a plan, or None. One that is there but can't be read (a mode or
+        owner that shuts this user out, a directory in its place, bytes that aren't UTF-8) counts as
+        absent, with a line on stderr: it can only mean asking again, never an fs error in the
+        model's context (SPEC-approval §8)."""
+        path = self.root / "consents" / _plan_hash(plan_hash)
+        try:
+            return _read(path)
+        except (OSError, ValueError) as e:  # UnicodeDecodeError is a ValueError
+            print(f"yea: the consent at {path} can't be read ({_why(e)}), so it counts as absent", file=sys.stderr)
+            return None
+
+
+def _why(e: Exception) -> str:
+    """An error's errno name (``EACCES``), as TypeScript's store logs it, or its type."""
+    code = getattr(e, "errno", None)
+    return errno.errorcode.get(code, type(e).__name__) if isinstance(code, int) else type(e).__name__
 
 
 def _parse_ledger(text: str | None) -> _Ledger:

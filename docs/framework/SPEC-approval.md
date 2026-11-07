@@ -19,11 +19,12 @@ A developer marks a tool as a job, for example `reschedule`, `send_email`, `dele
   somewhere else.
 - **Afterwards**, anything reversible can be undone within its window.
 
-Nothing the model passes to a tool counts as an approval, and a replayed or stale approval
-never runs anything. Both hold only as far as the principal key, the principal's public key
-and the store are out of the agent's reach. What an approval proves about the person depends on
-the step that produced it: a form answer is only as trustworthy as the client that draws it
-([§9, What an approval proves](#what-an-approval-proves)).
+Nothing the model passes is an approval; a consent signed by the pinned key, which the model
+may carry back from the person (§6), is checked as one from the store. A replayed or stale
+approval never runs anything. Both hold only as far as the principal key, the principal's
+public key and the store are out of the agent's reach. What an approval proves about the person
+depends on the step that produced it: a form answer is only as trustworthy as the client that
+draws it ([§9, What an approval proves](#what-an-approval-proves)).
 
 **Approval is about what an action does.** A plan is judged on which tool it belongs to, how
 risky it is, whether it can be undone, and what it uses up. What it uses is the protocol's
@@ -330,7 +331,11 @@ chosen plan at or above `outOfBand`, then returns an error result with:
 
 - the plans in Lens,
 - a **consent code** for each plan that may be approved (not for denied tools), and
-- the line: *Ask the user to run `yea approve <code>` in their terminal, then call again.*
+- the lines: *Ask the user to run `yea approve <code>` in their terminal and paste back the
+  consent it prints (pg1.…), then call again with the same input and `yea_consent` set to it.
+  If `yea approve` saved the consent where this server reads approvals, calling again without
+  it works too.* These name both ways a consent reaches the server: on the call, and through
+  the store.
 
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
 plan's details. For a job, its `detail` is `{ job, phrase }`: `job` is the full plan-hash
@@ -362,8 +367,12 @@ an empty or blank phrase hashes as `approve`.
 3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
-   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`, and
-   saves it in the store under the plan hash (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`).
+   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`,
+   prints it on stdout, and saves it in the store under the plan hash (`YEA_STORE`, else
+   `$YEA_HOME/store`, else `~/.yea/store`). It then tells the person to paste the printed
+   consent back into the chat. If the save failed, it says so and why. If it succeeded, it
+   names the store, where a server on the same account reads the consent without the paste.
+   A failed save doesn't fail the approval: the consent was signed, and the call can carry it.
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
 and checks it against that plan's consent hash, recomputed from the plan and the phrase the
@@ -384,9 +393,47 @@ code — if this repeats, the code you were given may have been altered"*. The p
 tell a changed phrase or an edited code from a lost consent. A consumed, expired or malformed
 consent leaves no such reason.
 
-This needs `yea approve` changes (today it issues to the agent key and checks
-`proposalHash`), and a store shared by the server and the `yea` command: a local stdio server
-with `FileStore`. For remote HTTP servers, url-mode approval pages come later.
+**A consent on the call.** The consent `yea approve` prints can also come back on the call,
+so the server and `yea approve` needn't share a store. The person pastes it into the chat,
+and the agent calls the tool again with the same input and the consent as `yea_consent`.
+Every job tool takes that argument beside `preview`. It's a string, the `pg1.` grant exactly as
+printed; absent or `null` means the call carries none, and any other type is an invalid
+argument. It's taken off before the input is validated, so it's no part of the input, the plan
+hash or the input hash, and a tool's own input may not have a field of that name.
+
+A first round that carries a consent (a preview doesn't read it, and a retry is judged on the
+form's answer alone) checks it **exactly as a stored consent**: against each recomputed plan
+in order, a single root block carrying `only` and `exp`, passing the grant check as a `COMMIT`
+of the tool at this server signed by the pinned principal, with `only` equal to that plan's
+consent hash. It then consumes it with `consumeOnce(<consent grant id>, exp)` and runs that
+plan. A consent is used once, whichever way it arrived. If it approves no plan, nothing runs
+that round. Neither a stored consent nor the policy is consulted, and the call asks (the
+form, else fresh consent codes) with the reason `the consent passed as yea_consent can't be
+used: <why>`, where `<why>` is the first that applies:
+
+| `<why>` | when |
+|---|---|
+| why no principal key is pinned | there's none (as for consent codes) |
+| `it isn't a consent from yea approve` | it doesn't decode as a single-block grant with `only` and `exp`: a value mangled on the way lands here |
+| `it has expired` | the grant check fails and its `exp` is past |
+| `it isn't signed by the pinned principal for this tool at this server` | the grant check fails otherwise: forged, altered, or for another server or tool |
+| `it approves none of these plans` | it passes, but binds no recomputed plan's consent hash: another plan, other input, or a phrase that changed |
+| `it was already used` | its grant id was already consumed |
+
+A call with no plans is refused as `no plans`, as without a consent. These reasons are fixed
+text, pinned by the job call cases, so both languages say the same.
+
+Carrying a consent through the chat gives the model nothing to forge. Nothing the model passes
+is an approval; a consent signed by the pinned key is checked as one from the store. The bytes
+are the principal's signature over one plan and its phrase, issued to this server's key, so a
+model that changes one character turns it into a refusal. It costs about a kilobyte of chat.
+The bridge takes the protocol's consents the same way (SPEC-bridge `yea_consent`), and so does
+a `COMMIT` that carries one (SPEC.md §6.6).
+
+The store route needs a store shared by the server and the `yea` command: a local stdio server
+with `FileStore`, on the person's own account. The call route needs nothing shared, so it
+serves a server under another OS user, on another machine, or over HTTP with a `MemoryStore`.
+Url-mode approval pages come later.
 
 ### 7. Undo
 
@@ -424,7 +471,7 @@ interface ApprovalStore {
   release(r: Reservation): Promise<void>;
   used(k: LedgerKey): Promise<bigint>;                               // settled + reserved
   putConsent(planHash: string, grant: string): Promise<void>;        // from `yea approve`
-  getConsent(planHash: string): Promise<string | null>;              // a signed pg1. consent grant
+  getConsent(planHash: string): Promise<string | null>;              // a pg1. consent grant, or null if none can be read
 }
 
 type LedgerKey = { block: string; of: string };  // a policy grant block id and a measure
@@ -437,10 +484,11 @@ type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus wha
 Amounts are the SDK core's `exact()` values: integers at scale 18. What `decide` reads is
 `used(k)`: the settled plus reserved amount for a block and measure.
 
-**Store selection.** Stdio servers use `FileStore` by default, because `yea approve` and undo
-across restarts need it. HTTP servers use `MemoryStore` by default, and one with a `total`
-limit refuses to start on it unless the author passes `store` or sets `singleProcess: true`.
-A custom store (Redis, SQL) is for multi-process servers.
+**Store selection.** Stdio servers use `FileStore` by default, because `yea approve` saves
+consents there and undo across restarts needs it. HTTP servers use `MemoryStore` by default,
+where a consent comes back on the call (§6), and one with a `total` limit refuses to start on
+it unless the author passes `store` or sets `singleProcess: true`. A custom store (Redis, SQL)
+is for multi-process servers.
 
 **`FileStore` format**, under `~/.yea/store/` by default (`$YEA_HOME/store` when `YEA_HOME` is set;
 the MCP servers and `yea approve` use `YEA_STORE` first), pinned by the conformance
@@ -467,6 +515,14 @@ into a store error instead of a silent overshoot. Files are written to a uniquel
 (`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids
 are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be
 removed after `exp`.
+
+**An unreadable consent is absent.** A `consents/` file that exists but can't be read (a mode
+or owner that shuts the server out, a directory in its place, bytes that aren't UTF-8) counts
+as no consent, and the server writes one line to stderr naming the file and the error. The
+call then asks as it would without one. A consent only ever adds a way to run, so treating
+an unreadable one as absent never runs more than the policy would. And the fs error, with its
+path, never reaches the model's context. Every other store read that fails is still a store
+error, and nothing runs.
 
 ## 9. Security
 
@@ -532,19 +588,18 @@ what the prompt shows.
   the retry of a 2026-07-28 `input_required` call draws a second prompt. Both wait for the
   interactive check in [#372](https://github.com/yea-protocol/yea/issues/372).
 
-**Today's status, for servers built with the framework**, where `yea approve` must save the
-consent in the server's store:
+**Today's status, for servers built with the framework:**
 - **The key on the server's account:** best effort. An agent that runs as that user can read
   the key, or run `yea approve` itself: the command checks for a terminal, and a terminal isn't
   a person.
-- **The key on another OS user:** blocked. The store's directories and files are private to
-  the server's user (§8), so `yea approve` run as another user can't save the consent there
-  ([#358](https://github.com/yea-protocol/yea/issues/358)).
-- **The key on another device:** not possible yet
-  ([#328](https://github.com/yea-protocol/yea/issues/328)).
+- **The key on another OS user:** works, with the consent pasted back on the call (§6). The
+  signature holds; the store stays best effort under a stdio server, which runs as the agent's
+  user ("What else must hold"). No test runs two OS users.
+- **The key on another device:** works the same way. The person copies the code to the device,
+  runs `yea approve` there, and pastes the consent back. Approval pages for web chat clients
+  are [#328](https://github.com/yea-protocol/yea/issues/328).
 
-The bridge's consent codes already work with the key on another device, because `yea approve`
-there prints the consent and the person pastes it back (SPEC-bridge).
+The bridge's consent codes work the same way (SPEC-bridge, `yea_consent`).
 
 **Choosing the tier.**
 - **The author chooses it for each plan.** A plan at `risk: 'high'` is never offered in the
@@ -554,8 +609,8 @@ there prints the consent and the person pastes it back (SPEC-bridge).
   instead is [#369](https://github.com/yea-protocol/yea/issues/369). The Stripe
   connector does this in live mode: its refunds, immediate cancellations and changes, and
   dearer changes at renewal are `high` ([SPEC-connector-stripe](SPEC-connector-stripe.md)).
-  The cost is a pinned principal key and a store `yea approve` can reach (§2, §6): without
-  them, a `high` plan can't be approved at all.
+  The cost is a pinned principal key (§2): without one, a `high` plan can't be approved at
+  all. Its consent comes back on the call, or through a store `yea approve` shares (§6).
 - **The person can lower `outOfBand`.** It's a risk level, not a list of tools:
   `{ "outOfBand": "medium" }` sends medium and high plans out of band. Like every unsigned
   rule, it's best effort (§2): an agent that can write `~/.yea` can remove it.
@@ -573,6 +628,18 @@ there prints the consent and the person pastes it back (SPEC-bridge).
   `YEA_PRINCIPAL_HOME`, the write check on `YEA_PRINCIPAL_PUB`, and running the server as
   another OS user are how. On one account with a shell-capable agent, the guarantees are best
   effort, as the security guide already says for the principal key.
+- **What a second OS user buys, and what it doesn't.** With the principal key under another OS
+  user, who runs `yea approve` there and pastes the consent back (§6), the agent can't sign.
+  It can't make itself a consent or a policy, and that holds strongly. The store doesn't move.
+  A stdio server runs as the client's user, which is the agent's, so the store is still the
+  agent's: it can delete a `consumed/` marker to replay a consent within its `exp`, reset a
+  `total`, delete receipts, or delete or spoil a stored consent. Spoiling one is a denial, not
+  a forgery: an unreadable consent only asks again (§8). So with two users, signing is
+  strong and the store stays best effort. The store is out of the agent's reach too only with
+  **three** users: the server as its own user (started through a wrapper in the client's
+  config), the agent as another that can't read or write the server's store, and the
+  principal as a third. The consent travels on the call in that layout as well. The guides
+  don't walk through it yet, and the shared-store variants are #376.
 - **A restarted server keeps its totals** only with a persistent store, which is why stdio
   defaults to `FileStore`.
 - **Short consents.** Consent grants expire in 10 minutes by default, which bounds a replay
@@ -588,6 +655,7 @@ there prints the consent and the person pastes it back (SPEC-bridge).
 | `preview: true` | `INTENT` without commit |
 | Approval form and typed confirmation | Plays a consent grant's role for one plan, unsigned: the form tier (§9) |
 | Consent code and `yea approve` | A `pc1.` consent request, then a `pg1.` consent grant signed by the principal |
+| `yea_consent` on the call | A `COMMIT` re-sent with the consent grant (§6.6) |
 | Signed policy | A grant signed by the principal, with its caveats; unsigned config can only tighten |
 | `undo(receipt)` | `UNDO` |
 
@@ -653,12 +721,14 @@ export function decide(
   `nonce of step n`), whether the handler ran (`planned`), and the `outcome`: plans by hash and
   a state without its nonce. The first step's `before` sets the store up, with the call's
   `consents`; a step's `race` is reserved by another call between the decision and the
-  reservation. The store is not a MemoryStore, so consent codes are issued. They cover a denied
+  reservation. They cover a denied
   tool, a run inside the policy, asking then answering, a wrong phrase three times, a replayed
   state, a declined answer, a state for other input or past its expiry, plans that changed, a
   chosen plan now out of band, a consent code consumed twice, a consent signed for another
   phrase, a limit that fills up between decide and reserve, no pinned principal, a
-  clarification and no plans.
+  clarification and no plans. A step's `consent` is the consent its call carries
+  (`yea_consent`, §6); those cases cover one that runs its plan once, whether it came on the
+  call or from the store, and each reason one is refused.
 - **Conformance cases** (`conformance/approval.json`). Given plans, a policy and a ledger, both
   languages agree on:
   - the decision, and the reason text;
@@ -678,6 +748,11 @@ export function decide(
   - a consent for one plan can't run another, and a replayed state or consent runs nothing;
   - a consent code with an edited phrase is refused, and a consent signed for an edited phrase
     never runs; a phrase over 64 characters is refused;
+  - a consent on the call (`yea_consent`) that is forged, altered, expired, for another server
+    or tool, already used, or for another plan runs nothing, and never falls through to the
+    policy;
+  - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
+    the result;
   - an irreversible plan never auto-runs, whatever the grant says;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - no answer to the form, whatever it is, makes a signature or saves a consent, even with a
@@ -738,8 +813,9 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
    recipient, the amount as written), or `approve` when it names none. Phrases are text only
    in v0, at most 64 characters, and a consent code's phrase is bound by its consent hash (§6),
    adopted 2026-11-03 (#141).
-3. **Remote servers.** Local, signed `yea approve` is enough for v0. Url-mode pages come
-   later.
+3. **Remote servers.** Local, signed `yea approve` is enough for v0, with the consent pasted
+   back on the call when the server can't read the store `yea approve` writes (decision 8).
+   Url-mode pages come later.
 4. **Undo doesn't ask** within its window.
 5. **SPEC.md's "MCP binding" appendix** comes after v0 ships.
 6. **Count limits** are already in the protocol (`total` on any measure, SPEC.md §6.3), so
@@ -750,3 +826,13 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
    SPEC.md §4.3.1 requires, so `send_email` and most refunds always ask. Allowing named
    irreversible tools to auto-run would be a new, always-signed grant caveat: a protocol
    change.
+8. **A consent travels on the call; a shared inbox comes later** (#358, adopted 2026-11-07).
+   The consent `yea approve` prints can be passed back on the retry call as `yea_consent` and
+   is checked exactly as a stored one (§6). That needs no shared filesystem, so it works for a
+   server under another OS user, on another device, and over HTTP with a `MemoryStore`, and
+   #328's paste-back can reuse it. A group-writable consents inbox in the server's store, which
+   would save the paste on one machine with two users, is deferred (#376). It needs the
+   store outside both users' homes (`~/.yea` is `0700`), the server rather than `yea approve`
+   to create the inbox, file modes that a `umask` can't strip, and a two-user CI job to show it
+   works. It also buys nothing against an agent that runs as the server's user, which owns the
+   store either way (§9).

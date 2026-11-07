@@ -40,7 +40,8 @@ server.run("stdio")
 From the model's side, `refund` is an ordinary tool, with the same three outcomes as in
 `mcp-ts`: it runs and returns a receipt; or the person sees the plan in their client and types
 the phrase; or (when the client can't ask) the call returns the plan and a consent code for
-`yea approve`. Adding `"preview": true` to any job call returns the plans and does nothing.
+`yea approve`, whose printed consent the agent passes back as `yea_consent`. Adding
+`"preview": true` to any job call returns the plans and does nothing.
 
 **Users.** Authors of Python MCP servers on the official SDK or on FastMCP. They adopt YEA one
 tool at a time, without changing their transport or their other tools.
@@ -156,14 +157,16 @@ it (rather than adding a second one) and leaves it out of `input`.
 `data`). For a job, `apply` takes no arguments and may be async; it runs at most once per
 approval, and only after the plan is allowed.
 
-**How `preview` gets in.** `MCPServer` builds a tool's input schema and argument model from the
-function signature, and validates arguments before calling it. `job()` registers a wrapper
-whose `__signature__` is the plan function's parameters plus `preview: bool = False` and a
+**How `preview` and `yea_consent` get in.** `MCPServer` builds a tool's input schema and
+argument model from the function signature, and validates arguments before calling it. `job()`
+registers a wrapper whose `__signature__` is the plan function's parameters plus
+`preview: bool = False`, `yea_consent: str | None = None` (SPEC-approval §6) and a
 keyword-only `ctx: Context`, with matching `__annotations__` (the SDK finds the context
 parameter through `typing.get_type_hints`, so both are needed) and the return annotation
-`CallToolResult`. The listed schema then shows `preview`, the SDK validates the rest, and the
-wrapper takes `preview` off before calling the plan function. A plan function with its own
-`preview` parameter, or with `*args`/`**kwargs`, fails registration. On FastMCP a job tool is
+`CallToolResult`. The listed schema then shows both, the SDK validates them strictly (a JSON
+boolean, and a JSON string or `null`) along with the rest, and the wrapper takes them off
+before calling the plan function. A plan function with its own `preview` or `yea_consent`
+parameter, or with `*args`/`**kwargs`, fails registration. On FastMCP a job tool is
 built with background tasks off (FastMCP's default), so it never runs as a task. A job with
 `revert` on a server that already has a tool named `undo` (not YEA's) fails registration, as in
 `mcp-ts`.
@@ -195,18 +198,19 @@ on it.
 
 - It runs inside the request-state boundary (the SDK puts its own middleware first), so it sees
   plaintext `params["requestState"]` and the raw `params["inputResponses"]`. It runs before
-  params are validated: a non-object `arguments`, or a `preview` that isn't a JSON boolean, is an
-  `is_error` result, and the answer is checked with `ElicitResult.model_validate`.
-- It takes `preview` off the arguments (`call_next(replace(ctx, params=...))`), so the original
-  tool never sees it.
-- On `tools/list` it adds `preview` to each guarded tool's listed schema, on a copy of the
-  result.
+  params are validated: a non-object `arguments`, a `preview` that isn't a JSON boolean, or a
+  `yea_consent` that is neither a string nor `null`, is an `is_error` result, and the answer is
+  checked with `ElicitResult.model_validate`.
+- It takes `preview` and `yea_consent` off the arguments (`call_next(replace(ctx, params=...))`),
+  so the original tool never sees them.
+- On `tools/list` it adds `preview` and `yea_consent` to each guarded tool's listed schema, on a
+  copy of the result.
 - **What it learns from the listing.** On every guarded call it reads the server's public
   `await server.list_tools()` (in memory), so a tool re-registered since is judged by what's
-  there now: a guarded tool whose own schema has a `preview` property is refused (the call fails
+  there now: a guarded tool whose own schema has a `preview` or `yea_consent` property is refused (the call fails
   closed), a tool whose `_meta` marks it a job is refused, and a tool with an `outputSchema` gets
   decision 6's error results.
-- `describe` gets the raw arguments with `preview` taken off, before the tool validates them,
+- `describe` gets the raw arguments with `preview` and `yea_consent` taken off, before the tool validates them,
   and must treat them as untrusted. The plan hash binds that raw input, so what the person
   approves is exactly what the tool then receives (the SDK may coerce `"2"` to `2`, which
   doesn't change what was approved, but a `describe` that doesn't coerce the same way can show
@@ -250,8 +254,8 @@ function and the store; and it turns the outcome into a result, asking per era, 
 for a `run`. A 2025 client's in-call answer is the next round: the routine steps the session
 again, with the clock, the policy and the plans as they are then.
 
-1. **Validate.** The SDK has validated the input (jobs) or not (guards). Take `preview` off.
-   Build `input` (above). Refuse non-integer numbers (`plan_hash` raises).
+1. **Validate.** The SDK has validated the input (jobs) or not (guards). Take `preview` and
+   `yea_consent` off. Build `input` (above). Refuse non-integer numbers (`plan_hash` raises).
 2. **Deny.** If the tool is in `deny`, return `is_error` now, before planning, consents or a
    preview.
 3. **Plan.** Call the plan function (or `describe`), then hash the plans. A clarification is
@@ -266,7 +270,11 @@ again, with the clock, the policy and the plans as they are then.
      steps 1–3;
    - anything else refuses the call before the session runs: nothing runs, the plan function
      included, and for a denied tool the refusal names the state, not the deny list.
-6. **Consents.** For each plan, in order: `store.get_consent(planHash)`,
+6. **Consents.** If the call carries `yea_consent`, it alone is checked, through the same
+   `check_job_consent` and `consume_once` as below (`carried_consent` does this). It runs the
+   plan it approves, or nothing this round: the call asks (step 8) with the reason
+   SPEC-approval §6 gives, and neither the store nor the policy (step 7) is consulted.
+   Otherwise, for each plan, in order: `store.get_consent(planHash)`,
    `check_job_consent(token, plan, phrase, policy, now)` with `phrase` the plan's checked phrase
    (`confirm_with`'s, through `checked_phrase`, so after the `approve` fallback), then
    `consume_once(<grant id>, <its exp>)`; the first that passes runs that plan (step 11).
@@ -283,10 +291,12 @@ again, with the clock, the policy and the plans as they are then.
    `None`, step 9. Otherwise ask **per era** (next section), with `round` 1 on a first ask and
    the verdict's round on an ask-again.
 9. **Fail closed.** Return `is_error: true` with the plans in Lens, a `job_consent_code` for
-   each plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their
-   terminal, then call again.* `structured_content` carries `{"plans", "codes"}`. With no
-   pinned principal there can be no valid consent, and on a `MemoryStore` `yea approve` can't
-   reach the store, so in both cases the result has no codes and says why.
+   each plan that isn't denied, and SPEC-approval §6's lines: run `yea approve <code>`, paste
+   back the consent it prints, and call again with it as `yea_consent` (or without it, where
+   `yea approve` saved it in this server's store). `structured_content` carries
+   `{"plans", "codes"}`. With no pinned principal there can be no valid consent, so the result
+   has no codes and says why. A `MemoryStore` gets codes too: its consents come back on the
+   call.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then
     `consume_once(nonce, exp)`; any failure refuses with one message. The answer is the `yea`
     entry of the input responses (`ctx.input_responses` in a job, `params["inputResponses"]`
@@ -375,7 +385,7 @@ seam:
 - **Guard a tool where it's defined.** A mounted server's tool is guarded on that server (the
   parent's calls go through the child's own middleware); an app's tool isn't supported in v0. A
   guard that can't be kept (the tool isn't the server's own, isn't a function tool, has its own
-  `preview`, or runs as a background task), a transform built from a copy of a guarded tool
+  `preview` or `yea_consent`, or runs as a background task), a transform built from a copy of a guarded tool
   taken before it was wrapped, a provider-level rule (`enable`/`disable`) that hands out copies so
   the wrap can't reach the stored tool, or the same function registered under another name,
   refuses **every** tool call on that server with the reason, since the unguarded tool might be
@@ -470,7 +480,8 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
   third wrong one refuses. Decline, cancel and a missing answer run nothing;
 - on 2026, the same state sent twice runs nothing the second time;
 - a client that can't ask gets consent codes. After a consent is signed (as `yea approve`
-  would), the next call runs, once;
+  would), the next call runs, once: with the consent in the store, and with it passed as
+  `yea_consent` on a `MemoryStore` (HTTP's default);
 - `preview: true` runs nothing and stores nothing, a denied tool doesn't even preview, and a
   non-boolean `preview` is an error;
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
@@ -480,8 +491,9 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
   `True` marks `undo` too, before or after `undo` is registered;
 - `guard` wraps an existing tool: the original runs only once approved, its result passes
   through with the receipt in `_meta`, and an output-schema tool's own results are errors. The
-  original never sees `preview`. An original that returns `is_error` writes no receipt and
-  releases its reservations, and a tool with its own `preview` argument is refused;
+  original never sees `preview` or `yea_consent`. An original that returns `is_error` writes
+  no receipt and releases its reservations, and a tool with its own `preview` argument is
+  refused;
 - a job whose input holds a pydantic model (with aliases), a `date` and an enum gets a stable
   plan hash, and one with `5.5` fails closed;
 - `token_subject` returns `""` for a token with no subject;
@@ -500,8 +512,11 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
 Security cases in `test_security.py`, the approval core's list from the MCP side; any fix that
 lands in the SDK core also gets its regression test in the core's security tests (repo rule 3):
 a denied tool never runs, even with a stored consent; a `high` plan is never offered; an
-irreversible plan never auto-runs; a consent for one plan never runs another; a stored copy of
-the policy grant never counts as a consent; a `request_state` without our `yea` object is
+irreversible plan never auto-runs; a consent for one plan never runs another, from the store or
+as `yea_consent`; a `yea_consent` that is forged, altered, expired, for another server or tool,
+or already used runs nothing, and the call asks without consulting the policy; an unreadable
+consent in the store (a planted mode-0 file) asks again, with no fs error in the result; a
+stored copy of the policy grant never counts as a consent; a `request_state` without our `yea` object is
 refused; a guarded tool's original handler never runs before approval, and guarding one server
 doesn't guard a same-named tool on another.
 
@@ -539,8 +554,8 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
    can't be left off) and FastMCP's `Middleware`, rather than replacing handlers. `mcp`'s
    middleware is provisional, which the seam test watches.
 3. **Job tools are plain decorated functions**, whose signature is the input schema, as
-   `@server.tool()` already is; `preview` is added to that signature, and `input` is its
-   JSON-mode dump.
+   `@server.tool()` already is; `preview` and `yea_consent` are added to that signature, and
+   `input` is its JSON-mode dump.
 4. **The request-state key and audience come from `yea()`**, passed to the server as
    `request_state_security`. The SDK does the sealing; the plugin only adds the nonce.
 5. **Package:** `yea-mcp` (import `yea_mcp`), with FastMCP as an extra.

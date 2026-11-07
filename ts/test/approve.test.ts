@@ -1,12 +1,15 @@
-// `yea approve` with a protocol consent code's `agent` field (SPEC-bridge, "yea approve").
+// `yea approve` with a protocol consent code's `agent` field (SPEC-bridge, "yea approve"), and
+// what it says once a job plan's consent is signed (SPEC-approval §6).
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { shop } from '../../examples/shop.ts';
+import { jobApprovedLines, saveConsent } from '../src/cli/approve.js';
 import * as P from '../src/index.js';
+import { FileStore } from '../src/node.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 
@@ -221,5 +224,37 @@ describe.skipIf(!existsSync(CLI))('yea approve with a code’s agent', () => {
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/not an ed25519 key/);
     expect(r.out).not.toContain('at shop.example');
+  });
+});
+
+describe('yea approve, once a job consent is signed (#358)', () => {
+  it('saves it where a server on this account reads it, and still says to paste it back', async () => {
+    const store = new FileStore(mkdtempSync(join(tmpdir(), 'yea-store-')));
+
+    expect(await saveConsent(store, 'H', 'pg1.x')).toBeNull();
+    expect(readFileSync(join(store.root, 'consents', 'H'), 'utf8')).toBe(
+      'pg1.x',
+    );
+    expect(jobApprovedLines(store.root, null)).toEqual([
+      '✓ approved: a one-time consent for this plan only.',
+      'To use it, paste the consent above back into the chat: the agent passes it to the tool as yea_consent.',
+      `It's also saved in ${store.root}: if the server reads that store (this machine and account), the agent can just call the tool again.`,
+    ]);
+  });
+
+  it("when it can't be saved, says why and to paste it back, and the approval stands", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yea-store-'));
+
+    // A file where the store's directory would be, as when another user's store is out of reach.
+    writeFileSync(join(dir, 'store'), '');
+
+    const store = new FileStore(join(dir, 'store'));
+    const why = await saveConsent(store, 'H', 'pg1.x');
+
+    expect(why).toMatch(/^E[A-Z]+$/);
+    expect(jobApprovedLines(store.root, why)).toEqual([
+      '✓ approved: a one-time consent for this plan only.',
+      `It couldn't be saved in ${store.root} (${why}), so paste the consent above back into the chat: the agent passes it to the tool as yea_consent.`,
+    ]);
   });
 });
