@@ -135,7 +135,6 @@ export class IntentHandler {
   }
 }
 
-/** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */
 /**
  * A proposal's `undo` (SPEC §5.1): with a `revert`, the plan's window, a day when it sets none.
  * A window that isn't a positive integer can't be used, so the proposal is irreversible.
@@ -146,6 +145,7 @@ function undoOf(plan: Plan): Proposal['undo'] {
   return plan.revert && isUndoWindow(window) ? { window } : null;
 }
 
+/** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */
 function usesOf(plan: Plan): { uses?: Uses } {
   if (plan.uses === undefined) {
     return {};

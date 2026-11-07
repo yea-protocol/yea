@@ -34,7 +34,7 @@ from .pinned_key import (
     check_key_file,
     load_principal_key,
 )
-from .plan import HashedPlan, input_hash, plan_hash, plan_preimage, shown_plan
+from .plan import HashedPlan, JudgedPlan, input_hash, plan_hash, plan_preimage, shown_plan
 from .plan_text import plan_lines
 from .policy import (
     DEFAULT_OUT_OF_BAND,
@@ -53,6 +53,7 @@ __all__ = [
     "plan_hash",
     "input_hash",
     "HashedPlan",
+    "JudgedPlan",
     "shown_plan",
     "plan_lines",
     "normalize_phrase",

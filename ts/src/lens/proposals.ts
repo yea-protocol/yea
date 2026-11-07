@@ -13,7 +13,7 @@ import { entry, scalar } from './notation.js';
  * An undo object whose `window` is a positive integer renders it as a duration. Anything else
  * is `never`: a client treats a window that isn't one as no undo at all (SPEC §5.1).
  */
-function undoWindow(undo: unknown): string {
+function undoText(undo: unknown): string {
   return isObject(undo) && isUndoWindow(undo.window)
     ? fmtDuration(undo.window)
     : 'never';
@@ -23,7 +23,7 @@ const ATTRS: [string, (p: Proposal) => string][] = [
   // Absent means nothing to show; anything else present renders, and a malformed one as `?`.
   ['uses', (p) => (p.uses === undefined ? '' : fmtUses(p.uses))],
   ['risk', (p) => scalar(p.risk)],
-  ['undo', (p) => undoWindow(p.undo)],
+  ['undo', (p) => undoText(p.undo)],
   ['expires', (p) => fmtTime(p.expires)],
 ];
 

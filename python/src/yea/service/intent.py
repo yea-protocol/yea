@@ -9,7 +9,7 @@ from .._json import proposal_hash
 from ..budget import fit
 from ..errors import YeaError, fix
 from ..risk import resolve_risk
-from ..undo_window import is_undo_window
+from ..undo_window import undo_window_of
 from ..uses import check_uses
 from .execute import execute
 from .plan import _UNSET, Clarification, Ctx, Plan
@@ -45,8 +45,8 @@ async def on_intent(state: ServiceState, req: VerifiedIntent, emit: Emit) -> dic
 def _undo_of(plan: Plan) -> dict | None:
     """A proposal's ``undo`` (SPEC §5.1): with a ``revert``, the plan's window, a day when it sets
     none. A window that isn't a positive integer can't be used, so the proposal is irreversible."""
-    window = DAY if plan.undo_window is None else plan.undo_window
-    return {"window": int(window)} if plan.revert and is_undo_window(window) else None  # 3600.0 is 3600
+    window = undo_window_of(DAY if plan.undo_window is None else plan.undo_window)
+    return {"window": window} if plan.revert and window is not None else None
 
 
 async def plan_intent(state: ServiceState, req: VerifiedIntent, emit: Emit) -> dict:

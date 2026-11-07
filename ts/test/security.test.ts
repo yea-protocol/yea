@@ -4530,7 +4530,7 @@ describe('an INTENT no grant authorized (#287)', async () => {
 // zero included, can't be undone, so it never runs or commits on its own and reads `never`.
 describe('an undo window is a positive integer, or there is none (#83)', async () => {
   const server = await P.keyPair();
-  const notWindows = [0, -1, 1.5, '3600', Number.NaN, 2 ** 53];
+  const notWindows = [0, -1, 1.5, '3600', Number.NaN, 2 ** 53, true];
   const move = {
     summary: 'Move standup',
     effects: [P.update('event/e1', 'start', '14:00', '15:00')],
