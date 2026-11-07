@@ -1,4 +1,10 @@
-import { mkdtempSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -31,6 +37,15 @@ describe.each([
   ['MemoryStore', () => new P.MemoryStore()],
   ['FileStore', () => new FileStore(tmp())],
 ])('%s', (_name, make) => {
+  it('has a store id, the same every time, and another store has another (SPEC-approval §8)', async () => {
+    const s = make();
+    const id = await s.storeId();
+
+    expect(P.isStoreId(id)).toBe(true);
+    expect(await s.storeId()).toBe(id);
+    expect(await make().storeId()).not.toBe(id);
+  });
+
   it('consumes an id once, even under concurrent calls', async () => {
     const s = make();
     const got = await Promise.all(
@@ -185,6 +200,34 @@ describe('assertIntegers (SPEC-approval §1)', () => {
     expect(() => assertIntegers({ deep: [{ x: 1.5 }] })).toThrow(
       'input.deep.0.x is 1.5: job inputs can only hold safe integers',
     );
+  });
+});
+
+describe('a FileStore id (SPEC-approval §8)', () => {
+  it('is made once, whole, in <root>/id, and every store on that root reads it', async () => {
+    const root = tmp();
+    const ids = await Promise.all(
+      Array.from({ length: 8 }, () => new FileStore(root).storeId()),
+    );
+
+    expect(new Set(ids).size).toBe(1);
+    expect(readFileSync(join(root, 'id'), 'utf8')).toBe(ids[0]);
+    expect(statSync(join(root, 'id')).mode & 0o777).toBe(0o600);
+    expect(readdirSync(root)).toEqual(['id']);
+  });
+
+  it('is a store error when the file holds anything else, and nothing is made over it', async () => {
+    const root = tmp();
+
+    writeFileSync(join(root, 'id'), 'not an id');
+    await expect(new FileStore(root).storeId()).rejects.toThrow(
+      "doesn't hold a store id",
+    );
+    expect(readFileSync(join(root, 'id'), 'utf8')).toBe('not an id');
+  });
+
+  it('a MemoryStore takes a fixed id only if it is one', () => {
+    expect(() => new P.MemoryStore({ id: 'short' })).toThrow('not a store id');
   });
 });
 

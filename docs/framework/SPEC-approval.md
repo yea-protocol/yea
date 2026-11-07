@@ -369,15 +369,22 @@ The model reads this line, so it names a command that changes no keys. No tool r
 itself, and the key would land on its side (ADR-0003).
 
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
-plan's details. For a job, its `detail` is `{ job, phrase }`: `job` is the full plan-hash
-preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, and `undoWindow` when the plan
-is undoable, §1), and `phrase`
-is what the person types, after the `approve` fallback (§3). The **consent preimage** binds
-that phrase to the plan, whose hash already covers `job`:
+plan's details. For a job, its `detail` is `{ job, phrase, store }`: `job` is the full
+plan-hash preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, and `undoWindow`
+when the plan is undoable, §1), `phrase` is what the person types, after the `approve`
+fallback (§3), and `store` is the id of the server's store (§8), the one that will consume the
+consent. The **consent preimage** binds that phrase and that store to the plan, whose hash
+already covers `job`:
 
 ```
-consentHash = b64url(sha256(canonical({ plan: planHash, phrase })))
+consentHash = b64url(sha256(canonical({ plan: planHash, phrase, store })))
 ```
+
+**Why the store.** A consent is used once in the store that consumes it (`consumeOnce`), so
+it must not run in any other. Servers that share a key but not a store, such as a connector's
+stdio and HTTP sides, or one server restarted on a `MemoryStore`, would otherwise each run the
+same consent once. Bound to one store's id, a consent approves no plan in any other store,
+where the consent hash comes out different, and it runs nothing there.
 
 The code's fields are `proposal` = the plan hash, `hash` = the consent hash, `service` = the
 server's service id, `capability` = the tool, `principal` = the pinned principal key,
@@ -388,11 +395,12 @@ it against its own phrase. `consentHash` applies the `approve` fallback to the p
 an empty or blank phrase hashes as `approve`.
 
 `yea approve <code>`:
-1. recomputes the plan hash from `job`, then the consent hash from it and the phrase, and
-   refuses if they don't equal the code's `proposal` and `hash`, if the phrase isn't typeable
-   (§3, so one over 64 characters is refused), if the code's `capability` isn't the plan's
-   `tool`, or if the code has expired (saying when, and the time on this machine, so a wrong
-   clock shows); it caps `expires` at 10 minutes from now, whatever the code says;
+1. recomputes the plan hash from `job`, then the consent hash from it, the phrase and `store`,
+   and refuses if they don't equal the code's `proposal` and `hash`, if the phrase isn't
+   typeable (§3, so one over 64 characters is refused), if `store` isn't a store id (§8), if
+   the code's `capability` isn't the plan's `tool`, or if the code has expired (saying when,
+   and the time on this machine, so a wrong clock shows); it caps `expires` at 10 minutes from
+   now, whatever the code says;
 2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
    and invisible filler characters are shown as `\u{…}` escapes (`printable` itself keeps
    backslashes, §3), so the text can't rewrite what the person reads, and its undo as the form
@@ -400,12 +408,15 @@ an empty or blank phrase hashes as `approve`.
 3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
-   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`,
-   prints it on stdout, and saves it in the store under the plan hash (`YEA_STORE`, else
-   `$YEA_HOME/store`, else `~/.yea/store`). It then tells the person to paste the printed
-   consent back into the chat. If the save failed, it says so and why. If it succeeded, it
-   names the store, where a server on the same account reads the consent without the paste.
-   A failed save doesn't fail the approval: the consent was signed, and the call can carry it.
+   with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`, and
+   prints it on stdout. It saves it under the plan hash in its store (`YEA_STORE`, else
+   `$YEA_HOME/store`, else `~/.yea/store`) only when that store's id is the code's `store`: then
+   it's the store the server reads, and in any other the consent could never run. It reads that
+   id without making one, since a store with no id issued no code. Then it says where the
+   consent went: saved where the server reads it, so nothing needs pasting back and the agent
+   can call the tool again; or not saved, because the code is another store's or the save
+   failed (and why), so the person pastes the printed consent back into the chat. A failed save
+   doesn't fail the approval: the consent was signed, and the call can carry it.
 
 When there is no terminal (stdin isn't a TTY), `yea approve` refuses before asking:
 *approval needs an interactive terminal: a person has to confirm, so run it in a separate
@@ -482,24 +493,24 @@ form tier ([§9, What an approval proves](#what-an-approval-proves)): the agent 
 OS user, so it can run `yea approve` itself, and a terminal isn't a person. Another OS user or
 device keeps the whole code.
 
-On the next identical call, the server looks up a consent for each recomputed plan's hash
-and checks it against that plan's consent hash, recomputed from the plan and the phrase the
-tool names now: it must be a single root block that itself carries `only` = that consent hash
-and an `exp` (so neither a copied policy grant nor a block the server's key appended to one
-ever counts), and pass the grant check as a `COMMIT` of the tool at this server, signed by
-the pinned principal key (§2). It then consumes it with
-`consumeOnce(<consent grant id>, exp)`, and runs that plan. Consents are keyed by plan hash,
-not by code, so a fresh code for the same plan still finds them; a consumed or expired one
-counts as absent, and the server issues fresh codes. Denied tools and plans that aren't
-recomputed are never run. An unsigned approval in the store is never accepted.
+On the next identical call, the server looks up a consent for each recomputed plan's hash and
+checks it against that plan's consent hash, recomputed from the plan, the phrase the tool names
+now, and its own store's id: it must be a single root block that itself carries `only` = that
+consent hash and an `exp` (so neither a copied policy grant nor a block the server's key
+appended to one ever counts), and pass the grant check as a `COMMIT` of the tool at this server,
+signed by the pinned principal key (§2). It then consumes it with
+`consumeOnce(<consent grant id>, exp)`, and runs that plan. Consents are keyed by plan hash, not
+by code, so a fresh code for the same plan still finds them; a consumed or expired one counts as
+absent, and the server issues fresh codes. Denied tools and plans that aren't recomputed are
+never run. An unsigned approval in the store is never accepted.
 
-A consent for another phrase is refused, but not silently. The grant check runs against the
-hash the consent binds, so a consent that is otherwise valid but binds another hash is told
-apart, as `not a consent for this phrase`. When the call then asks (a form or fresh codes), the
-reason it gives is *"a consent for this plan was signed for a different phrase; approve the new
-code — if this repeats, the code you were given may have been altered"*. The person can then
-tell a changed phrase or an edited code from a lost consent. A consumed, expired or malformed
-consent leaves no such reason.
+A consent for another phrase is refused, but not silently. The grant check runs against the hash
+the consent binds, so a consent that is otherwise valid but binds another hash (another phrase,
+or another store's id) is told apart, as `not a consent for this phrase`. When the call then
+asks (a form or fresh codes), the reason it gives is *"a consent for this plan was signed for a
+different phrase; approve the new code — if this repeats, the code you were given may have been
+altered"*. The person can then tell a changed phrase or an edited code from a lost consent. A
+consumed, expired or malformed consent leaves no such reason.
 
 **A consent on the call.** The consent `yea approve` prints can also come back on the call,
 so the server and `yea approve` needn't share a store. The person pastes it into the chat,
@@ -512,14 +523,15 @@ token. It's taken off before the input is validated, so it's no part of the inpu
 hash or the input hash, and a tool's own input may not have a field of that name.
 
 A first round that carries a consent (a preview doesn't read it, and a retry is judged on the
-form's answer alone) checks it **exactly as a stored consent**: against each recomputed plan
-in order, a single root block carrying `only` and `exp`, passing the grant check as a `COMMIT`
-of the tool at this server signed by the pinned principal, with `only` equal to that plan's
-consent hash. It then consumes it with `consumeOnce(<consent grant id>, exp)` and runs that
-plan. A consent is used once, whichever way it arrived. If it approves no plan, nothing runs
-that round. Neither a stored consent nor the policy is consulted, and the call asks (the
-form, else fresh consent codes) with the reason `the consent passed as yea_consent can't be
-used: <why>`, where `<why>` is the first that applies:
+form's answer alone) checks it **exactly as a stored consent**: against each recomputed plan in
+order, a single root block carrying `only` and `exp`, passing the grant check as a `COMMIT` of
+the tool at this server signed by the pinned principal, with `only` equal to that plan's consent
+hash, which binds this server's store. It then consumes it with
+`consumeOnce(<consent grant id>, exp)` and runs that plan. A consent is used once, whichever way
+it arrived, and only in the store it binds. If it approves no plan, nothing runs that round.
+Neither a stored consent nor the policy is consulted, and the call asks (the form, else fresh
+consent codes) with the reason `the consent passed as yea_consent can't be used: <why>`, where
+`<why>` is the first that applies:
 
 | `<why>` | when |
 |---|---|
@@ -527,7 +539,7 @@ used: <why>`, where `<why>` is the first that applies:
 | `it isn't a consent from yea approve` | it doesn't decode as a single-block grant with `only` and `exp`: a value mangled on the way lands here |
 | `it has expired` | the grant check fails and its `exp` is past |
 | `it isn't signed by the pinned principal for this tool at this server` | the grant check fails otherwise: forged, altered, or for another server or tool |
-| `it approves none of these plans` | it passes, but binds no recomputed plan's consent hash: another plan, other input, or a phrase that changed |
+| `it approves none of these plans; if the person approved this exact request, the code they were given may have been altered` | it passes, but binds no recomputed plan's consent hash: another plan, other input, a phrase that changed, an edited code, or another store's consent |
 | `it was already used` | its grant id was already consumed |
 
 A call whose handler returns no plans is refused before any consent is read, as it is without
@@ -536,10 +548,10 @@ text, pinned by the job call cases, so both languages say the same.
 
 Carrying a consent through the chat gives the model nothing to forge. Nothing the model passes
 is an approval; a consent signed by the pinned key is checked as one from the store. The bytes
-are the principal's signature over one plan and its phrase, issued to this server's key, so a
-model that changes one character turns it into a refusal. It costs about a kilobyte of chat.
-The bridge takes the protocol's consents the same way (SPEC-bridge `yea_consent`), and so does
-a `COMMIT` that carries one (SPEC.md §6.6).
+are the principal's signature over one plan, its phrase and the store that consumes it, issued
+to this server's key, so a model that changes one character turns it into a refusal. It costs
+about a kilobyte of chat. The bridge takes the protocol's consents the same way (SPEC-bridge
+`yea_consent`), and so does a `COMMIT` that carries one (SPEC.md §6.6).
 
 The store route needs a store shared by the server and the `yea` command: a local stdio server
 with `FileStore`, on the person's own account. The call route needs nothing shared, so it
@@ -583,6 +595,7 @@ interface ApprovalStore {
   used(k: LedgerKey): Promise<bigint>;                               // settled + reserved
   putConsent(planHash: string, grant: string): Promise<void>;        // from `yea approve`
   getConsent(planHash: string): Promise<string | null>;              // a pg1. consent grant, or null if none can be read
+  storeId(): Promise<string>;                                        // this store's id, which a job consent binds (§6)
 }
 
 type LedgerKey = { block: string; of: string };  // a policy grant block id and a measure
@@ -594,6 +607,16 @@ type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus wha
 
 Amounts are the SDK core's `exact()` values: integers at scale 18. What `decide` reads is
 `used(k)`: the settled plus reserved amount for a block and measure.
+
+**The store id.** Every store has an id, which a job consent binds (§6), so a consent runs in
+one store only. A store id is 22 b64url characters: 16 random bytes. It never changes for the
+store, and two stores never share one:
+- A `MemoryStore` makes its id when it's made, so a restarted server's store has a new one.
+- A `FileStore` keeps its id in `<root>/id`, so every process that shares the root, and
+  `yea approve`, reads the same one. The first process that needs it writes a temp file and
+  links it into place, so it's created once, and whole, whichever process wins. A file there
+  that isn't a store id, or can't be read, is a store error, and nothing runs.
+- A custom store (Redis, SQL) keeps one id for everything that shares it.
 
 **Store selection.** Stdio servers use `FileStore` by default, because `yea approve` saves
 consents there and undo across restarts needs it. HTTP servers use `MemoryStore` by default,
@@ -611,6 +634,7 @@ undo/<receipt id>.claim, .done       markers, created with O_EXCL; the claim hol
 receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
+id                                   the store id (22 b64url characters, nothing else), created once
 pending/<id>                         a consent code waiting for `yea approve <id>` (§6, Short ids)
 ```
 
@@ -628,9 +652,12 @@ into a store error instead of a silent overshoot. Files are written to a uniquel
 are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be
 removed after `exp`.
 
-**An unreadable consent is absent.** A `consents/` file that exists but can't be read (a mode
-or owner that shuts the server out, or a directory in its place) counts as no consent, and the
-server writes one line to stderr naming the file and the error. The call then asks as it would
+**An unreadable consent is absent.** A consent is read the way a server key is: opened without
+following a symlink and without blocking (`O_NOFOLLOW`, `O_NONBLOCK`), checked on the open file
+to be a regular file, and read to at most 64 KiB. A `consents/` file that exists but can't be
+read that way counts as no consent: a mode or owner that shuts the server out, a symlink,
+directory, FIFO or device in its place, or more than 64 KiB. The server writes one line to
+stderr naming the file and why. The call then asks as it would
 without one. A consent only ever adds a way to run, so treating an unreadable one as absent
 never runs more than the policy would. And the fs error, with its path, never reaches the
 model's context. A file whose bytes aren't UTF-8 is no consent either: TypeScript reads it with
@@ -738,7 +765,8 @@ The bridge's consent codes work the same way (SPEC-bridge, `yea_consent`).
   (root can write anything) and on platforms where it can't check file ownership.
 - **Keep the agent away from three things.** The principal key (or it signs for itself), the
   pinned principal public key (or it swaps in its own), and the store (or it resets totals,
-  deletes a `consumeOnce` marker to replay a consent within its `exp`, or deletes receipts).
+  deletes a `consumeOnce` marker or rewrites the store's id to replay a consent within its
+  `exp`, or deletes receipts).
   `YEA_PRINCIPAL_HOME`, the write check on `YEA_PRINCIPAL_PUB`, and running the server as
   another OS user are how. On one account with a shell-capable agent, the guarantees are best
   effort, as the security guide already says for the principal key.
@@ -754,12 +782,16 @@ The bridge's consent codes work the same way (SPEC-bridge, `yea_consent`).
   config), the agent as another that can't read or write the server's store, and the
   principal as a third. The consent travels on the call in that layout as well. The guides
   don't walk through it yet, and the shared-store variants are #376.
-- **A restarted server keeps its totals and its one-time markers** only with a persistent
-  store, which is why stdio defaults to `FileStore`. On a `MemoryStore`, a consent used before a
-  restart runs again within its `exp`, since the model still holds a pasted consent's bytes. A
-  form state doesn't: a `MemoryStore` can't be given a shared state key, so the restarted
-  server's new key refuses it. (Several processes on one `MemoryStore` are refused at start-up,
-  SPEC-mcp-ts.)
+- **A restarted server keeps its totals and receipts** only with a persistent store, which is
+  why stdio defaults to `FileStore`. A consent used before a restart still can't run again: on
+  a `MemoryStore` the restarted store has a new id, so the consent, which the model may still
+  hold, binds none of its plans (§6). A form state can't either: a `MemoryStore` can't be given
+  a shared state key, so the restarted server's new key refuses it.
+- **Servers that share a key but not a store** (a connector's stdio and HTTP sides, or one
+  server listed twice in a client's config) each keep their own one-time markers. A consent
+  still runs in only one of them, the store it binds (§6). Totals are another matter: each
+  store keeps its own, which is why an HTTP server with a `total` limit refuses to start on a
+  `MemoryStore` unless its author says it runs as a single process (SPEC-mcp-ts).
 - **Short consents.** Consent grants expire in 10 minutes by default, which bounds a replay
   if a marker is ever deleted.
 - **Fail closed** everywhere: an invalid state, a missing or unsigned policy, an unpinned key,
@@ -872,8 +904,10 @@ export function decide(
   - a consent on the call (`yea_consent`) that is forged, altered, expired, issued to another
     key, for another server or tool, already used, or for another plan runs nothing, and never
     falls through to the policy;
-  - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
-    the result;
+  - a consent consumed in one store runs nothing in another with the same server key, and a
+    `MemoryStore` server's consent runs nothing after a restart;
+  - an unreadable consent in the store (a planted mode-0 file, a FIFO or a symlink) asks
+    again, with no fs error in the result;
   - an irreversible plan never auto-runs, whatever the grant says, and neither does one whose
     `undoWindow` is zero, negative or not an integer;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
@@ -964,3 +998,8 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
    to create the inbox, file modes that a `umask` can't strip, and a two-user CI job to show it
    works. It also buys nothing against an agent that runs as the server's user, which owns the
    store either way (§9).
+9. **A job consent binds the store that consumes it** (#358, adopted 2026-11-07). Its consent
+   hash covers the store's id as well as the plan and the phrase (§6), so a consent runs once
+   in all, not once per store: not again in a second server with the same key, and not again
+   after a `MemoryStore` server restarts. The id is in the consent code, so `yea approve` needs
+   no store to sign, and saves the consent only in the store it binds.

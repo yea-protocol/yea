@@ -16,7 +16,7 @@ async def first_round(r: Round) -> Outcome:
     call = r.call
     if call.consent is not None:
         return await carried_round(r, call.consent)
-    stored = await consent_for(r.plans, r.store, call.policy, call.now, r.phrase_for)
+    stored = await consent_for(r.plans, r.store, r.store_id, call.policy, call.now, r.phrase_for)
     if stored.plan is not None:
         return Outcome("run", plan=stored.plan, how="approved")
     amounts = await spent(r.store, call.policy)

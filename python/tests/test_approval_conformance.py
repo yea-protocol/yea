@@ -12,7 +12,7 @@ from yea.approval import (
     phrase_matches, read_tightening,
 )
 from yea.job_call import JobTool, hash_plans
-from yea.store import FileStore, LedgerKey, MemoryStore
+from yea.store import FileStore, LedgerKey, MemoryStore, StoreError
 from yea.uses import value
 
 PATH = CONFORMANCE / "approval.json"
@@ -131,9 +131,9 @@ def test_tightening(case):
 @pytest.mark.parametrize("case", cases_of("consentCodes"))
 def test_consent_code(case):
     c = DATA["consentCodes"]
-    assert consent_hash_of(c["plan"]["planHash"], case["phrase"]) == case["consentHash"]
+    assert consent_hash_of(c["plan"]["planHash"], case["phrase"], c["store"]) == case["consentHash"]
     assert job_consent_code(c["server"], c["principal"], c["input"], to_hashed(c["plan"]), case["phrase"],
-                            c["now"]) == case["code"]
+                            c["store"], c["now"]) == case["code"]
 
 
 async def _file_op(s: FileStore, o: dict):
@@ -165,12 +165,32 @@ def test_file_store(tmp_path):
     assert files == DATA["fileStore"]["files"]
 
 
+def _store_ids():
+    if DATA is None:
+        return [pytest.param(None)]
+    return [pytest.param(c, id=c["name"]) for c in DATA["fileStore"]["storeIds"]]
+
+
+@pytest.mark.parametrize("case", _store_ids())
+def test_file_store_id(case, tmp_path):
+    """The file holds a store id, or it's a store error (§8)."""
+    (tmp_path / "id").write_bytes(case["file"].encode())
+
+    async def go():
+        try:
+            return await FileStore(tmp_path).store_id()
+        except StoreError:
+            return None
+
+    assert asyncio.run(go()) == case["expect"]
+
+
 @pytest.mark.parametrize("case", cases_of("consents"))
 def test_job_consents(case):
     c = DATA["consents"]
     policy = load_policy(None, DATA["keys"]["server"], DATA["keys"]["principal"], Tightening())
-    assert consent_hash_of(c["plan"]["planHash"], c["phrase"]) == c["consentHash"]
-    got = check_job_consent(case["grant"], to_hashed(c["plan"]), c["phrase"], policy, case["now"])
+    assert consent_hash_of(c["plan"]["planHash"], c["phrase"], c["store"]) == c["consentHash"]
+    got = check_job_consent(case["grant"], to_hashed(c["plan"]), c["phrase"], c["store"], policy, case["now"])
     want = case["expect"]
     assert got.ok is want["ok"]
     if want["ok"]:

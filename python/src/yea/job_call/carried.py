@@ -13,7 +13,8 @@ from .outcome import Outcome, Round
 _NOT_CONSENT = "it isn't a consent from yea approve"
 _EXPIRED = "it has expired"
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
-_NO_PLAN = "it approves none of these plans"
+_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, the code they were "
+            "given may have been altered")
 _USED = "it was already used"
 
 
@@ -31,10 +32,12 @@ async def _approved_by(r: Round, token: str) -> HashedPlan | str:
     if not call.policy.principal:
         return call.unpinned or "no principal key is pinned"
     for p in r.plans:
-        check = check_job_consent(token, p, r.phrase_for(p), call.policy, call.now)
+        check = check_job_consent(token, p, r.phrase_for(p), r.store_id, call.policy, call.now)
         if check.ok and check.id is not None and check.exp is not None:
             return p if await r.store.consume_once(check.id, check.exp) else _USED
         # Only the hash it binds differs from plan to plan; any other refusal is the same for all.
+        # So reaching the end means it binds none of them: another plan, phrase or store, or an
+        # edited code, which the person may want to know about (§6).
         if check.why != OTHER_PHRASE:
             return _refused_why(token, check.why, call.now)
     return _NO_PLAN

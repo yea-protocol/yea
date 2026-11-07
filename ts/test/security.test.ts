@@ -1018,6 +1018,8 @@ describe('security regressions', () => {
 const A = await P.keyPair(); // a server
 const B = await P.keyPair(); // a principal
 const now = 1790000000;
+/** The store the approval tests' consents bind (SPEC-approval §6), unless one names its own. */
+const STORE = 'yea-test-store-aaaaaaa';
 const tmp = () => mkdtempSync(join(tmpdir(), 'yea-approval-'));
 
 /** A refund call outside any policy, from a client that can ask: its first round asks. */
@@ -1210,6 +1212,7 @@ describe('approval security (SPEC-approval)', () => {
           input: { who: 'Chen' },
           hp,
           phrase: 'approve',
+          store: STORE,
           now,
         }),
       ) as unknown as Record<string, unknown> & {
@@ -1442,6 +1445,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: '  ',
+        store: STORE,
         now,
       }),
       now,
@@ -1455,12 +1459,13 @@ describe('approval security (SPEC-approval)', () => {
       { svc: [A.public] },
       { verbs: ['COMMIT'] },
       { can: ['refund'] },
-      { only: await P.consentHashOf(hp.planHash, 'approve') },
+      { only: await P.consentHashOf(hp.planHash, 'approve', STORE) },
       { exp: j.consent.expires },
     ]);
     expect(
       await checkJobConsent(await P.signJobConsent(B, j, now), {
         hp,
+        store: STORE,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
         now,
@@ -1564,7 +1569,7 @@ describe('approval security (SPEC-approval)', () => {
       holder: A,
       to: A.public,
       caveats: [
-        { only: await P.consentHashOf(hp.planHash, 'approve') },
+        { only: await P.consentHashOf(hp.planHash, 'approve', STORE) },
         { exp: now + 600 },
       ],
     });
@@ -1572,6 +1577,7 @@ describe('approval security (SPEC-approval)', () => {
     expect(
       await checkJobConsent(forged, {
         hp,
+        store: STORE,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
         now,
@@ -1692,6 +1698,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -1702,7 +1709,7 @@ describe('approval security (SPEC-approval)', () => {
     const hash = await P.planHashOf(job);
     const bad = {
       ...good,
-      hash: await P.consentHashOf(hash, 'approve'),
+      hash: await P.consentHashOf(hash, 'approve', STORE),
       proposal: hash,
       detail: { ...good.detail, job },
     };
@@ -1790,6 +1797,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase,
+        store: STORE,
         now,
       });
 
@@ -1832,6 +1840,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: 'old-nav',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -1856,14 +1865,20 @@ describe('approval security (SPEC-approval)', () => {
     // A forger who rehashes gets a code `yea approve` signs, but the consent binds `approve`,
     // and the server checks it against its own phrase, so it never runs the plan.
     const forged = await P.readJobConsent(
-      edited({ hash: await P.consentHashOf(hp.planHash, 'approve') }),
+      edited({ hash: await P.consentHashOf(hp.planHash, 'approve', STORE) }),
       now,
     );
     const grant = await P.signJobConsent(B, forged, now);
     const policy = { principal: B.public, server: A.public };
 
     expect(
-      await checkJobConsent(grant, { hp, phrase: 'old-nav', policy, now }),
+      await checkJobConsent(grant, {
+        hp,
+        store: STORE,
+        phrase: 'old-nav',
+        policy,
+        now,
+      }),
     ).toEqual({ ok: false, why: 'not a consent for this phrase' });
 
     // Nor is it silent: the next call asks again and says a consent was signed for another
@@ -1904,13 +1919,19 @@ describe('approval security (SPEC-approval)', () => {
     );
 
     expect(
-      await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
+      await checkJobConsent(bare, {
+        hp,
+        store: STORE,
+        phrase: 'approve',
+        policy,
+        now,
+      }),
     ).toEqual({ ok: false, why: 'not a consent for this phrase' });
 
     // The `approve` fallback is part of the consent hash, so a caller passing a tool's raw,
     // empty phrase still redeems the consent the person signed for `approve`.
-    expect(await P.consentHashOf(hp.planHash, ' ')).toBe(
-      await P.consentHashOf(hp.planHash, 'approve'),
+    expect(await P.consentHashOf(hp.planHash, ' ', STORE)).toBe(
+      await P.consentHashOf(hp.planHash, 'approve', STORE),
     );
   });
 
@@ -1937,6 +1958,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: long,
+        store: STORE,
         now,
       }),
     ).rejects.toThrow('longer than 64 characters');
@@ -1949,6 +1971,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -1956,7 +1979,7 @@ describe('approval security (SPEC-approval)', () => {
     };
     const bad = {
       ...good,
-      hash: await P.consentHashOf(hp.planHash, long),
+      hash: await P.consentHashOf(hp.planHash, long, STORE),
       detail: { ...good.detail, phrase: long },
     };
 
@@ -1996,7 +2019,7 @@ describe('approval security (SPEC-approval)', () => {
     const [refundHp] = await P.hashPlans(tool, input, [
       { ...refund, apply: () => null },
     ]);
-    const only = await P.consentHashOf(refundHp.planHash, 'approve');
+    const only = await P.consentHashOf(refundHp.planHash, 'approve', STORE);
     // A policy that would run the refund without asking.
     const policyGrant = await P.issueGrant({
       principal: B,
@@ -2052,13 +2075,15 @@ describe('approval security (SPEC-approval)', () => {
     };
     const notSigned =
       "it isn't signed by the pinned principal for this tool at this server";
+    const noPlan =
+      'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered';
     const refusedFor = (why: string) => ({
       kind: 'consent-codes',
       why: `the consent passed as yea_consent can't be used: ${why}`,
     });
 
     it('runs its plan once, and a second use is refused', async () => {
-      const store = new P.MemoryStore();
+      const store = new P.MemoryStore({ id: STORE });
       const token = await consent();
       // The newline a terminal copy adds doesn't matter: the signature covers only the token.
       const first = await P.jobCall(carrying(`${token}\n`).call, store);
@@ -2070,7 +2095,7 @@ describe('approval security (SPEC-approval)', () => {
     });
 
     it('is the one consent: once used on the call, a stored copy of it is used too', async () => {
-      const store = new P.MemoryStore();
+      const store = new P.MemoryStore({ id: STORE });
       const token = await consent();
 
       expect(await P.jobCall(carrying(token).call, store)).toMatchObject({
@@ -2118,9 +2143,9 @@ describe('approval security (SPEC-approval)', () => {
         const { call, ran } = carrying(bad, at ? { now: at } : {});
 
         // The policy alone would run the refund: a refused consent never falls through to it.
-        expect(await P.jobCall(call, new P.MemoryStore())).toMatchObject(
-          refusedFor(why),
-        );
+        expect(
+          await P.jobCall(call, new P.MemoryStore({ id: STORE })),
+        ).toMatchObject(refusedFor(why));
         expect(ran).toEqual([]);
       }
     });
@@ -2130,10 +2155,40 @@ describe('approval security (SPEC-approval)', () => {
         plan: () => [{ ...credit, apply: () => ran.push(credit.summary) }],
       });
 
-      expect(await P.jobCall(call, new P.MemoryStore())).toMatchObject(
-        refusedFor('it approves none of these plans'),
-      );
+      expect(
+        await P.jobCall(call, new P.MemoryStore({ id: STORE })),
+      ).toMatchObject(refusedFor(noPlan));
       expect(ran).toEqual([]);
+    });
+
+    it('signed for another phrase, runs nothing, and says the code may have been altered', async () => {
+      const { call, ran } = carrying(await consent(), {
+        tool: { ...tool, confirmWith: () => 'refund Chen' },
+      });
+
+      expect(
+        await P.jobCall(call, new P.MemoryStore({ id: STORE })),
+      ).toMatchObject(refusedFor(noPlan));
+      expect(ran).toEqual([]);
+    });
+
+    it('consumed in one store, runs nothing in another with the same server key', async () => {
+      // Two servers with one key and their own stores (a connector's stdio and HTTP sides), or
+      // one server restarted on a MemoryStore: the consent binds the store it was issued for.
+      const token = await consent();
+      const first = carrying(token);
+      const twin = carrying(token);
+
+      expect(
+        await P.jobCall(first.call, new P.MemoryStore({ id: STORE })),
+      ).toMatchObject({
+        kind: 'run',
+        how: 'approved',
+      });
+      expect(await P.jobCall(twin.call, new P.MemoryStore())).toMatchObject(
+        refusedFor(noPlan),
+      );
+      expect(twin.ran).toEqual([]);
     });
 
     it('counts for nothing without a pinned principal', async () => {
@@ -2144,7 +2199,7 @@ describe('approval security (SPEC-approval)', () => {
           policy: { ...call.policy, principal: '' },
           unpinned: 'YEA_PRINCIPAL_PUB is not set',
         },
-        new P.MemoryStore(),
+        new P.MemoryStore({ id: STORE }),
       );
 
       expect(o).toMatchObject({
@@ -2154,47 +2209,96 @@ describe('approval security (SPEC-approval)', () => {
     });
   });
 
-  it.skipIf(!process.getuid || process.getuid() === 0)(
-    '[A23] an unreadable consent in the store asks again, with no fs error in the result (#358)',
-    async () => {
+  describe('[A23] an unreadable consent in the store asks again, with no fs error in the result (#358)', async () => {
+    const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
+      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const canAsk = false;
+    const call = askingCall({
+      policy: {
+        grant: null,
+        principal: B.public,
+        server: A.public,
+        deny: [],
+        outOfBand: 'high',
+      },
+      canAsk,
+    });
+
+    /**
+     * What an agent with the store could plant under the plan's hash: the call asks, as with no
+     * consent, and the reason reaches stderr only. It never blocks, so a FIFO can't hang it.
+     */
+    async function asksPast(
+      plant: (path: string, dir: string) => void,
+      why: string,
+    ) {
       const dir = tmp();
       const store = new FileStore(dir);
-      const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
-        { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
-      ]);
       const planted = join(dir, 'consents', hp.planHash);
       const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      // What an agent with the store could plant: a file the server can't read.
-      await store.putConsent(hp.planHash, 'pg1.x');
-      chmodSync(planted, 0);
+      mkdirSync(join(dir, 'consents'), { recursive: true });
+      plant(planted, dir);
 
       try {
-        const o = await P.jobCall(
-          askingCall({
-            policy: {
-              grant: null,
-              principal: B.public,
-              server: A.public,
-              deny: [],
-              outOfBand: 'high',
-            },
-            canAsk: false,
-          }),
-          store,
-        );
+        const o = await P.jobCall(call, store);
 
         expect(o.kind).toBe('consent-codes');
-        expect(JSON.stringify(o)).not.toContain('EACCES');
+        expect(JSON.stringify(o)).not.toContain(why);
         expect(logged).toHaveBeenCalledWith(
-          expect.stringMatching(/consent at .* can't be read \(EACCES\)/),
+          `yea: the consent at ${planted} can't be read (${why}), so it counts as absent`,
         );
       } finally {
         logged.mockRestore();
         chmodSync(planted, 0o600);
       }
-    },
-  );
+    }
+
+    it.skipIf(!process.getuid || process.getuid() === 0)(
+      'a file the server may not read',
+      () =>
+        asksPast((path) => {
+          writeFileSync(path, 'pg1.x');
+          chmodSync(path, 0);
+        }, 'EACCES'),
+    );
+    it.skipIf(process.platform === 'win32')(
+      'a FIFO, which never blocks the read',
+      () =>
+        asksPast(
+          (path) => execFileSync('mkfifo', [path]),
+          'not a regular file',
+        ),
+    );
+    it('a symlink, never followed, even to a consent', () =>
+      asksPast((path, dir) => {
+        writeFileSync(join(dir, 'elsewhere'), 'pg1.x');
+        symlinkSync(join(dir, 'elsewhere'), path);
+      }, 'ELOOP'));
+    it('a file over 64 KiB', () =>
+      asksPast(
+        (path) => writeFileSync(path, 'x'.repeat(65537)),
+        'over 64 KiB',
+      ));
+    it('anything but an fs error is still thrown: a store error, so nothing runs', async () => {
+      const planted = join('consents', hp.planHash);
+
+      fsHook.beforeOpen = (path) => {
+        if (path.endsWith(planted)) {
+          throw new Error('not an fs error');
+        }
+      };
+
+      try {
+        await expect(P.jobCall(call, new FileStore(tmp()))).rejects.toThrow(
+          'not an fs error',
+        );
+      } finally {
+        fsHook.beforeOpen = null;
+      }
+    });
+  });
 });
 
 // AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer
@@ -2465,6 +2569,7 @@ async function jobCodeAt(at: number, summary = 'Delete a.txt') {
     input: { path: 'a.txt' },
     hp,
     phrase: 'approve',
+    store: STORE,
     now: at,
   });
 }
@@ -5178,6 +5283,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -5187,7 +5293,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
     const hash = await P.planHashOf(job);
     const c = {
       ...good,
-      hash: await P.consentHashOf(hash, 'approve'),
+      hash: await P.consentHashOf(hash, 'approve', STORE),
       proposal: hash,
       detail: { ...good.detail, job },
     };
@@ -5617,6 +5723,7 @@ describe('an undo window is a positive integer, or there is none (#83)', async (
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       });
 

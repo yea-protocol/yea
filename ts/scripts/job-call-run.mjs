@@ -6,8 +6,8 @@
  * test share it; python/tests/test_job_call_conformance.py is its Python twin. `recordCalls`
  * runs the generator's cases and records them as vectors.
  *
- * The store is a MemoryStore behind a plain object that records each id it consumes. A step's `race` is reserved by
- * "another call" just before the session's first reservation, after the policy has decided.
+ * The store is a MemoryStore with the call's `store` id, behind a plain object that records each id it consumes. A
+ * step's `race` is reserved by "another call" just before the session's first reservation, after the policy has decided.
  */
 
 /** Room for any race reservation. */
@@ -22,7 +22,7 @@ const keyOf = (id) => {
 /** A recording store over a MemoryStore, set up as the first step's `before` says. */
 async function storeFor(P, call) {
   const setup = call.steps[0].before;
-  const inner = new P.MemoryStore();
+  const inner = new P.MemoryStore({ id: call.store });
   const consumed = [];
   const race = [];
   const store = Object.fromEntries(
@@ -37,6 +37,7 @@ async function storeFor(P, call) {
       'used',
       'putConsent',
       'getConsent',
+      'storeId',
     ].map((m) => [m, inner[m].bind(inner)]),
   );
 
@@ -194,16 +195,17 @@ export async function runCall(P, call) {
 }
 
 /**
- * Run each of the generator's calls (with `tool` unless it names its own), check each step's
- * outcome (its kind, and any text it `says`), and record it as a vector.
+ * Run each of the generator's calls (with `tool` and in `store` unless it names its own), check
+ * each step's outcome (its kind, and any text it `says`), and record it as a vector.
  */
-export async function recordCalls(P, calls, tool) {
+export async function recordCalls(P, calls, tool, store) {
   const out = [];
 
   for (const c of calls) {
     const spec = {
       name: c.name,
       tool: c.tool ?? tool,
+      store: c.store ?? store,
       ...(c.consents ? { consents: c.consents } : {}),
       steps: c.steps.map(({ expect: _kind, says: _says, ...facts }, i) => ({
         ...facts,

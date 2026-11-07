@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from .contract import (
     RECEIPT_ID,
+    STORE_ID,
     ApprovalStore,
     LedgerKey,
     Reservation,
     StoreError,
     is_receipt_id,
+    is_store_id,
 )
 from .file_store import FileStore
 from .files import default_store_dir
@@ -24,11 +26,13 @@ from .pending import PENDING_ID, PendingCodes, new_pending_id, pending_codes_of,
 
 __all__ = [
     "RECEIPT_ID",
+    "STORE_ID",
     "LedgerKey",
     "Reservation",
     "StoreError",
     "ApprovalStore",
     "is_receipt_id",
+    "is_store_id",
     "PRUNE_AT",
     "MemoryStore",
     "is_memory_store",

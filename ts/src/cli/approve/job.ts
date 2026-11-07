@@ -1,17 +1,23 @@
 /**
  * `yea approve` for a job consent code (SPEC-approval §6): re-check the plan, show it, have the
- * person type its phrase, and sign a consent to the server's key. The consent is printed, to paste
- * back into the chat as `yea_consent`, and saved in the store, for a server that reads it.
+ * person type its phrase, and sign a consent to the server's key. The consent is printed, and
+ * saved in the store only if it's the one the consent binds, which the server reads; otherwise
+ * the person pastes it back into the chat, for the call to carry as `yea_consent`.
  */
 import { createInterface } from 'node:readline/promises';
 import {
+  type JobConsent,
   phraseMatches,
   planLines,
   readJobConsent,
   signJobConsent,
 } from '../../ask.js';
 import type { KeyPair } from '../../crypto.js';
-import { defaultFileStore, type FileStore } from '../../file-store.js';
+import {
+  defaultFileStore,
+  type FileStore,
+  readStoreId,
+} from '../../file-store.js';
 import { fmtTime } from '../../lens.js';
 import { printable } from '../../text.js';
 import { errno, unixNow } from '../../util.js';
@@ -21,7 +27,7 @@ import { NO_TERMINAL } from './terminal.js';
 /**
  * Approve one job plan for an MCP server (SPEC-approval §6): re-check the plan hash, show the
  * plan, have the person type its phrase, and sign a consent to the server's key. It's printed,
- * to paste back into the chat, and saved in the store, for a server that reads it.
+ * and saved where the server reads it, or else pasted back into the chat.
  */
 export async function approveJob(p: KeyPair, code: string) {
   const j = await orRefuse(() => readJobConsent(code, unixNow()));
@@ -53,56 +59,68 @@ export async function approveJob(p: KeyPair, code: string) {
   // Signed at the time it's signed, so a consent that expired while the person typed is refused.
   const token = await orRefuse(() => signJobConsent(p, j));
   const store = defaultFileStore();
-  const unsaved = await saveConsent(store, j.planHash, token);
+  const saved = await saveConsent(store, j, token);
 
-  // Printed to paste back: the job tool takes it as yea_consent.
+  // Printed to paste back when it isn't saved where the server reads: the tool takes it as
+  // yea_consent.
   console.log(token);
-  console.error(`\n${jobApprovedLines(store.root, unsaved).join('\n')}`);
+  console.error(`\n${jobApprovedLines(store.root, saved).join('\n')}`);
 }
 
+/** Where a signed consent went: saved where the server that asked reads it, or why not. */
+export type Saved =
+  | { saved: true }
+  | { saved: false; elsewhere: true }
+  | { saved: false; failed: string };
+
 /**
- * Save a consent where a server on this account reads it; null, or why it couldn't be. A failed
- * save doesn't fail the approval: the consent is signed, and the call can carry it.
+ * Save a consent in `store` only if it's the store the consent binds (its id is the code's
+ * `store`), which is the one the server that asked reads; in any other it could never run. A
+ * failed save doesn't fail the approval: the consent is signed, and the call can carry it.
  */
 export async function saveConsent(
   store: FileStore,
-  planHash: string,
+  j: Pick<JobConsent, 'planHash' | 'store'>,
   token: string,
-): Promise<string | null> {
+): Promise<Saved> {
   try {
-    await store.putConsent(planHash, token);
+    if (readStoreId(store.root) !== j.store) {
+      return { saved: false, elsewhere: true };
+    }
 
-    return null;
+    await store.putConsent(j.planHash, token);
+
+    return { saved: true };
   } catch (e) {
-    return errno(e) ?? String(e);
+    return { saved: false, failed: errno(e) ?? (e as Error).message };
   }
 }
 
+const PASTE =
+  'paste the consent above back into the chat: the agent passes it to the tool as yea_consent.';
+
 /**
- * What the person is told once a job consent is signed (SPEC-approval §6): paste it back, which
- * works wherever the server is; and where it was saved, or why it couldn't be.
+ * What the person is told once a job consent is signed (SPEC-approval §6): nothing to paste when
+ * it's saved where the server reads it; else why not, and to paste it back.
  */
-export function jobApprovedLines(
-  storeRoot: string,
-  unsaved: string | null,
-): string[] {
-  const paste =
-    'paste the consent above back into the chat: the agent passes it to the tool as yea_consent.';
+export function jobApprovedLines(storeRoot: string, s: Saved): string[] {
+  if (s.saved) {
+    return [
+      printable(
+        `✓ approved: a one-time consent for this plan only, saved in ${storeRoot}, where the server that asked reads it.`,
+      ),
+      'Nothing needs pasting back: ask the agent to call the tool again.',
+    ];
+  }
+
+  const why =
+    'failed' in s
+      ? `It couldn't be saved in ${storeRoot} (${s.failed})`
+      : `The server that asked doesn't keep its approvals in ${storeRoot}`;
 
   return [
     '✓ approved: a one-time consent for this plan only.',
-    ...(unsaved === null
-      ? [
-          `To use it, ${paste}`,
-          printable(
-            `It's also saved in ${storeRoot}: if the server reads that store (this machine and account), the agent can just call the tool again.`,
-          ),
-        ]
-      : [
-          printable(
-            `It couldn't be saved in ${storeRoot} (${unsaved}), so ${paste}`,
-          ),
-        ]),
+    printable(`${why}, so ${PASTE}`),
   ];
 }
 

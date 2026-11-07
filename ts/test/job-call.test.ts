@@ -45,6 +45,7 @@ function storeOf(): P.ApprovalStore {
     used: (k) => s.used(k),
     putConsent: (h, g) => s.putConsent(h, g),
     getConsent: (h) => s.getConsent(h),
+    storeId: () => s.storeId(),
   };
 }
 

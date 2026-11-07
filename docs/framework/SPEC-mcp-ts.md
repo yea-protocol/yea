@@ -304,8 +304,9 @@ step 11 for a `run`.
    round: the call asks (step 8) with the reason SPEC-approval §6 gives, and neither the store
    nor the policy (step 7) is consulted. Otherwise, for each plan, in order:
    - look up `store.getConsent(planHash)`, and check it with
-     `checkJobConsent(grant, { hp, phrase, policy, now })`, where `phrase` is the plan's checked
-     phrase (`confirmWith`'s, through `checkedPhrase`, so after the `approve` fallback);
+     `checkJobConsent(grant, { hp, phrase, store, policy, now })`, where `phrase` is the plan's
+     checked phrase (`confirmWith`'s, through `checkedPhrase`, so after the `approve` fallback)
+     and `store` is `store.storeId()`, read once per round (SPEC-approval §8);
    - `consumeOnce(<grant id>, <the consent grant's exp caveat>)`;
    - the first that passes runs that plan (step 11).
 
@@ -539,6 +540,8 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a `yea_consent` that is forged, altered, expired, issued to another key, for another
   server or tool, or already used runs nothing, and the call asks without consulting the
   policy ([M18], the same cases as the core's [A22]);
+- a consent runs in one store only: a twin server with the same key and its own store runs
+  it nothing ([M20]);
 - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
   the result;
 - a stored copy of the policy grant never counts as a consent;

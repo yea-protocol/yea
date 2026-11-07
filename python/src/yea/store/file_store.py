@@ -22,8 +22,9 @@ from .contract import (
     _reservation_id,
     is_receipt_id,
 )
-from .files import _create_excl, _read, _write_atomic, default_store_dir
+from .files import NotRegularFile, _create_excl, _read, _read_regular, _write_atomic, default_store_dir
 from .lock import CLAIM_STALE, _acquire, _break_if_stale, _release, _still_held, _token
+from .store_id import _ensure_store_id
 
 
 class FileStore:
@@ -34,10 +35,18 @@ class FileStore:
         receipts/<receipt id>.json      the job receipt, plain JSON (not byte-pinned: results may hold floats)
         ledger/<block>/<of>.json        {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
         consents/<planHash>             the pg1. consent grant
+        id                              the store id, created once
     """
 
     def __init__(self, root: str | os.PathLike[str] | None = None):
         self.root = Path(root) if root is not None else default_store_dir()
+        self._id: str | None = None
+
+    async def store_id(self) -> str:
+        """``<root>/id``, made by the first process that needs it, then kept for this instance (§8)."""
+        if self._id is None:
+            self._id = _ensure_store_id(self.root)
+        return self._id
 
     async def consume_once(self, id: str, expires_at: int) -> bool:
         name = b64url_encode(hashlib.sha256(id.encode("utf-8")).digest())
@@ -129,20 +138,24 @@ class FileStore:
         _write_atomic(self.root / "consents" / _plan_hash(plan_hash), grant)
 
     async def get_consent(self, plan_hash: str) -> str | None:
-        """The consent stored for a plan, or None. One that is there but can't be read (a mode or
-        owner that shuts this user out, a directory in its place, bytes that aren't UTF-8) counts as
-        absent, with a line on stderr: it can only mean asking again, never an fs error in the
-        model's context (SPEC-approval §8)."""
+        """The consent stored for a plan, or None. It's read as a server key is (``_read_regular``),
+        and one that is there but can't be read that way (a mode or owner that shuts this user out;
+        a symlink, directory, FIFO or device in its place; over 64 KiB; bytes that aren't UTF-8)
+        counts as absent, with a line on stderr: it can only mean asking again, never an fs error in
+        the model's context (SPEC-approval §8)."""
         path = self.root / "consents" / _plan_hash(plan_hash)
         try:
-            return _read(path)
+            return _read_regular(path)
         except (OSError, ValueError) as e:  # UnicodeDecodeError is a ValueError
             print(f"yea: the consent at {path} can't be read ({_why(e)}), so it counts as absent", file=sys.stderr)
             return None
 
 
 def _why(e: Exception) -> str:
-    """An error's errno name (``EACCES``), as TypeScript's store logs it, or its type."""
+    """An error's errno name (``EACCES``), as TypeScript's store logs it; why a file isn't regular;
+    or its type."""
+    if isinstance(e, NotRegularFile):
+        return str(e)
     code = getattr(e, "errno", None)
     return errno.errorcode.get(code, type(e).__name__) if isinstance(code, int) else type(e).__name__
 

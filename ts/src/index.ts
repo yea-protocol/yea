@@ -161,6 +161,7 @@ export { Service, service } from './service.js';
 export {
   type ApprovalStore,
   isMemoryStore,
+  isStoreId,
   type JobReceipt,
   type LedgerKey,
   MemoryStore,

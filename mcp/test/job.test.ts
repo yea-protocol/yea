@@ -701,6 +701,7 @@ describe('a store that isn’t a FileStore', () => {
       'used',
       'putConsent',
       'getConsent',
+      'storeId',
     ] as const;
     const store = Object.fromEntries(
       methods.map((m) => [m, h.store[m].bind(h.store)]),

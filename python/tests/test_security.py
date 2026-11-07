@@ -8,6 +8,7 @@ import socket
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -210,6 +211,8 @@ def test_a18_a_state_sent_again_runs_nothing_whatever_its_answer():
 # [A22] A consent on the call (``yea_consent``) is checked exactly as one from the store (#358).
 # The server key the a22/a23 calls run under (not the undo-window tests' SERVER, below).
 CONSENT_SERVER = key_from_seed(bytes([6]) * 32)
+# The store the a22 consents bind (SPEC-approval §6); ``_store()`` has this id.
+CONSENT_STORE = "yea-test-store-aaaaaaa"
 _REFUND = Plan("Refund 30.00 USD to Chen", [], apply=lambda c: None, risk="low", undo_window=60)
 _CREDIT = Plan("Give Chen store credit", [], apply=lambda c: None, risk="low", undo_window=60)
 _REFUND_TOOL = JobTool("refund", revert=lambda r: None)
@@ -217,6 +220,12 @@ _REFUND_HASH = hash_plans(_REFUND_TOOL, {"who": "Chen"}, [_REFUND])[0].plan_hash
 # A policy that would run the refund without asking.
 _RUNS_REFUNDS = issue_grant(PRINCIPAL, CONSENT_SERVER.public, [{"can": ["refund"]}, {"risk": "low"}, {"exp": NOW + 3600}]).encode()
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
+_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, the code they were "
+            "given may have been altered")
+
+
+def _store() -> MemoryStore:
+    return MemoryStore(store_id=CONSENT_STORE)
 
 
 def _consent(by=PRINCIPAL, to: str = CONSENT_SERVER.public, svc: str | None = None, can: str = "refund",
@@ -224,16 +233,16 @@ def _consent(by=PRINCIPAL, to: str = CONSENT_SERVER.public, svc: str | None = No
     """A consent for the refund as ``yea approve`` signs one, with ``by``, ``to``, ``svc``, ``can`` or
     ``exp`` changed."""
     return issue_grant(by, to, [{"svc": [svc or CONSENT_SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [can]},
-                                {"only": consent_hash_of(_REFUND_HASH, "approve")}, {"exp": exp}], iat=NOW).encode()
+                                {"only": consent_hash_of(_REFUND_HASH, "approve", CONSENT_STORE)}, {"exp": exp}], iat=NOW).encode()
 
 
 def _carrying(consent: str | None, now: int = NOW, plans: tuple = (_REFUND,), principal: str | None = PRINCIPAL.public,
-              unpinned: str | None = None) -> JobCall:
+              unpinned: str | None = None, tool: JobTool = _REFUND_TOOL) -> JobCall:
     """A refund call carrying ``consent``, from a client that can't ask, under a policy that would run it."""
     async def plan():
         return list(plans)
     policy = load_policy(_RUNS_REFUNDS, CONSENT_SERVER.public, principal, Tightening((), "high"))
-    return JobCall(_REFUND_TOOL, {"who": "Chen"}, plan, "", now, policy, False, unpinned=unpinned, consent=consent)
+    return JobCall(tool, {"who": "Chen"}, plan, "", now, policy, False, unpinned=unpinned, consent=consent)
 
 
 def _refused_for(why: str):
@@ -242,7 +251,7 @@ def _refused_for(why: str):
 
 def test_a22_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refused():
     async def go():
-        store, token = MemoryStore(), _consent()
+        store, token = _store(), _consent()
         # The newline a terminal copy adds doesn't matter: the signature covers only the token.
         first = await job_call(_carrying(token + "\n"), store)
         assert (first.kind, first.how) == ("run", "approved")
@@ -253,7 +262,7 @@ def test_a22_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refuse
 
 def test_a22_once_used_on_the_call_a_stored_copy_of_the_consent_is_used_too():
     async def go():
-        store, token = MemoryStore(), _consent()
+        store, token = _store(), _consent()
         assert (await job_call(_carrying(token), store)).how == "approved"
         await store.put_consent(_REFUND_HASH, token)
         plain = _carrying(None)
@@ -284,33 +293,71 @@ def _altered() -> str:
 ])
 def test_a22_a_bad_consent_on_the_call_runs_nothing_and_never_falls_through_to_the_policy(name, token, why, now):
     """The policy alone would run the refund: a refused consent never falls through to it."""
-    assert _refused_for(why)(run(job_call(_carrying(token(), now=now), MemoryStore()))), name
+    assert _refused_for(why)(run(job_call(_carrying(token(), now=now), _store()))), name
 
 
 def test_a22_a_consent_on_the_call_for_one_plan_doesnt_commit_another():
-    o = run(job_call(_carrying(_consent(), plans=(_CREDIT,)), MemoryStore()))
-    assert _refused_for("it approves none of these plans")(o)
+    o = run(job_call(_carrying(_consent(), plans=(_CREDIT,)), _store()))
+    assert _refused_for(_NO_PLAN)(o)
+
+
+def test_a22_a_consent_on_the_call_signed_for_another_phrase_says_the_code_may_have_been_altered():
+    tool = JobTool("refund", revert=lambda r: None, confirm_with=lambda hp, input: "refund Chen")
+    assert _refused_for(_NO_PLAN)(run(job_call(_carrying(_consent(), tool=tool), _store())))
+
+
+def test_a22_a_consent_consumed_in_one_store_runs_nothing_in_another_with_the_same_key():
+    """Two servers with one key and their own stores (a connector's stdio and HTTP sides), or one
+    server restarted on a MemoryStore: the consent binds the store it was issued for."""
+    async def go():
+        token = _consent()
+        first = await job_call(_carrying(token), _store())
+        assert (first.kind, first.how) == ("run", "approved")
+        assert _refused_for(_NO_PLAN)(await job_call(_carrying(token), MemoryStore()))
+
+    run(go())
 
 
 def test_a22_a_consent_on_the_call_counts_for_nothing_without_a_pinned_principal():
-    o = run(job_call(_carrying(_consent(), principal=None, unpinned="YEA_PRINCIPAL_PUB is not set"), MemoryStore()))
+    o = run(job_call(_carrying(_consent(), principal=None, unpinned="YEA_PRINCIPAL_PUB is not set"), _store()))
     assert _refused_for("YEA_PRINCIPAL_PUB is not set")(o) and o.codes == []
 
 
-@pytest.mark.skipif(not hasattr(os, "getuid") or os.getuid() == 0, reason="needs a user that file modes apply to")
-def test_a23_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_the_result(tmp_path, capsys):
-    """[A23] What an agent with the store could plant: a file the server can't read (#358)."""
+def _mode_0(path: Path) -> None:
+    path.write_text("pg1.x")
+    path.chmod(0)
+
+
+def _symlink(path: Path) -> None:
+    (path.parent / "elsewhere").write_text("pg1.x")
+    path.symlink_to(path.parent / "elsewhere")
+
+
+_NOT_ROOT = hasattr(os, "getuid") and os.getuid() != 0
+
+
+@pytest.mark.parametrize("plant, why", [
+    pytest.param(_mode_0, "EACCES", id="a file the server may not read",
+                 marks=pytest.mark.skipif(not _NOT_ROOT, reason="needs a user that file modes apply to")),
+    pytest.param(lambda p: os.mkfifo(p), "not a regular file", id="a FIFO, which never blocks the read",
+                 marks=pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs here")),
+    pytest.param(_symlink, "ELOOP", id="a symlink, never followed, even to a consent"),
+    pytest.param(lambda p: p.write_text("x" * 65537), "over 64 KiB", id="a file over 64 KiB"),
+])
+def test_a23_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_the_result(tmp_path, capsys, plant, why):
+    """[A23] What an agent with the store could plant under the plan's hash (#358): the call asks, as
+    with no consent, and the reason reaches stderr only."""
     store = FileStore(tmp_path)
     hp = hash_plans(JobTool("refund"), {"who": "Chen"}, [Plan("Refund", [], apply=lambda c: None, risk="low")])[0]
-    run(store.put_consent(hp.plan_hash, "pg1.x"))
     planted = tmp_path / "consents" / hp.plan_hash
-    planted.chmod(0)
+    planted.parent.mkdir()
+    plant(planted)
     try:
         call = asking_call()
         o = run(job_call(JobCall(call.tool, call.input, call.plan, "", NOW,
                                  Policy(None, PRINCIPAL.public, CONSENT_SERVER.public), False), store))
-        assert o.kind == "consent-codes" and "EACCES" not in repr(o)
-        assert "can't be read (EACCES), so it counts as absent" in capsys.readouterr().err
+        assert o.kind == "consent-codes" and why not in repr(o)
+        assert f"yea: the consent at {planted} can't be read ({why}), so it counts as absent" in capsys.readouterr().err
     finally:
         planted.chmod(0o600)
 

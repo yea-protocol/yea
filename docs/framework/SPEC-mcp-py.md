@@ -275,8 +275,9 @@ again, with the clock, the policy and the plans as they are then.
    plan it approves, or nothing this round: the call asks (step 8) with the reason
    SPEC-approval §6 gives, and neither the store nor the policy (step 7) is consulted.
    Otherwise, for each plan, in order: `store.get_consent(planHash)`,
-   `check_job_consent(token, plan, phrase, policy, now)` with `phrase` the plan's checked phrase
-   (`confirm_with`'s, through `checked_phrase`, so after the `approve` fallback), then
+   `check_job_consent(token, plan, phrase, store_id, policy, now)` with `phrase` the plan's
+   checked phrase (`confirm_with`'s, through `checked_phrase`, so after the `approve` fallback)
+   and `store_id` the store's `store_id()`, read once per round (SPEC-approval §8), then
    `consume_once(<grant id>, <its exp>)`; the first that passes runs that plan (step 11).
    `consent_for` does this. It returns a `StoredConsent`: the plan it runs, or a `note` when a
    consent was refused as `not a consent for this phrase`, which becomes the ask's reason
@@ -515,7 +516,8 @@ a denied tool never runs, even with a stored consent; a `high` plan is never off
 irreversible plan never auto-runs; a consent for one plan never runs another, from the store or
 as `yea_consent`; a `yea_consent` that is forged, altered, expired, issued to another key, for
 another server or tool, or already used runs nothing, and the call asks without consulting the
-policy (the same cases as the core's a22 tests); an unreadable
+policy (the same cases as the core's a22 tests); a consent runs in one store only, so a twin
+server with the same key and its own store runs it nothing; an unreadable
 consent in the store (a planted mode-0 file) asks again, with no fs error in the result; a
 stored copy of the policy grant never counts as a consent; a `request_state` without our `yea` object is
 refused; a guarded tool's original handler never runs before approval, and guarding one server

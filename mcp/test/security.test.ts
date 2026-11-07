@@ -25,6 +25,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Allowed } from '../../ts/test/imports.js';
 import { watchKeys } from '../../ts/test/key-watch.js';
+import { yea } from '../src/index.js';
 import { stricter } from '../src/policy.js';
 import { type AnswerStep, accept } from './harness.js';
 import {
@@ -70,6 +71,10 @@ function consentVariant(
     ],
   });
 }
+
+/** Why a consent on the call that binds no plan here runs nothing (SPEC-approval §6). */
+const NO_PLAN =
+  'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered';
 
 /** Consent codes from a call a client can't answer. */
 async function codesFor(conn: Awaited<ReturnType<typeof connect>>, args = ch1) {
@@ -212,10 +217,7 @@ describe('MCP-side approval security', () => {
       consentVariant(w, one.code, o);
     const refusals: [Record<string, unknown>, string][] = [
       // For ch_1, passed on a call for ch_2: it approves none of that call's plans.
-      [
-        { charge: 'ch_2', yea_consent: consent },
-        'it approves none of these plans',
-      ],
+      [{ charge: 'ch_2', yea_consent: consent }, NO_PLAN],
       [{ ...ch1, yea_consent: await variant({ by: stranger }) }, notSigned],
       [
         { ...ch1, yea_consent: await variant({ to: stranger.public }) },
@@ -261,6 +263,34 @@ describe('MCP-side approval security', () => {
       "can't be used: it was already used",
     );
     expect(w.applied).toEqual(['ch_1']);
+  });
+
+  it('[M20] a consent runs in one store only: a twin server with the same key runs it nothing (#358)', async () => {
+    // A connector's stdio and HTTP sides: one home, so one server key, but each its own store.
+    const w = await world();
+    const twin = {
+      ...w,
+      applied: [] as string[],
+      approvals: yea({ ...w.options, store: new MemoryStore() }),
+    };
+
+    expect(await twin.approvals.serviceId()).toBe(
+      await w.approvals.serviceId(),
+    );
+
+    const conn = await connect('2025-no-elicit', refundServer(w));
+    const twinConn = await connect('2025-no-elicit', refundServer(twin));
+    const [one] = await codesFor(conn);
+    const consent = await printedConsent(w, one.code);
+
+    expect(
+      (await conn.call({ ...ch1, yea_consent: consent })).isError,
+    ).toBeFalsy();
+    expect(
+      textOf(await twinConn.call({ ...ch1, yea_consent: consent })),
+    ).toContain(`the consent passed as yea_consent can't be used: ${NO_PLAN}`);
+    expect(w.applied).toEqual(['ch_1']);
+    expect(twin.applied).toEqual([]);
   });
 
   it.skipIf(!process.getuid || process.getuid() === 0)(

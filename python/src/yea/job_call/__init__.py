@@ -40,5 +40,5 @@ async def job_call(call: JobCall, store: ApprovalStore, retry: Retry | None = No
         return planned
     if call.preview:
         return Outcome("preview", plans=planned)
-    r = Round(call, planned, store, phrase_of(call))
+    r = Round(call, planned, store, await store.store_id(), phrase_of(call))
     return await answer_round(r, retry) if retry is not None else await first_round(r)

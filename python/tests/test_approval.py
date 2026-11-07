@@ -14,13 +14,15 @@ from yea.approval import (
     normalize_phrase, phrase_matches, plan_hash, plan_lines, plan_preimage, read_tightening, reserve_all, shown_plan,
     undo_receipt,
 )
-from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id
+from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id, is_store_id
 from yea._json import canonical, sha256_b64url
 
 PRINCIPAL = key_from_seed(bytes([7]) * 32)
 SERVER = key_from_seed(bytes([8]) * 32)
 OTHER = key_from_seed(bytes([9]) * 32)
 NOW = 1_790_000_000
+# The store the consents below bind (SPEC-approval §6): every store fixture has this id.
+STORE = "yea-test-store-aaaaaaa"
 
 
 def APPROVE(_: HashedPlan) -> str:
@@ -320,10 +322,10 @@ def test_denied_tool_never_runs_even_with_approval():
 
 def test_job_consent_code_carries_the_preimage():
     h = hashed()
-    code = job_consent_code(SERVER.public, PRINCIPAL.public, {"repo": "site", "branch": "old-nav"}, h, "old-nav", NOW)
+    code = job_consent_code(SERVER.public, PRINCIPAL.public, {"repo": "site", "branch": "old-nav"}, h, "old-nav", STORE, NOW)
     c = decode_consent_code(code)
     assert c["proposal"] == h.plan_hash and c["service"] == SERVER.public and c["capability"] == "delete_branch"
-    assert c["hash"] == consent_hash_of(h.plan_hash, "old-nav")  # the phrase is bound (#141)
+    assert c["hash"] == consent_hash_of(h.plan_hash, "old-nav", STORE)  # the phrase is bound (#141)
     assert c["expires"] == NOW + 600
     assert sha256_b64url(canonical(c["detail"]["job"]).encode()) == h.plan_hash  # an approver can re-check it
     assert c["detail"]["phrase"] == "old-nav"
@@ -334,11 +336,39 @@ def test_job_consent_code_carries_the_preimage():
 
 @pytest.fixture(params=["memory", "file"])
 def store(request, tmp_path):
-    return MemoryStore() if request.param == "memory" else FileStore(tmp_path / "store")
+    if request.param == "memory":
+        return MemoryStore(store_id=STORE)
+    (tmp_path / "store").mkdir()
+    (tmp_path / "store" / "id").write_text(STORE)  # as if a server had made it
+    return FileStore(tmp_path / "store")
 
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def test_a_memory_store_makes_its_own_id_unless_given_one():
+    """SPEC-approval §8: the same every time, and another store has another."""
+    a, b = MemoryStore(), MemoryStore()
+    assert is_store_id(run(a.store_id())) and run(a.store_id()) == run(a.store_id()) != run(b.store_id())
+    assert run(MemoryStore(store_id=STORE).store_id()) == STORE
+    with pytest.raises(StoreError, match="not a store id"):
+        MemoryStore(store_id="short")
+
+
+def test_a_file_store_id_is_made_once_whole_and_read_by_every_store_on_its_root(tmp_path):
+    ids = {run(FileStore(tmp_path).store_id()) for _ in range(8)}
+    (only,) = ids
+    assert is_store_id(only) and (tmp_path / "id").read_text() == only
+    assert (tmp_path / "id").stat().st_mode & 0o777 == 0o600 and [p.name for p in tmp_path.iterdir()] == ["id"]
+    assert run(FileStore(tmp_path).store_id()) != run(FileStore(tmp_path / "other").store_id())
+
+
+def test_a_file_store_id_that_isnt_one_is_a_store_error_and_nothing_is_made_over_it(tmp_path):
+    (tmp_path / "id").write_text("not an id")
+    with pytest.raises(StoreError, match="doesn't hold a store id"):
+        run(FileStore(tmp_path).store_id())
+    assert (tmp_path / "id").read_text() == "not an id"
 
 
 def test_consume_once_under_concurrency(store):
@@ -611,7 +641,7 @@ def test_load_principal_key_refuses_a_reachable_file(tmp_path):
 
 
 def _consent(h, principal=PRINCIPAL, to=SERVER, only=None, exp=NOW + 600, svc=None):
-    only = only or consent_hash_of(h.plan_hash, "approve")
+    only = only or consent_hash_of(h.plan_hash, "approve", STORE)
     caveats = [{"svc": [svc or SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [h.tool]}, {"only": only}]
     if exp is not None:
         caveats.append({"exp": exp})
@@ -623,8 +653,8 @@ def test_a_signed_consent_runs_its_plan_once(store):
         h = hashed(undoable=False, risk="high")  # consent is how irreversible and out-of-band plans run
         await store.put_consent(h.plan_hash, _consent(h))
         p = policy()
-        assert (await consent_for([h], store, p, NOW, APPROVE)).plan == h
-        assert await consent_for([h], store, p, NOW, APPROVE) == StoredConsent()  # a replay runs nothing, silently
+        assert (await consent_for([h], store, STORE, p, NOW, APPROVE)).plan == h
+        assert await consent_for([h], store, STORE, p, NOW, APPROVE) == StoredConsent()  # a replay runs nothing, silently
 
     run(go())
 
@@ -636,8 +666,8 @@ def test_consents_that_dont_count(store):
         cases = [
             _consent(h, principal=OTHER),  # not the pinned principal
             _consent(h, to=OTHER),  # issued to another server's key
-            _consent(h, only=consent_hash_of(other.plan_hash, "approve")),  # for another plan
-            _consent(h, only=consent_hash_of(h.plan_hash, "old-nav")),  # for another phrase (#141)
+            _consent(h, only=consent_hash_of(other.plan_hash, "approve", STORE)),  # for another plan
+            _consent(h, only=consent_hash_of(h.plan_hash, "old-nav", STORE)),  # for another phrase (#141)
             _consent(h, only=h.plan_hash),  # the bare plan hash, without its phrase
             _consent(h, exp=NOW),  # expired
             _consent(h, exp=None),  # no expiry
@@ -645,18 +675,18 @@ def test_consents_that_dont_count(store):
             issue_grant(PRINCIPAL, SERVER.public, [{"can": ["*"]}], iat=NOW).encode(),  # the policy grant itself
             # the server key delegating the policy grant to itself with an only and an exp
             issue_grant(PRINCIPAL, SERVER.public, [{"can": ["*"]}], iat=NOW)
-            .delegate(SERVER, SERVER.public, [{"only": consent_hash_of(h.plan_hash, "approve")}, {"exp": NOW + 600}],
+            .delegate(SERVER, SERVER.public, [{"only": consent_hash_of(h.plan_hash, "approve", STORE)}, {"exp": NOW + 600}],
                       iat=NOW).encode(),
             "not a grant",
         ]
         for token in cases:
             await store.put_consent(h.plan_hash, token)
-            assert (await consent_for([h], store, p, NOW, APPROVE)).plan is None, token
+            assert (await consent_for([h], store, STORE, p, NOW, APPROVE)).plan is None, token
         await store.put_consent(h.plan_hash, _consent(h))
-        assert (await consent_for([h], store, policy(deny=["delete_branch"]), NOW, APPROVE)).plan is None  # denied
+        assert (await consent_for([h], store, STORE, policy(deny=["delete_branch"]), NOW, APPROVE)).plan is None  # denied
         # The tool's phrase changed: nothing runs, and the person is told why (#141).
-        assert await consent_for([h], store, p, NOW, lambda _: "old-nav") == StoredConsent(note=PHRASE_CHANGED)
-        assert (await consent_for([h], store, p, NOW, APPROVE)).plan == h
+        assert await consent_for([h], store, STORE, p, NOW, lambda _: "old-nav") == StoredConsent(note=PHRASE_CHANGED)
+        assert (await consent_for([h], store, STORE, p, NOW, APPROVE)).plan == h
 
     run(go())
 
@@ -665,17 +695,17 @@ def test_a_consent_for_another_phrase_is_told_apart(store):
     """[A19] A valid consent bound to another phrase (or the bare plan hash) is refused with its own
     reason; one that isn't shaped like a consent, or has expired, is not (#141)."""
     h, p = hashed(), policy()
-    assert check_job_consent(_consent(h), h, "old-nav", p, NOW).why == OTHER_PHRASE
-    assert check_job_consent(_consent(h, only=h.plan_hash), h, "approve", p, NOW).why == OTHER_PHRASE
-    assert check_job_consent(_consent(h, exp=NOW), h, "old-nav", p, NOW).why != OTHER_PHRASE
-    assert check_job_consent(_consent(h, exp=None), h, "old-nav", p, NOW).why == "not a consent for this plan"
+    assert check_job_consent(_consent(h), h, "old-nav", STORE, p, NOW).why == OTHER_PHRASE
+    assert check_job_consent(_consent(h, only=h.plan_hash), h, "approve", STORE, p, NOW).why == OTHER_PHRASE
+    assert check_job_consent(_consent(h, exp=NOW), h, "old-nav", STORE, p, NOW).why != OTHER_PHRASE
+    assert check_job_consent(_consent(h, exp=None), h, "old-nav", STORE, p, NOW).why == "not a consent for this plan"
     # The `approve` fallback is part of the consent hash: a raw, empty phrase redeems it too.
-    assert consent_hash_of(h.plan_hash, " ") == consent_hash_of(h.plan_hash, "approve")
-    assert check_job_consent(_consent(h), h, "", p, NOW).ok
+    assert consent_hash_of(h.plan_hash, " ", STORE) == consent_hash_of(h.plan_hash, "approve", STORE)
+    assert check_job_consent(_consent(h), h, "", STORE, p, NOW).ok
 
     async def go():
         await store.put_consent(h.plan_hash, _consent(h, exp=NOW))  # expired: absent, and silent
-        assert await consent_for([h], store, p, NOW, lambda _: "old-nav") == StoredConsent()
+        assert await consent_for([h], store, STORE, p, NOW, lambda _: "old-nav") == StoredConsent()
 
     run(go())
 
@@ -798,10 +828,10 @@ def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():
     with pytest.raises(TypeError, match=re.escape(f'"{"x" * 79}…"')):  # a long phrase is cut in the error
         checked_phrase("x" * 100 + "\u202e")
     with pytest.raises(TypeError, match="unprintable characters"):
-        job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "approve\n", NOW)
-    blank = decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", NOW))
+        job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "approve\n", STORE, NOW)
+    blank = decode_consent_code(job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), " ", STORE, NOW))
     assert blank["detail"]["phrase"] == "approve"
-    assert blank["hash"] == consent_hash_of(hashed().plan_hash, "approve")  # the hash binds the fallback too
+    assert blank["hash"] == consent_hash_of(hashed().plan_hash, "approve", STORE)  # the hash binds the fallback too
 
 
 def test_a_phrase_over_64_characters_is_refused():
@@ -815,7 +845,7 @@ def test_a_phrase_over_64_characters_is_refused():
     with pytest.raises(TypeError):  # edge whitespace counts too
         checked_phrase(" " + "x" * 64)
     with pytest.raises(TypeError, match="longer than 64 characters"):
-        job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "x" * 65, NOW)
+        job_consent_code(SERVER.public, PRINCIPAL.public, {}, hashed(), "x" * 65, STORE, NOW)
 
 
 def test_read_tightening_warns_on_an_out_of_band_that_isnt_a_risk_name():

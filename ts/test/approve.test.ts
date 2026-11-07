@@ -228,18 +228,59 @@ describe.skipIf(!existsSync(CLI))('yea approve with a code’s agent', () => {
 });
 
 describe('yea approve, once a job consent is signed (#358)', () => {
-  it('saves it where a server on this account reads it, and still says to paste it back', async () => {
+  /** A FileStore in a fresh directory, with its id made, as a server makes it. */
+  async function storeWithId() {
     const store = new FileStore(mkdtempSync(join(tmpdir(), 'yea-store-')));
 
-    expect(await saveConsent(store, 'H', 'pg1.x')).toBeNull();
+    return { store, id: await store.storeId() };
+  }
+
+  it('saves it in the store it binds, where the server reads it: nothing to paste back', async () => {
+    const { store, id } = await storeWithId();
+    const saved = await saveConsent(
+      store,
+      { planHash: 'H', store: id },
+      'pg1.x',
+    );
+
+    expect(saved).toEqual({ saved: true });
     expect(readFileSync(join(store.root, 'consents', 'H'), 'utf8')).toBe(
       'pg1.x',
     );
-    expect(jobApprovedLines(store.root, null)).toEqual([
-      '✓ approved: a one-time consent for this plan only.',
-      'To use it, paste the consent above back into the chat: the agent passes it to the tool as yea_consent.',
-      `It's also saved in ${store.root}: if the server reads that store (this machine and account), the agent can just call the tool again.`,
+    expect(jobApprovedLines(store.root, saved)).toEqual([
+      `✓ approved: a one-time consent for this plan only, saved in ${store.root}, where the server that asked reads it.`,
+      'Nothing needs pasting back: ask the agent to call the tool again.',
     ]);
+  });
+
+  it("doesn't save one another store binds (a memory store, another account), and says to paste it back", async () => {
+    const { store } = await storeWithId();
+    const theirs = await new P.MemoryStore().storeId();
+    const saved = await saveConsent(
+      store,
+      { planHash: 'H', store: theirs },
+      'pg1.x',
+    );
+
+    expect(saved).toEqual({ saved: false, elsewhere: true });
+    expect(existsSync(join(store.root, 'consents', 'H'))).toBe(false);
+    expect(jobApprovedLines(store.root, saved)).toEqual([
+      '✓ approved: a one-time consent for this plan only.',
+      `The server that asked doesn't keep its approvals in ${store.root}, so paste the consent above back into the chat: the agent passes it to the tool as yea_consent.`,
+    ]);
+  });
+
+  it("makes no store id where there's none: a store no server made issued no code", async () => {
+    const store = new FileStore(mkdtempSync(join(tmpdir(), 'yea-store-')));
+    const theirs = await new P.MemoryStore().storeId();
+
+    expect(
+      await saveConsent(store, { planHash: 'H', store: theirs }, 'pg1.x'),
+    ).toEqual({
+      saved: false,
+      elsewhere: true,
+    });
+    expect(existsSync(join(store.root, 'id'))).toBe(false);
   });
 
   it("when it can't be saved, says why and to paste it back, and the approval stands", async () => {
@@ -249,12 +290,19 @@ describe('yea approve, once a job consent is signed (#358)', () => {
     writeFileSync(join(dir, 'store'), '');
 
     const store = new FileStore(join(dir, 'store'));
-    const why = await saveConsent(store, 'H', 'pg1.x');
+    const saved = await saveConsent(
+      store,
+      { planHash: 'H', store: 'x'.repeat(22) },
+      'pg1.x',
+    );
 
-    expect(why).toMatch(/^E[A-Z]+$/);
-    expect(jobApprovedLines(store.root, why)).toEqual([
+    expect(saved).toMatchObject({
+      saved: false,
+      failed: expect.stringMatching(/^E[A-Z]+$/),
+    });
+    expect(jobApprovedLines(store.root, saved)).toEqual([
       '✓ approved: a one-time consent for this plan only.',
-      `It couldn't be saved in ${store.root} (${why}), so paste the consent above back into the chat: the agent passes it to the tool as yea_consent.`,
+      `It couldn't be saved in ${store.root} (${'failed' in saved ? saved.failed : ''}), so paste the consent above back into the chat: the agent passes it to the tool as yea_consent.`,
     ]);
   });
 });

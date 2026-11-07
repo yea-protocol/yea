@@ -83,9 +83,11 @@ class Outcome:
 
 @dataclass(frozen=True)
 class Round:
-    """A round in progress: the call, its hashed plans, its store, and the phrase for each plan."""
+    """A round in progress: the call, its hashed plans, its store and that store's id (a consent
+    binds it, SPEC-approval §6), and the phrase for each plan."""
 
     call: JobCall
     plans: list[HashedPlan]
     store: ApprovalStore
+    store_id: str
     phrase_for: Callable[[HashedPlan], str]

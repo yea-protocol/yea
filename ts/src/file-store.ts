@@ -10,11 +10,14 @@ import { randomId, sha256 } from './crypto.js';
 import {
   breakIfStale,
   createOnce,
+  NotRegularFile,
   readOrNull,
+  readRegular,
   writeAtomic,
 } from './file-store/files.js';
 import { acquire } from './file-store/lock.js';
 import { PendingCodes } from './file-store/pending.js';
+import { ensureStoreId } from './file-store/store-id.js';
 import { home } from './home.js';
 import type {
   ApprovalStore,
@@ -46,13 +49,23 @@ export {
   pendingFile,
 } from './file-store/pending.js';
 
+export { readStoreId } from './file-store/store-id.js';
+
 export class FileStore implements ApprovalStore {
   /** The brand `pendingCodesOf` reads, as `isMemoryStore` reads MemoryStore's. */
   readonly yeaStore = 'file' as const;
   readonly root: string;
+  private id: string | null = null;
 
   constructor(root = join(home(), 'store')) {
     this.root = root;
+  }
+
+  /** `<root>/id`, made by the first process that needs it, then kept for this instance (§8). */
+  async storeId(): Promise<string> {
+    this.id ??= ensureStoreId(this.root);
+
+    return this.id;
   }
 
   async consumeOnce(id: string, expiresAt: number): Promise<boolean> {
@@ -151,25 +164,26 @@ export class FileStore implements ApprovalStore {
   }
 
   /**
-   * The consent stored for a plan, or null. One that is there but can't be read (a mode or owner
-   * that shuts this user out, a directory in its place) counts as absent, with a line on stderr:
+   * The consent stored for a plan, or null. It's read as a server key is (`readRegular`), and one
+   * that is there but can't be read that way (a mode or owner that shuts this user out; a symlink,
+   * directory, FIFO or device in its place; over 64 KiB) counts as absent, with a line on stderr:
    * it can only mean asking again, never an fs error in the model's context (SPEC-approval §8).
-   * Anything but an fs error is still thrown.
+   * Anything else is still thrown.
    */
   async getConsent(planHash: string): Promise<string | null> {
     const path = this.consentPath(planHash);
 
     try {
-      return readOrNull(path);
+      return readRegular(path);
     } catch (e) {
-      const code = errno(e);
+      const why = e instanceof NotRegularFile ? e.message : errno(e);
 
-      if (code === undefined) {
+      if (why === undefined) {
         throw e;
       }
 
       console.error(
-        `yea: the consent at ${path} can't be read (${code}), so it counts as absent`,
+        `yea: the consent at ${path} can't be read (${why}), so it counts as absent`,
       );
 
       return null;

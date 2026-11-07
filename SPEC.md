@@ -405,7 +405,10 @@ accumulate, so a delegation can only restrict.
 Token encoding: `"pg1." + b64url(utf8(canonical(blocks)))`. Every number in a token's
 JSON is an integer written in minimal form (§10): a decoder MUST refuse a token that spells
 one otherwise, such as `1.0`, `1e3` or `-0`, as `unauthorized`, even though some JSON parsers
-read those as integers.
+read those as integers. The bytes are UTF-8 and nothing else: a decoder MUST refuse
+a token whose bytes start with a byte order mark or aren't valid UTF-8, as `unauthorized`,
+rather than drop the mark or replace a bad byte with U+FFFD, which could read the signed text
+back out of bytes that aren't its encoding.
 
 **Block id:** `b64url(sha256(utf8(block.s)))`. The **grant id** is the id of its root block.
 

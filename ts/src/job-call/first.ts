@@ -21,13 +21,22 @@ import type { JobCallOutcome, Round } from './types.js';
 const PHRASE_CHANGED =
   'a consent for this plan was signed for a different phrase; approve the new code — if this repeats, the code you were given may have been altered';
 
-/** A plan's stored consent, checked against the phrase the tool names now; null if none. */
+/**
+ * A plan's stored consent, checked against the phrase the tool names now and this store's id;
+ * null if none.
+ */
 async function storedConsent(r: Round, hp: HashedPlan) {
   const { policy, now } = r.call;
   const grant = await r.store.getConsent(hp.planHash);
 
   return grant
-    ? checkJobConsent(grant, { hp, phrase: r.phraseFor(hp), policy, now })
+    ? checkJobConsent(grant, {
+        hp,
+        phrase: r.phraseFor(hp),
+        store: r.storeId,
+        policy,
+        now,
+      })
     : null;
 }
 

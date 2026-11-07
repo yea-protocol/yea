@@ -66,6 +66,8 @@ class Reserved:
 
 # The reserved arguments' names, which a tool's own input can't have.
 RESERVED_ARGS = frozenset({"preview", "yea_consent"})
+CONSENT_DESCRIPTION = ("The consent (pg1.…) the user got from `yea approve` and pasted back, exactly as printed. "
+                       "Only when calling again after a result asked for approval.")
 
 
 def shadowed(schema: Any) -> str | None:
@@ -73,8 +75,6 @@ def shadowed(schema: Any) -> str | None:
     shadow; None when it has none."""
     own = set((schema or {}).get("properties") or {}) & RESERVED_ARGS
     return min(own) if own else None
-CONSENT_DESCRIPTION = ("The consent (pg1.…) the user got from `yea approve` and pasted back, exactly as printed. "
-                       "Only when calling again after a result asked for approval.")
 
 
 @dataclass

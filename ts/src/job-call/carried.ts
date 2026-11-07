@@ -21,7 +21,8 @@ const WHY = {
   expired: 'it has expired',
   notSigned:
     "it isn't signed by the pinned principal for this tool at this server",
-  noPlan: 'it approves none of these plans',
+  noPlan:
+    'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered',
   used: 'it was already used',
 } as const;
 
@@ -51,6 +52,7 @@ async function approvedBy(
     const check = await checkJobConsent(token, {
       hp,
       phrase: r.phraseFor(hp),
+      store: r.storeId,
       policy,
       now,
     });
@@ -62,6 +64,8 @@ async function approvedBy(
     }
 
     // Only the hash it binds differs from plan to plan; any other refusal is the same for all.
+    // So reaching the end means it binds none of them: another plan, phrase or store, or an
+    // edited code, which the person may want to know about (§6).
     if (check.why !== OTHER_PHRASE) {
       return { why: await refusedWhy(token, check.why, now) };
     }

@@ -2,7 +2,7 @@
 runs through ``yea.job_call`` a round per step, and each step's store before, outcome, whether the
 handler ran, and store after must match. The twin of ts/scripts/job-call-run.mjs.
 
-The store is a MemoryStore behind a plain class that records each id it consumes. A step's ``race`` is reserved by "another call" just before the session's
+The store is a MemoryStore with the call's ``store`` id, behind a plain class that records each id it consumes. A step's ``race`` is reserved by "another call" just before the session's
 first reservation, after the policy has decided."""
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ def _key(id: str) -> LedgerKey:
 class VectorStore:
     """A MemoryStore that records what it consumed, and lets a race in before the first reserve."""
 
-    def __init__(self) -> None:
-        self.inner = MemoryStore()
+    def __init__(self, store_id: str) -> None:
+        self.inner = MemoryStore(store_id=store_id)
         self.consumed: list[str] = []
         self.race: list[dict] = []
 
@@ -58,7 +58,7 @@ class VectorStore:
 
 
 async def _store_for(call: dict) -> VectorStore:
-    s = VectorStore()
+    s = VectorStore(call["store"])
     setup = call["steps"][0]["before"]
     for id, amount in setup["used"].items():
         await s.inner.settle(await s.inner.reserve(_key(id), int(amount), NO_MAX))

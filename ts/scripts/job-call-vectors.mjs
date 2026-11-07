@@ -28,6 +28,8 @@ const credit = {
   undoWindow: 60,
 };
 const tool = { name: 'refund', revert: true };
+// The store every call runs in, unless it names its own; a consent binds it (SPEC-approval §6).
+const store = 'yea-conformance-store1';
 const input = { who: 'Chen', order: 42 };
 const [refundHp, creditHp] = await P.hashPlans(tool, input, [
   { ...refund, apply: () => null },
@@ -56,7 +58,7 @@ const consentGrant = await P.issueGrant({
     { svc: [server.public] },
     { verbs: ['COMMIT'] },
     { can: ['refund'] },
-    { only: await P.consentHashOf(refundHp.planHash, 'approve') },
+    { only: await P.consentHashOf(refundHp.planHash, 'approve', store) },
     { exp: now + 600 },
   ],
 });
@@ -69,6 +71,20 @@ const forgedConsent = await P.issueGrant({
   nonce: 'job-calls-forged',
   caveats: P.decodeGrant(consentGrant)[0].p.caveats,
 });
+/**
+ * The refund's consent with an `exp` past the safe integers, signed as written: neither language
+ * reads it as a consent, so neither checks it (SPEC-approval §6).
+ */
+const unsafeExpConsent = await (async () => {
+  const [b] = P.decodeGrant(consentGrant);
+  const text = P.canonical(b.p).replace(
+    `"exp":${now + 600}`,
+    `"exp":${2 ** 53}`,
+  );
+  const s = await P.sign(principal.seed, text);
+
+  return `pg1.${P.b64u(new TextEncoder().encode(`[{"p":${text},"s":"${s}"}]`))}`;
+})();
 /** The refund's consent, signed by the principal but issued to another key than the server's. */
 const elsewhereConsent = await P.issueGrant({
   principal,
@@ -112,6 +128,12 @@ const phraseChanged = 'consent for this plan was signed for a different phrase';
 /** The reason a call gives when the consent it carries can't be used (§6). */
 const carried = (why) =>
   `the consent passed as yea_consent can't be used: ${why}`;
+/** Why a consent on the call that binds no plan here runs nothing: its whole text (§6). */
+const noPlan = carried(
+  'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered',
+);
+/** Another server's store, with the same server key: a second process, or a restarted one. */
+const otherStore = 'yea-conformance-store2';
 
 const calls = [
   {
@@ -275,9 +297,37 @@ const calls = [
         plans: [credit],
         policy: allowed,
         consent: consentGrant,
-        says: carried('it approves none of these plans'),
+        says: noPlan,
       }),
     ],
+  },
+  {
+    name: 'a consent on the call signed for another phrase asks, and says the code may have been altered',
+    tool: { ...tool, phrases: { [refundHp.planHash]: 'refund Chen' } },
+    before: empty,
+    steps: [
+      step('consent-codes', {
+        canAsk: false,
+        consent: consentGrant,
+        says: noPlan,
+      }),
+    ],
+  },
+  {
+    // The same key, another store: a consent runs once in all, not once per store (§6).
+    name: 'a consent on the call runs nothing in another store with the same server key',
+    store: otherStore,
+    before: { used: { [spendKey]: '0' }, consumed: [] },
+    steps: [
+      step('ask', { policy: allowed, consent: consentGrant, says: noPlan }),
+    ],
+  },
+  {
+    name: 'a stored consent from another store runs nothing, and says why',
+    store: otherStore,
+    consents: { [refundHp.planHash]: consentGrant },
+    before: empty,
+    steps: [step('consent-codes', { canAsk: false, says: phraseChanged })],
   },
   {
     name: 'a mangled, expired or forged consent on the call asks, and says why',
@@ -306,6 +356,11 @@ const calls = [
         says: carried(
           "it isn't signed by the pinned principal for this tool at this server",
         ),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: unsafeExpConsent,
+        says: carried("it isn't a consent from yea approve"),
       }),
     ],
   },
@@ -414,6 +469,6 @@ const approveTexts = [
 
 export const jobCalls = {
   keys: { principal: principal.public, server: server.public },
-  calls: await recordCalls(P, calls, tool),
+  calls: await recordCalls(P, calls, tool, store),
   approveTexts,
 };

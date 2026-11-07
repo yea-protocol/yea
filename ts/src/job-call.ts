@@ -70,6 +70,7 @@ export async function jobCall(
     call,
     plans: planned.plans,
     store,
+    storeId: await store.storeId(),
     phraseFor: phraseOf(call),
   };
 

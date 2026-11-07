@@ -87,10 +87,14 @@ export type JobCallOutcome =
 
 export type ConsentCodesOutcome = { kind: 'consent-codes' } & ConsentCodes;
 
-/** A round in progress: the call, its hashed plans, its store, and the phrase for each plan. */
+/**
+ * A round in progress: the call, its hashed plans, its store and that store's id (a consent
+ * binds it, SPEC-approval §6), and the phrase for each plan.
+ */
 export interface Round {
   call: JobCall;
   plans: HashedPlan[];
   store: ApprovalStore;
+  storeId: string;
   phraseFor(hp: HashedPlan): string;
 }

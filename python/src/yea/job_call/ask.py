@@ -34,7 +34,7 @@ def consent_codes(r: Round, why: str, plans: list[HashedPlan]) -> Outcome:
         return Outcome("consent-codes", why, plans, unavailable=no_principal(call.unpinned))
     codes = [{"planHash": hp.plan_hash,
               "code": job_consent_code(call.policy.server_key or "", call.policy.principal, call.input, hp,
-                                       r.phrase_for(hp), call.now)}
+                                       r.phrase_for(hp), r.store_id, call.now)}
              for hp in plans if _not_denied(hp, r)]
     return Outcome("consent-codes", why, plans, codes=codes)
 
