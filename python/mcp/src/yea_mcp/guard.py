@@ -26,6 +26,11 @@ class Guarded:
     revert: Callable[..., Any] | None
     confirm_with: Callable[..., str] | None
     risk: str | None = None  # the default plan risk, and the risk its listing shows
+    require_interaction: bool | None = None  # None: yea()'s
+
+    def prompts(self, y: Yea) -> bool:
+        """Whether its listing carries Claude Code's prompt key: its own setting, else ``yea()``'s."""
+        return y.require_interaction if self.require_interaction is None else self.require_interaction
 
 
 @dataclass
@@ -77,7 +82,7 @@ class GuardMiddleware:
             props = tool.setdefault("inputSchema", {"type": "object"}).setdefault("properties", {})
             props.setdefault("preview", {"type": "boolean", "default": False})
             tool["annotations"] = {**job_annotations(), **(tool.get("annotations") or {})}
-            tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(g.risk, g.revert is not None, self.y.require_interaction)}
+            tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(g.risk, g.revert is not None, g.prompts(self.y))}
         return out
 
     async def _call(self, ctx: Any, params: dict, call_next: Callable[[Any], Any]) -> Any:

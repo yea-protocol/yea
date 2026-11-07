@@ -21,7 +21,7 @@ def approvals(tmp_path, **options):
                server_key=tmp_path / "server.key", principal=PRINCIPAL.public, **options)
 
 
-def serve(a, server, job_options):
+def serve(a, server, job_options, guard_options=None):
     """A job with revert (so ``undo``), a guarded tool and a read, on ``server``."""
     @server.tool(meta={"example.com/own": 1})
     def charge(amount: str) -> str:
@@ -32,7 +32,7 @@ def serve(a, server, job_options):
         return "0"
 
     a.job(server, name="refund", revert=lambda r, ctx: None, **job_options)(lambda charge: [])
-    a.guard(server, "charge", describe=lambda i: {"summary": "Charge", "effects": []})
+    a.guard(server, "charge", describe=lambda i: {"summary": "Charge", "effects": []}, **(guard_options or {}))
 
 
 def new_server(a, kind):
@@ -48,11 +48,11 @@ async def tools_of(server, kind):
         return {tl.name: tl.meta or {} for tl in (await c.list_tools()).tools}
 
 
-async def listed(tmp_path, kind, options=None, job_options=None):
+async def listed(tmp_path, kind, options=None, job_options=None, guard_options=None):
     """Every tool the server lists, by name, with its ``_meta``."""
     a = approvals(tmp_path, **(options or {}))
     server = new_server(a, kind)
-    serve(a, server, job_options or {})
+    serve(a, server, job_options or {}, guard_options)
     return await tools_of(server, kind)
 
 
@@ -81,6 +81,13 @@ async def test_a_jobs_own_setting_wins_for_that_job_and_undo_is_on_if_any_is(tmp
     assert prompted(await listed(tmp_path, kind, job_options={"require_interaction": True})) == ["refund", "undo"]
     on, job_off = {"require_interaction": True}, {"require_interaction": False}
     assert prompted(await listed(tmp_path, kind, on, job_off)) == ["charge", "undo"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+async def test_a_guards_own_setting_wins_for_that_tool_and_one_on_marks_undo_too(tmp_path, kind):
+    on, off = {"require_interaction": True}, {"require_interaction": False}
+    assert prompted(await listed(tmp_path, kind, guard_options=on)) == ["charge", "undo"]
+    assert prompted(await listed(tmp_path, kind, on, guard_options=off)) == ["refund", "undo"]
 
 
 @pytest.mark.parametrize("kind", KINDS)

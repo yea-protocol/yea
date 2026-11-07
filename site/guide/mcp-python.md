@@ -45,6 +45,8 @@ Build the server. Leave out the `add_move_to_trash` line until step 4:
 
 <<< ../../python/mcp/examples/mcp_quickstart.py#start
 
+The dicts you pass are checked too: a `tighten` or `annotations` key that's misspelt (`out_of_band` for `outOfBand`) or of the wrong type stops the server with a message naming it, where it would otherwise be ignored.
+
 ::: details Show the full file
 <<< ../../python/mcp/examples/mcp_quickstart.py
 :::

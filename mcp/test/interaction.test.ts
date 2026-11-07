@@ -5,7 +5,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { describe, expect, it } from 'vitest';
 import * as z from 'zod';
-import type { JobConfig, YeaOptions } from '../src/index.js';
+import type { GuardConfig, JobConfig, YeaOptions } from '../src/index.js';
 import { connect, refundJob, world } from './helpers.js';
 
 const KEY = 'anthropic/requiresUserInteraction';
@@ -13,7 +13,11 @@ const KEY = 'anthropic/requiresUserInteraction';
 type RefundConfig = Partial<JobConfig<z.ZodObject<{ charge: z.ZodString }>>>;
 
 /** Every tool a server lists, with its `_meta`: a job with revert, its undo, a guard and a read. */
-async function listed(o: Partial<YeaOptions>, job: RefundConfig = {}) {
+async function listed(
+  o: Partial<YeaOptions>,
+  job: RefundConfig = {},
+  guard: Partial<GuardConfig> = {},
+) {
   const w = await world(o);
   const factory = () => {
     const server = new McpServer(
@@ -37,6 +41,7 @@ async function listed(o: Partial<YeaOptions>, job: RefundConfig = {}) {
     w.approvals.job(server, 'refund', refundJob(w, job));
     w.approvals.guard(server, charge, {
       describe: () => ({ summary: 'Charge', effects: [] }),
+      ...guard,
     });
 
     return server;
@@ -84,6 +89,14 @@ describe('requireInteraction', () => {
         ),
       ),
     ).toEqual(['charge', 'undo']);
+  });
+
+  it("a guard's own setting wins for that tool; one that's on marks undo too", async () => {
+    const on = { requireInteraction: true };
+    const off = { requireInteraction: false };
+
+    expect(prompted(await listed({}, {}, on))).toEqual(['charge', 'undo']);
+    expect(prompted(await listed(on, {}, off))).toEqual(['refund', 'undo']);
   });
 
   it("undo gains the key when a job with it on comes after undo's registration", async () => {

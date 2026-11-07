@@ -1,6 +1,7 @@
 /**
  * `guard()`: turn a tool already registered into a job, by replacing its handler through
- * `RegisteredTool.update` (SPEC-mcp-ts `guard`).
+ * `RegisteredTool.update` (SPEC-mcp-ts `guard`). Its config and the rules that close it, then
+ * the replacement.
  */
 import type {
   McpServer,
@@ -10,6 +11,7 @@ import type {
 } from '@modelcontextprotocol/server';
 import type { Effect, HashedPlan, Risk, Uses } from '@yea-protocol/sdk';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
+import { aBoolean, aFunction, aRisk, type Rule, required } from './options.js';
 import { jobAnnotations, jobMeta } from './result.js';
 import { previewSchema, takePreview } from './schema.js';
 import { errorMessage, registryOf } from './util.js';
@@ -27,9 +29,23 @@ export interface GuardConfig {
   describe(input: Record<string, unknown>): Described | Promise<Described>;
   /** The tool's default plan risk, and its `_meta` risk; `describe`'s own `risk` wins. Default `medium`. */
   risk?: Risk;
+  /**
+   * `yea()`'s `requireInteraction`, for this tool alone. Default: `yea()`'s. On, it also marks this
+   * server's `undo`: undoing acts too.
+   */
+  requireInteraction?: boolean;
   revert?: RevertFn;
   confirmWith?(plan: HashedPlan, input: Record<string, unknown>): string;
 }
+
+/** One rule per key of `GuardConfig` (SPEC-mcp-ts, "Closed options"). */
+export const GUARD_CONFIG = {
+  describe: required(aFunction),
+  risk: aRisk,
+  requireInteraction: aBoolean,
+  revert: aFunction,
+  confirmWith: aFunction,
+} satisfies Record<keyof GuardConfig, Rule>;
 
 /** The name `server` registered `tool` under; refuses a tool it can't find there. */
 function registeredName(server: McpServer, tool: RegisteredTool): string {
@@ -136,7 +152,7 @@ export function guardTool(
       ...jobMeta(
         config.risk,
         config.revert !== undefined,
-        y.requireInteraction,
+        config.requireInteraction ?? y.requireInteraction,
       ),
     },
   });

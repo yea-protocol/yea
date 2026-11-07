@@ -50,6 +50,8 @@ Then check `FILES_ROOT` (the server refuses to start with a message saying what 
 
 <<< ../../examples/mcp-quickstart.ts#start
 
+`yea()`, `job()` and `guard()` check their options when called: a misspelt one, or one of the wrong type, such as `requireInteraction: 'true'`, stops the server with a message naming it and the options there are, so a typo can't leave a protection off.
+
 ::: details Show the full file
 <<< ../../examples/mcp-quickstart.ts
 :::
