@@ -61,6 +61,12 @@ class World:
 @pytest.fixture
 def world(tmp_path: Any) -> World:
     """A server pointed at a temp home through options, not ``YEA_*``."""
+    return make_world(tmp_path)
+
+
+def make_world(tmp_path: Any) -> World:
+    """The ``world`` fixture's server, for a test that must set things up before it exists. Its home
+    is ``tmp_path / "home"``."""
     home, policy = tmp_path / "home", tmp_path / "policy.pg"
     store = FileStore(tmp_path / "store")  # stdio's default kind: `yea approve` can reach it
     approvals = yea(name="billing", transport="stdio", home=home, store=store,

@@ -122,7 +122,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
     },
   );
 
-  // One call: now it shows its plan and asks the person before it runs.
+  // One call: now it shows its plan and waits for approval before it runs.
   approvals.guard(server, deleteFile, {
     describe: async (input) => {
       await fileInside(root, String(input.path)); // refuse before anyone is asked
@@ -132,7 +132,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
         effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
       };
     },
-    // The person types the file's name to approve.
+    // The phrase to type is the file's name.
     confirmWith: (_plan, input) => basename(String(input.path)),
   });
 }

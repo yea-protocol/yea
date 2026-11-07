@@ -216,10 +216,6 @@ export const cmdMcp = command({
       type: 'boolean',
       help: 'make Claude Code prompt for every call of a tool that changes things (or YEA_REQUIRE_INTERACTION=1)',
     },
-    'approve-here': {
-      type: 'boolean',
-      help: 'approve in the AI tool (not available yet; use yea approve)',
-    },
   },
   example: 'yea mcp yea://127.0.0.1:7447',
   // Overridden by @yea-protocol/cli, which runs it: it depends on @yea-protocol/mcp; the SDK can't.

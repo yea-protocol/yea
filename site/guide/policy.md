@@ -38,7 +38,7 @@ When the agent commits a proposal at a YEA service, the service checks every lim
 | Outcome | When | What happens |
 |---|---|---|
 | **Goes ahead** | Every limit passes | The service commits and returns a receipt, with its undo window if it has one |
-| **Asks the person** | It fails only on an amount (`each`, `total`) or the risk ceiling | The service replies `consent_required`. The person sees that exact proposal and, to approve it, signs a consent for its hash alone |
+| **Asks the person** | It fails only on an amount (`each`, `total`) or the risk ceiling | The service replies `consent_required`. The person sees that exact proposal and, to approve it, signs a consent for its hash alone ([what that proves](/guide/security#what-an-approval-proves)) |
 | **Refused** | Wrong service or action, expired, or a limit it can't read | The service replies `forbidden`. Nothing asks, because the policy never covered it. (A token that doesn't verify gets `unauthorized`.) |
 
 With the home page's policy:
@@ -47,7 +47,7 @@ With the home page's policy:
 - **Cancel a meeting** is `medium` risk, over the `low` ceiling: it asks.
 - **Move a meeting** is low risk and uses nothing the policy limits: it goes ahead.
 
-In an MCP server built with the framework, anything the policy doesn't let run on its own asks the person instead; only `deny` (below) refuses outright.
+In an MCP server built with the framework, anything the policy doesn't let run on its own asks the person instead, in the client's form or with a consent code ([what each proves](/guide/security#what-an-approval-proves)); only `deny` (below) refuses outright.
 
 A consent approves one proposal hash, at one service, for one action, until the proposal expires. It can't be reused for anything else. Unknown or malformed limits are refused rather than skipped, so an older service never lets through more than a newer policy meant.
 

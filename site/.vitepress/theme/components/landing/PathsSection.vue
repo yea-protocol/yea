@@ -8,9 +8,10 @@ import { withBase } from 'vitepress';
     <div class="path">
       <h2>I have an MCP server</h2>
       <p class="prose">
-        Guard one risky tool with one call. Before it runs, your server shows the person its plan in their client and asks
-        them to type a phrase. The model can't approve it through the tool call, and this first step needs no keys, no
-        policy and no account.
+        Guard one risky tool with one call. Before it runs, your server shows its plan in the person's client and waits
+        for a typed phrase; nothing the model passes to the tool approves it. This first step needs no keys, no policy and
+        no account. A form is only as trustworthy as the client that draws it:
+        <a :href="withBase('/guide/security#what-an-approval-proves')">what a form approval proves</a>.
       </p>
       <p class="tag">Unreleased: <code>@yea-protocol/mcp</code> and <code>yea-mcp</code> aren't on npm or PyPI yet. The guides install them from the repo.</p>
       <ul class="links">

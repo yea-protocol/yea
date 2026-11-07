@@ -7,9 +7,8 @@
  * This file is the flow (steps 1–2 and the branch into 3 or 4); job/pending.ts is step 3,
  * a call with pending proposals, and job/fresh.ts steps 4–6, a fresh INTENT.
  *
- * TODO(#73): `--approve-here` (steps 6–7: a form in the client, then signing with a principal
- * key on this machine) waits for James (decision 4). Until then this file signs nothing: it
- * never loads a principal key, and consent codes are the only way to approve.
+ * It signs nothing and never loads a principal key: consent codes are the only way to approve
+ * (decision 4).
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { printable } from '@yea-protocol/sdk';

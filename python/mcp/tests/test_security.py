@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+import ast
+import base64
 import json
+import multiprocessing
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
 
 import httpx2
 import mcp_types as t
@@ -14,7 +22,8 @@ from yea import Plan, create, issue_grant
 from yea.approval import consent_hash_of
 from yea.store import FileStore
 
-from conftest import PRINCIPAL, Person, text
+from conftest import PRINCIPAL, Person, make_world, text
+from import_audit import REPO, import_audit, reachable, signers
 from yea_mcp import yea
 
 pytestmark = pytest.mark.anyio
@@ -570,3 +579,325 @@ def test_a13_a_tool_level_unknown_risk_fails_closed_through_hash_plans(world):
 
     with pytest.raises(ValueError, match="unknown risk"):
         hash_plans(JobDef("refund", "critical", None, None), {"amount": 5}, [Plan("Refund", [], apply=lambda: None)])
+
+
+# AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer a
+# form, so anything a form answer triggers is form tier, whichever key signs it. No code path may
+# sign with the principal key in response to one. mcp/test/security.test.ts holds the TypeScript half.
+
+
+class _Watch:
+    """The watch in progress. An audit hook can't be removed, so the one installed stays inert
+    whenever ``current`` is None."""
+
+    current: dict | None = None
+    hooked = False
+
+
+_SPAWNS = {"subprocess.Popen", "os.system", "os.posix_spawn", "os.exec", "os.spawn", "os.fork", "os.forkpty"}
+
+
+def _is_key(keys: set, path) -> bool:
+    """Whether ``path`` names a key file: by name, or by device and inode (a link to one)."""
+    if path is None or isinstance(path, int):
+        return False
+    try:
+        p = os.fsdecode(os.fspath(path))
+        if os.path.basename(p) == "principal.key":
+            return True
+        s = os.stat(p)
+        return (s.st_dev, s.st_ino) in keys
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _audit(event: str, args: tuple) -> None:
+    w = _Watch.current
+    if w is None or w["busy"]:
+        return
+    w["busy"] = True
+    try:
+        if event == "open" and args and _is_key(w["keys"], args[0]):
+            w["touched"].append(f"open {args[0]}")
+        elif event in _SPAWNS:
+            w["spawned"].append(event)
+    finally:
+        w["busy"] = False
+
+
+def _watch_starts(monkeypatch):
+    """Record the process starts no audit event reports: a ``multiprocessing`` child (``spawn`` and
+    ``forkserver`` exec through ``_posixsubprocess``), and anything else that execs through it."""
+    import _posixsubprocess
+    import multiprocessing.process
+
+    start, fork_exec = multiprocessing.process.BaseProcess.start, _posixsubprocess.fork_exec
+
+    def watched_start(self):
+        if _Watch.current is not None:
+            _Watch.current["spawned"].append("multiprocessing.start")
+        return start(self)
+
+    def watched_fork_exec(*args, **kwargs):
+        if _Watch.current is not None:
+            _Watch.current["spawned"].append("_posixsubprocess.fork_exec")
+        return fork_exec(*args, **kwargs)
+
+    monkeypatch.setattr(multiprocessing.process.BaseProcess, "start", watched_start)
+    monkeypatch.setattr(_posixsubprocess, "fork_exec", watched_fork_exec)
+
+
+@pytest.fixture
+def key_watch(monkeypatch, tmp_path):
+    """A principal key at hand before the server exists, and a watch on the two things any signing
+    path needs, whatever crypto it uses: the key's bytes, and another process to sign in.
+
+    - The key sits where ``make_world(tmp_path)`` puts the server's home, and in ``YEA_HOME`` and
+      ``YEA_PRINCIPAL_HOME``, as on one account.
+    - ``touched``: every ``open`` of a key file (Python's audit events see every open, whatever
+      reads it). ``spawned``: every process started (``subprocess``, ``os.system``,
+      ``os.posix_spawn``, ``os.exec*``, ``os.spawn*``, ``os.fork``, a ``multiprocessing`` child and
+      ``_posixsubprocess.fork_exec``).
+    - ``signatures``: every Ed25519 signature made from a seed in this process.
+      ``from_private_bytes`` is how cryptography loads a key from its seed, and ``KeyPair.sign``
+      goes through it."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    made: list[bytes] = []
+    real = Ed25519PrivateKey.from_private_bytes
+
+    class Watched:
+        def __init__(self, key):
+            self._key = key
+
+        def sign(self, data):
+            made.append(data)
+            return self._key.sign(data)
+
+        def __getattr__(self, name):
+            return getattr(self._key, name)
+
+    monkeypatch.setattr(Ed25519PrivateKey, "from_private_bytes", staticmethod(lambda data: Watched(real(data))))
+    _watch_starts(monkeypatch)
+    monkeypatch.setenv("YEA_HOME", str(tmp_path / "yea_home"))
+    monkeypatch.setenv("YEA_PRINCIPAL_HOME", str(tmp_path / "principal"))
+    files = [d / "principal.key" for d in (tmp_path / "home", tmp_path / "yea_home", tmp_path / "principal")]
+    for f in files:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(base64.urlsafe_b64encode(PRINCIPAL.seed).rstrip(b"=").decode())  # as `yea init` writes it
+    keys = {(s.st_dev, s.st_ino) for s in (f.stat() for f in files)}
+    if not _Watch.hooked:
+        sys.addaudithook(_audit)
+        _Watch.hooked = True
+    _Watch.current = {"keys": keys, "touched": [], "spawned": [], "signatures": made, "files": files,
+                      "busy": False}
+    try:
+        yield _Watch.current
+    finally:
+        _Watch.current = None
+
+
+def two_plans(world, server, done, version):
+    @world.approvals.job(server, risk="low")
+    async def refund(amount: int) -> list[Plan]:
+        v = version[0]
+        return [Plan(f"Refund {w} {amount}, v{v}", [create("refund")], apply=lambda w=w: done.append(f"{w} v{v}"))
+                for w in ("A", "B")]
+
+
+def policy_file(world) -> Path:
+    """The person's unsigned ``policy.json`` in the server's home, which ``yea()`` reads on every call."""
+    return Path(world.home) / "policy.json"
+
+
+def choose(params, confirm="approve"):
+    """Accept the open form, choosing plan A."""
+    plans = params.requested_schema["properties"]["plan"]["oneOf"]
+    return {"plan": next(p["const"] for p in plans if "Refund A" in p["title"]), "confirm": confirm}
+
+
+def answer_kinds(world, version):
+    """Every kind of answer, each call's in turn (a cancel once they run out), and what the call says."""
+
+    def plans_change(params):
+        version[0] = 2
+        return choose(params)
+
+    def out_of_band_now(params):
+        policy_file(world).write_text('{"outOfBand": "low"}')  # as a person's edit would, read each call
+        return choose(params)
+
+    def wrong(params):
+        return choose(params, "nope")
+
+    def not_offered(params):
+        return {"plan": "p", "confirm": "approve"}
+
+    return [
+        (["decline"], "not approved"),
+        ([], "not approved"),
+        ([wrong, wrong, wrong], "not approved after 3 tries"),
+        ([not_offered], "was not offered"),
+        ([plans_change], "not approved"),
+        ([out_of_band_now], "pc1."),
+        ([choose], "Refund A 5, v2"),
+    ]
+
+
+class Answers:
+    """The answers queued for the call in progress, as an MCP or FastMCP elicitation handler."""
+
+    def __init__(self):
+        self.queue: list = []
+
+    def next(self, params):
+        a = self.queue.pop(0) if self.queue else "cancel"
+        if a in ("decline", "cancel"):
+            return t.ElicitResult(action=a)
+        return t.ElicitResult(action="accept", content=a(params))
+
+    async def mcp(self, ctx, params):
+        return self.next(params)
+
+    async def fastmcp(self, message, response_type, params, ctx):
+        from fastmcp.client.elicitation import ElicitResult
+
+        r = self.next(params)
+        return ElicitResult(action=r.action, content=r.content)
+
+
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+@pytest.mark.parametrize("framework", ["mcp", "fastmcp"])
+async def test_no_answer_to_the_form_reads_the_key_starts_a_process_signs_or_saves(
+        tmp_path, key_watch, mode, framework, monkeypatch):
+    from fastmcp import Client as FastClient
+    from fastmcp import FastMCP
+
+    world = make_world(tmp_path)  # only now, with the key already in its home
+    done, version, answers, saves = [], [1], Answers(), []
+
+    async def put_consent(*args):
+        saves.append(args)
+
+    monkeypatch.setattr(world.store, "put_consent", put_consent)
+    if framework == "mcp":
+        server = world.server
+        client, extra = Client(server, mode=mode, elicitation_callback=answers.mcp), {}
+    else:
+        server = FastMCP("billing", request_state_security=world.approvals.request_state_security())
+        client, extra = FastClient(server, mode=mode, elicitation_handler=answers.fastmcp), {"raise_on_error": False}
+    two_plans(world, server, done, version)
+    async with client as c:
+        for queued, says in answer_kinds(world, version):
+            answers.queue[:] = queued
+            assert says in text(await c.call_tool("refund", {"amount": 5}, **extra))
+            policy_file(world).write_text("{}")
+    assert done == ["A v2"]
+    assert key_watch["touched"] == [] and key_watch["spawned"] == []
+    assert key_watch["signatures"] == [] and saves == []
+    # The watch does see a read, each kind of process and a signature when one happens.
+    key_watch["files"][2].read_text()
+    subprocess.run([sys.executable, "-c", ""], check=True)
+    child = multiprocessing.get_context("spawn").Process(target=os.getpid)
+    child.start()
+    child.join()
+    PRINCIPAL.sign(b"x")
+    assert key_watch["touched"] and len(key_watch["signatures"]) == 1
+    assert {"subprocess.Popen", "_posixsubprocess.fork_exec", "multiprocessing.start"} <= set(key_watch["spawned"])
+
+
+YEA_MCP = Path(__file__).parents[1] / "src" / "yea_mcp"
+# Where a form answer enters (``input_responses``, ``elicit_form``), and the rest of the answer path.
+ANSWER_PATH = [YEA_MCP / "__init__.py", YEA_MCP / "ask.py", YEA_MCP / "fastmcp.py", YEA_MCP / "guard.py",
+               *sorted((YEA_MCP / "call").glob("*.py"))]
+# Every module outside yea_mcp and yea the answer path may import, and why: None for any file, or the
+# files that may. A new one fails until it's reviewed and listed, whatever it would be used for. None of
+# these starts a process or loads code; the ones that could (``os``, ``sys``, ``asyncio``) are narrowed
+# below, and their risky calls are refused by name (import_audit.REFUSED_OS, ``sys.modules``).
+ALLOWED: dict[str, set[str] | None] = {
+    "__future__": None,  # annotations
+    "base64": None,  # b64url keys and tokens
+    "collections": None,  # collections.abc types
+    "copy": None,  # copying plans and uses
+    "dataclasses": None,  # value types
+    "datetime": None,  # Lens dates
+    "decimal": None,  # exact amounts
+    "fastmcp": None,  # the FastMCP adapter, an optional extra
+    "hashlib": None,  # sha256 for plan hashes and store names
+    "inspect": None,  # reading handler signatures
+    "json": None,  # canonical JSON, policy.json, the store
+    "math": None,  # Lens number formatting
+    "mcp": None,  # the MCP SDK the server runs on: it reads the answer
+    "mcp_types": None,  # MCP's message types
+    "os": None,  # paths, file modes and the environment; its process starts are refused
+    "pathlib": None,  # paths
+    "pydantic": None,  # the MCP SDK's argument models
+    "pydantic_core": None,  # result serialization
+    "re": None,  # patterns
+    "secrets": None,  # nonces and ids
+    "stat": None,  # checking key-file ownership
+    "time": None,  # clocks and expiry
+    "typing": None,  # annotations
+    "unicodedata": None,  # phrase normalization
+    "weakref": None,  # per-server state in yea_mcp/__init__.py
+    # Narrowed to the files that need them:
+    "sys": {"python/mcp/src/yea_mcp/__init__.py", "python/mcp/src/yea_mcp/util.py"},  # stderr; sys.modules is refused
+    "cryptography": {"python/src/yea/keys.py"},  # the SDK's Ed25519, which verifies consents
+    "asyncio": {"python/src/yea/store/lock.py"},  # it can start processes, so only where it's needed
+}
+
+
+def test_the_code_that_reads_a_form_answer_imports_only_what_is_listed():
+    """Every module the answer path reaches, in yea_mcp and yea, imports only what ``ALLOWED`` lists, and
+    nothing loads code at run time or starts a process through ``os``."""
+    readers = sorted(f for f in YEA_MCP.rglob("*.py") if re.search(r"input_responses|elicit_form", f.read_text()))
+
+    assert readers == sorted(YEA_MCP / f for f in ("__init__.py", "ask.py", "fastmcp.py"))
+    assert set(readers) <= set(ANSWER_PATH)
+    assert Path("python/src/yea/job_call/answer.py") in {p.relative_to(REPO) for p in reachable(ANSWER_PATH)}
+    assert import_audit(ANSWER_PATH, ALLOWED) == []
+
+
+def test_the_code_that_reads_a_form_answer_names_no_signer():
+    """yea_mcp, the SDK's job call session and its judge never sign, as the TypeScript twin's SIGNS
+    check. (The rest of yea, which verifies consents, holds the signers themselves.)"""
+    session = [*sorted((REPO / "python/src/yea/job_call").glob("*.py")), REPO / "python/src/yea/approval/judge.py"]
+    files = sorted({p for p in reachable(ANSWER_PATH) if p.is_relative_to(YEA_MCP)} | set(session))
+
+    assert REPO / "python/src/yea/job_call/answer.py" in files and YEA_MCP / "call/route.py" in files
+    assert {str(f.relative_to(REPO)): signers(ast.parse(f.read_text())) for f in files if
+            signers(ast.parse(f.read_text()))} == {}
+    assert signers(ast.parse("from yea import key_from_seed as k\nkey.sign(b'x')\nopen(h + '/principal.key')\n"
+                             "y.principal.key\nload_principal_key(p)\n")) == [
+        "key_from_seed", ".sign", "'/principal.key'"]
+
+
+def test_the_import_audit_names_the_file_and_the_module(tmp_path, monkeypatch):
+    """The audit flags an unlisted module, a listed one in a file it isn't listed for, and each refused
+    construct."""
+    import import_audit as audit
+
+    pkg = tmp_path / "yea_mcp"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "entry.py").write_text("import multiprocessing\nfrom cryptography import x\nfrom . import part\n")
+    (pkg / "part.py").write_text("import os\nos.system('x')\nos.execv('a', [])\n__import__('y')\n"
+                                 "import importlib\nfrom os import posix_spawn\n"
+                                 "import os as o\no.system('x')\ngetattr(os, 'posix_spawn')\n"
+                                 "getattr(os, 'O_NOFOLLOW', 0)\ngetattr(o, name)\n"
+                                 "import sys as s\ns.modules['subprocess']\n")
+    (pkg / "entry.py").write_text("import multiprocessing\nfrom cryptography import x\nfrom . import part\n"
+                                  "from . import bad\nfrom . import dotted\n")
+    (pkg / "bad.py").write_text("def broken(:\n")
+    (pkg / "dotted.py").write_text("import os.path\nos.system('x')\n")  # ``import os.path`` binds ``os`` too
+    monkeypatch.setattr(audit, "REPO", tmp_path)
+    monkeypatch.setitem(audit.ROOTS, "yea_mcp", tmp_path)
+    found = audit.import_audit([pkg / "entry.py"], {"os": None, "sys": None, "cryptography": {"elsewhere.py"}})
+
+    assert sorted(found) == sorted([
+        "yea_mcp/entry.py: multiprocessing", "yea_mcp/entry.py: cryptography",
+        "yea_mcp/part.py: importlib", "yea_mcp/part.py: os.system", "yea_mcp/part.py: os.execv",
+        "yea_mcp/part.py: __import__()", "yea_mcp/part.py: __import__", "yea_mcp/part.py: os.posix_spawn",
+        "yea_mcp/part.py: os.system", "yea_mcp/part.py: getattr(os, …)", "yea_mcp/part.py: getattr(o, …)",
+        "yea_mcp/part.py: sys.modules", "yea_mcp/dotted.py: os.system",
+        "yea_mcp/bad.py: does not parse: invalid syntax (<unknown>, line 1)"])

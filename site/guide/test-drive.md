@@ -23,7 +23,7 @@ It runs the example calendar and shop in-process behind the same bridge `yea mcp
 - The model's tool calls and the Lens it reads, as they happen.
 - A throwaway policy: low-risk actions, up to 40.00 USD each and 100.00 USD in total, for one hour. The reschedule fits it, so it commits in one call.
 - The meal order exceeds the per-action limit, so the bridge returns its proposals with a consent code each, as `yea mcp` would. Instead of asking you to run `yea approve`, the test drive's own loop shows you each proposal, with its effects and what it spends, and asks `approve this exact action? [y/N]`. Say yes and it approves the code as `yea approve` does, then tells the model to call the tool again, which commits. Say no, or run it without a terminal, and nothing is approved or charged.
-- The approval happens in the test drive, never in the agent's tools: the model can't approve anything by what it sends, and the bridge signs nothing.
+- The approval happens in the test drive, never in the agent's tools: the model can't approve anything by what it sends, and the bridge signs nothing ([what an approval proves](/guide/security#what-an-approval-proves)).
 - The model's final report of what happened.
 
 ## Options

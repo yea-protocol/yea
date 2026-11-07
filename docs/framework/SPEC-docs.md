@@ -12,9 +12,11 @@ Depends on `mcp-ts` (merged) and `mcp-py` (#69), and later `connector-stripe` (#
 ## Objective
 
 A developer who already has an MCP server follows a guide, and **within five minutes** has
-one risky tool that shows its plan and asks the person in their client, with a typed phrase,
-before it acts. The model can't approve it. That first win needs no keys, no policy and no
-YEA account: approval in the client works out of the box.
+one risky tool that shows its plan in the person's client and waits for a typed phrase before
+it acts. Nothing the model passes to the tool approves it. That first win needs no keys, no
+policy and no YEA account: approval in the client works out of the box. It's the form tier,
+though, which proves only what the client attests; every page that offers it links to what an
+approval proves ([SPEC-approval §9](SPEC-approval.md#what-an-approval-proves)).
 
 The guide then takes them, as separate and clearly marked steps, to:
 - undo;

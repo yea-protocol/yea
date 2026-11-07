@@ -2,7 +2,7 @@
  * Step 3 of a job call (SPEC-bridge): a call whose proposals are already pending. It commits a
  * proposal through the consent round, with the agent's grants plus a saved consent, or hands
  * back the same proposals and codes. It signs nothing: its approver is out of band, so consents
- * come only from `yea_consent` or `yea approve` (TODO(#73)).
+ * come only from `yea_consent` or `yea approve` (decision 4).
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {

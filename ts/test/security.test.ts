@@ -60,11 +60,14 @@ import {
   ledgerFixture,
   totalGrant,
 } from './commit-ledger-fixture.js';
+import { importAudit, reachable } from './imports.js';
+import { watchKeys } from './key-watch.js';
 
 // Pass-through `openSync`, `renameSync`, `mkdirSync` and `accessSync` with hooks: to swap a file
 // just before or after an open (the key file blocks below), to act right after a rename or a
-// mkdir (the undo claim tests), and to say which paths this user may write (the pinned key tests, which can't make
-// root-owned files). Null leaves fs alone.
+// mkdir (the undo claim tests), and to say which paths this user may write (the pinned key tests,
+// which can't make root-owned files). Null leaves fs alone. The functions key-watch.ts watches
+// call through to the real module at call time, so its patches reach code under this mock.
 const fsHook = vi.hoisted(() => ({
   beforeOpen: null as ((path: string) => void) | null,
   afterOpen: null as ((path: string) => void) | null,
@@ -104,7 +107,18 @@ vi.mock('node:fs', async (importOriginal) => {
       throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
     }
   };
-  const hooked = { openSync, renameSync, mkdirSync, accessSync };
+  const { READS } = await import('./key-watch.js');
+  const watched = READS.find(([mod]) => mod === 'node:fs')?.[1] ?? [];
+  const live = Object.fromEntries(
+    watched.map((name) => [
+      name,
+      (...args: unknown[]) =>
+        (real as unknown as Record<string, (...a: unknown[]) => unknown>)[name](
+          ...args,
+        ),
+    ]),
+  );
+  const hooked = { ...live, openSync, renameSync, mkdirSync, accessSync };
 
   return { ...real, ...hooked, default: { ...real, ...hooked } };
 });
@@ -1777,6 +1791,155 @@ describe('approval security (SPEC-approval)', () => {
     expect(phraseMatches(typed, 'approve')).toBe(false);
     expect(phraseMatches(`${bom}Approve${nbsp}`, 'approve')).toBe(true);
     expect(performance.now() - start).toBeLessThan(500);
+  });
+});
+
+// AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer
+// a form, so anything a form answer triggers is form tier, whichever key signs it. No code path
+// may sign with the principal key in response to one. These cover the SDK's job call session;
+// mcp/test/security.test.ts drives the MCP adapter, where an answer arrives, through real clients,
+// and python/mcp/tests/test_security.py does the same for Python.
+describe('a form answer never triggers a signature (rule 3, #337)', () => {
+  const src = fileURLToPath(new URL('../src', import.meta.url));
+  /** What signs, or loads a key to sign with (as in mcp/test/sources.ts). */
+  const SIGNS =
+    /principalKey|consentGrant|issueGrant|delegateGrant|makeProof|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign|['"/]principal\.key/;
+  const plan = (summary: string) => ({
+    summary,
+    effects: [],
+    risk: 'low' as const,
+    apply: () => null,
+  });
+  const policy = { ...askingCall().policy, principal: B.public };
+  /** A call with two plans, so every answer names one, and a pinned principal, so codes issue. */
+  const call = (over: Partial<P.JobCall> = {}) =>
+    askingCall({
+      plan: () => [plan('Refund'), plan('Refund twice')],
+      policy,
+      ...over,
+    });
+  const accept = (chosen: string, confirm: string): P.ApprovalAnswer => ({
+    action: 'accept',
+    content: { plan: chosen, confirm },
+  });
+  /** Every kind of answer, each to a fresh form, and the outcome it gets. */
+  const ANSWERS: {
+    answer: (offered: string[]) => P.ApprovalAnswer;
+    retry?: Partial<P.JobCall>;
+    outcome: P.JobCallOutcome['kind'];
+  }[] = [
+    { answer: ([p]) => accept(p, 'approve'), outcome: 'run' },
+    { answer: ([p]) => accept(p, 'yes'), outcome: 'ask' },
+    { answer: () => accept('never-offered', 'approve'), outcome: 'refuse' },
+    { answer: () => ({ action: 'decline' }), outcome: 'refuse' },
+    { answer: () => ({ action: 'cancel' }), outcome: 'refuse' },
+    {
+      answer: ([p]) => accept(p, 'approve'),
+      retry: { plan: () => [plan('Refund, changed')] },
+      outcome: 'ask',
+    },
+    {
+      answer: ([p]) => accept(p, 'approve'),
+      retry: { policy: { ...policy, outOfBand: 'low' } },
+      outcome: 'consent-codes',
+    },
+  ];
+
+  /**
+   * A principal key in YEA_HOME and YEA_PRINCIPAL_HOME, as on a one-account machine, placed
+   * before the session's modules load: one that reads the environment at load sees it.
+   */
+  function principalAtHand() {
+    const files = [tmp(), tmp()].map((d) => join(d, 'principal.key'));
+
+    for (const f of files) {
+      writeFileSync(f, B.seed, { mode: 0o600 });
+    }
+
+    vi.stubEnv('YEA_HOME', join(files[0], '..'));
+    vi.stubEnv('YEA_PRINCIPAL_HOME', join(files[1], '..'));
+
+    return files;
+  }
+
+  it('no answer to a form reads the principal key, starts a process, signs or saves a consent (#337)', async () => {
+    const files = principalAtHand();
+    const watch = watchKeys(files);
+    const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
+
+    try {
+      vi.resetModules();
+
+      const S = await import('../src/index.js');
+      const { FileStore: Store } = await import('../src/node.js');
+      const store = new Store(tmp());
+      const saves = vi.spyOn(store, 'putConsent');
+
+      for (const a of ANSWERS) {
+        const asked = await S.jobCall(call(), store);
+
+        if (asked.kind !== 'ask') {
+          throw new Error(`expected a form, got ${asked.kind}`);
+        }
+
+        const retry = {
+          state: asked.state,
+          answer: a.answer(asked.state.plans),
+        };
+        const o = await S.jobCall(call(a.retry), store, retry);
+
+        expect(o.kind).toBe(a.outcome);
+
+        if (o.kind === 'consent-codes') {
+          expect(o.codes).toHaveLength(1);
+        }
+
+        // The same state sent again is refused, whatever it said.
+        expect((await S.jobCall(call(a.retry), store, retry)).kind).toBe(
+          'refuse',
+        );
+      }
+
+      expect(watch.touched).toEqual([]);
+      expect(watch.spawned).toEqual([]);
+      expect(signs).not.toHaveBeenCalled();
+      expect(saves).not.toHaveBeenCalled();
+
+      // The watch does see a read, a process and a signature when one happens.
+      readFileSync(files[1]);
+      execFileSync(process.execPath, ['-e', '']);
+      await S.sign(B.seed, 'x');
+      expect(watch.touched).not.toEqual([]);
+      expect(watch.spawned).toHaveLength(1);
+      expect(signs).toHaveBeenCalledTimes(1);
+    } finally {
+      watch.stop();
+      signs.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("the job call session's code names no signer (#337)", () => {
+    const session = [
+      join(src, 'job-call.ts'),
+      ...readdirSync(join(src, 'job-call')).map((f) =>
+        join(src, 'job-call', f),
+      ),
+      join(src, 'ask', 'judge.ts'),
+    ];
+
+    for (const f of session) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+    }
+  });
+
+  it('the job call session imports nothing outside the SDK, and loads no code at run time (#337)', () => {
+    // An allowlist, and an empty one: every module the session reaches is the SDK's own, and
+    // WebCrypto is a global. Anything imported from outside fails here until it's reviewed.
+    expect(importAudit([join(src, 'job-call.ts')], {})).toEqual([]);
+    expect(reachable([join(src, 'job-call.ts')])).toContain(
+      join(src, 'ask', 'judge.ts'),
+    );
   });
 });
 

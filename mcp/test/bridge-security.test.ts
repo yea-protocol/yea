@@ -3,8 +3,8 @@
  * bridge's "never sign a consent that doesn't match the proposal shown", moved here from
  * ts/test/security.test.ts.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   b64u,
@@ -40,28 +40,7 @@ import {
 } from './bridge-helpers.js';
 import { connect, textOf, tmp } from './helpers.js';
 import { captureLog, mockMessages } from './mock-messages.js';
-
-/** Every source file reachable from `starts` through relative imports, type-only ones included. */
-function reachable(starts: string[]): string[] {
-  const seen = new Set<string>();
-  const queue = [...starts];
-
-  for (let f = queue.pop(); f !== undefined; f = queue.pop()) {
-    if (seen.has(f)) {
-      continue;
-    }
-
-    seen.add(f);
-
-    for (const m of readFileSync(f, 'utf8').matchAll(
-      /from '(\.\.?\/[^']+)\.js'/g,
-    )) {
-      queue.push(join(dirname(f), `${m[1]}.ts`));
-    }
-  }
-
-  return [...seen].sort();
-}
+import { productionSources, reachable, SIGNS } from './sources.js';
 
 /**
  * Every source file the bridge can run: all of src/bridge/ at any depth, plus every module
@@ -77,10 +56,6 @@ function bridgeSources(src: string): string[] {
 
   return reachable([join(src, 'bridge.ts'), ...nested]);
 }
-
-/** What signs, or loads a key to sign with. */
-const SIGNS =
-  /principalKey|consentGrant|issueGrant|signJobConsent|approveConsentCode|\bsigner\b|\bsign\(|\.seed\b.*sign/;
 
 const consentsIn = (k: Keys) => {
   try {
@@ -158,7 +133,7 @@ describe('bridge security', () => {
     expect(textOf(done)).toContain(`✓ ${order.proposals[1].summary}`);
   });
 
-  it('an approval state commits nothing: the bridge mints none yet, so any is refused', async () => {
+  it('an approval state commits nothing: the bridge mints none, so any is refused', async () => {
     const k = await keys();
     const { conn, shop } = await bridged(k);
 
@@ -650,20 +625,6 @@ describe('test-drive shows no service-written Lens (#89, #299)', () => {
 /** Any write to the environment: assignment, deletion, or a helper that sets or stubs it. */
 const ENV_WRITE =
   /process\.env(\.\w+|\[[^\]]+\])?\s*[^\s=!<>]{0,3}=(?!=)|delete process\.env|(Object\.(assign|defineProperty)|Reflect\.(set|deleteProperty|defineProperty))\(\s*process\.env|stubEnv/;
-
-/** Every production source: the SDK, this package, the CLI's bin and the connectors. */
-function productionSources(): string[] {
-  const repo = fileURLToPath(new URL('../..', import.meta.url));
-  const connectors = readdirSync(join(repo, 'connectors'))
-    .map((c) => join('connectors', c, 'src'))
-    .filter((dir) => existsSync(join(repo, dir)));
-
-  return ['ts/src', 'mcp/src', 'cli/bin', ...connectors].flatMap((dir) =>
-    readdirSync(join(repo, dir), { recursive: true, encoding: 'utf8' })
-      .filter((f) => /\.(ts|js|mjs)$/.test(f))
-      .map((f) => join(repo, dir, f)),
-  );
-}
 
 describe("test-drive signs only in the person's loop (#299)", () => {
   const src = fileURLToPath(new URL('../src', import.meta.url));

@@ -53,7 +53,7 @@ agent ──UNDO r1 (the human changed their mind)──────────
 
 | I want to… | Do this |
 |---|---|
-| **I have an MCP server** | [Guard a risky tool](#add-it-to-your-mcp-server) with one call: before it runs, the server sends its plan to the client as a form that asks for a typed phrase (MCP form elicitation), or, once a principal key is pinned (guide step 5), returns a consent code when the client can't show forms. TypeScript, unreleased: install from the repo ([guide](https://yea-protocol.github.io/yea/guide/mcp-typescript)) |
+| **I have an MCP server** | [Guard a risky tool](#add-it-to-your-mcp-server) with one call: before it runs, the server sends its plan to the client as a form that asks for a typed phrase (MCP form elicitation), or, once a principal key is pinned (guide step 5), returns a consent code when the client can't show forms ([what each proves](docs/framework/SPEC-approval.md#what-an-approval-proves)). TypeScript, unreleased: install from the repo ([guide](https://yea-protocol.github.io/yea/guide/mcp-typescript)) |
 | **See it work with a real model** (30 s) | `npx @yea-protocol/cli test-drive` runs Claude through a booking and a purchase that needs *your* approval, with the tools `yea mcp` serves. Needs an Anthropic API key. No key? Use `npx @yea-protocol/cli demo` or the [browser playground](https://yea-protocol.github.io/yea/playground) |
 | **Give my AI tool safe actions** | In Claude Code: `/plugin marketplace add yea-protocol/yea` then `/plugin install yea@yea`. Anywhere else: `npx @yea-protocol/cli install` (auto-detects Claude Code, Cursor, Codex, Gemini, VS Code, Windsurf and Claude Desktop). Then [add services](#use-it-from-claude-code-today) or [wrap an API](#wrap-any-rest-api-in-one-command): `yea openapi --preset github` |
 | **Make my service agent-ready** | [Build a service](#build-a-service) in ~30 lines of TypeScript or Python, or wrap your existing OpenAPI spec. [From REST to YEA](https://yea-protocol.github.io/yea/guide/service-design) translates a Stripe-style API step by step, with full code |
@@ -65,12 +65,15 @@ agent ──UNDO r1 (the human changed their mind)──────────
 > [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows.
 
 Guard a tool you already have. Before it runs, the server sends its plan to the client as a
-form that asks the person to type the file's name. The model can't approve it through the
-tool call, and the form needs no keys, policy or account to set up. Clients that can't show
-forms get a consent code for `yea approve` instead, once a principal key is pinned (guide
-step 5); until then they get a message saying no consent can be accepted. Our tests drive
-both paths with the MCP SDK's own client; see [client support](#client-support) for named
-apps.
+form, and only an answer that types the file's name approves it. Nothing the model passes to
+the tool approves it, and the form needs no keys, policy or account to set up. A form is only
+as trustworthy as the client that draws it, though: hooks, auto-reviewers and scripts can
+answer one, so a form approval is a convenience, not proof that a person acted
+([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
+Clients that can't show forms get a consent code for `yea approve` instead, once a principal
+key is pinned (guide step 5); until then they get a message saying no consent can be
+accepted. Our tests drive both paths with the MCP SDK's own client; see
+[client support](#client-support) for named apps.
 
 <!-- snippet: examples/mcp-quickstart.ts#guard -->
 ```ts
@@ -89,7 +92,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
     },
   );
 
-  // One call: now it shows its plan and asks the person before it runs.
+  // One call: now it shows its plan and waits for approval before it runs.
   approvals.guard(server, deleteFile, {
     describe: async (input) => {
       await fileInside(root, String(input.path)); // refuse before anyone is asked
@@ -99,7 +102,7 @@ function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
         effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
       };
     },
-    // The person types the file's name to approve.
+    // The phrase to type is the file's name.
     confirmWith: (_plan, input) => basename(String(input.path)),
   });
 }
@@ -111,6 +114,15 @@ paths to files in one folder; it's in the guide. From there, the
 [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed policy
 that lets undoable jobs run on their own, and consent codes for clients that can't ask. The
 whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
+
+This delete can't be undone, yet it's approved in the form: a guarded tool's risk is `medium`
+unless you say otherwise. Pass `risk: 'high'` to `guard()` to make it need a consent signed
+with `yea approve` instead, at the cost of a pinned principal key (guide step 5) and a
+`yea approve` for each delete. Today that's best effort too: `yea approve` has to run on the
+server's account, since a key on another OS user
+([#358](https://github.com/yea-protocol/yea/issues/358)) or device
+([#328](https://github.com/yea-protocol/yea/issues/328)) can't save the consent yet
+([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 ### Client support
 
@@ -137,16 +149,23 @@ The bridge never asks in the client, in any client: it holds no principal key
 codes are its only way to approve ([#73](https://github.com/yea-protocol/yea/issues/73)).
 "Vendor docs" means the client's own documentation, checked 2026-09-26
 ([notes](https://github.com/yea-protocol/yea/issues/35#issuecomment-5848005093)), not a run of
-ours. ¹ Codex auto-accepts forms with no fields under auto-approve policies, which is why YEA's
-form always asks for a typed phrase.
+ours. ¹ A typed phrase stops a client that accepts empty forms, as our notes say Codex does
+under auto-approve policies (unconfirmed: its
+[config reference](https://learn.chatgpt.com/docs/config-file/config-reference) doesn't say
+so, 2026-11-03). It doesn't stop a script or a model that reads the form.
 
 A ✓ means the form reached a person in our run, not that only a person can answer it: the
 phrase is in the request, and some clients let software answer forms
-([#337](https://github.com/yea-protocol/yea/issues/337)). ² Claude Code: an `Elicitation` hook
-can answer the form with no dialog drawn. It declares form support on 2025-era stdio
-connections from v2.1.287 (its docs, 2026-11-03); we ran v2.1.317 on both of its MCP runtimes. ³ Codex:
-its `approval_policy` (`never`, `granular.mcp_elicitations`) decides whether a form reaches the
-person or is rejected, and an auto-reviewer may decide in the person's place.
+([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
+² Claude Code: an `Elicitation` hook can answer the form with no dialog drawn, and an
+`ElicitationResult` hook can rewrite the person's answer or turn a decline into an accept
+([who can answer a form](https://yea-protocol.github.io/yea/guide/integrations#who-can-answer-a-form)).
+It declares form support on 2025-era stdio connections from v2.1.287 (its
+[MCP docs](https://code.claude.com/docs/en/mcp#respond-to-mcp-elicitation-requests), 2026-11-03);
+we ran v2.1.317 on both of its MCP runtimes. ³ Codex: its `approval_policy` (`never`,
+`granular.mcp_elicitations`) decides whether a form reaches the person or is rejected; whether
+its auto-reviewer can answer one is unconfirmed (third-party)
+([who can answer a form](https://yea-protocol.github.io/yea/guide/integrations#who-can-answer-a-form)).
 
 ## What changes
 
@@ -548,8 +567,9 @@ npx @yea-protocol/cli doctor                     # check keys, grants, services,
 Tools that change things are marked `destructiveHint`; don't auto-approve them in your tool.
 The service decides what the agent's grant covers. Anything over it comes back with a consent
 code: you run `yea approve <code>` where your principal key is, which shows the exact action
-and needs an interactive terminal, and paste the printed consent back to the agent. The model
-can't approve for itself, and the bridge never signs anything.
+and needs an interactive terminal, and paste the printed consent back to the agent. Nothing
+the model passes to a tool approves anything, and the bridge never signs; a consent is only as
+safe as the place your principal key is ([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 ### Keep the principal key away from the agent
 

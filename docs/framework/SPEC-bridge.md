@@ -9,9 +9,8 @@ consent is typed, not yes/no.
 
 Issue: [#40](https://github.com/yea-protocol/yea/issues/40). Map: [README.md](README.md).
 
-Status: built in [#73](https://github.com/yea-protocol/yea/issues/73), except `--approve-here`
-(steps 6–7's form and in-client signing), which waits for decision 4. Until then the bridge
-signs nothing: consent codes are the only way to approve.
+Status: built in [#73](https://github.com/yea-protocol/yea/issues/73). The bridge signs nothing:
+consent codes are the only way to approve, and in-client signing won't be built (decision 4).
 
 ## Objective
 
@@ -28,9 +27,8 @@ The MCP client sees one tool per remote capability, named for it (`shop_order`,
 - Otherwise the call returns the proposals and a consent code for each. The person approves
   one with `yea approve <code>` (where the principal key is), then hands the signed consent
   back, and the next identical call commits it.
-- With `--approve-here`, a person at a client that can show forms approves by typing the
-  phrase instead, and the bridge signs the consent with a principal key on this machine
-  (decision 4).
+- It never asks in the client and never signs. An approval given inside the chat client is form
+  tier, whichever key signs it afterwards (SPEC-approval §9; decision 4).
 
 **The authority stays with the service.** Unlike a server built with `@yea-protocol/mcp`, the
 bridge has no policy of its own. The remote service checks the agent's grants, auto-commits
@@ -153,10 +151,9 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      calls don't replay the failure, and a fresh approval of the same proposal can replace it. `yea_consent`
      refuses a consent set aside this way, saying the service refused it and to approve
      again.
-   - **An approval round?** If the call carries our state (below), go to step 7. A call
-     carrying our state with no pending entry is refused as a bad state; it never falls
-     through to a fresh `INTENT`. Until `--approve-here` exists the bridge mints no state, so
-     a call carrying any state is refused, pending entry or not.
+   - **An approval state?** The bridge mints none (decision 4), so a call carrying any state
+     is refused as a bad state, pending entry or not. It never falls through to a fresh
+     `INTENT`.
    - **The chosen proposal.** If the call names `proposal` (an id from this entry's list),
      `COMMIT` that proposal, and only it: with the agent's grants, plus that proposal's own
      saved consent if there is one (never another proposal's). The service decides: a
@@ -188,45 +185,26 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
 
    Auto-commit only ever covers the first proposal, and only if it's undoable (SPEC.md
    §4.3.1). For an irreversible proposal, or any but the first, that the grant allows, the
-   model commits it by calling again with `proposal` (step 3), or the person approves it in
-   the form (step 7). Either way the service commits it without a consent.
-6. **Codes, or a form.** The principal is the root `iss` of the grants sent on the `INTENT`;
-   §4.4 requires the same principal for the commit.
+   model commits it by calling again with `proposal` (step 3), and the service commits it
+   without a consent.
+6. **Codes.** The principal is the root `iss` of the grants sent on the `INTENT`; §4.4
+   requires the same principal for the commit.
    - No grants at all means the proposals can never be committed (§4.4). The call returns
      them with no codes and says to run `yea grant` for this agent.
    - Grants from more than one principal also get no codes, and an `isError` saying why.
-   - **By default, and whenever the form can't be used:** return the proposals and, for each
-     offerable one (not denied), a protocol consent code. The code is `consentCode`, with a
-     `ConsentRequest` built from the proposal (`proposal`, `hash`, `service`, `capability`,
-     `summary`, `expires` = the proposal's `expires`) and that principal, plus the proposal
-     as detail and the agent's public key as `agent`, so `yea approve` elsewhere signs to the
-     right key. The message says: *Ask the user to run `yea approve <code>` where their
-     principal key is, then paste the printed consent back to you and call `yea_consent`
-     with it, then call this tool again.* (`yea approve` asks y/N for protocol proposals; it
-     doesn't ask for a phrase.)
+   - **Otherwise:** return the proposals and, for each offerable one (not denied), a protocol
+     consent code. The code is `consentCode`, with a `ConsentRequest` built from the proposal
+     (`proposal`, `hash`, `service`, `capability`, `summary`, `expires` = the proposal's
+     `expires`) and that principal, plus the proposal as detail and the agent's public key as
+     `agent`, so `yea approve` elsewhere signs to the right key. The message says: *Ask the
+     user to run `yea approve <code>` where their principal key is, then paste the printed
+     consent back to you and call `yea_consent` with it, then call this tool again.* (`yea
+     approve` asks y/N for protocol proposals; it doesn't ask for a phrase.)
    - A result that returns proposals for approval isn't `isError`: nothing ran, the first line
      says so, and the model may still commit one within the grant with `proposal`. The no-grants
      and many-principals results are `isError`.
-   - **With `--approve-here`**, when the client can take a form and the principal key on this
-     machine matches: `buildForm` the pending proposals (`high` and denied ones aren't
-     offered), and return `inputRequired` with a sealed state (`newState`), as
-     `@yea-protocol/mcp` does.
-7. **Answer** (`--approve-here` only).
-   - The retry does **not** send `INTENT` again: the pending proposals are the recomputed
-     plans, so the chosen hash still matches.
-   - `checkState`, then `consumeOnce(nonce)`, then `judgeAnswer`. On `run`:
-     1. `COMMIT` the proposal with the agent's grants.
-     2. A `RECEIPT` means the grant allowed it; done.
-     3. On `consent_required`, run `consentFor(err, c, p)`, unchanged from today, which
-        checks the service's consent request against the proposal the person saw. Also
-        require `err.consent.principal` to equal the grants' `iss` and the local principal
-        key.
-     4. Sign the consent grant with the principal key, issued to the agent's key.
-     5. `COMMIT` again with it.
-   - A `COMMIT` that fails in transport is retried as is before anything is reported. It's
-     idempotent (§4.4), and a commit that went through must not look pending.
-   - `ask-again`, `refuse`, `not-approved`, `denied` and `out-of-band` behave as in mcp-ts.
-     Out-of-band proposals fall back to codes.
+   - There is no form: even when the client can show one, the bridge returns codes (decision
+     4).
 
 **`yea_consent({ token })`** saves a consent only if all of these hold:
 - it's a `pg1.` grant of a single root block, with a valid signature;
@@ -264,9 +242,9 @@ one exact proposal at one service, and still needs the agent key's proof.
   is re-read from it on every call, and the default `consents` store is its `consents`
   directory (`homeConsents(home)`). The principal key is never read from it, so two bridges
   in one process can have different homes, and tests pass one instead of setting `YEA_HOME`. It uses mcp-ts's result
-  helpers (render.ts) and the approval core's form and state; the ones it needs are
-  exported. It doesn't reuse `runJob`, whose plans come from a local handler and a local
-  policy.
+  helpers (render.ts); the ones it needs are exported. It doesn't reuse `runJob`, whose plans
+  come from a local handler and a local policy, and it uses none of the approval core's form
+  or state, since it never asks in the client.
 - **The command.** `yea mcp` moves to the CLI package (`cli/`), which depends on
   `@yea-protocol/mcp`: `cli/bin/yea.js` handles `mcp` and `test-drive` itself and passes
   everything else to the SDK's CLI. The SDK can't import `@yea-protocol/mcp` without a cycle.
@@ -338,12 +316,6 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   proposal, once;
 - a re-call before approval returns the same codes, and doesn't orphan the approval;
 - an expired or discarded pending proposal falls back to a fresh `INTENT`;
-- with `--approve-here` (not built yet, TODO #73):
-  - a typed phrase commits;
-  - the retry sends no `INTENT`;
-  - a consent is signed only after `consent_required`;
-  - a wrong phrase asks again, and decline commits nothing;
-  - a `high` proposal gets a code, not the form;
 - `preview` commits nothing, and `preview` with `proposal` is refused; a preview's id named
   later is refused as not pending; `deny` refuses first, including previews, and matches the
   capability after a suffix;
@@ -355,6 +327,7 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
 - `yea approve` requires `--to` when a code's `agent` differs from the local agent key;
 - security:
   - the model can't approve by any argument;
+  - a call carrying an approval state is refused, and nothing in the bridge can sign;
   - a consent for one proposal never commits another;
   - a state replayed after use commits nothing;
   - a proposal that fails its hash check is never shown or signed;
@@ -364,16 +337,14 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
 
 - **Always:**
   - the service decides; the bridge shows, relays and commits;
-  - codes by default;
-  - sign only with `--approve-here`, after a typed approval of that exact proposal and the
-    service's own consent request;
+  - consent codes, approved with `yea approve` where the principal key is;
   - fail closed.
 - **Ask first:**
   - any policy of the bridge's own;
-  - auto-approving anything the service didn't auto-commit;
-  - making in-client signing the default.
+  - auto-approving anything the service didn't auto-commit.
 - **Never:**
-  - sign a consent the person didn't type the phrase for;
+  - load the principal key or sign anything, with or without a flag;
+  - ask for approval in the client;
   - loosen anything;
   - pass the principal key or any unsigned approval through the model.
 
@@ -381,8 +352,7 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
 
 - In Claude Code, `yea install` then `yea mcp` shows the example services' capabilities as
   tools. An order over the grant returns a code; `yea approve` plus `yea_consent` then
-  commits it. With `--approve-here` and a local principal key, the same order asks for the
-  typed phrase in the client and commits.
+  commits it.
 - In Claude Desktop (no elicitation), the code path works the same.
 - The SDK core has no MCP code, and still has no dependencies.
 
@@ -400,15 +370,18 @@ Adopted for v0 under the standing go-ahead; any can be reopened.
    consent to the exact proposal, so the bridge must commit the one the person approved, not
    a fresh one. A bridge restarted between `yea approve` and the re-call finds no pending
    proposal, and asks again.
-4. **In-client signing is opt-in (`--approve-here`), pending James.** Signing with the
-   principal key inside the chat client is the path SPEC.md §6.6 warns about:
-   - some clients auto-fill forms or route elicitation to a model;
+4. **Codes only: the bridge never signs** (decided on 2026-11-03, in
+   [#73](https://github.com/yea-protocol/yea/issues/73)). There is no `--approve-here`, opt-in
+   or otherwise. A signature is only as strong as the step that triggered it, and anything
+   triggered from inside the chat client is form tier (SPEC-approval §9):
+   - a client's hooks, auto-reviewer or model can answer a form, or rewrite the person's
+     answer;
    - the phrase is printed in the form;
    - a principal key on the agent's machine is reachable by a shell-capable agent.
 
-   So the default is consent codes approved where the key is, and signing here takes an
-   explicit flag the person sets. Whether to offer the flag at all is on the issue as
-   `ready-for-human`.
+   Signing after a form answer would let the agent trigger signing with the principal key,
+   which SPEC.md §6.6 forbids. So approval is always a consent code, approved with
+   `yea approve` where the key is.
 5. **The model can still commit within the grant.** A job tool takes an optional `proposal`,
    which commits a pending proposal with the agent's grants only. The service then decides,
    as with the old `yea_commit`. Irreversible actions the person's grant allows don't need

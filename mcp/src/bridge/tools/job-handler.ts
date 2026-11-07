@@ -13,7 +13,7 @@ import { runJobCall } from '../job.js';
 import type { Bridge } from '../state.js';
 import type { JobCall } from '../types.js';
 
-/** Any approval state on a job call: the bridge mints none yet (TODO(#73)). */
+/** Any approval state on a job call: the bridge mints none (decision 4). */
 const UNMINTED_STATE = `this approval state is invalid, expired or already used; ${NOTHING_RAN}. Call the tool again without it.`;
 
 /** A call's capability, its params, and the job's own fields; or why the arguments are wrong. */
@@ -50,8 +50,8 @@ function jobFields(
 }
 
 /**
- * A job tool's handler. It never takes an approval state: the bridge mints none until
- * `--approve-here` (TODO(#73)), so any state is refused and never falls through to an INTENT.
+ * A job tool's handler. It never takes an approval state: the bridge never asks in the client
+ * (decision 4), so any state is refused and never falls through to an INTENT.
  */
 export function jobHandler(
   b: Bridge,

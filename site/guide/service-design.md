@@ -42,7 +42,7 @@ Approval needed: refund can't be undone.
   uses: spend 22.87 USD · risk: medium · undo: never
 ```
 
-The person picks the second plan in their client and confirms it. A refund can't be undone, so it always asks: no policy lets it run on its own.
+The person picks the second plan in the client's form and types its phrase ([what that proves](/guide/security#what-an-approval-proves)). A refund can't be undone, so it always asks: no policy lets it run on its own.
 
 </div>
 </div>

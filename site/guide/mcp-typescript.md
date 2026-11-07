@@ -1,6 +1,6 @@
 # Add YEA to your MCP server (TypeScript)
 
-You have an MCP server, and one of its tools does something a person should see first: it deletes a file, sends an email, or moves money. This guide adds YEA to that tool. Before the tool runs, the server asks the person, through their client, to approve its plan by typing a phrase. The model can't approve it through the tool call. What else must stay out of the agent's reach, such as your client's config, is in the [security model](/guide/security#mcp-servers-built-with-the-framework).
+You have an MCP server, and one of its tools does something a person should see first: it deletes a file, sends an email, or moves money. This guide adds YEA to that tool. Before the tool runs, the server sends its plan to the person's client as a form, and only an answer that types the right phrase approves it; nothing the model passes to the tool does. A form is only as trustworthy as the client that draws it: the [security model](/guide/security#what-an-approval-proves) says what a form answer proves, when a tool should need a signed consent instead, and what must stay out of the agent's reach.
 
 Steps 1–3 give you that tool, and need no keys, no policy and no account. Steps 4–6 are separate, later steps: undo, letting safe things run on their own, and clients that can't ask.
 
@@ -122,7 +122,7 @@ Three things to know at this point:
 
 - **The server's stderr warns** `yea: no pinned principal key (YEA_PRINCIPAL_PUB is not set): nothing auto-runs and no consent is accepted`. That's expected: it only matters for steps 5 and 6.
 - **The client must support form elicitation** to show the form. The [client table](https://github.com/yea-protocol/yea#client-support) says which clients we've run and what their vendors document. A client without it gets step 6's consent codes instead.
-- **A tool marked `risk: 'high'`**, or an `outOfBand` rule in `~/.yea/policy.json`, is never approved in the chat. It goes to consent codes, which need step 5's pinned key.
+- **A plan at `risk: 'high'`** is never approved in the chat. It goes to consent codes, which need step 5's pinned key. Use it for the plans whose approval should be signed, not typed into a form ([why](/guide/security#what-an-approval-proves)). A tool's `risk` (`guard(…, { risk: 'high' })` or `job({ risk })`) is only the default for plans that don't set their own, so a plan whose `describe` or `plan` returns a lower `risk` still goes to the form ([#369](https://github.com/yea-protocol/yea/issues/369) asks whether the tool's should be a floor). The person can send more plans there with an `outOfBand` risk level in `~/.yea/policy.json` (`"outOfBand": "medium"`), but that file is best effort: an agent that can write it can undo it.
 
 ## 4. Make it undoable
 
@@ -235,7 +235,7 @@ Ask the user to run `yea approve <code>` in their terminal, then call again.
 
 `yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
 
-So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account, and that's the case our tests cover. With the key on another OS user, that user would run it on the server's machine with `YEA_STORE` set to the server's store; we haven't yet tested a store written by two OS users. A key on another device can't answer a consent code yet.
+So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account: that's the case our tests cover, and it's best effort, since an agent that runs as you can reach the key. With the key on another OS user or device, `yea approve` can't answer the code yet ([today's status](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 **Why the pinned key matters here:** the server accepts only consents signed by the pinned principal key. Without one it can't accept any, so it gives no codes and says why:
 

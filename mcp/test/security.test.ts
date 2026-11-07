@@ -2,25 +2,45 @@
  * The approval core's security list, from the MCP side (SPEC-mcp-ts, Testing). The core's own
  * regression tests are in ts/test/security.test.ts.
  */
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import {
   createRequestStateCodec,
   McpServer,
 } from '@modelcontextprotocol/server';
-import { atLeast, MemoryStore, quantity, type Risk } from '@yea-protocol/sdk';
-import { describe, expect, it } from 'vitest';
+import {
+  atLeast,
+  keyPair,
+  MemoryStore,
+  quantity,
+  type Risk,
+  sign,
+} from '@yea-protocol/sdk';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Allowed } from '../../ts/test/imports.js';
+import { watchKeys } from '../../ts/test/key-watch.js';
 import { stricter } from '../src/policy.js';
+import { type AnswerStep, accept } from './harness.js';
 import {
   approve,
   connect,
   grantPolicy,
+  type Kind,
   ledgerKeyOf,
   refundJob,
   refundServer,
   textOf,
+  tmp,
   world,
 } from './helpers.js';
+import {
+  importAudit,
+  productionSources,
+  REPO,
+  reachable,
+  SIGNS,
+} from './sources.js';
 
 const ch1 = { charge: 'ch_1' };
 
@@ -665,5 +685,265 @@ describe('an unprintable phrase', () => {
 
     expect(elicit.elicited).toEqual([]);
     expect(w.applied).toEqual([]);
+  });
+});
+
+// AGENTS.md rule 3 (#337, SPEC-bridge decision 4): a hook, an auto-reviewer or a model can answer
+// a form, so anything a form answer triggers is form tier, whichever key signs it. No code path
+// may sign with the principal key in response to one. The SDK's half is in
+// ts/test/security.test.ts; this drives the adapter, which is where an answer arrives.
+describe.each<Kind>(['2026', '2025'])(
+  'a form answer never triggers a signature, on a %s client (#337)',
+  (kind) => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    });
+
+    /**
+     * A principal key in the server's home, YEA_HOME and YEA_PRINCIPAL_HOME, as on one account,
+     * placed before anything loads: a module that reads the environment once, at load, sees it.
+     */
+    async function principalAtHand() {
+      const principal = await keyPair();
+      const [home, yeaHome, principalHome] = [tmp(), tmp(), tmp()];
+      const files = [home, yeaHome, principalHome].map((d) =>
+        join(d, 'principal.key'),
+      );
+
+      for (const f of files) {
+        writeFileSync(f, principal.seed, { mode: 0o600 });
+      }
+
+      vi.stubEnv('YEA_HOME', yeaHome);
+      vi.stubEnv('YEA_PRINCIPAL_HOME', principalHome);
+
+      return { principal, home, files };
+    }
+
+    /** The Ed25519 signatures made: the state codec's HMACs go through the same API. */
+    const ed25519 = (calls: unknown[][]) =>
+      calls.filter(([alg]) =>
+        typeof alg === 'string' ? alg === 'Ed25519' : isEd25519(alg),
+      );
+    const isEd25519 = (alg: unknown) =>
+      typeof alg === 'object' &&
+      alg !== null &&
+      (alg as { name?: unknown }).name === 'Ed25519';
+
+    /** The server, freshly loaded after the key is in place, and a client of `kind` on it. */
+    async function serve(at: Awaited<ReturnType<typeof principalAtHand>>) {
+      vi.resetModules();
+
+      const fresh = await import('./helpers.js');
+      const w = await fresh.world({
+        home: at.home,
+        principal: at.principal.public,
+      });
+      const plans = { version: 1 };
+      const server = fresh.refundServer(w, {
+        plan: ({ charge }) =>
+          ['A', 'B'].map((which) => ({
+            summary: `Refund ${which} ${charge}, v${plans.version}`,
+            effects: [],
+            risk: 'low' as const,
+            apply: () => {
+              w.applied.push(`${which} v${plans.version}`);
+            },
+          })),
+      });
+
+      return { w, plans, conn: await fresh.connect(kind, server) };
+    }
+
+    it('no answer to the form reads the principal key, starts a process, signs or saves a consent', async () => {
+      const at = await principalAtHand();
+      const watch = watchKeys(at.files);
+
+      try {
+        const { w, plans, conn } = await serve(at);
+        const signs = vi.spyOn(globalThis.crypto.subtle, 'sign');
+        const saves = vi.spyOn(w.store, 'putConsent');
+        const policy = (json: string) =>
+          writeFileSync(join(at.home, 'policy.json'), json);
+        const rightPhrase = accept(conn, 'ch_1', 'Refund A');
+        const outOfBandNow = async () => {
+          policy('{ "outOfBand": "low" }');
+
+          return rightPhrase();
+        };
+        const plansChange = async () => {
+          plans.version = 2;
+
+          return rightPhrase();
+        };
+        const wrongPhrase = accept(conn, 'nope', 'Refund A');
+        /** Every kind of answer, each call's in turn (a cancel once they run out), and its result. */
+        const rounds: [AnswerStep[], RegExp][] = [
+          [[{ action: 'decline' }], /not approved/],
+          [[], /not approved/],
+          [
+            [wrongPhrase, wrongPhrase, wrongPhrase],
+            /not approved after 3 tries/,
+          ],
+          [
+            [{ action: 'accept', content: { plan: 'p', confirm: 'ch_1' } }],
+            /was not offered/,
+          ],
+          [[plansChange], /not approved/],
+          [[outOfBandNow], /pc1\./],
+          [[rightPhrase], /^✓ Refund A ch_1, v2/],
+        ];
+
+        for (const [answers, outcome] of rounds) {
+          conn.answers.push(...answers);
+          expect(textOf(await conn.call(ch1))).toMatch(outcome);
+          policy('{}');
+        }
+
+        expect(w.applied).toEqual(['A v2']);
+        expect(watch.touched).toEqual([]);
+        expect(watch.spawned).toEqual([]);
+        expect(ed25519(signs.mock.calls)).toEqual([]);
+        expect(saves).not.toHaveBeenCalled();
+
+        // The watch does see a read, a process and a signature when one happens.
+        readFileSync(at.files[0]);
+        execFileSync(process.execPath, ['-e', '']);
+        await sign(at.principal.seed, 'x');
+        expect(watch.touched).toContainEqual(
+          expect.stringMatching(/^readFileSync /),
+        );
+        expect(watch.spawned).toHaveLength(1);
+        expect(ed25519(signs.mock.calls)).toHaveLength(1);
+      } finally {
+        watch.stop();
+      }
+    });
+  },
+);
+
+describe('the code that reads a form answer (#337)', () => {
+  it('names no signer, from the reader to the job call session', () => {
+    const readers = productionSources().filter((f) =>
+      /inputResponses|elicitInput|elicitation\/create/.test(
+        readFileSync(f, 'utf8'),
+      ),
+    );
+
+    // The framework's job tools are the only place an answer enters; a new one belongs here.
+    expect(readers).toEqual([join(REPO, 'mcp/src/call/round.ts')]);
+
+    const answerPath = reachable([join(REPO, 'mcp/src/index.ts')]);
+
+    expect(answerPath).toContain(readers[0]);
+
+    for (const f of answerPath) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(SIGNS);
+    }
+  });
+
+  it('imports only the modules listed here, and loads no code at run time', () => {
+    // An allowlist, not a list of what signs: a new module on this path (another process, Node's
+    // crypto under any name, a new way to read a file) fails here until it's reviewed and listed.
+    // Each entry, the files that may import it, and what covers the part of it that could sign.
+    const ALLOWED: Allowed = {
+      // The MCP SDK the server runs on: it carries the answer and seals the state with an HMAC.
+      '@modelcontextprotocol/server': 'any file',
+      // The SDK: the job call session, and also its signers, which SIGNS refuses by name and the
+      // key watch catches in use.
+      '@yea-protocol/sdk': 'any file',
+      // FileStore, the home and the pinned key; also a stdio transport that spawns
+      // (ts/src/node/stdio.ts), which the spawn watch catches.
+      '@yea-protocol/sdk/node': [
+        'mcp/src/index.ts',
+        'mcp/src/policy.ts',
+        'mcp/src/server-key.ts',
+      ],
+      // policy.json and the server key, the only files read on this path; a read of the
+      // principal key anywhere is the key watch's.
+      'node:fs': ['mcp/src/policy.ts', 'mcp/src/server-key.ts'],
+      // Paths only.
+      'node:path': 'any file',
+    };
+
+    expect(importAudit([join(REPO, 'mcp/src/index.ts')], ALLOWED)).toEqual([]);
+  });
+
+  it('the audit names the file and the specifier of anything unlisted or refused', () => {
+    const dir = tmp();
+    const file = (name: string, lines: string[]) => {
+      writeFileSync(join(dir, name), lines.join('\n'));
+
+      return relative(REPO, join(dir, name));
+    };
+    const e = file('entry.ts', [
+      "import { a } from './part.js';",
+      'import { createPrivateKey } from "crypto";',
+      "export { b } from 'node:child_process';",
+      'import {',
+      '  execFileSync, // a comment inside the braces',
+      "} from 'node:child_process';",
+      "import { /* the signer */ sign as s } from 'node:crypto';",
+      "/** helper */ import { spawn } from 'node:worker_threads';",
+      'import {',
+      '  hidden, // a relative import behind a comment',
+      "} from './hidden.js';",
+      "const notAnImport = \"import x from 'node:os'\"; // a string can't import",
+      "import { gone } from './missing.js';",
+    ]);
+    const p = file('part.ts', [
+      "import 'node:cluster';",
+      "export const a = await import('node:fs');",
+      "const r = require('x');",
+      "process.binding('fs');",
+      "const cp = process.getBuiltinModule('node:child_process');",
+      "const f = Function('return 1');",
+      "const g = new Function('return 2');",
+      "import q = require('node:vm');",
+    ]);
+    const h = file('hidden.ts', [
+      "import { execFile } from 'node:child_process';",
+    ]);
+    const bad = file('bad.ts', ["const s = 'not closed"]);
+    // A `/` is division after a value, `)` or `]`, and a regex after `if (…)`; where the tokens
+    // before it can't tell (here a postfix `++`), the file fails rather than risk hiding code.
+    const s = file('slashes.ts', [
+      'const half = (a + f(b)) / 2 / list[0] / 3;',
+      "if (ok) /'/.test(s); import 'node:http2';",
+    ]);
+    const u = file('unsure.ts', [
+      "const n = i++ / 2; import('node:vm'); const m = n / 3;",
+    ]);
+
+    expect(
+      importAudit([join(dir, 'entry.ts')], { 'node:fs': 'any file' }),
+    ).toEqual([
+      `${e}: crypto`,
+      `${e}: node:child_process`,
+      `${e}: node:child_process`,
+      `${e}: node:crypto`,
+      `${e}: node:worker_threads`,
+      `${h}: node:child_process`,
+      `${p}: node:cluster`,
+      `${p}: node:vm`,
+      `${p}: import(`,
+      `${p}: require(`,
+      `${p}: process.binding`,
+      `${p}: process.getBuiltinModule`,
+      `${p}: Function(`,
+      `${p}: Function(`,
+      `${p}: require(`,
+      `${e}: cannot resolve ./missing.js`,
+    ]);
+    expect(importAudit([join(dir, 'slashes.ts')], {})).toEqual([
+      `${s}: node:http2`,
+    ]);
+    expect(
+      importAudit([join(dir, 'bad.ts'), join(dir, 'unsure.ts')], {}),
+    ).toEqual([
+      `${bad}: does not tokenize, line 1: a string is not closed`,
+      `${u}: does not tokenize, line 1: a / here could divide or start a regular expression`,
+    ]);
   });
 });
