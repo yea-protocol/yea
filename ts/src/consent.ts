@@ -8,6 +8,7 @@ import type { KeyPair } from './crypto.js';
 import { type Caveat, isPublicKey, issueGrant } from './grants.js';
 import { fmtTime } from './lens.js';
 import type { ConsentRequest, Proposal } from './types.js';
+import { isObject } from './util.js';
 
 /** What a consent is to: one proposal's hash and capability, at one service, until it expires. */
 type ConsentScope = Pick<
@@ -160,6 +161,22 @@ export function decodeConsentCode(
   }
 
   return c;
+}
+
+/**
+ * When a consent code's consent expires, as `yea approve` signs it (SPEC-bridge): with the code,
+ * or with its proposal if that's sooner. A detail without an integer `expires` (a job's) leaves
+ * the code's.
+ */
+export function consentExpiry(c: {
+  expires: number;
+  detail?: unknown;
+}): number {
+  const p = isObject(c.detail) ? c.detail.expires : undefined;
+
+  return typeof p === 'number' && Number.isSafeInteger(p)
+    ? Math.min(c.expires, p)
+    : c.expires;
 }
 
 /**

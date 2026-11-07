@@ -5,7 +5,7 @@
  * a file's text is never echoed back.
  */
 import { join } from 'node:path';
-import { decodeConsentCode } from '../consent.js';
+import { consentExpiry, decodeConsentCode } from '../consent.js';
 import {
   defaultFileStore,
   homePending,
@@ -54,14 +54,14 @@ const findAll = (ps: PendingCodes[], id: string): Found[] =>
     }
   });
 
-/** When a consent code expires, or null if the text isn't one. */
+/** When a consent code's consent expires (`consentExpiry`), or null if the text isn't one. */
 function expiryOf(code: string): number | null {
   if (!code.startsWith('pc1.')) {
     return null;
   }
 
   try {
-    return decodeConsentCode(code).expires;
+    return consentExpiry(decodeConsentCode(code));
   } catch {
     return null;
   }

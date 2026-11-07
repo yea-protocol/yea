@@ -8,20 +8,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ._json import MAX_SAFE_INT, CanonicalError, proposal_hash
+from ._json import CanonicalError, is_safe_integer, proposal_hash
 from .lens import untrusted_lens
 from .lens.depth import too_deep_to_approve
 from .risk import is_risk
 from .text import printable
 from .uses import is_uses
-
-
-def _safe_int(v: Any) -> bool:
-    """Whether ``v`` is an integer as TS's ``Number.isSafeInteger`` reads JSON: an integer-valued
-    float counts (JSON ``1.0`` is the integer 1 in JS), a bool doesn't."""
-    if type(v) is float and v.is_integer():
-        v = int(v)
-    return type(v) is int and abs(v) <= MAX_SAFE_INT
 
 
 def check_proposal(p: Mapping[str, Any]) -> str | None:
@@ -33,7 +25,7 @@ def check_proposal(p: Mapping[str, Any]) -> str | None:
         return "the proposal has a malformed uses"
     if not is_risk(p.get("risk")):
         return "the proposal has an unknown risk"
-    if not _safe_int(p.get("expires")):
+    if not is_safe_integer(p.get("expires")):
         return "the proposal has a malformed expires"
     if too_deep_to_approve({k: v for k, v in p.items() if k != "data"}):
         return "the proposal is nested too deep to show in full"

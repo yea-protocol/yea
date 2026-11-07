@@ -1387,6 +1387,44 @@ describe('approval security (SPEC-approval)', () => {
     expect(r).toEqual({ ok: false, why: expiredWhy(at, at) });
   });
 
+  it('[A33] yea approve signs no job consent that expired while the person typed its phrase (#370)', async () => {
+    const at = now + P.CONSENT_TTL;
+    const j = await P.readJobConsent(await jobCodeAt(now), now);
+
+    expect(j.consent.expires).toBe(at);
+    await expect(P.signJobConsent(B, j, at)).rejects.toThrow(
+      expiredWhy(at, at),
+    );
+    expect(await P.signJobConsent(B, j, at - 1)).toMatch(/^pg1\./);
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    "[A35] yea approve escapes the code's agent field, which nothing signs, in its --to suggestion",
+    async () => {
+      const home = approverHome(agent);
+      const named = '\u001b[31mEVIL\u001b[0m';
+
+      try {
+        const r = approveIn(home, [
+          await protocolCode({
+            principal: B.public,
+            agent: named,
+            expires: P.unixNow() + 3600,
+          }),
+        ]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toContain(
+          'The code suggests --to \\u{1b}[31mEVIL\\u{1b}[0m (fingerprint ',
+        );
+        expect(r.out).not.toContain('\u001b');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
   it('[A7] a job consent is signed by the principal, to the server, for that one plan', async () => {
     const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
       {
@@ -1408,7 +1446,7 @@ describe('approval security (SPEC-approval)', () => {
       }),
       now,
     );
-    const g = await P.inspectGrant(await P.signJobConsent(B, j));
+    const g = await P.inspectGrant(await P.signJobConsent(B, j, now));
 
     expect(j.phrase).toBe('approve');
     expect(g.iss).toBe(B.public);
@@ -1421,7 +1459,7 @@ describe('approval security (SPEC-approval)', () => {
       { exp: j.consent.expires },
     ]);
     expect(
-      await checkJobConsent(await P.signJobConsent(B, j), {
+      await checkJobConsent(await P.signJobConsent(B, j, now), {
         hp,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
@@ -1815,7 +1853,7 @@ describe('approval security (SPEC-approval)', () => {
       edited({ hash: await P.consentHashOf(hp.planHash, 'approve') }),
       now,
     );
-    const grant = await P.signJobConsent(B, forged);
+    const grant = await P.signJobConsent(B, forged, now);
     const policy = { principal: B.public, server: A.public };
 
     expect(
@@ -1853,10 +1891,11 @@ describe('approval security (SPEC-approval)', () => {
     );
 
     // A consent bound to the bare plan hash, as before #141, never counts either.
-    const bare = await P.signJobConsent(B, {
-      ...forged,
-      consent: { ...forged.consent, hash: hp.planHash },
-    });
+    const bare = await P.signJobConsent(
+      B,
+      { ...forged, consent: { ...forged.consent, hash: hp.planHash } },
+      now,
+    );
 
     expect(
       await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
@@ -2487,6 +2526,46 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
           );
           expect(r.out, id).not.toMatch(/SECRET|JSON|Unexpected/);
         }
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A34] a pending code is listed, and expires, with its consent: with its proposal, if that is sooner (#370)',
+    async () => {
+      const home = approverHome(agent);
+      const dir = join(home, 'store', 'pending');
+      const store = new PendingCodes(dir);
+      const at = P.unixNow();
+      // The code's own `expires` is two hours away; its proposal's is sooner.
+      const code = (id: string, proposal: number) =>
+        protocolCode({
+          principal: B.public,
+          agent: agent.public,
+          expires: at + 7200,
+          id,
+          proposal: { expires: proposal },
+        });
+      const soon = store.put(await code('p_soon', at + 3600), at);
+      const gone = store.put(await code('p_gone', at - 60), at);
+
+      try {
+        expect(store.list(at).map((e) => [e.id, e.consent.expires])).toEqual([
+          [soon, at + 3600],
+        ]);
+
+        const listed = approveIn(home, []).out;
+
+        expect(listed).toContain(
+          `${soon} · shop.order · Order 1 meal · at shop.example · expires ${fmtTime(at + 3600)}`,
+        );
+        expect(listed).not.toContain(gone);
+        expect(approveIn(home, [gone]).out).toContain(
+          `pending approval ${gone} (in ${dir}) has expired: call the tool again for a fresh one`,
+        );
       } finally {
         rmSync(home, { recursive: true, force: true });
       }

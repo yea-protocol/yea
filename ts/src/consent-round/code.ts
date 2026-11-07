@@ -7,6 +7,7 @@
 
 import {
   codeExpired,
+  consentExpiry,
   consentRecipient,
   decodeConsentCode,
 } from '../consent.js';
@@ -44,7 +45,7 @@ async function recipientOf(
   }
 
   return {
-    why: `${r.why}. The code suggests --to ${named} (fingerprint ${await keyFingerprint(named)}); check it with the agent before passing it`,
+    why: `${r.why}. The code suggests --to ${printable(named)} (fingerprint ${await keyFingerprint(named)}); check it with the agent before passing it`,
   };
 }
 
@@ -141,12 +142,12 @@ async function checkCode(
     return { ok: false, why: `this consent code can't be approved: ${why}` };
   }
 
-  const request = consentFrom(c, c.detail);
-  const expired = codeExpired(request.expires, now);
+  // The same expiry `yea approve` lists the code with, and the one `consentFrom` signs.
+  const expired = codeExpired(consentExpiry(c), now);
 
   return expired
     ? { ok: false, why: expired }
-    : { code: c, proposal: c.detail, request };
+    : { code: c, proposal: c.detail, request: consentFrom(c, c.detail) };
 }
 
 /**
@@ -157,27 +158,28 @@ async function askForCode(
   o: CodeApproval,
   now: number,
 ): Promise<ConsentAsk | Refusal> {
-  const k = await checkCode(o, now);
+  const checked = await checkCode(o, now);
 
-  if ('ok' in k) {
-    return k;
+  if ('ok' in checked) {
+    return checked;
   }
 
-  const agent = await recipientOf(k.code.agent, o);
+  const { code, proposal, request } = checked;
+  const agent = await recipientOf(code.agent, o);
 
   if ('why' in agent) {
     return { ok: false, why: agent.why };
   }
 
   return {
-    request: k.request,
-    proposal: k.proposal,
+    request,
+    proposal,
     agent: agent.key,
     lines: [
-      ...consentLines(k.code, k.proposal),
+      ...consentLines(code, proposal),
       `  consent issued to agent: ${agent.key} (fingerprint ${await keyFingerprint(agent.key)})`,
-      `  approval expires: ${fmtTime(k.request.expires)}`,
-      ...longConsentLines(k.request.expires, now),
+      `  approval expires: ${fmtTime(request.expires)}`,
+      ...longConsentLines(request.expires, now),
     ],
     reason: '',
   };

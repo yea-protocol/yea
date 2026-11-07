@@ -15,7 +15,7 @@ from .caveats import (
     limit_denial,
     well_formed,
 )
-from .consent import CONSENT_PREFIX, consent_code, consent_grant, decode_consent_code, matches_consent
+from .consent import CONSENT_PREFIX, consent_code, consent_expiry, consent_grant, decode_consent_code, matches_consent
 from .context import GrantContext
 from .token import (
     TOKEN_PREFIX,
@@ -37,6 +37,7 @@ __all__ = [
     "consent_grant",
     "CONSENT_PREFIX",
     "consent_code",
+    "consent_expiry",
     "decode_consent_code",
     "matches_consent",
     "RISK_ORDER",
