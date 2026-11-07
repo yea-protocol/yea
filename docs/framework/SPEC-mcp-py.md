@@ -63,15 +63,16 @@ assume it.
 | `server_key` | `<home>/server/<name>.key` | The server's Ed25519 seed, the same one-line file as `mcp-ts`: created on first run through a temp file and a link (so a reader never sees it half-written), mode `0600`. Its directory must be this user's and writable by no one else (it's created `0700`), and that directory's parent this user's or root's and not writable by its group or others unless sticky; without POSIX owners (Windows), as in `mcp-ts`, only the file checks apply. It's read with `O_NOFOLLOW` and checked on the open file (a regular file of at most 64 KiB, this user's, readable by no one else); without POSIX owners it warns once on stderr that it can't check who owns or can read the file, as `mcp-ts` does. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `load_principal_key(YEA_PRINCIPAL_PUB)` | The pinned principal public key. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call. |
-| `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. |
+| `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `read_tightening`: `deny` is the union, `outOfBand` the stricter. A dict with the file's keys, `deny` and `outOfBand`. As in `mcp-ts`, the two are read by different rules: the option is code, checked once at start-up, so an unknown key or a bad value is a start-up refusal (Closed options, below); the file is re-read on every call, a bad `deny` or `outOfBand` in it refuses every job call, and an unknown field in it only warns. |
 | `state_key` | random per process | The ≥ 32-byte request-state key (see below). |
 | `sub` | stdio: `lambda rctx: ""`; HTTP: required | Who is calling. On `MCPServer` it gets the `ServerRequestContext` (a job passes `ctx.request_context`; the guard middleware has it directly); on FastMCP, FastMCP's request context. Used for the state binding and for undo. |
-| `require_interaction` | `False` | As `mcp-ts`'s `requireInteraction`: every tool that acts (job, guarded and `undo`, on both server kinds) carries Claude Code's prompt-on-every-call key. A `job()`'s own setting wins for that tool, and one that's on marks `undo` too. |
+| `require_interaction` | `False` | As `mcp-ts`'s `requireInteraction`: every tool that acts (job, guarded and `undo`, on both server kinds) carries Claude Code's prompt-on-every-call key. A `job()`'s or `guard()`'s own setting wins for that tool, and one that's on marks `undo` too. |
 
 `approvals.service_id()` returns the server key's public key, the value to pass to
 `yea grant --to` when issuing the policy.
 
-**Start-up refusals.** `yea()` raises, so nothing is served, when `transport="http"` has no
+**Start-up refusals.** `yea()` raises, so nothing is served, when `tighten` has an unknown key or
+a bad value (checked first, before the key file is created); `transport="http"` has no
 `sub`; a `state_key` is passed with a `MemoryStore`; HTTP runs on a `MemoryStore` without
 `single_process=True`; `name` is invalid; or the key file is unsafe.
 
@@ -112,6 +113,24 @@ that serves one person:
   loopback put a reverse proxy in front. `loopback` describes the address served: serving
   `loopback=True` on a public interface refuses every public Host.
 
+### Closed options
+
+As in `mcp-ts` ("Closed options"), every option is closed, nested ones included. The keyword
+arguments are closed by their signatures: Python raises `TypeError` for an unknown keyword. The
+dicts inside them are closed here, before anything is registered, served or written:
+
+| Option | Keys |
+|---|---|
+| `yea(tighten=...)` | `deny` (a list of strings), `outOfBand` (a risk) |
+| `job(annotations=...)` | `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
+
+An unknown key, or a value of the wrong type, raises `TypeError`, naming the key by its path and
+the known ones (`yea(): unknown option "tighten.out_of_band"; known: tighten.deny,
+tighten.outOfBand`). A value outside its set (a `risk` in `job()`, `guard()` or `tighten`, as a
+`transport`) raises `ValueError`. The bridge is `mcp-ts`'s only. The HTTP front end's options are
+keywords too: `http_gate`'s `loopback` is required, and `http_app`'s is on unless turned off, so
+a misspelt one can't leave the Host and Origin checks off.
+
 ### Request state: the SDK seals it
 
 Unlike the TypeScript SDK, `MCPServer` seals every tool's `request_state` itself: its
@@ -146,8 +165,8 @@ it (rather than adding a second one) and leaves it out of `input`.
 
 | Field | Meaning |
 |---|---|
-| `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
-| `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
+| `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. `annotations` is a `ToolAnnotations`, or a dict of its fields by their wire names (`title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), each of its type; any other key is refused, where pydantic alone would ignore it. |
+| `risk` | The tool's default plan risk: `"low"`, `"medium"` or `"high"`, else `job()` raises. A plan's own `risk` wins; the default is `medium`. |
 | `require_interaction` | Optional. `yea()`'s `require_interaction`, for this tool alone. `True` also marks the server's `undo`, whenever `undo` is registered. |
 | `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans whose `undo_window` is a positive integer are undoable (SPEC-approval §1). |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
@@ -180,8 +199,9 @@ with the core's "use a string or an integer" message (SPEC-approval §1).
 
 Turns a tool that's already registered into a job without rewriting it. `config` has
 `describe(input)`, which returns `{summary, effects, uses?, risk?, undo_window?}`, plus the
-optional `revert`, `confirm_with` and `risk` (the default plan risk, and the risk its listing
-shows, as `mcp-ts`'s `GuardConfig.risk`).
+optional `revert`, `confirm_with`, `risk` (the default plan risk, and the risk its listing
+shows, as `mcp-ts`'s `GuardConfig.risk`) and `require_interaction` (as `job()`'s: `yea()`'s, for
+this tool alone, and `True` marks the server's `undo` too).
 
 `guard()` refuses a tool that's already guarded on that server, and one registered with `job()`
 (already a job): at once when this `yea()` registered it, else by the listing's
@@ -454,6 +474,7 @@ python/mcp/src/yea_mcp/undo.py        the undo tool: registered once per server,
 python/mcp/src/yea_mcp/result.py      error results, NOTHING_RAN, and a job's annotations and meta
 python/mcp/src/yea_mcp/server_key.py  the server's own key: named, created on first run, read when private
 python/mcp/src/yea_mcp/policy.py      pinned principal, policy grant and tightening loading
+python/mcp/src/yea_mcp/options.py     closed options: the tighten and annotations dicts, and risk values
 python/mcp/src/yea_mcp/util.py        warn_once, and the FastMCP adapter when a server is FastMCP
 python/mcp/src/yea_mcp/render.py      Lens text and structured_content for plans, receipts and codes
 python/mcp/src/yea_mcp/fastmcp.py     the FastMCP 4 middleware and job registration
@@ -477,8 +498,9 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
   from another server sharing the store;
 - on both server kinds, the listing carries Claude Code's prompt key on exactly the job,
-  guarded and `undo` tools, and on no read, only with `require_interaction`; a job's own
-  `True` marks `undo` too, before or after `undo` is registered;
+  guarded and `undo` tools, and on no read, only with `require_interaction`; a job's or
+  guard's own setting wins for that tool, and its `True` marks `undo` too, before or after
+  `undo` is registered;
 - `guard` wraps an existing tool: the original runs only once approved, its result passes
   through with the receipt in `_meta`, and an output-schema tool's own results are errors. The
   original never sees `preview`. An original that returns `is_error` writes no receipt and
@@ -488,6 +510,9 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
 - `token_subject` returns `""` for a token with no subject;
 - the 2025 in-call path takes step 9 on `NoBackChannelError`;
 - the start-up and per-call refusals listed under `yea()`;
+- closed options (`tests/test_options.py`): an unknown or wrongly typed `tighten` or
+  `annotations` key, and an unlisted `risk`, are refused by name before anything is registered
+  or written;
 - two servers in one process with different `home`s read their own `policy.json` deny lists
   and keep their own default stores; without `home`, `yea()` reads `YEA_HOME` once, at
   start-up (`tests/test_home.py`). Tests pass `home`, `store`, `principal` and `policy` as
@@ -504,7 +529,8 @@ a denied tool never runs, even with a stored consent; a `high` plan is never off
 irreversible plan never auto-runs; a consent for one plan never runs another; a stored copy of
 the policy grant never counts as a consent; a `request_state` without our `yea` object is
 refused; a guarded tool's original handler never runs before approval, and guarding one server
-doesn't guard a same-named tool on another.
+doesn't guard a same-named tool on another; a `tighten` option that can't be read refuses
+start-up, rather than warning and dropping the rule (#368).
 
 ## Boundaries
 

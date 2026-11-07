@@ -34,6 +34,7 @@ import {
   bridged,
   bridgeIn,
   EACH_40,
+  examples,
   type Keys,
   keys,
   proposalsOf,
@@ -397,6 +398,32 @@ describe('bridge security', () => {
     expect(cut).not.toMatch(/\p{Cs}/u);
     expect(clip(`${'a'.repeat(9)}😀`, 10)).toBe(`${'a'.repeat(9)}😀`);
     expect(clip(`${'a'.repeat(9)}😀!`, 10)).toBe(`${'a'.repeat(9)}…`);
+  });
+
+  // AGENTS.md rule 3 (#368): a rule the bridge drops, or one it can't honour, is refused at
+  // start-up, before any service is greeted, so the person never believes it applies.
+  it('a tighten option it can not read or honour refuses start-up, before greeting anyone', async () => {
+    const k = await keys();
+    const ex = await examples(k);
+
+    for (const tighten of [
+      { deny: 'shop.order' },
+      { dney: ['shop.order'] },
+      { outOfBand: 'low' },
+      null,
+    ]) {
+      await expect(
+        bridgeIn(k, ex.clients, { tighten } as never),
+        JSON.stringify(tighten),
+      ).rejects.toThrow(TypeError);
+    }
+
+    await expect(
+      bridgeIn(k, ex.clients, { tighten: { outOfBand: 'low' } } as never),
+    ).rejects.toThrow(
+      /tighten\.outOfBand isn't accepted: every bridge approval is already out of band/,
+    );
+    expect([...ex.cal.sent, ...ex.shop.sent]).toEqual([]);
   });
 });
 

@@ -10,7 +10,6 @@ import {
   type McpServer,
   type RegisteredTool,
   type RequestStateCodec,
-  type ServerContext,
   type StandardSchemaWithJSON,
 } from '@modelcontextprotocol/server';
 import {
@@ -18,16 +17,17 @@ import {
   isMemoryStore,
   keyPair,
   MemoryStore,
-  type Risk,
 } from '@yea-protocol/sdk';
 import { FileStore, home, serverKeyPath } from '@yea-protocol/sdk/node';
 import type { RevertFn, Yea } from './call.js';
-import { type GuardConfig, guardTool } from './guard.js';
-import { type JobConfig, registerJob } from './job.js';
+import { GUARD_CONFIG, type GuardConfig, guardTool } from './guard.js';
+import { JOB_CONFIG, type JobConfig, registerJob } from './job.js';
+import { checkOptions } from './options.js';
 import { pinnedPrincipal } from './policy.js';
 import { checkName, loadServerSeed } from './server-key.js';
 import { promptUndo, registerUndo, type UndoTool, undoFree } from './undo.js';
 import { errorMessage, warnOnce } from './util.js';
+import { YEA_OPTIONS, type YeaOptions } from './yea-options.js';
 
 export type { RevertFn, RevertInput } from './call.js';
 export { PartialApplyError } from './call.js';
@@ -39,40 +39,7 @@ export { errorResult, textResult } from './result.js';
 
 export { PREVIEW } from './schema.js';
 
-export interface YeaOptions {
-  /** The server's name, `[a-z0-9._-]{1,64}`: names its key file and appears in consent codes. */
-  name: string;
-  transport: 'stdio' | 'http';
-  /**
-   * The home directory: `policy.json`, the default store and the default server key live in it.
-   * Default `YEA_HOME`, else `~/.yea`, resolved once. The principal key is never read from it.
-   */
-  home?: string;
-  /** Default: a FileStore (`YEA_STORE`, else `<home>/store`) for stdio, a MemoryStore for HTTP. */
-  store?: ApprovalStore;
-  /** HTTP only: a promise that one process serves every request. HTTP on a MemoryStore must set it. */
-  singleProcess?: boolean;
-  /** Path to the server's Ed25519 seed. Default `<home>/server/<name>.key`, created on first run. */
-  serverKey?: string;
-  /** The pinned principal public key. Default: the file `YEA_PRINCIPAL_PUB` names, checked. */
-  principal?: string;
-  /** The signed policy grant: a `pg1.` token, or a path to one. Default `YEA_POLICY`. */
-  policy?: string;
-  /** Unsigned tightening, merged with `<home>/policy.json`: `{ deny?, outOfBand? }`. */
-  tighten?: { deny?: string[]; outOfBand?: Risk };
-  /** An existing `createRequestStateCodec` result; our state lives under its payload's `yea` key. */
-  codec?: RequestStateCodec<unknown>;
-  /** The ≥ 32-byte codec key. Only with a store every process shares. Default: random. */
-  stateKey?: Uint8Array | string;
-  /** Who is calling. stdio: `() => ''`. HTTP: required, from the transport's authentication. */
-  sub?: (ctx: ServerContext) => string;
-  /**
-   * Mark job tools, guarded tools and `undo` with `_meta['anthropic/requiresUserInteraction']`:
-   * Claude Code then prompts for every call, even in `auto` or `bypassPermissions`, and denies
-   * them in `claude -p`. For people who auto-approve tools. Default false.
-   */
-  requireInteraction?: boolean;
-}
+export type { YeaOptions } from './yea-options.js';
 
 export interface Approvals {
   /** Options for `new McpServer`: installs the codec that verifies our `requestState`. */
@@ -93,12 +60,8 @@ export interface Approvals {
   ): RegisteredTool;
 }
 
-/** The start-up refusals (SPEC-mcp-ts `yea()`): nothing is served when one applies. */
-function checkOptions(o: YeaOptions, memory: boolean) {
-  if (o.transport !== 'stdio' && o.transport !== 'http') {
-    throw new TypeError("yea(): transport must be 'stdio' or 'http'");
-  }
-
+/** The start-up refusals that weigh options together (SPEC-mcp-ts `yea()`): nothing is served when one applies. */
+function checkCombinations(o: YeaOptions, memory: boolean) {
   if (o.transport === 'http' && typeof o.sub !== 'function') {
     throw new TypeError(
       'yea(): HTTP needs sub(ctx), the authenticated person calling (not an OAuth clientId)',
@@ -136,12 +99,14 @@ const randomKey = () => globalThis.crypto.getRandomValues(new Uint8Array(32));
 
 /** Creates the approval context, once per process (SPEC-mcp-ts `yea(options)`). */
 export function yea(o: YeaOptions): Approvals {
+  // First, so nothing is written (the server key is created on first run) for options that refuse.
+  checkOptions('yea()', o, YEA_OPTIONS);
   checkName(o.name);
 
   // The default store is a MemoryStore on HTTP; it is only made once the options pass.
   const memory = o.store ? isMemoryStore(o.store) : o.transport === 'http';
 
-  checkOptions(o, memory);
+  checkCombinations(o, memory);
 
   // The one place the home is resolved; everything below is handed it.
   const dir = o.home ?? home();
@@ -200,49 +165,54 @@ function logServiceId(y: Yea, name: string) {
 
 function approvalsFor(y: Yea): Approvals {
   const undo = new WeakMap<McpServer, UndoTool>();
-  // Servers with a job whose own requireInteraction is on: their undo prompts too.
+  // Servers with a job or guard whose own requireInteraction is on: their undo prompts too.
   const prompting = new WeakSet<McpServer>();
-  const addRevert = (
+  /** Registers through `add` once `undo` is free for a revert, then marks `undo` and adds to it. */
+  const register = (
     server: McpServer,
-    name: string,
-    revert: RevertFn | undefined,
+    config: { revert?: unknown; requireInteraction?: boolean },
+    add: () => { name: string; tool: RegisteredTool },
   ) => {
+    const revert = config.revert as RevertFn | undefined;
+
+    if (revert) {
+      undoFree(server, undo);
+    }
+
+    const { name, tool } = add();
+
+    if (config.requireInteraction === true) {
+      prompting.add(server);
+      promptUndo(server, undo);
+    }
+
     if (revert) {
       const prompt = y.requireInteraction || prompting.has(server);
 
       registerUndo(y, server, undo, prompt).set(name, revert);
     }
+
+    return tool;
   };
 
   return {
     serverOptions: () => ({ requestState: { verify: y.codec.verify } }),
     serviceId: () => y.serviceId(),
     job: (server, name, config) => {
-      if (config.revert) {
-        undoFree(server, undo);
-      }
+      checkOptions('job()', config, JOB_CONFIG);
 
-      const tool = registerJob(y, server, name, config);
-
-      if (config.requireInteraction === true) {
-        prompting.add(server);
-        promptUndo(server, undo);
-      }
-
-      addRevert(server, name, config.revert as RevertFn | undefined);
-
-      return tool;
+      return register(server, config, () => ({
+        name,
+        tool: registerJob(y, server, name, config),
+      }));
     },
     guard: (server, tool, config) => {
-      if (config.revert) {
-        undoFree(server, undo);
-      }
+      checkOptions('guard()', config, GUARD_CONFIG);
 
-      const name = guardTool(y, server, tool, config);
-
-      addRevert(server, name, config.revert);
-
-      return tool;
+      return register(server, config, () => ({
+        name: guardTool(y, server, tool, config),
+        tool,
+      }));
     },
   };
 }

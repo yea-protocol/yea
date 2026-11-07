@@ -5,6 +5,14 @@
 import type { Server } from 'node:http';
 import { type FetchGate, serveFetch } from '@yea-protocol/sdk/node';
 import { MAX_BODY } from './http.js';
+import {
+  aFunction,
+  aString,
+  checkOptions,
+  type Rule,
+  required,
+  whole,
+} from './options.js';
 
 export interface ServeHttpOptions {
   port: number;
@@ -19,6 +27,20 @@ export interface ServeHttpOptions {
   maxConnections?: number;
 }
 
+/** One rule per key of `ServeHttpOptions` (SPEC-mcp-ts, "Closed options"), as `serveFetch` reads them. */
+const SERVE_OPTIONS = {
+  port: required({
+    is: 'a port number, 0 to 65535',
+    ok: (v) =>
+      typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 65535,
+  }),
+  host: required(aString),
+  maxBody: whole(0),
+  gate: aFunction,
+  requestTimeout: whole(1),
+  maxConnections: whole(1),
+} satisfies Record<keyof ServeHttpOptions, Rule>;
+
 /**
  * Serve `app` on `host:port` until the process ends; resolves with the server once it's
  * listening. `gate` runs before the body is read, so a request without the token is refused
@@ -29,9 +51,15 @@ export function serveHttp(
   app: (req: Request) => Promise<Response>,
   o: ServeHttpOptions,
 ): Promise<Server> {
+  checkOptions('serveHttp()', o, SERVE_OPTIONS);
+
   return serveFetch(app, {
-    ...o,
+    port: o.port,
+    host: o.host,
     maxBody: o.maxBody ?? MAX_BODY,
+    gate: o.gate,
+    requestTimeout: o.requestTimeout,
+    maxConnections: o.maxConnections,
     headers: true,
   });
 }
