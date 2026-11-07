@@ -1,17 +1,19 @@
 """The commit ledger (GLOSSARY.md): each proposal's life, proposed, committed, receipted, undone,
 expired or in doubt, and the usage ledger its ``total`` limits count against. A COMMIT is a replay
 first (§4.4); otherwise the ledger evaluates the grant with its limits and reserves in the same
-synchronous step (ADR-0002). It applies a plan at most once and reverts it at most once. Like
+synchronous step (ADR-0002). A proposal takes effect at most once, and so does its undo. Like
 ts/src/service/commit-ledger.ts.
 
 Every run (an apply, a revert, an auto INTENT's answer) is shielded from its caller's cancellation,
-which TS has no need for: see runs.py. A commit whose run was cut off after it started (its loop torn
-down or closed with it pending) is in doubt: it may have taken effect, so what it held counts as
-spent, it never applies again, and every retry gets an error saying its outcome is unknown (SPEC
-§4.4). For 900s after, an auto INTENT for the same principal and capability only proposes, since the
-agent may be sending the same action again. It does so too after an auto INTENT whose reply was
-lost with its loop. One Service serves one event loop, since the usage ledger isn't thread-safe; waiting
-on a run in flight on another loop raises ``internal``.
+which TS has no need for: see runs.py. A plan's ``apply`` that raises says it took no effect (SPEC
+§4.4), so the proposal is freed for a retry, as in TS. But a commit whose run was cut off from
+outside after it started (its loop torn down or closed with it pending) is in doubt: it may have
+taken effect, so what it held counts as spent, it never applies again, and every retry gets an
+error saying its outcome is unknown (SPEC §4.4). For 900s after, an auto INTENT for the same
+principal and capability only proposes, since the agent may be sending the same action again. It
+does so too after an auto INTENT whose reply was lost with its loop. One Service serves one event
+loop, since the usage ledger isn't thread-safe; waiting on a run in flight on another loop raises
+``internal``.
 
 The entry of the ``commit_ledger`` package: its other modules are private to it."""
 
@@ -23,6 +25,7 @@ from typing import Any
 
 from ...errors import YeaError, fix
 from ...store import Reservation
+from ...undo_window import is_undo_window
 from ..plan import CommitCtx
 from ..replies import consent_request, error_reply, event_frame, replay_of, reply_frame
 from ..util import Emit, _call
@@ -118,12 +121,12 @@ class CommitLedger:
 
     async def auto_commit(self, stored: StoredProposal, admit: Admit, answer: Answer) -> dict | None:
         """Commit an auto INTENT's fresh proposal now if it is undoable and its grant admits it
-        outright (§4.3.1): the same step as a COMMIT. None leaves it a proposal. An undo window of 0
-        can never be used, so it doesn't count; nor does a grant while a commit for its principal
-        and capability is in doubt."""
+        outright (§4.3.1): the same step as a COMMIT. None leaves it a proposal. Undoable means a
+        window that is a positive integer (``is_undo_window``): any other can never be used, so it
+        doesn't count. Nor does a grant while a commit for its principal and capability is in doubt."""
         proposal = stored.proposal
         undo = proposal["undo"]
-        if not undo or undo["window"] <= 0:
+        if not (isinstance(undo, dict) and is_undo_window(undo.get("window"))):
             return None
         admitted = admit(proposal, self._usage)
         if isinstance(admitted, YeaError):

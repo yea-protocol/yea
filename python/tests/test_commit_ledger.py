@@ -307,12 +307,18 @@ def test_commits_an_undoable_proposal_its_grant_admits():
     run(go())
 
 
+# #83: only an integer from 1 to 2^52 is an undo window (is_undo_window); TS tests the same gate with 0.
+NOT_WINDOWS = (0, -1, 1.5, "3600", float("nan"), 2**52 + 1, True, None)
+
+
 def test_leaves_a_proposal_when_it_is_irreversible_has_no_undo_window_or_its_grant_refuses():
     async def go():
         f, grant = LedgerFixture(), TotalGrant(5)
         assert await f.ledger.auto_commit(f.propose(1), grant.admit, ANSWER) is None
-        no_window = f.propose(1, revert=lambda c: None, undo_window=0)
-        assert await f.ledger.auto_commit(no_window, grant.admit, ANSWER) is None
+        for w in NOT_WINDOWS:
+            no_window = f.propose(1, revert=lambda c: None)
+            no_window.proposal["undo"] = {"window": w}
+            assert await f.ledger.auto_commit(no_window, grant.admit, ANSWER) is None, w
         assert grant.calls == 0
         assert await f.ledger.auto_commit(f.propose(10, revert=lambda c: None), grant.admit, ANSWER) is None
 
