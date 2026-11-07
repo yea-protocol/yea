@@ -94,10 +94,16 @@ def _starts_a_process(name: str) -> bool:
     return name in REFUSED_OS or name.startswith(("exec", "spawn"))
 
 
+def _binds(alias: ast.alias, module: str) -> bool:
+    """Whether an ``import`` binds ``module`` itself: ``import os as o``, or ``import os`` and
+    ``import os.path``, which both bind ``os``."""
+    return alias.name == module if alias.asname else alias.name.split(".")[0] == module
+
+
 def _aliases(tree: ast.AST, module: str) -> set[str]:
-    """The names a file binds to ``module`` itself: ``import os``, ``import os as o``."""
-    return {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
-            if a.name == module}
+    """The names a file binds to ``module`` itself: ``import os``, ``import os.path``, ``import os as o``."""
+    return {a.asname or module for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
+            if _binds(a, module)}
 
 
 def _on(node: ast.AST, names: set[str]) -> bool:

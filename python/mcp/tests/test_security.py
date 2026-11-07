@@ -887,8 +887,9 @@ def test_the_import_audit_names_the_file_and_the_module(tmp_path, monkeypatch):
                                  "getattr(os, 'O_NOFOLLOW', 0)\ngetattr(o, name)\n"
                                  "import sys as s\ns.modules['subprocess']\n")
     (pkg / "entry.py").write_text("import multiprocessing\nfrom cryptography import x\nfrom . import part\n"
-                                  "from . import bad\n")
+                                  "from . import bad\nfrom . import dotted\n")
     (pkg / "bad.py").write_text("def broken(:\n")
+    (pkg / "dotted.py").write_text("import os.path\nos.system('x')\n")  # ``import os.path`` binds ``os`` too
     monkeypatch.setattr(audit, "REPO", tmp_path)
     monkeypatch.setitem(audit.ROOTS, "yea_mcp", tmp_path)
     found = audit.import_audit([pkg / "entry.py"], {"os": None, "sys": None, "cryptography": {"elsewhere.py"}})
@@ -898,5 +899,5 @@ def test_the_import_audit_names_the_file_and_the_module(tmp_path, monkeypatch):
         "yea_mcp/part.py: importlib", "yea_mcp/part.py: os.system", "yea_mcp/part.py: os.execv",
         "yea_mcp/part.py: __import__()", "yea_mcp/part.py: __import__", "yea_mcp/part.py: os.posix_spawn",
         "yea_mcp/part.py: os.system", "yea_mcp/part.py: getattr(os, …)", "yea_mcp/part.py: getattr(o, …)",
-        "yea_mcp/part.py: sys.modules",
+        "yea_mcp/part.py: sys.modules", "yea_mcp/dotted.py: os.system",
         "yea_mcp/bad.py: does not parse: invalid syntax (<unknown>, line 1)"])
