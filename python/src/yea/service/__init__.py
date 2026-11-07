@@ -29,7 +29,7 @@ from .plan import (
     send,
     update,
 )
-from .replies import error_reply, reply_frame
+from .replies import error_reply, log, reply_frame
 from .state import ServiceState, _AskDef, _IntentDef
 from .undo import on_undo
 from .util import Emit, random_id
@@ -62,7 +62,7 @@ class Service:
     ):
         self.name, self.summary = name, summary
         self.default_budget = default_budget
-        # What every verb's handler reads and changes (state.py); the properties below read it.
+        # What every verb's handler reads and changes (state.py), the commit ledger included.
         self.state = ServiceState(
             id, trust if callable(trust) else list(trust), require_grants, proposal_ttl,
             handles or MemoryHandleStore(), now or time.time,
@@ -87,13 +87,6 @@ class Service:
     @property
     def handles(self) -> HandleStore:
         return self.state.handles
-
-    # The state's tables, as the tests read them.
-    _proposals = property(lambda self: self.state.proposals)
-    _receipts = property(lambda self: self.state.receipts)
-    _commits = property(lambda self: self.state.commits)
-    _spent = property(lambda self: self.state.spent)
-    _auto_seen = property(lambda self: self.state.auto_seen)
 
     def now(self) -> int:
         return self.state.now()
@@ -126,8 +119,15 @@ class Service:
 
     async def handle(self, frame: Any, emit: Emit | None = None) -> dict:
         """Handle one request frame: verify it, then run its verb's handler. EVENTs go to ``emit`` (a
-        plain callable). Returns the final reply."""
-        emit = emit or (lambda _e: None)
+        plain callable). Returns the final reply. An ``emit`` that raises (its client hung up) never
+        fails the request: that EVENT is dropped and logged (see ``_never_raises``).
+
+        Cancelling the task that awaits this stops the wait only: a commit, undo or auto INTENT it
+        started runs to the end, so a retry of the frame gets a replay. Serve a Service from one event
+        loop; its commit ledger is not thread-safe. Let requests finish before closing or dropping the
+        loop: one cut off mid-run is in doubt, so its retry gets ``internal`` and it never runs again
+        (SPEC §4.4)."""
+        emit = _never_raises(emit or (lambda _e: None))
         re = frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
         try:
             req = verify_request(self.state, frame, self.default_budget)
@@ -145,6 +145,19 @@ class Service:
             return on_expand(self.state, req)
         except Exception as e:  # noqa: BLE001 — every failure becomes an ERROR reply
             return error_reply(re, e)
+
+
+def _never_raises(emit: Emit) -> Emit:
+    """``emit``, but an EVENT it raises on is dropped and logged. A raise would otherwise fail a commit
+    mid-``apply``, free it, and let a retry run ``apply`` a second time. Like TS's ``neverThrows``."""
+
+    def send(event: dict) -> None:
+        try:
+            emit(event)
+        except Exception:  # noqa: BLE001 — no EVENT may fail the request it reports on
+            log.warning("dropped an EVENT that could not be sent (re %s)", event.get("re"), exc_info=True)
+
+    return send
 
 
 def service(id: str, name: str, summary: str = "", **kw: Any) -> Service:
