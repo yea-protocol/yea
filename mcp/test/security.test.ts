@@ -906,6 +906,15 @@ describe('the code that reads a form answer (#337)', () => {
       "import { execFile } from 'node:child_process';",
     ]);
     const bad = file('bad.ts', ["const s = 'not closed"]);
+    // A `/` is division after a value, `)` or `]`, and a regex after `if (…)`; where the tokens
+    // before it can't tell (here a postfix `++`), the file fails rather than risk hiding code.
+    const s = file('slashes.ts', [
+      'const half = (a + f(b)) / 2 / list[0] / 3;',
+      "if (ok) /'/.test(s); import 'node:http2';",
+    ]);
+    const u = file('unsure.ts', [
+      "const n = i++ / 2; import('node:vm'); const m = n / 3;",
+    ]);
 
     expect(
       importAudit([join(dir, 'entry.ts')], { 'node:fs': 'any file' }),
@@ -927,8 +936,14 @@ describe('the code that reads a form answer (#337)', () => {
       `${p}: require(`,
       `${e}: cannot resolve ./missing.js`,
     ]);
-    expect(importAudit([join(dir, 'bad.ts')], {})).toEqual([
+    expect(importAudit([join(dir, 'slashes.ts')], {})).toEqual([
+      `${s}: node:http2`,
+    ]);
+    expect(
+      importAudit([join(dir, 'bad.ts'), join(dir, 'unsure.ts')], {}),
+    ).toEqual([
       `${bad}: does not tokenize, line 1: a string is not closed`,
+      `${u}: does not tokenize, line 1: a / here could divide or start a regular expression`,
     ]);
   });
 });

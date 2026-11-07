@@ -9,20 +9,19 @@
 export interface Token {
   kind: 'name' | 'string' | 'template' | 'regex' | 'number' | 'punct';
   value: string;
-  /** The 1-based line it starts on. */
+  /** The 1-based line it ends on. */
   line: number;
 }
 
 /** A source file the tokenizer can't classify, with the line where it stopped. */
 export class TokenError extends Error {}
 
-/** After these names a `/` starts a regular expression, not a division. */
+/** After these keywords a `/` starts a regular expression, not a division. */
 const BEFORE_REGEX = new Set([
   'return',
   'typeof',
   'instanceof',
   'in',
-  'of',
   'new',
   'delete',
   'void',
@@ -32,7 +31,13 @@ const BEFORE_REGEX = new Set([
   'else',
   'yield',
   'await',
+  'extends',
+  'default',
+  'break',
+  'continue',
 ]);
+/** After the `)` that closes these keywords' `(`, a `/` starts a regular expression: `if (a) /re/`. */
+const HEADS = new Set(['if', 'while', 'for', 'with']);
 const PUNCT = new Set('{}()[];,.<>+-*%&|^!~?:=@#');
 const NAME_START = /[\p{ID_Start}$_]/u;
 const NAME_PART = /[\p{ID_Continue}$‌‍]/u;
@@ -46,10 +51,17 @@ export function tokenize(text: string): Token[] {
   return lexer.tokens;
 }
 
+/** What a `/` is: a regular expression, division, or either as far as the tokens before it say. */
+type Slash = 'regex' | 'division' | 'unsure';
+
 /** The lexer's state: where it is, what it has read, and the line count. */
 class Lexer {
   tokens: Token[] = [];
   private i = 0;
+  /** For each open `(`, what a `/` after its `)` is: `if (a) /re/`, but `f(a) / 2`. */
+  private readonly parens: Slash[] = [];
+  /** What a `/` after the last `)` is. */
+  private afterParen: Slash = 'division';
   /** Where each line after the first starts, for line numbers. */
   private readonly breaks: number[] = [];
 
@@ -116,6 +128,7 @@ class Lexer {
     } else if (c === '/') {
       this.slash();
     } else if (PUNCT.has(c)) {
+      this.paren(c);
       this.i++;
       this.push('punct', c);
     } else {
@@ -123,56 +136,131 @@ class Lexer {
     }
   }
 
-  /** A `/` that isn't a comment: a regular expression where one can start, else division. */
+  /**
+   * A `/` that isn't a comment: a regular expression or division, as `slashKind` says. Where it's
+   * unsure, the `/` divides only if no regular expression could close on its line; else this throws.
+   */
   private slash() {
-    if (!this.regexMayStart()) {
+    const kind = this.slashKind();
+    const end = kind === 'division' ? undefined : this.regexEnd();
+
+    if (end === undefined) {
+      if (kind === 'regex') {
+        this.fail('a regular expression is not closed');
+      }
+
       this.i++;
       this.push('punct', '/');
 
       return;
     }
 
-    const start = this.i++;
+    if (kind === 'unsure') {
+      this.fail('a / here could divide or start a regular expression');
+    }
+
+    const start = this.i;
+
+    this.i = end;
+    this.run(0, /[a-z]/);
+    this.push('regex', this.text.slice(start, this.i));
+  }
+
+  /**
+   * What a `/` here is, by the token before it. After a value on an earlier line it's unsure, as a
+   * type can end a declaration there (`let a: T`, then `/re/.test(b)` on the next line).
+   */
+  private slashKind(): Slash {
+    const prev = this.tokens.at(-1);
+
+    if (prev === undefined) {
+      return 'regex';
+    }
+
+    const kind = this.slashAfter(prev);
+
+    return kind === 'division' && prev.line < this.lineAt(this.i)
+      ? 'unsure'
+      : kind;
+  }
+
+  /**
+   * What a `/` after `prev` is: a regular expression after an operator, a keyword like `return` or
+   * `if (…)`, and division after a value. It's unsure after `}`, `++`, `--`, `of` (also a name)
+   * and a template, which can each come before either.
+   */
+  private slashAfter(prev: Token): Slash {
+    const name = this.lastName();
+
+    if (prev.kind === 'punct') {
+      const before = this.tokens.at(-2);
+      const doubled =
+        (prev.value === '+' || prev.value === '-') &&
+        before?.kind === 'punct' &&
+        before.value === prev.value;
+
+      if (prev.value === ')') {
+        return this.afterParen;
+      }
+
+      return prev.value === ']'
+        ? 'division'
+        : prev.value === '}' || doubled
+          ? 'unsure'
+          : 'regex';
+    }
+
+    if (prev.kind === 'template' || name === 'of') {
+      return 'unsure';
+    }
+
+    return name !== undefined && BEFORE_REGEX.has(name) ? 'regex' : 'division';
+  }
+
+  /** Track each `(` and `)`, for what a `/` after the `)` is. */
+  private paren(c: string) {
+    if (c === '(') {
+      const name = this.lastName() ?? '';
+
+      this.parens.push(
+        HEADS.has(name) ? 'regex' : name === 'await' ? 'unsure' : 'division',
+      );
+    } else if (c === ')') {
+      this.afterParen = this.parens.pop() ?? this.fail('a ) closes no (');
+    }
+  }
+
+  /** The last token if it's a name and not a property (`a.in`), else undefined. */
+  private lastName(): string | undefined {
+    const [before, prev] = [this.tokens.at(-2), this.tokens.at(-1)];
+    const property = before?.kind === 'punct' && before.value === '.';
+
+    return prev?.kind === 'name' && !property ? prev.value : undefined;
+  }
+
+  /** The index after the `/` that would close a regular expression opening here, or undefined if none closes on this line. */
+  private regexEnd(): number | undefined {
     let inClass = false;
 
-    for (; this.i < this.text.length; this.i++) {
-      const c = this.text[this.i];
+    for (let i = this.i + 1; i < this.text.length; i++) {
+      const c = this.text[i];
 
-      if (c === '\n') {
-        break;
+      if (c === '\n' || (c === '\\' && this.text[i + 1] === '\n')) {
+        return undefined;
       }
 
       if (c === '\\') {
-        this.i++;
+        i++;
       } else if (c === '[') {
         inClass = true;
       } else if (c === ']') {
         inClass = false;
       } else if (c === '/' && !inClass) {
-        this.i++;
-        this.run(0, /[a-z]/);
-        this.push('regex', this.text.slice(start, this.i));
-
-        return;
+        return i + 1;
       }
     }
 
-    this.fail('a regular expression is not closed');
-  }
-
-  /** Whether a `/` here starts a regular expression, judged by the token before it. */
-  private regexMayStart(): boolean {
-    const prev = this.tokens.at(-1);
-
-    if (prev === undefined) {
-      return true;
-    }
-
-    if (prev.kind === 'name') {
-      return BEFORE_REGEX.has(prev.value);
-    }
-
-    return prev.kind === 'punct' && prev.value !== ')' && prev.value !== ']';
+    return undefined;
   }
 
   /** A quoted string's contents; the quote at `this.i` opens it. */
