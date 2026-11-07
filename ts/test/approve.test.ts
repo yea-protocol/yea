@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { shop } from '../../examples/shop.ts';
-import { jobApprovedLines, saveConsent } from '../src/cli/approve.js';
+import { jobApprovedLines, saveConsent } from '../src/cli/approve/job.js';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
 

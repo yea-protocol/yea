@@ -62,10 +62,10 @@ async function consented(
 
 /**
  * A first round: a consent on the call runs its plan or asks again; else a stored consent runs
- * its plan; else the policy decides; else ask. With no plans, a consent changes nothing.
+ * its plan; else the policy decides; else ask.
  */
 export async function firstRound(r: Round): Promise<JobCallOutcome> {
-  if (r.call.consent !== undefined && r.plans.length > 0) {
+  if (r.call.consent !== undefined) {
     return carriedRound(r, r.call.consent);
   }
 

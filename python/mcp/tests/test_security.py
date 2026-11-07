@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import httpx2
@@ -18,7 +19,7 @@ import pytest
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
-from yea import Plan, create, issue_grant
+from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed
 from yea.approval import consent_hash_of
 from yea.store import FileStore
 
@@ -106,8 +107,22 @@ def _tampered(s: str) -> str:
     return s[:i] + ("B" if s[i] == "A" else "A") + s[i + 1:]
 
 
-async def test_a_yea_consent_for_one_plan_never_runs_another_and_a_tampered_one_never_falls_to_the_policy(world):
-    """[M18] A consent on the call is checked exactly as one from the store (#358)."""
+_STRANGER = key_from_seed(bytes([9]) * 32)
+_NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
+
+
+def _variant(code: dict, by=PRINCIPAL, to: str | None = None, svc: str | None = None, can: str | None = None,
+             exp: int | None = None) -> str:
+    """The consent ``yea approve`` would print for ``code``, with one part changed."""
+    c = decode_consent_code(code["code"])
+    return issue_grant(by, to or c["service"], [{"svc": [svc or c["service"]]}, {"verbs": ["COMMIT"]},
+                                                {"can": [can or c["capability"]]}, {"only": c["hash"]},
+                                                {"exp": c["expires"] if exp is None else exp}]).encode()
+
+
+async def test_a_yea_consent_forged_altered_expired_for_another_server_tool_or_plan_or_used_runs_nothing(world):
+    """[M18] A consent on the call is checked exactly as one from the store, even where the policy
+    would run the plan by itself (#358)."""
     done = []
 
     @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
@@ -115,14 +130,26 @@ async def test_a_yea_consent_for_one_plan_never_runs_another_and_a_tampered_one_
         return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event), undo_window=60)]
 
     async with world.client("auto") as c:  # can't ask
-        r = await c.call_tool("reschedule", {"event": "e1"})
-        consent = printed_consent(r.structured_content["codes"][0])
-        other = await c.call_tool("reschedule", {"event": "e2", "yea_consent": consent})
-        assert other.is_error and "can't be used: it approves none of these plans" in text(other)
+        (code,) = (await c.call_tool("reschedule", {"event": "e1"})).structured_content["codes"]
+        consent = printed_consent(code)
+        refusals = [
+            ({"event": "e2", "yea_consent": consent}, "it approves none of these plans"),
+            ({"event": "e1", "yea_consent": _variant(code, by=_STRANGER)}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, to=_STRANGER.public)}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, svc=_STRANGER.public)}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, can="delete_branch")}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, exp=int(time.time()) - 1)}, "it has expired"),
+        ]
         world.grant({"can": ["reschedule"]}, {"risk": "low"})  # the policy alone would now run e1
+        for args, why in refusals:
+            r = await c.call_tool("reschedule", args)
+            assert r.is_error and f"the consent passed as yea_consent can't be used: {why}" in text(r), why
+        # Altered on the way: refused, whatever part the change lands in.
         forged = await c.call_tool("reschedule", {"event": "e1", "yea_consent": _tampered(consent)})
         assert forged.is_error and "the consent passed as yea_consent can't be used" in text(forged) and done == []
         assert not (await c.call_tool("reschedule", {"event": "e1", "yea_consent": consent})).is_error
+        again = await c.call_tool("reschedule", {"event": "e1", "yea_consent": consent})
+        assert again.is_error and "can't be used: it was already used" in text(again)
     assert done == ["e1"]
 
 
@@ -867,6 +894,7 @@ ALLOWED: dict[str, set[str] | None] = {
     "dataclasses": None,  # value types
     "datetime": None,  # Lens dates
     "decimal": None,  # exact amounts
+    "errno": None,  # error names (EACCES) for a stored consent that can't be read
     "fastmcp": None,  # the FastMCP adapter, an optional extra
     "hashlib": None,  # sha256 for plan hashes and store names
     "inspect": None,  # reading handler signatures
@@ -886,7 +914,8 @@ ALLOWED: dict[str, set[str] | None] = {
     "unicodedata": None,  # phrase normalization
     "weakref": None,  # per-server state in yea_mcp/__init__.py
     # Narrowed to the files that need them:
-    "sys": {"python/mcp/src/yea_mcp/__init__.py", "python/mcp/src/yea_mcp/util.py"},  # stderr; sys.modules is refused
+    # stderr (file_store.py: a consent it can't read, #358); sys.modules is refused
+    "sys": {"python/mcp/src/yea_mcp/__init__.py", "python/mcp/src/yea_mcp/util.py", "python/src/yea/store/file_store.py"},
     "cryptography": {"python/src/yea/keys.py"},  # the SDK's Ed25519, which verifies consents
     "asyncio": {"python/src/yea/store/lock.py"},  # it can start processes, so only where it's needed
 }

@@ -5,7 +5,7 @@ and never falls through to a stored consent or the policy."""
 
 from __future__ import annotations
 
-from ..approval import NOT_A_CONSENT, OTHER_PHRASE, HashedPlan, check_job_consent, consent_expiry
+from ..approval import NOT_A_CONSENT, OTHER_PHRASE, HashedPlan, check_job_consent, consent_expiry, strip_phrase_edge
 from .ask import ask
 from .outcome import Outcome, Round
 
@@ -41,8 +41,10 @@ async def _approved_by(r: Round, token: str) -> HashedPlan | str:
 
 
 async def carried_round(r: Round, token: str) -> Outcome:
-    """A first round that carries a consent: it runs the plan it approves, or the call asks again."""
-    approved = await _approved_by(r, token)
+    """A first round that carries a consent: it runs the plan it approves, or the call asks again.
+    The edge set a typed phrase loses (§3) is stripped first, so the newline a terminal copy adds
+    doesn't matter: the signature covers nothing outside the ``pg1.`` token."""
+    approved = await _approved_by(r, strip_phrase_edge(token))
     if isinstance(approved, HashedPlan):
         return Outcome("run", plan=approved, how="approved")
     return ask(r, f"the consent passed as yea_consent can't be used: {approved}", 1)

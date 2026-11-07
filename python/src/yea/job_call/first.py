@@ -12,9 +12,9 @@ from .outcome import Outcome, Round
 
 async def first_round(r: Round) -> Outcome:
     """A consent on the call runs its plan or asks again; else a stored consent runs its plan; else
-    the policy decides; else ask. With no plans, a consent changes nothing."""
+    the policy decides; else ask."""
     call = r.call
-    if call.consent is not None and r.plans:
+    if call.consent is not None:
         return await carried_round(r, call.consent)
     stored = await consent_for(r.plans, r.store, call.policy, call.now, r.phrase_for)
     if stored.plan is not None:

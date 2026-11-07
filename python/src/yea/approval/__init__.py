@@ -29,7 +29,7 @@ from .decision import Decision, decide, denied_reason, needs_approval
 from .form import build_form, offered_plans
 from .judge import Verdict, judge_answer
 from .ledger import release_all, reserve_all, settle_all, spent
-from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of
+from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of, strip_phrase_edge
 from .pinned_key import (
     _resolve_links,  # noqa: F401 — the key-file tests use it
     check_key_file,
@@ -54,6 +54,7 @@ __all__ = [
     "input_hash",
     "HashedPlan",
     "normalize_phrase",
+    "strip_phrase_edge",
     "checked_phrase",
     "phrase_of",
     "phrase_matches",

@@ -396,9 +396,11 @@ consent leaves no such reason.
 **A consent on the call.** The consent `yea approve` prints can also come back on the call,
 so the server and `yea approve` needn't share a store. The person pastes it into the chat,
 and the agent calls the tool again with the same input and the consent as `yea_consent`.
-Every job tool takes that argument beside `preview`. It's a string, the `pg1.` grant exactly as
+Every job tool takes that argument beside `preview`. It's a string, the `pg1.` grant as
 printed; absent or `null` means the call carries none, and any other type is an invalid
-argument. It's taken off before the input is validated, so it's no part of the input, the plan
+argument. The edge set a typed phrase loses (§3) is stripped from both ends first, so the
+newline a terminal copy often carries doesn't matter: the signature covers nothing outside the
+token. It's taken off before the input is validated, so it's no part of the input, the plan
 hash or the input hash, and a tool's own input may not have a field of that name.
 
 A first round that carries a consent (a preview doesn't read it, and a retry is judged on the
@@ -420,7 +422,8 @@ used: <why>`, where `<why>` is the first that applies:
 | `it approves none of these plans` | it passes, but binds no recomputed plan's consent hash: another plan, other input, or a phrase that changed |
 | `it was already used` | its grant id was already consumed |
 
-A call with no plans is refused as `no plans`, as without a consent. These reasons are fixed
+A call whose handler returns no plans is refused before any consent is read, as it is without
+one (`<tool> has no way to do this`). These reasons are fixed
 text, pinned by the job call cases, so both languages say the same.
 
 Carrying a consent through the chat gives the model nothing to forge. Nothing the model passes
@@ -517,12 +520,14 @@ are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers 
 removed after `exp`.
 
 **An unreadable consent is absent.** A `consents/` file that exists but can't be read (a mode
-or owner that shuts the server out, a directory in its place, bytes that aren't UTF-8) counts
-as no consent, and the server writes one line to stderr naming the file and the error. The
-call then asks as it would without one. A consent only ever adds a way to run, so treating
-an unreadable one as absent never runs more than the policy would. And the fs error, with its
-path, never reaches the model's context. Every other store read that fails is still a store
-error, and nothing runs.
+or owner that shuts the server out, or a directory in its place) counts as no consent, and the
+server writes one line to stderr naming the file and the error. The call then asks as it would
+without one. A consent only ever adds a way to run, so treating an unreadable one as absent
+never runs more than the policy would. And the fs error, with its path, never reaches the
+model's context. A file whose bytes aren't UTF-8 is no consent either: TypeScript reads it with
+replacement characters, which no grant decodes from, and Python counts the decode error as
+unreadable. Any other read the store makes that fails is still a store error, and nothing
+runs.
 
 ## 9. Security
 
@@ -640,8 +645,12 @@ The bridge's consent codes work the same way (SPEC-bridge, `yea_consent`).
   config), the agent as another that can't read or write the server's store, and the
   principal as a third. The consent travels on the call in that layout as well. The guides
   don't walk through it yet, and the shared-store variants are #376.
-- **A restarted server keeps its totals** only with a persistent store, which is why stdio
-  defaults to `FileStore`.
+- **A restarted server keeps its totals and its one-time markers** only with a persistent
+  store, which is why stdio defaults to `FileStore`. On a `MemoryStore`, a consent used before a
+  restart runs again within its `exp`, since the model still holds a pasted consent's bytes. A
+  form state doesn't: a `MemoryStore` can't be given a shared state key, so the restarted
+  server's new key refuses it. (Several processes on one `MemoryStore` are refused at start-up,
+  SPEC-mcp-ts.)
 - **Short consents.** Consent grants expire in 10 minutes by default, which bounds a replay
   if a marker is ever deleted.
 - **Fail closed** everywhere: an invalid state, a missing or unsigned policy, an unpinned key,
@@ -748,9 +757,9 @@ export function decide(
   - a consent for one plan can't run another, and a replayed state or consent runs nothing;
   - a consent code with an edited phrase is refused, and a consent signed for an edited phrase
     never runs; a phrase over 64 characters is refused;
-  - a consent on the call (`yea_consent`) that is forged, altered, expired, for another server
-    or tool, already used, or for another plan runs nothing, and never falls through to the
-    policy;
+  - a consent on the call (`yea_consent`) that is forged, altered, expired, issued to another
+    key, for another server or tool, already used, or for another plan runs nothing, and never
+    falls through to the policy;
   - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
     the result;
   - an irreversible plan never auto-runs, whatever the grant says;

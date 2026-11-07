@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .._json import canonical, sha256_b64url
+from .._json import MAX_SAFE_INT, canonical, sha256_b64url
 from ..grants import Grant, GrantContext, consent_code, decode_grant, verify_grant
 from ..store import ApprovalStore
 from ..uses import check_uses
@@ -126,6 +126,11 @@ def _bound_hash(g: Grant) -> str | None:
 
 
 def _expiry(g: Grant) -> int | None:
-    """The earliest ``exp`` in the grant; consents must have one, which bounds a replay."""
-    exps = [c["exp"] for b in g.blocks for c in b["p"]["caveats"] if isinstance(c, dict) and type(c.get("exp")) is int]
+    """The earliest ``exp`` in the grant; consents must have one, which bounds a replay. Only a safe
+    integer counts, as in TypeScript, so both languages agree on what is shaped like a consent."""
+    exps = [c["exp"] for b in g.blocks for c in b["p"]["caveats"] if isinstance(c, dict) and _safe_int(c.get("exp"))]
     return min(exps) if exps else None
+
+
+def _safe_int(v: Any) -> bool:
+    return type(v) is int and abs(v) <= MAX_SAFE_INT

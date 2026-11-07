@@ -1816,11 +1816,17 @@ describe('approval security (SPEC-approval)', () => {
 
     /** A consent as `yea approve` signs one, with `o` changing a part of it. */
     const consent = (
-      o: { by?: P.KeyPair; svc?: string; can?: string; exp?: number } = {},
+      o: {
+        by?: P.KeyPair;
+        to?: string;
+        svc?: string;
+        can?: string;
+        exp?: number;
+      } = {},
     ) =>
       P.issueGrant({
         principal: o.by ?? B,
-        to: A.public,
+        to: o.to ?? A.public,
         iat: now,
         caveats: [
           { svc: [o.svc ?? A.public] },
@@ -1864,7 +1870,8 @@ describe('approval security (SPEC-approval)', () => {
     it('runs its plan once, and a second use is refused', async () => {
       const store = new P.MemoryStore();
       const token = await consent();
-      const first = await P.jobCall(carrying(token).call, store);
+      // The newline a terminal copy adds doesn't matter: the signature covers only the token.
+      const first = await P.jobCall(carrying(`${token}\n`).call, store);
 
       expect(first).toMatchObject({ kind: 'run', how: 'approved' });
       expect(await P.jobCall(carrying(token).call, store)).toMatchObject(
@@ -1907,6 +1914,7 @@ describe('approval security (SPEC-approval)', () => {
       ]);
       const cases: [string, string, number?][] = [
         [await consent({ by: other }), notSigned],
+        [await consent({ to: other.public }), notSigned],
         [altered, notSigned],
         [token, 'it has expired', now + 600],
         [await consent({ svc: other.public }), notSigned],

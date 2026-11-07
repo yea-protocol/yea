@@ -69,6 +69,14 @@ const forgedConsent = await P.issueGrant({
   nonce: 'job-calls-forged',
   caveats: P.decodeGrant(consentGrant)[0].p.caveats,
 });
+/** The refund's consent, signed by the principal but issued to another key than the server's. */
+const elsewhereConsent = await P.issueGrant({
+  principal,
+  to: (await P.keyPair(seed(9))).public,
+  iat: now,
+  nonce: 'job-calls-elsewhere',
+  caveats: P.decodeGrant(consentGrant)[0].p.caveats,
+});
 
 /** The person's standing rules: no signed policy unless `grant` is given. */
 const policy = (o = {}) => ({
@@ -292,7 +300,19 @@ const calls = [
           "it isn't signed by the pinned principal for this tool at this server",
         ),
       }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: elsewhereConsent,
+        says: carried(
+          "it isn't signed by the pinned principal for this tool at this server",
+        ),
+      }),
     ],
+  },
+  {
+    name: 'a consent on the call keeps working with the newline a terminal copy adds',
+    before: empty,
+    steps: [step('run', { consent: ` ${consentGrant}\r\n` })],
   },
   {
     name: 'with no pinned principal key, a consent on the call counts for nothing',
@@ -337,9 +357,16 @@ const calls = [
     ],
   },
   {
-    name: 'no plans refuses the call',
+    name: 'no plans refuses the call, with or without a consent on it',
     before: empty,
-    steps: [step('refuse', { plans: [] })],
+    steps: [
+      step('refuse', { plans: [] }),
+      step('refuse', {
+        plans: [],
+        consent: consentGrant,
+        says: 'has no way to do this',
+      }),
+    ],
   },
 ];
 

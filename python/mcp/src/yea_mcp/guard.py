@@ -16,7 +16,7 @@ from typing import Any
 from mcp_types.methods import is_input_required
 from yea import Plan
 
-from .call import CONSENT_DESCRIPTION, RESERVED_ARGS, JobDef, Req, Reserved, Yea, described_plans, run_job
+from .call import CONSENT_DESCRIPTION, JobDef, Req, Reserved, Yea, described_plans, run_job, shadowed
 from .result import error_result, job_annotations, job_meta
 
 
@@ -62,8 +62,7 @@ class GuardMiddleware:
         tool = next((t for t in await self.server.list_tools() if t.name == name), None)
         if tool is None:
             return None
-        own = set((tool.input_schema or {}).get("properties") or {}) & RESERVED_ARGS
-        return _Info(min(own) if own else None, tool.output_schema is not None, "dev.yea/job" in (tool.meta or {}))
+        return _Info(shadowed(tool.input_schema), tool.output_schema is not None, "dev.yea/job" in (tool.meta or {}))
 
     def _advertise(self, result: Any) -> Any:
         """Add ``preview``, ``yea_consent`` and the job annotations to guarded tools in a copy of the

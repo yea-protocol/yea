@@ -177,7 +177,8 @@ host signs outside it, as test-drive's person loop does with the bridge
 `security.test.ts`.
 
 **Exempt.** Tests, benchmarks (`bench/`) and the conformance vector generators
-(`ts/scripts/vectors.mjs`, `ts/scripts/approval-vectors.mjs`, which are mostly data) are exempt
+(`ts/scripts/vectors.mjs`, `ts/scripts/approval-vectors.mjs`, `ts/scripts/job-call-vectors.mjs`,
+which are mostly data) are exempt
 from the length rules but still need a header and a good name. The `examples/` walkthroughs the
 docs embed whole, generated files and the `conformance/` vectors are exempt from all of them.
 

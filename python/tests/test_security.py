@@ -218,12 +218,12 @@ _RUNS_REFUNDS = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["refund"]}, {"ri
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
 
 
-def _consent(by=PRINCIPAL, svc: str | None = None, can: str = "refund", exp: int = NOW + 600) -> str:
-    """A consent for the refund as ``yea approve`` signs one, with ``by``, ``svc``, ``can`` or ``exp``
-    changed."""
-    return issue_grant(by, SERVER.public, [{"svc": [svc or SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [can]},
-                                           {"only": consent_hash_of(_REFUND_HASH, "approve")}, {"exp": exp}],
-                       iat=NOW).encode()
+def _consent(by=PRINCIPAL, to: str = SERVER.public, svc: str | None = None, can: str = "refund",
+             exp: int = NOW + 600) -> str:
+    """A consent for the refund as ``yea approve`` signs one, with ``by``, ``to``, ``svc``, ``can`` or
+    ``exp`` changed."""
+    return issue_grant(by, to, [{"svc": [svc or SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [can]},
+                                {"only": consent_hash_of(_REFUND_HASH, "approve")}, {"exp": exp}], iat=NOW).encode()
 
 
 def _carrying(consent: str | None, now: int = NOW, plans: tuple = (_REFUND,), principal: str | None = PRINCIPAL.public,
@@ -242,7 +242,8 @@ def _refused_for(why: str):
 def test_a22_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refused():
     async def go():
         store, token = MemoryStore(), _consent()
-        first = await job_call(_carrying(token), store)
+        # The newline a terminal copy adds doesn't matter: the signature covers only the token.
+        first = await job_call(_carrying(token + "\n"), store)
         assert (first.kind, first.how) == ("run", "approved")
         assert _refused_for("it was already used")(await job_call(_carrying(token), store))
 
@@ -271,6 +272,7 @@ def _altered() -> str:
 
 @pytest.mark.parametrize("name, token, why, now", [
     ("forged", lambda: _consent(by=AGENT), _NOT_SIGNED, NOW),
+    ("issued to another key", lambda: _consent(to=AGENT.public), _NOT_SIGNED, NOW),
     ("altered", _altered, _NOT_SIGNED, NOW),
     ("expired", lambda: _consent(), "it has expired", NOW + 600),
     ("for another server", lambda: _consent(svc=AGENT.public), _NOT_SIGNED, NOW),

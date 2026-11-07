@@ -139,6 +139,7 @@ export class FileStore implements ApprovalStore {
    * The consent stored for a plan, or null. One that is there but can't be read (a mode or owner
    * that shuts this user out, a directory in its place) counts as absent, with a line on stderr:
    * it can only mean asking again, never an fs error in the model's context (SPEC-approval §8).
+   * Anything but an fs error is still thrown.
    */
   async getConsent(planHash: string): Promise<string | null> {
     const path = this.consentPath(planHash);
@@ -146,8 +147,14 @@ export class FileStore implements ApprovalStore {
     try {
       return readOrNull(path);
     } catch (e) {
+      const code = errno(e);
+
+      if (code === undefined) {
+        throw e;
+      }
+
       console.error(
-        `yea: the consent at ${path} can't be read (${errno(e) ?? String(e)}), so it counts as absent`,
+        `yea: the consent at ${path} can't be read (${code}), so it counts as absent`,
       );
 
       return null;

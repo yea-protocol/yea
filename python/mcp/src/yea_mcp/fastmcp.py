@@ -23,7 +23,7 @@ from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from pydantic_core import to_jsonable_python
 from yea import Plan
 
-from .call import RESERVED_ARGS, JobDef, Req, Reserved, Yea, described_plans, run_job
+from .call import JobDef, Req, Reserved, Yea, described_plans, run_job, shadowed
 from .guard import Guarded
 from .result import job_annotations, job_meta
 from .signature import job_wrapper
@@ -172,9 +172,8 @@ class FastMCPGuard(Middleware):
             raise ValueError(f"guard(): {tool.name} is already a job tool")
         if _runs_as_task(tool):
             raise ValueError(f"guard(): {tool.name} runs as a background task, which a guard doesn't support yet")
-        own = set((tool.parameters or {}).get("properties") or {}) & RESERVED_ARGS
-        if own:
-            raise ValueError(f"guard(): {tool.name} has its own {min(own)} argument, which the guard would shadow")
+        if (own := shadowed(tool.parameters)) is not None:
+            raise ValueError(f"guard(): {tool.name} has its own {own} argument, which the guard would shadow")
         inner = tool.model_copy()  # the original behaviour, reachable only through apply
         injected = _injected(fn)
         has_output = tool.output_schema is not None

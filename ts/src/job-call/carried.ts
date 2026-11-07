@@ -10,6 +10,7 @@ import {
   type HashedPlan,
   NOT_A_CONSENT,
   OTHER_PHRASE,
+  stripPhraseEdge,
 } from '../approval.js';
 import { ask } from './ask.js';
 import type { JobCallOutcome, Round } from './types.js';
@@ -69,12 +70,16 @@ async function approvedBy(
   return { why: WHY.noPlan };
 }
 
-/** A first round that carries a consent: it runs the plan it approves, or the call asks again. */
+/**
+ * A first round that carries a consent: it runs the plan it approves, or the call asks again.
+ * The edge set a typed phrase loses (§3) is stripped first, so the newline a terminal copy adds
+ * doesn't matter: the signature covers nothing outside the `pg1.` token.
+ */
 export async function carriedRound(
   r: Round,
   token: string,
 ): Promise<JobCallOutcome> {
-  const approved = await approvedBy(r, token);
+  const approved = await approvedBy(r, stripPhraseEdge(token));
 
   return 'plan' in approved
     ? { kind: 'run', plan: approved.plan, held: [], how: 'approved' }

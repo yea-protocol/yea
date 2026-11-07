@@ -157,7 +157,10 @@ def test_job_consents(case):
     got = check_job_consent(case["grant"], to_hashed(c["plan"]), c["phrase"], policy, case["now"])
     want = case["expect"]
     assert got.ok is want["ok"]
-    assert (got.id if got.ok else got.why) == (want["id"] if want["ok"] else want["why"])
+    if want["ok"]:
+        assert (got.id, got.exp) == (want["id"], want["exp"])
+    else:
+        assert got.why == want["why"]
 
 
 @pytest.mark.parametrize("case", cases_of("undo"))

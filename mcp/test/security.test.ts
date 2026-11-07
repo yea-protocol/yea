@@ -11,11 +11,15 @@ import {
 } from '@modelcontextprotocol/server';
 import {
   atLeast,
+  decodeConsentCode,
+  issueGrant,
+  type KeyPair,
   keyPair,
   MemoryStore,
   quantity,
   type Risk,
   sign,
+  unixNow,
 } from '@yea-protocol/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Allowed } from '../../ts/test/imports.js';
@@ -44,6 +48,27 @@ import {
 } from './sources.js';
 
 const ch1 = { charge: 'ch_1' };
+
+/** The consent `yea approve` would print for `code`, signed by `w`'s principal, with a part changed. */
+function consentVariant(
+  w: { principal: KeyPair },
+  code: string,
+  o: { by?: KeyPair; to?: string; svc?: string; can?: string; exp?: number },
+) {
+  const c = decodeConsentCode(code);
+
+  return issueGrant({
+    principal: o.by ?? w.principal,
+    to: o.to ?? c.service,
+    caveats: [
+      { svc: [o.svc ?? c.service] },
+      { verbs: ['COMMIT'] },
+      { can: [o.can ?? c.capability] },
+      { only: c.hash },
+      { exp: o.exp ?? c.expires },
+    ],
+  });
+}
 
 /** Consent codes from a call a client can't answer. */
 async function codesFor(conn: Awaited<ReturnType<typeof connect>>, args = ch1) {
@@ -174,34 +199,66 @@ describe('MCP-side approval security', () => {
     expect(w.applied).toEqual(['ch_1']);
   });
 
-  it('[M18] a yea_consent for one plan never runs another, and a tampered one runs nothing, even where the policy would (#358)', async () => {
+  it('[M18] a yea_consent that is forged, altered, expired, for another server, tool or plan, or used, runs nothing, even where the policy would (#358)', async () => {
     const w = await world();
     const conn = await connect('2025-no-elicit', refundServer(w));
     const [one] = await codesFor(conn, ch1);
     const consent = await printedConsent(w, one.code);
+    const stranger = await keyPair();
+    const notSigned =
+      "it isn't signed by the pinned principal for this tool at this server";
+    const variant = (o: Parameters<typeof consentVariant>[2]) =>
+      consentVariant(w, one.code, o);
+    const refusals: [Record<string, unknown>, string][] = [
+      // For ch_1, passed on a call for ch_2: it approves none of that call's plans.
+      [
+        { charge: 'ch_2', yea_consent: consent },
+        'it approves none of these plans',
+      ],
+      [{ ...ch1, yea_consent: await variant({ by: stranger }) }, notSigned],
+      [
+        { ...ch1, yea_consent: await variant({ to: stranger.public }) },
+        notSigned,
+      ],
+      [
+        { ...ch1, yea_consent: await variant({ svc: stranger.public }) },
+        notSigned,
+      ],
+      [
+        { ...ch1, yea_consent: await variant({ can: 'delete_branch' }) },
+        notSigned,
+      ],
+      [
+        { ...ch1, yea_consent: await variant({ exp: unixNow() - 1 }) },
+        'it has expired',
+      ],
+    ];
 
-    // For ch_1, passed on a call for ch_2: it approves none of that call's plans.
-    const other = await conn.call({ charge: 'ch_2', yea_consent: consent });
-
-    expect(textOf(other)).toContain(
-      "the consent passed as yea_consent can't be used: it approves none of these plans",
-    );
-
-    // The policy would run ch_1 by itself; a tampered consent never falls through to it.
+    // The policy would run ch_1 by itself; a refused consent never falls through to it.
     await grantPolicy(w);
 
-    const forged = await conn.call({ ...ch1, yea_consent: tampered(consent) });
+    for (const [args, why] of refusals) {
+      const r = await conn.call(args);
 
-    expect(forged.isError).toBe(true);
-    expect(textOf(forged)).toMatch(
-      /the consent passed as yea_consent can't be used/,
-    );
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toContain(
+        `the consent passed as yea_consent can't be used: ${why}`,
+      );
+    }
+
+    // Altered on the way: refused, whatever part the change lands in.
+    expect(
+      textOf(await conn.call({ ...ch1, yea_consent: tampered(consent) })),
+    ).toContain("the consent passed as yea_consent can't be used");
     expect(w.applied).toEqual([]);
 
     // The real one still runs its own plan, once.
     expect(
       (await conn.call({ ...ch1, yea_consent: consent })).isError,
     ).toBeFalsy();
+    expect(textOf(await conn.call({ ...ch1, yea_consent: consent }))).toContain(
+      "can't be used: it was already used",
+    );
     expect(w.applied).toEqual(['ch_1']);
   });
 

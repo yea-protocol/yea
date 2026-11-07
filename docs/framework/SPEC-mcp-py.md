@@ -271,7 +271,7 @@ again, with the clock, the policy and the plans as they are then.
    - anything else refuses the call before the session runs: nothing runs, the plan function
      included, and for a denied tool the refusal names the state, not the deny list.
 6. **Consents.** If the call carries `yea_consent`, it alone is checked, through the same
-   `check_job_consent` and `consume_once` as below (`carried_consent` does this). It runs the
+   `check_job_consent` and `consume_once` as below (`carried_round` does this). It runs the
    plan it approves, or nothing this round: the call asks (step 8) with the reason
    SPEC-approval §6 gives, and neither the store nor the policy (step 7) is consulted.
    Otherwise, for each plan, in order: `store.get_consent(planHash)`,
@@ -513,8 +513,9 @@ Security cases in `test_security.py`, the approval core's list from the MCP side
 lands in the SDK core also gets its regression test in the core's security tests (repo rule 3):
 a denied tool never runs, even with a stored consent; a `high` plan is never offered; an
 irreversible plan never auto-runs; a consent for one plan never runs another, from the store or
-as `yea_consent`; a `yea_consent` that is forged, altered, expired, for another server or tool,
-or already used runs nothing, and the call asks without consulting the policy; an unreadable
+as `yea_consent`; a `yea_consent` that is forged, altered, expired, issued to another key, for
+another server or tool, or already used runs nothing, and the call asks without consulting the
+policy (the same cases as the core's a22 tests); an unreadable
 consent in the store (a planted mode-0 file) asks again, with no fs error in the result; a
 stored copy of the policy grant never counts as a consent; a `request_state` without our `yea` object is
 refused; a guarded tool's original handler never runs before approval, and guarding one server

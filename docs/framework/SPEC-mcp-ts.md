@@ -535,8 +535,9 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a `high` plan is never offered in the form;
 - an irreversible plan never auto-runs;
 - a consent for one plan never runs another, from the store or as `yea_consent`;
-- a `yea_consent` that is forged, altered, expired, for another server or tool, or already
-  used runs nothing, and the call asks without consulting the policy;
+- a `yea_consent` that is forged, altered, expired, issued to another key, for another
+  server or tool, or already used runs nothing, and the call asks without consulting the
+  policy ([M18], the same cases as the core's [A22]);
 - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
   the result;
 - a stored copy of the policy grant never counts as a consent;

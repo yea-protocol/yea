@@ -1187,7 +1187,9 @@ for (const [name, grant, at, want] of [
     name,
     grant,
     now: at,
-    expect: r.ok ? { ok: true, id: r.id } : { ok: false, why: r.why },
+    expect: r.ok
+      ? { ok: true, id: r.id, exp: r.exp }
+      : { ok: false, why: r.why },
   });
 }
 
