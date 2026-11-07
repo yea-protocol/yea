@@ -25,9 +25,12 @@ export {
   type HashedPlan,
   hashPlans,
   type JobPlan,
+  type JudgedPlan,
   planHashOf,
   planPreimage,
   planTooDeep,
+  type ShownPlan,
+  shownPlan,
 } from './approval/plans.js';
 
 export {

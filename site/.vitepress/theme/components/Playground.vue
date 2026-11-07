@@ -131,7 +131,7 @@ function onKey(e: KeyboardEvent) {
         <template v-if="current">
           <ReplyPane v-if="view" :exchange="current" :view="view" />
           <ConsentCard v-if="consentRequest" :message="consentMessage" :service="consentRequest.service" :check="consentCheck" :facts="consentFacts" :askable="askable !== null" @approve="approveConsent()" @decline="declineConsent()" @again="again()" />
-          <QuickActions v-else :exchange="current" @act="act" @choose="choose" />
+          <QuickActions v-else :exchange="current" :kit="core" @act="act" @choose="choose" />
         </template>
 
         <HistoryList :log="log" :active="current ? current.n : null" :declined="declinedExchanges" @select="selected = $event" />

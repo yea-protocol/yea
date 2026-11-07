@@ -9,7 +9,7 @@ import type {
   Receipt,
   Verb,
 } from '@yea-protocol/sdk';
-import type { Exchange, ServiceKey } from './model';
+import type { Core, Exchange, ServiceKey } from './model';
 
 /** A proposal from a PROPOSALS reply. */
 export interface ReceivedProposal extends Proposal {
@@ -59,6 +59,24 @@ export const emptySeen = (): Seen => ({
 /** The handles a reply offers for more. */
 export const moreOf = (r: FinalReply): More[] =>
   'more' in r ? (r.more ?? []) : [];
+
+/**
+ * The receipt a reply offers an Undo for, or null: one that isn't an undo itself and was
+ * committed with an undo window, by the SDK's rule (`until` minus `at`), so a window that isn't a
+ * positive integer offers none (#83).
+ */
+export function undoOffer(
+  kit: Pick<Core, 'isUndoWindow'>,
+  r: FinalReply,
+): string | null {
+  if (r.kind !== 'RECEIPT' || r.receipt.undoes || !r.receipt.undo) {
+    return null;
+  }
+
+  return kit.isUndoWindow(r.receipt.undo.until - r.receipt.at)
+    ? r.receipt.id
+    : null;
+}
 
 /** Note what a reply from `service` gave the agent. */
 export function remember(seen: Seen, service: ServiceKey, r: FinalReply) {

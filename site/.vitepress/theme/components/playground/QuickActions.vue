@@ -1,10 +1,14 @@
 <script setup lang="ts">
 /** One-click next steps on a reply: commit a proposal, answer a CLARIFY, undo a receipt, expand a handle. */
 import { computed } from 'vue';
-import type { Exchange, TargetVerb } from './model';
-import { moreOf } from './seen';
+import type { Core, Exchange, TargetVerb } from './model';
+import { moreOf, undoOffer } from './seen';
 
-const props = defineProps<{ exchange: Exchange }>();
+const props = defineProps<{
+  exchange: Exchange;
+  /** The SDK's undo-window rule, so the playground offers Undo exactly when the SDK would. */
+  kit: Pick<Core, 'isUndoWindow'>;
+}>();
 const emit = defineEmits<{
   act: [verb: TargetVerb, target: string];
   choose: [option: { label: string; params: Record<string, unknown> }];
@@ -17,14 +21,8 @@ const proposals = computed(() =>
 const options = computed(() =>
   reply.value.kind === 'CLARIFY' ? reply.value.options : [],
 );
-/** The receipt to offer an Undo for: one that isn't an undo itself and still has a window. */
-const undoable = computed(() => {
-  const r = reply.value;
-
-  return r.kind === 'RECEIPT' && !r.receipt.undoes && r.receipt.undo
-    ? r.receipt.id
-    : null;
-});
+/** The receipt to offer an Undo for: one that isn't an undo itself and has an undo window. */
+const undoable = computed(() => undoOffer(props.kit, reply.value));
 const more = computed(() => moreOf(reply.value));
 /** Whether there is any next step to offer; with none, nothing is drawn, not an empty row. */
 const offersAny = computed(

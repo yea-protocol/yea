@@ -13,6 +13,7 @@ import {
   newReceiptId,
   printable,
   type Reservation,
+  shownPlan,
 } from '@yea-protocol/sdk';
 import { receiptResult } from '../render.js';
 import { errorResult, textResult } from '../result.js';
@@ -115,21 +116,18 @@ function jsonSafe(v: unknown): { value: unknown; note: string | null } {
 
 /** The receipt a successful job leaves (SPEC-approval §8's JobReceipt). */
 function receiptFor(call: Call, hp: HashedPlan, result: unknown): JobReceipt {
-  const p = hp.plan;
+  const { summary, effects, uses, undoWindow } = shownPlan(hp);
 
   return {
     id: newReceiptId(),
     service: call.policy.server,
     proposal: hp.planHash,
     capability: hp.tool,
-    summary: p.summary,
+    summary,
     at: call.now,
-    effects: p.effects,
-    ...(p.uses && Object.keys(p.uses).length ? { uses: p.uses } : {}),
-    undo:
-      hp.undoable && p.undoWindow !== undefined
-        ? { until: call.now + p.undoWindow }
-        : null,
+    effects,
+    ...(uses ? { uses } : {}),
+    undo: undoWindow === undefined ? null : { until: call.now + undoWindow },
     tool: hp.tool,
     input: call.input,
     planHash: hp.planHash,

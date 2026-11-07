@@ -1472,6 +1472,19 @@ const replies = [
     }),
   ],
   [
+    'proposals: an undo window that is not a positive integer is never',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, undo: { window: 0 } },
+        { ...baseP, id: 'p_2', undo: { window: -60 } },
+        { ...baseP, id: 'p_3', undo: { window: '3600' } },
+        { ...baseP, id: 'p_4', undo: { window: 9007199254740992 } },
+        { ...baseP, id: 'p_5', undo: { window: 1 } },
+      ],
+    }),
+  ],
+  [
     'receipt: malformed undo',
     r({
       kind: 'RECEIPT',

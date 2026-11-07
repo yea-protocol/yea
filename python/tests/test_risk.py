@@ -31,7 +31,7 @@ def test_resolve_and_known():
 
 def test_an_unknown_risk_never_gets_a_plan_hash():
     with pytest.raises(ValueError, match="unknown risk"):
-        plan_hash("t", {}, Plan("x", [], lambda: None), "critical")
+        plan_hash("t", {}, Plan("x", [], lambda: None), "critical", undoable=False)
 
 
 def test_a_risk_caveat_against_an_unknown_risk_is_forbidden():

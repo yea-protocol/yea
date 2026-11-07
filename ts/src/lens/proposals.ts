@@ -3,14 +3,18 @@
  * effects and attributes, the attributes they all share stated once.
  */
 import type { Proposal } from '../types.js';
+import { isUndoWindow } from '../undo-window.js';
 import { fmtUses } from '../uses.js';
 import { isObject } from '../util.js';
 import { effectLine, fmtDuration, fmtTime } from './format.js';
 import { entry, scalar } from './notation.js';
 
-/** An undo object with a `window` renders it as a duration; anything else is `never`. */
+/**
+ * An undo object whose `window` is a positive integer renders it as a duration. Anything else
+ * is `never`: a client treats a window that isn't one as no undo at all (SPEC §5.1).
+ */
 function undoWindow(undo: unknown): string {
-  return isObject(undo) && 'window' in undo
+  return isObject(undo) && isUndoWindow(undo.window)
     ? fmtDuration(undo.window)
     : 'never';
 }

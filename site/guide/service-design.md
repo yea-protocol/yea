@@ -145,7 +145,7 @@ A job returns one or more **plans**. You fill in a plan from what you already kn
 | `effects` | Everything the call changes, including emails | the charge, and the receipt email |
 | `uses` | What it uses up, such as the money it moves | `spend 22.87 USD` |
 | `apply()` | The REST call | `POST /v1/refunds` |
-| `undoWindow` | How long it can be undone for, with the job's `revert()` | none, so `undo: never` |
+| `undoWindow` | How long it can be undone for, in whole seconds, with the job's `revert()` | none, so `undo: never` |
 
 ::: code-group
 <<< ../../examples/stripe-jobs.ts#refund-plan [TypeScript]
@@ -157,7 +157,7 @@ The job ties the plans to a tool. `plan()` only reads: it runs on preview and on
 
 <<< ../../examples/stripe-jobs.ts#refund-job
 
-When a reverse call exists, the job's `revert()` makes it, and plans that set an `undoWindow` become undoable. Cancelling at the end of the month is undone by setting `cancel_at_period_end` back to `false`:
+When a reverse call exists, the job's `revert()` makes it, and plans that set an `undoWindow` become undoable. The window is a positive whole number of seconds: with `0`, a negative number or a fraction, the plan can't be undone, as with no window at all, so it never runs without asking and reads `undo: never`. Cancelling at the end of the month is undone by setting `cancel_at_period_end` back to `false`:
 
 ::: code-group
 <<< ../../examples/stripe-jobs.ts#cancel-plan [TypeScript]

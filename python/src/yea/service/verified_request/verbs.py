@@ -11,6 +11,7 @@ from typing import Any
 from ...errors import YeaError, fix
 from ...grants import Verification
 from ...keys import verify_proof
+from ...undo_window import is_undo_window
 from ...validate import validate_params
 from ..capabilities import unknown_capability
 from ..state import ServiceState, _AskDef, _IntentDef, _StoredProposal, _StoredReceipt
@@ -117,10 +118,11 @@ def _auto_commit(state: ServiceState, req: dict, who: Identity) -> AutoCommit:
     grants are checked again at commit time, so ``exp`` and the other caveats still hold then.
 
     An INTENT no grant authorized has no principal, so it never auto-commits (§4.3.1, #287): its
-    plan ran without knowing whose action it was."""
+    plan ran without knowing whose action it was. Nor does a proposal that isn't undoable: one
+    whose ``undo`` has no window that is a positive integer can never be undone (#83)."""
 
     def grant(proposal: dict) -> Verification | None:
-        if not proposal["undo"] or who.holder is None or who.principal is None:
+        if not _undoable(proposal) or who.holder is None or who.principal is None:
             return None
         # Only a grant from the proposal's principal counts, so the search goes on past a valid
         # grant from another one.
@@ -129,6 +131,12 @@ def _auto_commit(state: ServiceState, req: dict, who: Identity) -> AutoCommit:
 
     replay = (f"{who.proof['key']}:{req['id']}", who.proof["ts"]) if who.proof else None
     return AutoCommit(replay, grant)
+
+
+def _undoable(proposal: dict) -> bool:
+    """Whether a proposal can be undone (§4.3.1): its ``undo`` window is a positive integer."""
+    undo = proposal["undo"]
+    return isinstance(undo, dict) and is_undo_window(undo.get("window"))
 
 
 def verify_commit(state: ServiceState, req: dict, budget: int) -> VerifiedCommit:

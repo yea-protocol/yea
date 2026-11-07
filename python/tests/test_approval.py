@@ -11,7 +11,8 @@ from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed, q
 from yea.approval import (
     OTHER_PHRASE, PHRASE_CHANGED, HashedPlan, Policy, StoredConsent, Tightening, build_form, check_job_consent,
     check_key_file, check_state, choose_store, consent_for, consent_hash_of, decide, checked_phrase, input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
-    normalize_phrase, phrase_matches, plan_hash, plan_preimage, read_tightening, reserve_all, undo_receipt,
+    normalize_phrase, phrase_matches, plan_hash, plan_lines, plan_preimage, read_tightening, reserve_all, shown_plan,
+    undo_receipt,
 )
 from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id
 from yea._json import canonical, sha256_b64url
@@ -34,7 +35,7 @@ def plan(summary="Delete old-nav", undo=3600, uses=None, risk=None):
 def hashed(tool="delete_branch", input=None, p=None, risk="low", undoable=True):
     p = p or plan()
     input = input if input is not None else {"repo": "site", "branch": "old-nav"}
-    return HashedPlan(tool, p, plan_hash(tool, input, p, risk), risk, undoable)
+    return HashedPlan(tool, p, plan_hash(tool, input, p, risk, undoable=undoable), risk, undoable)
 
 
 def policy(*caveats, deny=(), oob="high", principal=PRINCIPAL, issued_to=SERVER):
@@ -60,16 +61,27 @@ def test_plan_hash_is_stable_and_binds_input_and_content():
 
 
 def test_plan_preimage_leaves_out_absent_fields():
-    pre = plan_preimage("t", {"a": 1}, plan(undo=None), "medium")
+    pre = plan_preimage("t", {"a": 1}, plan(undo=None), "medium", undoable=False)
     assert set(pre) == {"tool", "input", "summary", "effects", "risk"}
-    assert sha256_b64url(canonical(pre).encode()) == plan_hash("t", {"a": 1}, plan(undo=None), "medium")
+    assert sha256_b64url(canonical(pre).encode()) == plan_hash("t", {"a": 1}, plan(undo=None), "medium", undoable=False)
     # An empty uses is absent, as on the wire.
-    assert "uses" not in plan_preimage("t", {}, plan(uses={}), "low")
+    assert "uses" not in plan_preimage("t", {}, plan(uses={}), "low", undoable=True)
+
+
+def test_the_shown_plan_carries_the_undo_window_only_when_the_plan_is_undoable():
+    """#83: hashing, the form, the MCP results and ``yea approve`` read undo from this one field."""
+    assert shown_plan(hashed())["undoWindow"] == 3600
+    assert "undoWindow" not in shown_plan(hashed(undoable=False))
+    # A hand-built HashedPlan can't show a window that isn't one.
+    assert "undoWindow" not in shown_plan(hashed(p=plan(undo=0)))
+    assert plan_lines(shown_plan(hashed()), 1) == ["[1] Delete old-nav", "  + create branch/old-nav",
+                                                   "  risk: low · undo: 1h"]
+    assert plan_lines(shown_plan(hashed(p=plan(undo=0))))[-1] == "  risk: low · undo: never"
 
 
 def test_non_integer_input_fails_closed():
     with pytest.raises(ValueError, match="use a string or an integer"):
-        plan_hash("refund", {"amount": 22.87}, plan(), "low")
+        plan_hash("refund", {"amount": 22.87}, plan(), "low", undoable=True)
 
 
 # ------------------------------------------------------------------ §3 phrases
@@ -760,7 +772,7 @@ def test_another_servers_receipt_is_no_such_receipt(store):
 
 def test_a_malformed_uses_fails_the_plan_hash():
     with pytest.raises(ValueError, match="malformed uses"):
-        plan_hash("t", {}, plan(uses=[]), "low")
+        plan_hash("t", {}, plan(uses=[]), "low", undoable=True)
 
 
 def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():

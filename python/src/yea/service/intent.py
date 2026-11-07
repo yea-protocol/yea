@@ -9,9 +9,10 @@ from .._json import proposal_hash
 from ..budget import fit
 from ..errors import YeaError, fix
 from ..risk import resolve_risk
+from ..undo_window import is_undo_window
 from ..uses import check_uses
 from .execute import execute
-from .plan import _UNSET, Clarification, Ctx
+from .plan import _UNSET, Clarification, Ctx, Plan
 from .replies import error_reply, reply_frame
 from .state import ServiceState, _StoredProposal
 from .sweep import sweep
@@ -41,6 +42,13 @@ async def on_intent(state: ServiceState, req: VerifiedIntent, emit: Emit) -> dic
     return await plan_intent(state, req, emit)
 
 
+def _undo_of(plan: Plan) -> dict | None:
+    """A proposal's ``undo`` (SPEC §5.1): with a ``revert``, the plan's window, a day when it sets
+    none. A window that isn't a positive integer can't be used, so the proposal is irreversible."""
+    window = DAY if plan.undo_window is None else plan.undo_window
+    return {"window": int(window)} if plan.revert and is_undo_window(window) else None  # 3600.0 is 3600
+
+
 async def plan_intent(state: ServiceState, req: VerifiedIntent, emit: Emit) -> dict:
     try:
         principal = req.principal
@@ -53,14 +61,13 @@ async def plan_intent(state: ServiceState, req: VerifiedIntent, emit: Emit) -> d
         now = state.now()
         proposals = []
         for plan in plans:
-            window = (plan.undo_window or DAY) if plan.revert else None
             p: dict[str, Any] = {
                 "id": random_id("p"),
                 "capability": req.capability,
                 "summary": plan.summary,
                 "effects": plan.effects,
                 "risk": resolve_risk("low", plan.risk, req.d.risk),  # an unknown risk fails the INTENT
-                "undo": None if window is None else {"window": window},
+                "undo": _undo_of(plan),
                 "expires": -(-(now + (plan.expires_in or state.proposal_ttl)) // 60) * 60,  # whole minutes
             }
             uses = check_uses(plan.uses)
