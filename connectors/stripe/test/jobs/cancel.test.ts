@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { cancelJob } from '../../src/jobs/cancel.js';
-import { price, type Schedule, subscription } from '../fake-stripe.js';
+import { pauseAt, price, type Schedule, subscription } from '../fake-stripe.js';
 import { D, expectOwnFreshKeys, NOW, plansOf, setup } from '../helpers.js';
 
 const chen = { customer: 'chen@wei.studio' };
 
-/** A schedule on sub_chen, in its last phase, ending at the period end, unless `later` adds one. */
-function scheduled(o: { later?: boolean; end_behavior?: string } = {}) {
+/**
+ * A schedule on sub_chen, in its last phase, ending at the period end, unless `later` adds one
+ * or `paused` schedules a pause.
+ */
+function scheduled(
+  o: { later?: boolean; paused?: boolean; end_behavior?: string } = {},
+) {
   return setup({
     state: (b) => {
       const sub = b.subs[0];
@@ -35,6 +40,7 @@ function scheduled(o: { later?: boolean; end_behavior?: string } = {}) {
               },
             ]
           : [phase],
+        pause_schedules: o.paused ? [pauseAt(phase.end_date - 5 * D)] : [],
       };
 
       return { subs: [{ ...sub, schedule: s.id }], schedules: [s] };
@@ -252,6 +258,15 @@ describe('cancel_subscription plans', () => {
 
       expect(plans.map((p) => p.summary.includes(' now;'))).toEqual([true]);
     }
+  });
+
+  it('on a schedule with a pause scheduled, refuses, saying why, rather than offer only "now"', async () => {
+    const s = scheduled({ paused: true });
+
+    await expect(cancelJob(s.ctx).plan(chen)).rejects.toThrow(
+      'sub_chen has changes pending on subscription schedule sub_sched_theirs; undo that change or edit the schedule in the Stripe dashboard first',
+    );
+    expect(s.stripe.writes()).toEqual([]);
   });
 
   it('refuses a subscription with more than one item', async () => {

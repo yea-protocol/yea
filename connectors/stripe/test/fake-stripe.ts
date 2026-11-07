@@ -77,6 +77,13 @@ export interface SchedulePhase {
   [setting: string]: unknown;
 }
 
+/** A pause Stripe will make, or has made, on a schedule's subscription. */
+export interface PauseSchedule {
+  key: string;
+  pause: { pause_at: number; status: { type: string } };
+  resume: null;
+}
+
 export interface Schedule {
   id: string;
   subscription: string | null;
@@ -84,7 +91,15 @@ export interface Schedule {
   end_behavior: string;
   phases: SchedulePhase[];
   current_phase: { start_date: number; end_date: number } | null;
+  pause_schedules: PauseSchedule[];
 }
+
+/** A pause scheduled for `at`, not yet made. */
+export const pauseAt = (at: number): PauseSchedule => ({
+  key: 'pause_1',
+  pause: { pause_at: at, status: { type: 'scheduled' } },
+  resume: null,
+});
 
 export interface FakeState {
   customers: Customer[];
@@ -676,6 +691,7 @@ export function fakeStripe(
           discounts: [],
         },
       ],
+      pause_schedules: [],
     };
 
     state.schedules.push(s);

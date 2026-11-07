@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Stripe } from '../../src/api.js';
 import { cheaperOrSame } from '../../src/jobs/change/prices.js';
 import { changeJob } from '../../src/jobs/change.js';
-import { parseForm, price } from '../fake-stripe.js';
+import { parseForm, pauseAt, price } from '../fake-stripe.js';
 import { D, expectOwnFreshKeys, NOW, plansOf, setup } from '../helpers.js';
 
 const toBasic = { customer: 'Chen', price: 'price_basic' };
@@ -345,6 +345,21 @@ describe('change_plan plans', () => {
     expect(
       (await plansOf(changeJob(s.ctx), toBasic)).map((p) => p.summary),
     ).toEqual([expect.stringMatching(/ now; /)]);
+  });
+
+  it('a pause scheduled on the schedule is a change pending too, so "now" is refused', async () => {
+    const s = setup();
+    const [renewal] = await plansOf(changeJob(s.ctx), toBasic);
+
+    await renewal.apply();
+
+    const sched = s.stripe.state.schedules[0];
+
+    sched.phases = sched.phases.slice(0, 1);
+    sched.pause_schedules = [pauseAt(NOW + 5 * D)];
+    await expect(changeJob(s.ctx).plan(toBasic)).rejects.toThrow(
+      'sub_chen has changes pending on subscription schedule sub_sched_1; undo that change or edit the schedule in the Stripe dashboard first',
+    );
   });
 
   it('refuses to undo anything but at renewal', async () => {
