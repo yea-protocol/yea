@@ -625,10 +625,10 @@ def test_approval_never_covers_content_lens_cuts():
     def plan(levels, wrap=list):
         return Plan("Update settings", wrap([effect(levels)]), apply=lambda: None)
 
-    assert plan_preimage("t", {}, plan(28), "low")["tool"] == "t"
+    assert plan_preimage("t", {}, plan(28), "low", undoable=False)["tool"] == "t"
     for p in (plan(29), plan(29, tuple)):
         with pytest.raises(ValueError, match="nested past 32 levels"):
-            plan_preimage("t", {}, p, "low")
+            plan_preimage("t", {}, p, "low", undoable=False)
 
     shown = safe_effect_line(proposal(28)["effects"][0])
     assert "attacker@evil.test" in shown and "…" not in shown
@@ -827,3 +827,76 @@ def test_an_intent_a_grant_authorized_still_auto_commits_under_its_principal():
         assert applied == [PRINCIPAL.public]
 
     run(go())
+
+
+# #83: only a positive integer is an undo window. A plan or proposal with any other window, zero
+# included, can't be undone, so it never runs or commits on its own and reads ``never``. Mirrors
+# ts/test/security.test.ts, "an undo window is a positive integer, or there is none".
+NOT_WINDOWS = (0, -1, 1.5, "3600", float("nan"), 2**53, True)
+SERVER = key_from_seed(bytes([5]) * 32)
+
+
+def _moving(undo_window, revert=True) -> JobCall:
+    """A reschedule call that the signed policy allows, its one plan with this undo window."""
+    from yea.approval import Tightening, load_policy
+
+    async def plan():
+        return [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=undo_window)]
+    grant = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["reschedule"]}]).encode()
+    policy = load_policy(grant, SERVER.public, PRINCIPAL.public, Tightening())
+    tool = JobTool("reschedule", revert=(lambda _: None) if revert else None)
+    return JobCall(tool, {}, plan, "", NOW, policy, True)
+
+
+def test_83_a_job_plan_with_any_other_window_is_not_undoable_so_the_policy_asks():
+    async def go():
+        assert (await job_call(_moving(60), MemoryStore())).kind == "run"
+        for w in NOT_WINDOWS:
+            o = await job_call(_moving(w), MemoryStore())
+            assert o.kind == "ask", (w, o)
+            assert "Approval needed: reschedule can't be undone." in o.form["message"], w
+            assert "undo: never" in o.form["message"], w
+
+    run(go())
+
+
+def test_83_its_plan_hash_is_the_same_as_with_no_window_as_is_a_window_on_a_tool_without_revert():
+    from yea.job_call import hash_plans
+
+    def hashed(w, revert=True):
+        [hp] = hash_plans(JobTool("reschedule", revert=(lambda _: None) if revert else None), {},
+                          [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=w)])
+        return hp
+
+    none = hashed(None).plan_hash
+    for w in NOT_WINDOWS:
+        assert (hashed(w).undoable, hashed(w).plan_hash) == (False, none), w
+    assert (hashed(60, revert=False).undoable, hashed(60, revert=False).plan_hash) == (False, none)
+    assert hashed(60).plan_hash != none
+
+
+def test_83_a_service_sends_undo_null_for_any_other_window_and_never_auto_commits_it():
+    async def go():
+        for w in NOT_WINDOWS:
+            applied = []
+            svc = Service("cal", "Cal", "cal", trust=[PRINCIPAL.public])
+
+            @svc.intent("cal.move", "move")
+            def move(ctx, w=w):
+                return Plan("move it", [create("event/1")], apply=lambda c: applied.append(1), undo_window=w,
+                            revert=lambda c: None)
+
+            r = await client(svc).intent("cal.move", {}, auto=True)
+            assert r.kind == "PROPOSALS" and r.proposals[0]["undo"] is None, (w, r.lens)
+            assert applied == [], w
+
+    run(go())
+
+
+def test_83_a_client_renders_a_proposal_whose_window_is_any_other_value_as_undo_never():
+    from yea import lens
+
+    for w in NOT_WINDOWS:
+        p = {"id": "p_1", "capability": "cal.move", "summary": "move it", "effects": [], "risk": "low",
+             "undo": {"window": w}, "expires": NOW, "hash": "h"}
+        assert "undo: never" in lens({"yea": 1, "id": "f", "re": "f", "kind": "PROPOSALS", "proposals": [p]}), w

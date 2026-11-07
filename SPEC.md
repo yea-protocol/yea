@@ -204,7 +204,8 @@ proposal in the same round trip if, and only if, both of these hold:
 1. a grant authorized the `INTENT` (the first presented grant that authorizes it names the
    principal), and a grant from that principal authorizes a `COMMIT` of that proposal
    outright (§6.3), with no consent needed; and
-2. the proposal is undoable (`undo` is not `null`).
+2. the proposal is undoable: its `undo` is an object whose `window` is a positive integer
+   (§5.1).
 
 The reply is then a `RECEIPT` with `"auto": true` on the reply frame. In every other
 case the service replies exactly as it would without `auto`. So an `INTENT` that no grant
@@ -346,7 +347,10 @@ absent, clients render Lens locally (§9).
     as invalid, and limits treat one as a hard failure (§6.3).
 - `risk`: `low` | `medium` | `high`, as assessed by the service. Any other value, or none, is
   malformed: a service MUST NOT send one, and clients MUST treat such a proposal as invalid.
-- `undo`: `null` if irreversible, else `{"window": seconds}` counted from commit.
+- `undo`: `null` if irreversible, else `{"window": seconds}` counted from commit, where
+  `seconds` is a positive integer of at most 2^53−1. A service MUST NOT send any other `window`:
+  an action with no such window is irreversible, so its `undo` is `null`. A client MUST treat
+  any other `undo` as `null`.
 - `expires`: unix seconds after which the proposal cannot be committed. Services SHOULD use whole minutes (the reference implementation rounds up: `ceil(t/60)*60`).
 - `hash`: `b64url(sha256(canonical(proposal without "hash" and "data")))` (§10). The hash binds everything a human is shown: summary, effects, uses, risk, undo and expiry. Numbers inside hashed fields MUST be integers.
 - `data`: OPTIONAL extra structured detail. It is not covered by the hash and MUST NOT describe effects.
@@ -657,9 +661,10 @@ range):
 - A duration that is not an integer in [−2^53+1, 2^53−1] renders as its lean scalar.
 - A `uses` that is not well-formed (§5.1: every name a measure name, every value a quantity)
   renders as `?` as a whole. Its names are not shown.
-- An `undo` that is not an object with a `window` (on a proposal) or an `until` (on a receipt)
-  renders as `never` or `irreversible`; the `window` or `until` inside one renders by the rules
-  above.
+- A proposal's `undo` renders as `never` unless it is an object whose `window` is a positive
+  integer of at most 2^53−1 (§5.1), which renders as a duration. A receipt's `undo` that is not
+  an object with an `until` renders as `irreversible`; the `until` inside one renders by the
+  rules above.
 - A proposal's `risk` renders as its lean scalar, so a missing one is `-`.
 - An EVENT's `progress` that is not a number in [0, 1] is left out.
 

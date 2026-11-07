@@ -129,7 +129,7 @@ Registers a job tool. `config`:
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `requireInteraction` | Optional. `yea()`'s `requireInteraction`, for this tool alone. On, it also marks the server's `undo`, whenever `undo` is registered. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
-| `revert({ input, planHash, result }, ctx)` | Optional. With it, plans that set `undoWindow` are undoable. |
+| `revert({ input, planHash, result }, ctx)` | Optional. With it, plans whose `undoWindow` is a positive integer are undoable (SPEC-approval §1). |
 | `confirmWith(plan, input)` | Optional. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
 `JobPlan` is the SDK core's: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`, `data?`

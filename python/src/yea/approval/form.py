@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..lens import fmt_duration, safe_effect_line
 from ..text import printable
-from ..uses import check_uses, fmt_uses
 from .decision import ruled_out
 from .phrase import phrase_of
-from .plan import HashedPlan
+from .plan import HashedPlan, shown_plan
+from .plan_text import plan_lines
 from .policy import Policy
 
 
@@ -27,7 +26,7 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
         return None
     lines = [f"Approval needed: {printable(why)}.", ""]
     for i, p in enumerate(plans, 1):
-        lines.extend(_plan_lines(i, p))
+        lines.extend(plan_lines(shown_plan(p), i))
         if p in offered:
             lines.append(f"  to approve, type: {printable(phrase_of(p, phrase_for))}")
     rules = [ruled_out(p, policy) for p in plans]
@@ -38,17 +37,6 @@ def build_form(plans: list[HashedPlan], why: str, policy: Policy, phrase_for: Ca
     if denied:
         lines.extend(["", f"Never allowed by your policy: {', '.join(denied)}"])
     return {"message": "\n".join(lines), "requested_schema": _schema(offered, phrase_for), "offered": [p.plan_hash for p in offered]}
-
-
-def _plan_lines(n: int, p: HashedPlan) -> list[str]:
-    attrs = []
-    if (u := fmt_uses(check_uses(p.plan.uses) or {})) is not None:
-        attrs.append(f"uses: {u}")
-    attrs.append(f"risk: {p.risk}")
-    attrs.append(f"undo: {fmt_duration(p.plan.undo_window)}" if p.undoable else "undo: never")
-    # Service text is untrusted: escaped, so a summary can't forge lines or hide characters (#100).
-    return [f"[{n}] {printable(p.plan.summary)}", *("  " + safe_effect_line(e) for e in p.plan.effects),
-            "  " + " · ".join(attrs)]
 
 
 def _schema(offered: list[HashedPlan], phrase_for: Callable[[HashedPlan], str]) -> dict:

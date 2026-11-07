@@ -1421,10 +1421,13 @@ describe('approval security (SPEC-approval)', () => {
   it('[A12] a plan with a malformed uses never gets a plan hash', () => {
     expect(() =>
       P.planPreimage(
-        'refund',
         {},
-        { summary: 'x', effects: [], uses: [] as never },
-        'low',
+        {
+          tool: 'refund',
+          plan: { summary: 'x', effects: [], uses: [] as never },
+          risk: 'low',
+          undoable: false,
+        },
       ),
     ).toThrow('malformed uses');
   });
@@ -1432,10 +1435,13 @@ describe('approval security (SPEC-approval)', () => {
   it('[A13] a plan with an unknown risk never gets a plan hash', async () => {
     expect(() =>
       P.planPreimage(
-        'refund',
         {},
-        { summary: 'x', effects: [] },
-        'critical' as P.Risk,
+        {
+          tool: 'refund',
+          plan: { summary: 'x', effects: [] },
+          risk: 'critical' as P.Risk,
+          undoable: false,
+        },
       ),
     ).toThrow('unknown risk');
     await expect(
@@ -4517,5 +4523,168 @@ describe('an INTENT no grant authorized (#287)', async () => {
 
     expect(r.kind === 'RECEIPT' && r.auto).toBe(true);
     expect(applied).toEqual([principal.public]);
+  });
+});
+
+// #83: only a positive integer is an undo window. A plan or proposal with any other window,
+// zero included, can't be undone, so it never runs or commits on its own and reads `never`.
+describe('an undo window is a positive integer, or there is none (#83)', async () => {
+  const server = await P.keyPair();
+  const notWindows = [0, -1, 1.5, '3600', Number.NaN, 2 ** 53];
+  const move = {
+    summary: 'Move standup',
+    effects: [P.update('event/e1', 'start', '14:00', '15:00')],
+    risk: 'low' as const,
+    apply: () => null,
+  };
+  const policy = {
+    grant: await P.issueGrant({
+      principal,
+      to: server.public,
+      caveats: [{ can: ['reschedule'] }],
+    }),
+    principal: principal.public,
+    server: server.public,
+    deny: [],
+    outOfBand: 'high' as const,
+  };
+  const callWith = (undoWindow: unknown, revert?: () => null) =>
+    P.jobCall(
+      {
+        tool: { name: 'reschedule', ...(revert ? { revert } : {}) },
+        input: {},
+        plan: () => [{ ...move, undoWindow: undoWindow as number }],
+        sub: '',
+        now,
+        policy,
+        canAsk: true,
+      },
+      new P.MemoryStore(),
+    );
+  const hashOf = async (undoWindow: unknown, revert?: () => null) => {
+    const tool = { name: 'reschedule', ...(revert ? { revert } : {}) };
+    const [hp] = await P.hashPlans(tool, {}, [
+      { ...move, undoWindow: undoWindow as number },
+    ]);
+
+    return hp;
+  };
+
+  it('a job plan with any other window is not undoable, so the policy asks', async () => {
+    const revert = () => null;
+
+    expect((await callWith(60, revert)).kind).toBe('run');
+
+    for (const w of notWindows) {
+      const o = await callWith(w, revert);
+
+      if (o.kind !== 'ask') {
+        throw new Error(`${String(w)}: ${o.kind}`);
+      }
+
+      expect(o.form.message, String(w)).toContain(
+        "Approval needed: reschedule can't be undone.",
+      );
+      expect(o.form.message, String(w)).toContain('undo: never');
+    }
+  });
+
+  it('its plan hash is the same as with no window, as is a window on a tool without revert', async () => {
+    const none = (await hashOf(undefined, () => null)).planHash;
+
+    for (const w of notWindows) {
+      expect(await hashOf(w, () => null), String(w)).toMatchObject({
+        undoable: false,
+        planHash: none,
+      });
+    }
+
+    expect(await hashOf(60)).toMatchObject({ undoable: false, planHash: none });
+    expect((await hashOf(60, () => null)).planHash).not.toBe(none);
+  });
+
+  it('yea approve reads undo from the consent code, and shows never for any other window', async () => {
+    const show = async (hp: P.HashedPlan) => {
+      const code = await jobConsentCode({
+        server: server.public,
+        principal: principal.public,
+        input: {},
+        hp,
+        phrase: 'approve',
+        now,
+      });
+
+      return P.planLines((await P.readJobConsent(code, now)).job).at(-1);
+    };
+
+    expect(await show(await hashOf(60, () => null))).toBe(
+      '  risk: low · undo: 1m',
+    );
+    expect(await show(await hashOf(60))).toBe('  risk: low · undo: never');
+    expect(await show(await hashOf(0, () => null))).toBe(
+      '  risk: low · undo: never',
+    );
+
+    for (const w of notWindows) {
+      expect(P.planLines({ ...move, undoWindow: w }).at(-1), String(w)).toBe(
+        '  risk: low · undo: never',
+      );
+    }
+  });
+
+  it('a service sends undo: null for any other window, and never auto-commits it', async () => {
+    for (const w of notWindows) {
+      const apply = vi.fn(() => null);
+      const svc = P.service({
+        id: 'cal',
+        name: 'Cal',
+        summary: 'cal',
+        trust: [principal.public],
+      }).intent('cal.move', {
+        summary: 'move',
+        plan: () => ({
+          summary: 'move it',
+          effects: [P.update('event/1', 'start', 'a', 'b')],
+          undoWindow: w as number,
+          apply,
+          revert: () => null,
+        }),
+      });
+      const r = await (await client(svc, agent, principal)).intent(
+        'cal.move',
+        {},
+        { auto: true },
+      );
+
+      expect(r.kind === 'PROPOSALS' && r.proposals[0].undo, String(w)).toBe(
+        null,
+      );
+      expect(apply, String(w)).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a client renders a proposal whose window is any other value as undo: never', () => {
+    for (const w of notWindows) {
+      const lines = P.lens({
+        yea: 1,
+        id: 'f',
+        re: 'f',
+        kind: 'PROPOSALS',
+        proposals: [
+          {
+            id: 'p_1',
+            capability: 'cal.move',
+            summary: 'move it',
+            effects: [],
+            risk: 'low',
+            undo: { window: w as number },
+            expires: now,
+            hash: 'h',
+          },
+        ],
+      });
+
+      expect(lines, String(w)).toContain('undo: never');
+    }
   });
 });
