@@ -37,6 +37,7 @@ import { grantCovers } from '../src/client/grant-scope.js';
 import { approveCode, NO_DETAIL } from '../src/consent-round.js';
 import { saveGrant } from '../src/home.js';
 import * as P from '../src/index.js';
+import { fmtTime } from '../src/lens.js';
 import {
   checkKeyFile,
   checkServerKeyDir,
@@ -1244,28 +1245,38 @@ describe('approval security (SPEC-approval)', () => {
     expect(long.consent.expires).toBe(now + P.CONSENT_TTL);
   });
 
-  it("[A22] yea approve caps a protocol consent's expiry at 10 minutes from now, as for a job's", async () => {
-    // The signed grant is checked on the real clock, so this test runs on it too.
+  it('[A29] yea approve warns, last before the y/N, when a protocol consent stays valid over an hour', async () => {
     const at = P.unixNow();
     const agent = await P.keyPair();
-    const code = await protocolCode({
-      principal: B.public,
-      agent: agent.public,
-      expires: at + 10 ** 8,
-    });
-    const r = await approveCode({
-      code,
-      principal: B.public,
-      localAgent: agent.public,
-      now: at,
-      approver: P.signer(B, async () => true),
-    });
+    const shown = async (expires: number) => {
+      let lines: string[] = [];
 
-    expect(r).toMatchObject({ ok: true });
+      await approveCode({
+        code: await protocolCode({
+          principal: B.public,
+          agent: agent.public,
+          expires,
+        }),
+        principal: B.public,
+        localAgent: agent.public,
+        now: at,
+        approver: P.signer(B, async (ask) => {
+          lines = ask.lines;
 
-    const g = await P.inspectGrant(r.ok ? r.grant : '');
+          return false;
+        }),
+      });
 
-    expect(g.blocks[0].caveats).toContainEqual({ exp: at + P.CONSENT_TTL });
+      return lines;
+    };
+    const day = at + 86400 - 28;
+
+    expect((await shown(day)).slice(-2)).toEqual([
+      '',
+      `⚠ this approval stays valid until ${fmtTime(day)}, 23h 59m from now`,
+    ]);
+    expect((await shown(at + 7200)).at(-1)).toMatch(/, 2h from now$/);
+    expect((await shown(at + 3600)).join('\n')).not.toContain('⚠');
   });
 
   it('[A7] a job consent is signed by the principal, to the server, for that one plan', async () => {
@@ -4842,7 +4853,9 @@ describe('an INTENT no grant authorized (#287)', async () => {
   const commitOnly: P.Caveat[] = [{ verbs: ['COMMIT'] }];
   const grantOf = (from: P.KeyPair, caveats: P.Caveat[] = []) =>
     P.issueGrant({ principal: from, to: agent.public, caveats });
-  const fixture = (opts: { requireGrants?: boolean } = {}) => {
+  const fixture = (
+    opts: { requireGrants?: boolean; proposalTtl?: number } = {},
+  ) => {
     const applied: (string | null)[] = [];
     const svc = P.service({
       id: 'v',
@@ -5034,6 +5047,29 @@ describe('an INTENT no grant authorized (#287)', async () => {
     );
 
     expect(r.kind === 'RECEIPT' && r.auto).toBe(true);
+    expect(applied).toEqual([principal.public]);
+  });
+
+  it("[A22] a consent yea approve signs commits it: its exp is the proposal's, never capped (#325)", async () => {
+    // Open for an hour, so a consent capped at 10 minutes would fall short of the proposal's expiry.
+    const { applied, as } = fixture({ proposalTtl: 3600 });
+    const c = as([await grantOf(principal, commitOnly)]);
+    const p = proposalOf(await c.intent('v.do', {}, { auto: true }));
+    // The code the bridge hands the person, approved at once as `yea approve <id>` does.
+    const r = await approveCode({
+      code: P.consentCode(consentOf(await c.commit(p)), p, {
+        agent: agent.public,
+      }),
+      principal: principal.public,
+      localAgent: agent.public,
+      approver: P.signer(principal, async () => true),
+    });
+    const grant = r.ok ? r.grant : '';
+
+    expect((await P.inspectGrant(grant)).blocks[0].caveats).toContainEqual({
+      exp: p.expires,
+    });
+    expect((await c.commit(p, { grants: [grant] })).kind).toBe('RECEIPT');
     expect(applied).toEqual([principal.public]);
   });
 });

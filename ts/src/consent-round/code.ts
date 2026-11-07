@@ -5,7 +5,6 @@
  * same way the round does it.
  */
 
-import { CONSENT_TTL } from '../ask.js';
 import { consentRecipient, decodeConsentCode } from '../consent.js';
 import type { Approver, ConsentAsk } from '../consent-round.js';
 import { sha256 } from '../crypto.js';
@@ -44,6 +43,46 @@ async function recipientOf(
   };
 }
 
+/** A consent valid for longer than this, in seconds, gets a warning before the y/N: an hour. */
+const LONG_CONSENT = 3600;
+
+/** Whole days, hours and minutes, in seconds, largest first. */
+const UNITS = [
+  ['d', 86400],
+  ['h', 3600],
+  ['m', 60],
+] as const;
+
+/** A span of `s` seconds for a person to read: its two largest units that aren't 0, as `23h 59m`. */
+function roughly(s: number): string {
+  const parts: string[] = [];
+  let rest = s;
+
+  for (const [unit, size] of UNITS) {
+    if (rest >= size) {
+      parts.push(`${Math.floor(rest / size)}${unit}`);
+      rest %= size;
+    }
+  }
+
+  return parts.slice(0, 2).join(' ');
+}
+
+/**
+ * The warning before the y/N when the consent stays valid for over `LONG_CONSENT`: it expires with
+ * its proposal, so a service that keeps a proposal open for long keeps the consent valid as long.
+ */
+function longConsentLines(expires: number, now: number): string[] {
+  const left = expires - now;
+
+  return left > LONG_CONSENT
+    ? [
+        '',
+        `⚠ this approval stays valid until ${printable(fmtTime(expires))}, ${roughly(left)} from now`,
+      ]
+    : [];
+}
+
 /** What approving a code needs: the code, whose it must be, and where it's being approved. */
 interface CodeApproval {
   code: string;
@@ -56,8 +95,9 @@ interface CodeApproval {
 }
 
 /**
- * The ask for a consent code, or why it can't be approved. The consent expires when the code
- * and its proposal do, and no more than `CONSENT_TTL` from now, as a job consent (SPEC-bridge).
+ * The ask for a consent code, or why it can't be approved. The consent expires with the code and
+ * its proposal: SPEC.md §4.4 commits a proposal no grant authorized only with a consent whose `exp`
+ * is the proposal's, so it isn't capped, and a long one is flagged before the y/N (SPEC-bridge).
  */
 async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
   let c: ReturnType<typeof decodeConsentCode>;
@@ -91,11 +131,7 @@ async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
     return { ok: false, why: `this consent code can't be approved: ${why}` };
   }
 
-  const from = consentFrom(c, c.detail);
-  const request = {
-    ...from,
-    expires: Math.min(from.expires, (o.now ?? unixNow()) + CONSENT_TTL),
-  };
+  const request = consentFrom(c, c.detail);
 
   return {
     request,
@@ -105,6 +141,7 @@ async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
       ...consentLines(c, c.detail),
       `  consent issued to agent: ${agent.key} (fingerprint ${await keyFingerprint(agent.key)})`,
       `  approval expires: ${fmtTime(request.expires)}`,
+      ...longConsentLines(request.expires, o.now ?? unixNow()),
     ],
     reason: '',
   };

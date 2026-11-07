@@ -285,8 +285,11 @@ one exact proposal at one service, and still needs the agent key's proof.
     sha256), so the person checks it and passes it deliberately. The fingerprint is shown
     again next to the proposal before the y/N.
 
-  It caps the consent's `exp` at 10 minutes from now, whatever the code or the proposal says,
-  as it does for job codes (SPEC-approval §6).
+  The consent's `exp` is the earlier of the code's and the proposal's `expires` (the same, in
+  a code a service issued), uncapped, unlike a job consent's (SPEC-approval §6): SPEC.md §4.4
+  commits a proposal no grant authorized only with a consent whose `exp` is the proposal's.
+  When that's more than an hour away, the last line before the y/N says so: `⚠ this approval
+  stays valid until <time>, <duration> from now`, with the time escaped like all service text.
 
   After the y/N, it prints the signed consent on stdout, and saves it in `~/.yea/consents` only
   when this machine's agent key is the one it's issued to. Then it says what's next: when it
