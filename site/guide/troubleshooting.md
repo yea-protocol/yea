@@ -45,7 +45,7 @@ A valid grant doesn't cover this request, and `need` lists the caveats that bloc
 
 ## `consent_required`
 
-That's working as intended: the action is outside the policy (per-action cap, total spend or risk ceiling). The human approves it with `yea approve <pc1.code>` where their principal key is, and the agent passes the printed consent to `yea_consent` and calls the tool again. On one machine, `yea approve <id>` with the short id the result gives saves the consent where the bridge reads it, so the agent only calls the tool again; that's the trial setup ([rule one](/guide/security#rule-one-keep-the-principal-key-away-from-the-agent)). Either way, run it in a terminal outside the chat. The approval covers that one proposal only.
+That's working as intended: the action is outside the policy (per-action cap, total spend or risk ceiling). The human approves it with `yea approve <pc1.code>` where their principal key is, and the agent passes the printed consent to `yea_consent` and calls the tool again. On one machine, `yea approve <id>` with the short id the result gives saves the consent where the bridge reads it, so the agent only calls the tool again; that's the trial setup ([what an approval proves](/guide/security#what-an-approval-proves)). Either way, run it in a terminal outside the chat. The approval covers that one proposal only.
 
 ## `expired`
 

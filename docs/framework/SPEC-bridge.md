@@ -218,8 +218,9 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      `<agent key>` is the agent's public key, from the code. If any file can't be written, the
      first line names `<code>` instead, and the id lines are left out. On one machine, `yea
      approve` saves the consent where the bridge reads it, so nothing goes back through the
-     model. That's the one-machine trial, form tier (SPEC-approval §6, Short ids); the
-     recommended setup keeps the principal key on another device, with `--to` and the paste-back.
+     model. That's the one-machine trial, form tier (SPEC-approval §6, Short ids, and
+     [§9](SPEC-approval.md#what-an-approval-proves)); the recommended setup keeps the principal
+     key on another device, with `--to` and the paste-back.
    - A result that returns proposals for approval isn't `isError`: nothing ran, the first line
      says so, and the model may still commit one within the grant with `proposal`. The no-grants
      and many-principals results are `isError`.

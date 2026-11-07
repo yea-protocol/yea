@@ -594,7 +594,7 @@ bounds the sum.
 On one machine, each consent code also comes with a short id: run `yea approve <id>` in a
 terminal outside the chat, and the consent is saved where the bridge reads it, so nothing goes
 back through the chat. That's part of the trial setup, for the same reason: an agent that runs
-as you could run `yea approve` too ([rule one](https://yea-protocol.github.io/yea/guide/security#rule-one-keep-the-principal-key-away-from-the-agent)). With the principal key on another
+as you could run `yea approve` too ([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)). With the principal key on another
 device, as recommended, run `yea approve <code> --to <agent key>` there and paste the consent
 back.
 <!-- #endregion claude-code -->

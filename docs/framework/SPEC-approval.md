@@ -454,9 +454,9 @@ An id it can't find is refused with where it looked, and one whose code has expi
 it is. Every refusal of an id says *call the tool again for a fresh one*.
 
 **Short ids are a one-account convenience**, for trying YEA on one machine. There they are
-what [#337](https://github.com/yea-protocol/yea/issues/337) calls form tier: the agent runs as
-the same OS user, so it can run `yea approve` itself, and a terminal isn't a person
-([§9](#9-security)). Another OS user or device keeps the whole code.
+form tier ([§9, What an approval proves](#what-an-approval-proves)): the agent runs as the same
+OS user, so it can run `yea approve` itself, and a terminal isn't a person. Another OS user or
+device keeps the whole code.
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
 and checks it against that plan's consent hash, recomputed from the plan and the phrase the

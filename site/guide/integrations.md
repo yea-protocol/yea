@@ -208,7 +208,7 @@ mcp_servers:
     args: ["-y", "@yea-protocol/cli", "mcp"]
 ```
 
-When a commit needs the human's approval, the tool returns a consent code for `yea approve`, and the agent hands the signed consent back through `yea_consent`. On the agent's own machine the code also comes with a short id, and `yea approve <id>` saves the consent where the bridge reads it, so nothing is handed back; that's the trial setup ([rule one](/guide/security#rule-one-keep-the-principal-key-away-from-the-agent)). If you restrict which tools a server exposes (`tools.include`), keep `yea_consent`, `yea_undo` and `yea_expand` alongside the capability tools you want.
+When a commit needs the human's approval, the tool returns a consent code for `yea approve`, and the agent hands the signed consent back through `yea_consent`. On the agent's own machine the code also comes with a short id, and `yea approve <id>` saves the consent where the bridge reads it, so nothing is handed back; that's the trial setup ([what an approval proves](/guide/security#what-an-approval-proves)). If you restrict which tools a server exposes (`tools.include`), keep `yea_consent`, `yea_undo` and `yea_expand` alongside the capability tools you want.
 
 ## Servers built with the framework
 
