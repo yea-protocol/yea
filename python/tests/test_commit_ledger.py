@@ -530,6 +530,72 @@ def test_an_auto_intent_whose_caller_is_cancelled_mid_plan_still_answers_once():
     run(go())
 
 
+# ------------------------------------------------------------ a run cancelled before it starts (Python only)
+# A run's first step comes a loop iteration after it is made. A loop closed in between (asyncio.run
+# of a handler fired and not awaited) cancels it before its own failure handling can run, so the
+# ledger forgets it as it would a failed run, releasing what it held, and a retry starts it afresh.
+
+
+async def fired(call):
+    """Start ``call`` and return at once: asyncio.run then closes the loop before its run starts."""
+    asyncio.ensure_future(call)
+
+
+def test_a_commit_run_cancelled_before_it_starts_is_forgotten_and_releases_its_reservation():
+    f, grant, runs = LedgerFixture(), TotalGrant(100), []
+    p = f.propose(60, apply=lambda c: runs.append(1))
+
+    def commit(stored):
+        return f.ledger.commit(commit_of(stored, grant.admit), no_events)
+
+    run(fired(commit(p)))
+    assert runs == []
+    retried = run(commit(p))  # 60 more would pass the 100 had the first 60 stayed reserved
+    assert retried["kind"] == "RECEIPT" and "replay" not in retried and runs == [1]
+    assert run(code_of(commit(f.propose(40)))) == "ok"
+
+
+def test_an_undo_run_cancelled_before_it_starts_is_forgotten():
+    r = run(receipted())
+    run(fired(r.undo()))
+    assert r.reverts == []
+    again = run(r.undo())
+    assert again["kind"] == "RECEIPT" and "replay" not in again and r.reverts == [1]
+
+
+def test_an_auto_answer_cancelled_before_it_starts_is_forgotten():
+    f, answers = LedgerFixture(), []
+    replay, answer = AutoReplay("agent:f1", T0), answers_counted(answers)
+    run(fired(f.ledger.answer_once(replay, "f1", answer)))
+    assert answers == []
+    run(f.ledger.answer_once(replay, "f1b", answer))
+    assert answers == [1]  # answered afresh: no reply was kept for the cancelled one
+
+
+def test_no_caller_receives_a_runs_own_cancellation():
+    """``runs.outcome`` itself: a caller can still reach a cancelled run in the iteration before the
+    ledger forgets it, already done or while it waits. It gets ``internal``, never the cancellation."""
+    from yea.service.commit_ledger.runs import outcome
+
+    async def go():
+        gate = asyncio.Event()
+
+        async def reply():
+            await gate.wait()
+            return {}
+
+        cancelled_run = asyncio.ensure_future(reply())
+        waiter = asyncio.ensure_future(outcome(cancelled_run))
+        await asyncio.sleep(0)  # a yield, so the waiter is waiting on the run
+        cancelled_run.cancel()
+        for caller in (waiter, outcome(cancelled_run)):
+            with pytest.raises(YeaError, match="was cancelled before it started") as e:
+                await caller
+            assert e.value.code == "internal"
+
+    run(go())
+
+
 # ------------------------------------------------------------ a second event loop (Python only)
 
 

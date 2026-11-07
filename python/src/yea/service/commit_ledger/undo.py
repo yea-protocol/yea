@@ -13,7 +13,7 @@ from ..plan import CommitCtx
 from ..replies import error_reply, event_frame, replay_of, reply_frame
 from ..util import Emit, _call, _iso, random_id
 from .records import StoredReceipt, Undo
-from .runs import Run, outcome
+from .runs import Run, forget_if_cancelled, outcome
 
 _INVERSE = {"create": "delete", "delete": "create"}
 
@@ -29,6 +29,7 @@ async def undo_once(undos: dict[str, Run], req: Undo, emit: Emit, now: Callable[
     # Stored before revert starts, so a synchronous raise from `plan.revert` can clear it (#187).
     run = asyncio.ensure_future(_revert_once(undos, req, emit, now))
     undos[rid] = run
+    forget_if_cancelled(run, lambda: undos.pop(rid, None))
     return await outcome(run)
 
 

@@ -35,7 +35,7 @@ from .records import (
     Used,
     receipt_for,
 )
-from .runs import Run, outcome
+from .runs import Run, forget_if_cancelled, outcome
 from .sweep import sweep
 from .undo import undo_once
 from .usage import UsageLedger
@@ -148,8 +148,10 @@ class CommitLedger:
         """Start the run of a proposal whose reservations are held. It is stored before apply starts:
         a synchronous raise from ``plan.apply`` then finds its entry to delete, so a retry runs apply
         again (#187)."""
+        pid = stored.proposal["id"]
         run = asyncio.ensure_future(self._apply(stored, principal, held, answer))
-        self._records.runs[stored.proposal["id"]] = run
+        self._records.runs[pid] = run
+        forget_if_cancelled(run, lambda: self._free(pid, held))
         return await outcome(run)
 
     async def _apply(self, stored: StoredProposal, principal: str, held: list[Reservation], answer: Answer) -> dict:
@@ -163,11 +165,16 @@ class CommitLedger:
             result = await _call(plan.apply, CommitCtx(principal, progress))
             receipt = receipt_for(proposal, result, self._now())
         except (Exception, asyncio.CancelledError) as e:  # its own cancellation too (runs.py)
-            self._records.runs.pop(proposal["id"], None)  # a failed commit may be retried
-            for h in held:
-                self._usage.release(h)
+            self._free(proposal["id"], held)
             return error_reply(answer.re, e)
         self._records.receipts[receipt["id"]] = StoredReceipt(receipt, plan, result, principal)
         for h in held:
             self._usage.settle(h)
         return reply_frame(answer.re, "RECEIPT", {"receipt": receipt})
+
+    def _free(self, pid: str, held: list[Reservation]) -> None:
+        """Forget the run of a commit that failed or never started, so it may be retried, and release
+        what it held."""
+        self._records.runs.pop(pid, None)
+        for h in held:
+            self._usage.release(h)

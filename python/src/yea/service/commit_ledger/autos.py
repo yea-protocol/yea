@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from ..replies import replay_of
-from .runs import Run, outcome
+from .runs import Run, forget_if_cancelled, outcome
 
 AUTO_MEMORY = 900  # seconds a reply is kept past the later of its arrival and its proof's `ts`
 PRUNE_AT = 10_000  # past this many replies kept, a new one prunes those past `exp`
@@ -40,6 +40,7 @@ class AutoReplies:
             return replay_of(await outcome(prior.reply), re)
         reply = asyncio.ensure_future(_answered(answer))
         self._replies[replay.key] = _Kept(reply, max(now, replay.proof_ts) + AUTO_MEMORY)
+        forget_if_cancelled(reply, lambda: self._drop(replay.key, reply))
         if len(self._replies) > PRUNE_AT:
             self.forget(now)
         return await outcome(reply)
@@ -47,6 +48,12 @@ class AutoReplies:
     def forget(self, now: int) -> None:
         """Forget replies past ``exp``."""
         self._replies = {k: v for k, v in self._replies.items() if v.exp > now}
+
+    def _drop(self, key: str, reply: Run) -> None:
+        """Forget ``reply`` if it is still the one kept for ``key``."""
+        kept = self._replies.get(key)
+        if kept is not None and kept.reply is reply:
+            del self._replies[key]
 
 
 async def _answered(answer: Callable[[], Awaitable[dict]]) -> dict:
