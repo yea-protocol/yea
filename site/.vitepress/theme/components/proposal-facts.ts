@@ -9,14 +9,16 @@ import type {
   effectLine,
   fmtDuration,
   fmtQuantity,
+  isUndoWindow,
   Proposal,
 } from '@yea-protocol/sdk';
 
-/** The SDK formatters the facts need. */
+/** The SDK formatters the facts need, and its rule for what is an undo window. */
 export interface FactsKit {
   effectLine: typeof effectLine;
   fmtQuantity: typeof fmtQuantity;
   fmtDuration: typeof fmtDuration;
+  isUndoWindow: typeof isUndoWindow;
 }
 
 export interface ProposalFacts {
@@ -24,7 +26,10 @@ export interface ProposalFacts {
   /** What it uses, as `spend 53.95 USD`, or null if nothing. */
   uses: string | null;
   risk: string;
-  /** The undo window, as `within 2h`, or `can't be undone`. */
+  /**
+   * The undo window, as `within 2h`, or `can't be undone`: also when the window isn't a positive
+   * integer, which a client treats as no undo (SPEC §5.1).
+   */
   undo: string;
 }
 
@@ -38,9 +43,10 @@ export function proposalFacts(kit: FactsKit, p: Proposal): ProposalFacts {
       ? names.map((n) => `${n} ${kit.fmtQuantity(uses[n])}`).join(', ')
       : null,
     risk: p.risk,
-    undo: p.undo
-      ? `within ${kit.fmtDuration(p.undo.window)}`
-      : "can't be undone",
+    undo:
+      p.undo && kit.isUndoWindow(p.undo.window)
+        ? `within ${kit.fmtDuration(p.undo.window)}`
+        : "can't be undone",
   };
 }
 

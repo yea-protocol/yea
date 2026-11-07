@@ -26,13 +26,21 @@ export interface JobPlan {
   apply(): unknown;
 }
 
-/** A plan with what the approval core needs to judge it. */
-export interface HashedPlan {
+/**
+ * What a plan's preimage is built from: the plan, its tool, its resolved risk and whether it can
+ * be undone.
+ */
+export interface JudgedPlan {
   tool: string;
-  plan: JobPlan;
-  planHash: string;
+  plan: Pick<JobPlan, 'summary' | 'effects' | 'uses' | 'undoWindow'>;
   risk: Risk;
   undoable: boolean;
+}
+
+/** A plan with what the approval core needs to judge it: a {@link JudgedPlan}, and its hash. */
+export interface HashedPlan extends JudgedPlan {
+  plan: JobPlan;
+  planHash: string;
 }
 
 /**
@@ -76,17 +84,6 @@ export const planTooDeep = ({
   uses,
 }: Pick<JobPlan, 'summary' | 'effects' | 'uses'>) =>
   tooDeepToApprove({ summary, effects, uses });
-
-/**
- * What a plan's preimage is built from: the plan, its tool, its resolved risk and whether it can
- * be undone. A {@link HashedPlan} is one.
- */
-export interface JudgedPlan {
-  tool: string;
-  plan: Pick<JobPlan, 'summary' | 'effects' | 'uses' | 'undoWindow'>;
-  risk: Risk;
-  undoable: boolean;
-}
 
 /** The plan as a person is shown it (see {@link ShownPlan}), absent fields left out. */
 export function shownPlan({

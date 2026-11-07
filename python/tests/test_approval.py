@@ -9,7 +9,7 @@ import pytest
 
 from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed, quantity, spend
 from yea.approval import (
-    OTHER_PHRASE, PHRASE_CHANGED, HashedPlan, Policy, StoredConsent, Tightening, build_form, check_job_consent,
+    OTHER_PHRASE, PHRASE_CHANGED, HashedPlan, JudgedPlan, Policy, StoredConsent, Tightening, build_form, check_job_consent,
     check_key_file, check_state, choose_store, consent_for, consent_hash_of, decide, checked_phrase, input_hash, job_consent_code, judge_answer, load_policy, load_principal_key, new_receipt_id, new_state,
     normalize_phrase, phrase_matches, plan_hash, plan_lines, plan_preimage, read_tightening, reserve_all, shown_plan,
     undo_receipt,
@@ -35,7 +35,7 @@ def plan(summary="Delete old-nav", undo=3600, uses=None, risk=None):
 def hashed(tool="delete_branch", input=None, p=None, risk="low", undoable=True):
     p = p or plan()
     input = input if input is not None else {"repo": "site", "branch": "old-nav"}
-    return HashedPlan(tool, p, plan_hash(tool, input, p, risk, undoable=undoable), risk, undoable)
+    return HashedPlan(tool, p, plan_hash(input, JudgedPlan(tool, p, risk, undoable)), risk, undoable)
 
 
 def policy(*caveats, deny=(), oob="high", principal=PRINCIPAL, issued_to=SERVER):
@@ -61,11 +61,12 @@ def test_plan_hash_is_stable_and_binds_input_and_content():
 
 
 def test_plan_preimage_leaves_out_absent_fields():
-    pre = plan_preimage("t", {"a": 1}, plan(undo=None), "medium", undoable=False)
+    judged = JudgedPlan("t", plan(undo=None), "medium", False)
+    pre = plan_preimage({"a": 1}, judged)
     assert set(pre) == {"tool", "input", "summary", "effects", "risk"}
-    assert sha256_b64url(canonical(pre).encode()) == plan_hash("t", {"a": 1}, plan(undo=None), "medium", undoable=False)
+    assert sha256_b64url(canonical(pre).encode()) == plan_hash({"a": 1}, judged)
     # An empty uses is absent, as on the wire.
-    assert "uses" not in plan_preimage("t", {}, plan(uses={}), "low", undoable=True)
+    assert "uses" not in plan_preimage({}, JudgedPlan("t", plan(uses={}), "low", True))
 
 
 def test_the_shown_plan_carries_the_undo_window_only_when_the_plan_is_undoable():
@@ -81,7 +82,7 @@ def test_the_shown_plan_carries_the_undo_window_only_when_the_plan_is_undoable()
 
 def test_non_integer_input_fails_closed():
     with pytest.raises(ValueError, match="use a string or an integer"):
-        plan_hash("refund", {"amount": 22.87}, plan(), "low", undoable=True)
+        plan_hash({"amount": 22.87}, JudgedPlan("refund", plan(), "low", True))
 
 
 # ------------------------------------------------------------------ §3 phrases
@@ -772,7 +773,7 @@ def test_another_servers_receipt_is_no_such_receipt(store):
 
 def test_a_malformed_uses_fails_the_plan_hash():
     with pytest.raises(ValueError, match="malformed uses"):
-        plan_hash("t", {}, plan(uses=[]), "low", undoable=True)
+        plan_hash({}, JudgedPlan("t", plan(uses=[]), "low", True))
 
 
 def test_an_unprintable_phrase_is_refused_before_anyone_is_asked():

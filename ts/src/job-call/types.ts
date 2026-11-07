@@ -9,7 +9,7 @@ import type { Risk } from '../types.js';
 export interface JobTool {
   name: string;
   risk?: Risk;
-  /** The tool's `revert`: with it, a plan with an `undoWindow` can be undone. */
+  /** The tool's `revert`: with it, a plan whose `undoWindow` is a positive integer can be undone. */
   revert?: unknown;
   /** The phrase the person types for a plan; `approve` when absent or empty. */
   confirmWith?(hp: HashedPlan, input: Record<string, unknown>): unknown;

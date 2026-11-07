@@ -12,12 +12,12 @@ import pytest
 
 from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
-    local, serve_http, verify_grant,
+    lens, local, serve_http, verify_grant,
 )
 from yea._json import b64url_encode
-from yea.approval import Policy, reserve_all
+from yea.approval import Policy, Tightening, load_policy, reserve_all
 from yea.errors import YeaError
-from yea.job_call import JobCall, JobTool, Outcome, Retry, job_call
+from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
 from yea.keys import sign_proof
 from yea.service.verified_request import VerifiedIntent, verify_request
 from yea.store import LedgerKey, MemoryStore
@@ -589,7 +589,7 @@ def test_approval_never_covers_content_lens_cuts():
     import pytest
 
     from yea import proposal_hash
-    from yea.approval.plan import plan_preimage
+    from yea.approval.plan import JudgedPlan, plan_preimage
     from yea.approve import check_proposal
     from yea.lens import safe_effect_line
     from yea.service.plan import Plan
@@ -625,10 +625,10 @@ def test_approval_never_covers_content_lens_cuts():
     def plan(levels, wrap=list):
         return Plan("Update settings", wrap([effect(levels)]), apply=lambda: None)
 
-    assert plan_preimage("t", {}, plan(28), "low", undoable=False)["tool"] == "t"
+    assert plan_preimage({}, JudgedPlan("t", plan(28), "low", False))["tool"] == "t"
     for p in (plan(29), plan(29, tuple)):
         with pytest.raises(ValueError, match="nested past 32 levels"):
-            plan_preimage("t", {}, p, "low", undoable=False)
+            plan_preimage({}, JudgedPlan("t", p, "low", False))
 
     shown = safe_effect_line(proposal(28)["effects"][0])
     assert "attacker@evil.test" in shown and "…" not in shown
@@ -838,8 +838,6 @@ SERVER = key_from_seed(bytes([5]) * 32)
 
 def _moving(undo_window, revert=True) -> JobCall:
     """A reschedule call that the signed policy allows, its one plan with this undo window."""
-    from yea.approval import Tightening, load_policy
-
     async def plan():
         return [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=undo_window)]
     grant = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["reschedule"]}]).encode()
@@ -861,8 +859,6 @@ def test_83_a_job_plan_with_any_other_window_is_not_undoable_so_the_policy_asks(
 
 
 def test_83_its_plan_hash_is_the_same_as_with_no_window_as_is_a_window_on_a_tool_without_revert():
-    from yea.job_call import hash_plans
-
     def hashed(w, revert=True):
         [hp] = hash_plans(JobTool("reschedule", revert=(lambda _: None) if revert else None), {},
                           [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=w)])
@@ -894,8 +890,6 @@ def test_83_a_service_sends_undo_null_for_any_other_window_and_never_auto_commit
 
 
 def test_83_a_client_renders_a_proposal_whose_window_is_any_other_value_as_undo_never():
-    from yea import lens
-
     for w in NOT_WINDOWS:
         p = {"id": "p_1", "capability": "cal.move", "summary": "move it", "effects": [], "risk": "low",
              "undo": {"window": w}, "expires": NOW, "hash": "h"}

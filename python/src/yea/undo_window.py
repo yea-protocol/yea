@@ -8,11 +8,16 @@ from typing import Any
 from ._json import MAX_SAFE_INT
 
 
-def is_undo_window(v: Any) -> bool:
-    """Whether ``v`` is an undo window: a whole number of seconds from 1 to 2^53−1 (an
-    integer-valued float counts, as in JS). Zero, negatives, fractions, strings, booleans and
-    everything else are not, so a plan with one is not undoable, a service sends ``undo: null``
-    for it, and every renderer shows ``never``."""
+def undo_window_of(v: Any) -> int | None:
+    """``v`` as an undo window: a whole number of seconds from 1 to 2^53−1, as an int (an
+    integer-valued float counts, as in JS, so ``3600.0`` is ``3600``). None for zero, negatives,
+    fractions, strings, booleans and everything else: a plan with one is not undoable, a service
+    sends ``undo: null`` for it, and every renderer shows ``never``."""
     if type(v) is float and v.is_integer():
         v = int(v)
-    return type(v) is int and 0 < v <= MAX_SAFE_INT
+    return v if type(v) is int and 0 < v <= MAX_SAFE_INT else None
+
+
+def is_undo_window(v: Any) -> bool:
+    """Whether ``v`` is an undo window (see ``undo_window_of``)."""
+    return undo_window_of(v) is not None
