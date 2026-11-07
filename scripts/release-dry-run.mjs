@@ -5,8 +5,10 @@
  * given a tag, that CHANGELOG and the tag name that version), that the SDK's
  * npm README is synced, that server.json matches its schema, that the npm
  * tarballs install into an empty project and work, and that the Python wheels
- * install and import. Run it after `npm run build`; it needs uv for the
- * Python half. Usage: release-dry-run.mjs [<tag>]
+ * install and import. Every tarball must carry a README, and given a tag, no
+ * packed README (npm's or an sdist's) may still say "Unreleased". Run it after
+ * `npm run build`; it needs uv for the Python half.
+ * Usage: release-dry-run.mjs [<tag>]
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,6 +19,9 @@ import { checkPython } from './release-dry-run/python.mjs';
 import { checkServerJson } from './release-dry-run/server-json.mjs';
 import { releaseProblems } from './release-versions.mjs';
 import { readmeInSync } from './sync-readme.mjs';
+
+export { publishedPackages } from './release-dry-run/packages.mjs';
+export { PYTHON_PROJECTS } from './release-dry-run/python.mjs';
 
 /** The steps, in order; each throws to fail, and gets its own empty folder. */
 const STEPS = [

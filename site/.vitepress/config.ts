@@ -162,8 +162,15 @@ const PAGES: Record<string, string> = {
   'README.md': '/',
 };
 
-/** Map a repo-relative link in included markdown to a site page, or to GitHub. */
+/**
+ * Map a repo-relative link in included markdown to a site page, or to GitHub. A link to this
+ * site, as the package READMEs write them for npm and PyPI, stays on the site.
+ */
 function repoLink(href: string): string {
+  if (href.startsWith(site)) {
+    return `/${href.slice(site.length)}`;
+  }
+
   if (/^([a-z]+:|\/|#)/i.test(href)) {
     return href;
   }

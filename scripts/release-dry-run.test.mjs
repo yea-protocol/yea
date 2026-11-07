@@ -3,10 +3,12 @@
  * `exports` path or a missing `exports` fails the exports check, a file left
  * out of a tarball fails the tarball check, a bin that fails or prints no help
  * fails the bin check, release.yml must publish every package that isn't
- * private, and the `initialize` probe tells a server that answers from one
- * that errs, exits or hangs.
+ * private, a tarball needs a README and a packed README can't say
+ * "Unreleased", and the `initialize` probe tells a server that answers from
+ * one that errs, exits or hangs.
  */
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   mkdirSync,
@@ -15,13 +17,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { binProblems, binsOf } from './release-dry-run/bins.mjs';
 import { exportProblems } from './release-dry-run/exports.mjs';
 import { initialize } from './release-dry-run/mcp-initialize.mjs';
 import { publishedPackages, unreleased } from './release-dry-run/packages.mjs';
+import { missingReadmes, unreleasedReadme } from './release-dry-run/readme.mjs';
 import { unpackedFiles } from './release-dry-run/tarball.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -55,6 +58,27 @@ function workspaceWith(files) {
   writeFileSync(join(dir, 'dist', 'sub', 'b.js'), '');
 
   return dir;
+}
+
+/** An archive at a temp folder holding `files` (path to text), made with tar as npm and uv do. */
+function archiveWith(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'yea-archive-'));
+  const archive = join(dir, 'packed.tgz');
+
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(dir, 'src', dirname(path)), { recursive: true });
+    writeFileSync(join(dir, 'src', path), text);
+  }
+
+  execFileSync('tar', [
+    '-czf',
+    archive,
+    '-C',
+    join(dir, 'src'),
+    ...Object.keys(files),
+  ]);
+
+  return archive;
 }
 
 /**
@@ -146,6 +170,35 @@ test('a file a tarball left out is named', () => {
   assert.deepEqual(unpackedFiles(dir, ['dist/a.js', 'package.json']), [
     "w: dist/sub/b.js isn't in the tarball",
   ]);
+});
+
+test('a tarball without a README is named', () => {
+  const packs = [
+    { name: 'a', paths: ['README.md', 'package.json'] },
+    { name: 'b', paths: ['dist/index.js', 'package.json'] },
+  ];
+
+  assert.deepEqual(missingReadmes(packs), ['b: the tarball has no README.md']);
+});
+
+test('a packed README that says Unreleased fails, naming its lines', () => {
+  const archive = archiveWith({
+    'package/README.md': '# a\n\n> **Unreleased:** not on npm yet.\n',
+    'package/index.js': '',
+  });
+
+  assert.deepEqual(unreleasedReadme('a', archive, 'package/README.md'), [
+    'a: its README says "Unreleased" (line 3); take the banners out before the tag',
+  ]);
+});
+
+test('a packed README without the banner passes, in an sdist too', () => {
+  const archive = archiveWith({ 'yea_x-0.1.0/README.md': '# yea-x\n' });
+
+  assert.deepEqual(
+    unreleasedReadme('yea_x-0.1.0', archive, 'yea_x-0.1.0/README.md'),
+    [],
+  );
 });
 
 test('a bin that prints its usage line passes', () => {

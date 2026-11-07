@@ -146,8 +146,11 @@ The README's first screen is for someone who builds MCP servers (#324); the prot
   (the bridge rebuild changes it, and a re-run needs James's go on cost).
 - **Release gate:** until the release that publishes the packages, the install line sits under
   the "Unreleased" banner, which says to install from the repo. The release removes the banner,
-  the regions' notices and the badges' comment; the switch is on the release checklist.
-- **ts/README.md** stays synced from it (`scripts/sync-readme.mjs`).
+  the regions' notices and the badges' comment before the tag (#319): a published version's npm
+  and PyPI pages can't change, so the dry run, given the tag, fails while any packed README still
+  says "Unreleased".
+- **ts/README.md** stays synced from it (`scripts/sync-readme.mjs`), so the SDK's npm page is this
+  README; it has no page of its own (§6).
 
 ### 3. Landing page
 
@@ -188,6 +191,25 @@ with its worked example on the framework API:
 - **The sidebar:** Start → *Add YEA to your MCP server (TS · Python)*, Quickstart, Why YEA,
   Playground … The protocol pages stay under Concepts and Build.
 
+### 6. Package pages
+
+Every other package we publish has a README that is its npm or PyPI page (#323):
+`@yea-protocol/mcp`, `@yea-protocol/cli`, `@yea-protocol/stripe`, `yea-sdk` and `yea-mcp`.
+- **Its first screen is a package card:** the pitch in a line, the "Unreleased" banner until the
+  release, the install line, and its first example.
+- **The pitch follows the tiers** ([SPEC-approval §9](SPEC-approval.md#what-an-approval-proves)):
+  a form is approval *in the client*, a page that says so links §9, and "the model can't fake
+  it" is said of nothing but signed consent, with where the key lives. Each pitch is a working
+  line for James to approve.
+- **One short example:** `@yea-protocol/mcp` and `yea-mcp` show the README's guard quickstart
+  (`examples/guard-quickstart.ts` and its Python twin), not one of their own. The CLI's is
+  `examples/cli-quickstart.sh`, the connector's library use `examples/stripe-connector.ts`, and
+  `yea-sdk`'s `python/examples/quickstart.py`, each run by a test.
+- **Links are absolute,** since npm and PyPI can't follow a relative one: to its guide on the
+  site and to its SPEC on GitHub. `repoLink` keeps a link to the site on the site, for the two
+  READMEs the site includes (`python/README.md` and `connectors/stripe/README.md`), which keep
+  their guide content below the card.
+
 ## Owners
 
 | Work | Owner |
@@ -215,7 +237,12 @@ with its worked example on the framework API:
     its own process over stdio, which reaches the lines that start it (on Node 22.18 or later,
     so it skips on Node 20).
 - **Drift checks** in CI:
-  - the README snippet against the example's region;
+  - every README's snippets against the examples' regions (`scripts/check-readmes.mjs`), for the
+    README and each package page: a code block is a pinned region or isn't there, and a package
+    page also installs its package, links its guide and SPEC absolutely and has no relative
+    link;
+  - the release dry run: every npm tarball carries a README, and, given a tag, no packed README
+    (npm's or an sdist's) says "Unreleased";
   - the install and run lines adopters follow (`site/test/instructions.test.mjs`): zod pinned
     to 4, `node server.ts` only with `"type": "module"`, the README's quickstart installing what
     it imports and runs, and a page promising code only when the README region it includes has

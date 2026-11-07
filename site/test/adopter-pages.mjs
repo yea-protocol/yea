@@ -40,6 +40,8 @@ export function adopterPages() {
   return [
     join(ROOT, 'README.md'),
     join(ROOT, 'cli', 'README.md'),
+    join(ROOT, 'mcp', 'README.md'),
+    join(ROOT, 'python', 'README.md'),
     join(ROOT, 'python', 'mcp', 'README.md'),
     ...readmesUnder('connectors'),
     ...pages,

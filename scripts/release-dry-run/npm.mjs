@@ -1,9 +1,10 @@
 /**
  * The npm half of the dry run: the packages a release publishes (every
  * workspace that isn't private, each named in release.yml), packed; each
- * tarball holds everything its `files` folders do; then installed into an
- * empty project as an adopter would, and run: every export of the libraries
- * loads, every bin answers `--help`, and `yea mcp` answers `initialize`.
+ * tarball holds everything its `files` folders do, and a README that, given a
+ * tag, doesn't say "Unreleased"; then installed into an empty project as an
+ * adopter would, and run: every export of the libraries loads, every bin
+ * answers `--help`, and `yea mcp` answers `initialize`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ import { binProblems, binsOf } from './bins.mjs';
 import { exportProblems } from './exports.mjs';
 import { initialize } from './mcp-initialize.mjs';
 import { publishedPackages, unreleased } from './packages.mjs';
+import { missingReadmes, unreleasedReadme } from './readme.mjs';
 import { sh } from './shell.mjs';
 import { unpackedFiles } from './tarball.mjs';
 
@@ -29,8 +31,8 @@ function fail(problems) {
 }
 
 /**
- * Packs `packages` from the repo at `root` into `dest`: each one's folder,
- * its tarball's path and the paths in it.
+ * Packs `packages` from the repo at `root` into `dest`: each one's name, its
+ * folder, its tarball's path and the paths in it.
  */
 function pack(root, packages, dest) {
   const workspaces = packages.flatMap(({ name }) => ['-w', name]);
@@ -41,6 +43,7 @@ function pack(root, packages, dest) {
   );
 
   return JSON.parse(out).map(({ name, filename, files }) => ({
+    name,
     dir: packages.find((p) => p.name === name)?.dir,
     tarball: join(dest, filename),
     paths: files.map(({ path }) => path),
@@ -71,24 +74,35 @@ async function checkMcp(app, home) {
   }
 }
 
-/** Throws when a package in `packages` isn't released, or a pack lacks a file. */
-function checkPacked(root, packages, packs) {
+/**
+ * Throws when a package in `packages` isn't released, a pack lacks a file or
+ * a README, or, given a `tag`, a packed README still says "Unreleased".
+ */
+function checkPacked(root, packages, packs, tag) {
   const workflow = readFileSync(
     join(root, '.github', 'workflows', 'release.yml'),
     'utf8',
   );
+  const banners = tag
+    ? packs.flatMap(({ name, tarball }) =>
+        unreleasedReadme(name, tarball, 'package/README.md'),
+      )
+    : [];
 
   fail([
     ...unreleased(workflow, packages),
     ...packs.flatMap(({ dir, paths }) => unpackedFiles(join(root, dir), paths)),
+    ...missingReadmes(packs),
+    ...banners,
   ]);
 }
 
 /**
  * Packs, installs and runs the npm packages from the repo at `root`, built,
- * working in the empty folder `work`. Throws on the first failure.
+ * working in the empty folder `work`, as a release of `tag` (if given) would.
+ * Throws on the first failure.
  */
-export async function checkNpm(root, work) {
+export async function checkNpm(root, work, tag) {
   const packages = publishedPackages(root);
   const dist = join(work, 'npm-dist');
   const app = join(work, 'app');
@@ -97,7 +111,7 @@ export async function checkNpm(root, work) {
 
   const packs = pack(root, packages, dist);
 
-  checkPacked(root, packages, packs);
+  checkPacked(root, packages, packs, tag);
   install(
     app,
     packs.map(({ tarball }) => tarball),
