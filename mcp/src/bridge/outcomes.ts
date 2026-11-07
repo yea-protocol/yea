@@ -11,12 +11,29 @@ import {
 } from '@yea-protocol/sdk';
 import { errorResult, NOTHING_RAN, textResult } from '../result.js';
 import { proposalsLens, proposalView } from './lens.js';
-import type { Pending } from './pending.js';
+import type { Code, Pending } from './pending.js';
+import type { Bridge } from './state.js';
 import type { JobCall } from './types.js';
 
-/** How the person approves a code; on another machine they pass this agent's key with `--to`. */
-const howToApprove = (agent: unknown) =>
-  `Ask the user to run \`yea approve <code>\` where their principal key is (on a machine without this agent's key, add \`--to ${typeof agent === 'string' ? agent : '<agent key>'}\`), then paste the printed consent back to you and call \`yea_consent\` with it, then call this tool again with the same arguments.`;
+/**
+ * How the person approves (SPEC-bridge step 6): on this machine by short id, or by code when
+ * there are no ids, and nothing comes back through the model; on another machine, by code with
+ * `--to` this agent's key, and the consent pasted back for `yea_consent`.
+ */
+function howToApprove(codes: Code[]): string[] {
+  const agent = decodeConsentCode(codes[0].code).agent;
+  const byId = codes.every((c) => c.id);
+  const what = byId ? '<id>' : '<code>';
+
+  return [
+    `Ask the user to run \`yea approve ${what}\` in a terminal outside this chat, then call this tool again with the same arguments; on this machine nothing needs pasting back.`,
+    ...(byId
+      ? codes.map((c) => `  [${printable(c.proposal)}] yea approve ${c.id}`)
+      : []),
+    `If their principal key is on another machine, they run \`yea approve <code> --to ${typeof agent === 'string' ? agent : '<agent key>'}\` there instead, then paste the printed consent back to you: pass it to \`yea_consent\`, and call this tool again.`,
+    ...codes.map((c) => `  code for [${printable(c.proposal)}]: ${c.code}`),
+  ];
+}
 
 /** A receipt as a tool result, with any progress events before it. */
 export const receiptOutcome = (r: ReceiptReply, events: string[] = []) =>
@@ -51,20 +68,19 @@ export function manyPrincipals(
   );
 }
 
-/** The proposals, a code for each, and how to approve or commit one. */
+/** The proposals, a code for each (its pending file written), and how to approve or commit one. */
 export function proposalsResult(
+  b: Bridge,
   entry: Pending,
   why: string,
   dropped: string[],
 ): CallToolResult {
-  const codes = entry.codes.filter((c) =>
-    entry.proposals.some((p) => p.id === c.proposal),
+  const codes = b.pending.filed(
+    entry.codes.filter((c) => entry.proposals.some((p) => p.id === c.proposal)),
+    b.now(),
   );
   const tail = codes.length
-    ? [
-        howToApprove(decodeConsentCode(codes[0].code).agent),
-        ...codes.map((c) => `  code for [${printable(c.proposal)}]: ${c.code}`),
-      ]
+    ? howToApprove(codes)
     : [
         'No consent code can be offered for these (there is no agent key: run `yea install`).',
       ];

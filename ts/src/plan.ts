@@ -50,8 +50,13 @@ export interface Plan<R = unknown> {
   data?: unknown;
   /** Perform the effects. Only ever called on COMMIT, at most once. */
   apply(ctx: CommitCtx): R | Promise<R>;
-  /** Reverse the effects. If present, the proposal is undoable for `undoWindow` seconds. */
+  /** Reverse the effects. If present, the proposal is undoable for its `undoWindow`. */
   revert?(ctx: CommitCtx & { result: R }): unknown;
+  /**
+   * Seconds the commit can be undone for, with `revert`: a day if left out. It must be an undo
+   * window (`isUndoWindow`: a positive integer of at most 2^52); any other value, zero and `null`
+   * included, makes the proposal irreversible (`undo: null`).
+   */
   undoWindow?: number;
 }
 

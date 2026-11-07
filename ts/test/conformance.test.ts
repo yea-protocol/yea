@@ -1,4 +1,10 @@
-import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -12,8 +18,16 @@ import {
   judgeAnswer,
   phraseMatches,
 } from '../src/ask.js';
+import {
+  FileStore,
+  homePending,
+  newPendingId,
+  PENDING_ID,
+  PendingCodes,
+  pendingCodesOf,
+  pendingFile,
+} from '../src/file-store.js';
 import * as P from '../src/index.js';
-import { FileStore } from '../src/node.js';
 import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
@@ -235,15 +249,40 @@ describe('conformance vectors', () => {
     signers.delete(null);
     expect([...signers]).toEqual([(await P.keyPair(v.seeds.stranger)).public]);
 
-    const asHashed = (x: HP): HP => ({
-      ...x,
-      plan: { ...x.plan, apply: () => null },
-    });
+    /**
+     * A vector's hashed plan, recomputed from its tool's `revert` and the shared `input`, so
+     * `undoable` and the hash are ours, and must come out as the vector has them. The resolved
+     * risk stands in for the tool's: a plan's own risk wins over it either way.
+     */
+    const rehash = async (x: HP & { revert: boolean }): Promise<HP> => {
+      const revert = x.revert ? { revert: () => null } : {};
+      const [hp] = await P.hashPlans(
+        { name: x.tool, risk: x.risk, ...revert },
+        v.input,
+        [{ ...x.plan, apply: () => null }],
+      );
+
+      expect([hp.planHash, hp.risk, hp.undoable], x.plan.summary).toEqual([
+        x.planHash,
+        x.risk,
+        x.undoable,
+      ]);
+
+      return hp;
+    };
+    const rehashAll = (xs: (HP & { revert: boolean })[]) =>
+      Promise.all(xs.map(rehash));
 
     for (const h of v.hash) {
       if (h.error) {
         expect(
-          () => P.planPreimage(h.tool.name, h.input, h.plan, 'low'),
+          () =>
+            P.planPreimage(h.input, {
+              tool: h.tool.name,
+              plan: h.plan,
+              risk: 'low',
+              undoable: false,
+            }),
           h.name,
         ).toThrow();
 
@@ -264,7 +303,7 @@ describe('conformance vectors', () => {
     for (const c of v.decide) {
       const used = (k: P.LedgerKey) =>
         c.used[k.of] ? P.exact(c.used[k.of]) : 0n;
-      const d = await decide(c.plans.map(asHashed), c.policy, used, c.now);
+      const d = await decide(await rehashAll(c.plans), c.policy, used, c.now);
       const got = {
         kind: d.kind,
         ...('why' in d ? { why: d.why } : {}),
@@ -301,7 +340,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.forms) {
       const f = buildForm(
-        c.plans.map(asHashed),
+        await rehashAll(c.plans),
         c.why,
         c.policy,
         (hp) => c.phrases[hp.planHash],
@@ -316,7 +355,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.judge) {
       const verdict = judgeAnswer(c.state, c.answer, {
-        recomputed: c.recomputed.map(asHashed),
+        recomputed: await rehashAll(c.recomputed),
         policy: c.policy,
         phraseFor: (hp) => c.phrases[hp.planHash],
       });
@@ -334,7 +373,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.consents.cases) {
       const r = await checkJobConsent(c.grant, {
-        hp: asHashed(v.consents.plan),
+        hp: await rehash(v.consents.plan),
         phrase: v.consents.phrase,
         policy: { principal: v.keys.principal, server: v.keys.server },
         now: c.now,
@@ -381,7 +420,7 @@ describe('conformance vectors', () => {
           server: cc.server,
           principal: cc.principal,
           input: cc.input,
-          hp: asHashed(cc.plan),
+          hp: await rehash(cc.plan),
           phrase: c.phrase,
           now: cc.now,
         }),
@@ -413,6 +452,11 @@ describe('conformance vectors', () => {
       );
 
       expect(await runCall(P, c), c.name).toEqual(want);
+    }
+  });
+  it('job calls: how the model is told to approve outside the chat', () => {
+    for (const t of load('job-calls').approveTexts) {
+      expect(P.howToApprove(t.planHashes, t.codes), t.name).toEqual(t.lines);
     }
   });
   it('approval FileStore layout', async () => {
@@ -452,6 +496,64 @@ describe('conformance vectors', () => {
 
     walk(dir);
     expect(files).toEqual(v.fileStore.files);
+  });
+  it('pending files', () => {
+    const v = load('pending');
+    const root = mkdtempSync(join(tmpdir(), 'yea-conf-'));
+
+    expect(pendingCodesOf(new FileStore(root))?.dir).toBe(
+      v.dirs.server.replace('<store>', root),
+    );
+    expect(homePending(root).dir).toBe(v.dirs.bridge.replace('<home>', root));
+    expect(pendingCodesOf(new P.MemoryStore())).toBeNull();
+    expect(PENDING_ID.source).toBe(v.readId);
+    expect(newPendingId()).toMatch(new RegExp(v.writtenId));
+    expect(pendingFile(v.file.code)).toBe(v.file.text);
+    expect(pendingFile(v.taggedFile.code, v.taggedFile.issuer)).toBe(
+      v.taggedFile.text,
+    );
+
+    const dir = join(root, 'ops');
+    const store = new PendingCodes(dir);
+    const ids: Record<string, string> = {};
+
+    for (const o of v.ops) {
+      if (o.op === 'put') {
+        const id = store.put(v.codes[o.code], o.now);
+
+        expect(id).toBe(ids[o.as] ?? id);
+        ids[o.as] = id;
+      } else {
+        store.drop(o.service, o.proposal);
+      }
+
+      const byId = Object.fromEntries(
+        Object.entries(ids).map(([label, id]) => [id, label]),
+      );
+      const files = Object.fromEntries(
+        readdirSync(dir).map((f) => [
+          byId[f],
+          readFileSync(join(dir, f), 'utf8'),
+        ]),
+      );
+      const want = Object.fromEntries(
+        Object.entries(o.files as Record<string, string>).map(([l, c]) => [
+          l,
+          `${v.codes[c]}\n`,
+        ]),
+      );
+
+      expect(files, JSON.stringify(o)).toEqual(want);
+      expect(Object.values(files).join('')).not.toContain(v.agentSeed);
+    }
+
+    // A tagged file reads as its code, whoever wrote it.
+    writeFileSync(join(dir, 'taggedfile'), v.taggedFile.text);
+    expect(store.read('taggedfile')).toBe(v.taggedFile.code);
+    writeFileSync(join(dir, 'abcdefghij'), 'x'.repeat(v.maxBytes));
+    expect(store.read('abcdefghij')).toBe('x'.repeat(v.maxBytes));
+    writeFileSync(join(dir, 'abcdefghij'), 'x'.repeat(v.maxBytes + 1));
+    expect(() => store.read('abcdefghij')).toThrow('larger than 64 KiB');
   });
   it('printable', () => {
     for (const c of load('printable')) {

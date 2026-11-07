@@ -39,7 +39,7 @@ def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan,
     phrase = checked_phrase(phrase)
     consent = {"proposal": p.plan_hash, "hash": consent_hash_of(p.plan_hash, phrase), "service": server_key,
                "capability": p.tool, "principal": principal, "summary": p.plan.summary, "expires": now + CONSENT_TTL}
-    job = plan_preimage(p.tool, input, p.plan, p.risk)
+    job = plan_preimage(input, p)
     return consent_code(consent, {"job": job, "phrase": phrase})
 
 

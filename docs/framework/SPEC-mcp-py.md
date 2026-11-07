@@ -150,7 +150,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `require_interaction` | Optional. `yea()`'s `require_interaction`, for this tool alone. `True` also marks the server's `undo`, whenever `undo` is registered. |
-| `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
+| `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans whose `undo_window` is a positive integer are undoable (SPEC-approval §1). |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,
@@ -291,12 +291,12 @@ again, with the clock, the policy and the plans as they are then.
    `None`, step 9. Otherwise ask **per era** (next section), with `round` 1 on a first ask and
    the verdict's round on an ask-again.
 9. **Fail closed.** Return `is_error: true` with the plans in Lens, a `job_consent_code` for
-   each plan that isn't denied, and SPEC-approval §6's lines: run `yea approve <code>`, paste
-   back the consent it prints, and call again with it as `yea_consent` (or without it, where
-   `yea approve` saved it in this server's store). `structured_content` carries
-   `{"plans", "codes"}`. With no pinned principal there can be no valid consent, so the result
-   has no codes and says why. A `MemoryStore` gets codes too: its consents come back on the
-   call.
+   each plan that isn't denied, its short id on a `FileStore`, and how to approve, in
+   SPEC-approval §6's words (`how_to_approve`): run `yea approve` in a terminal outside this chat
+   and call again, carrying as `yea_consent` a consent the person pastes back.
+   `structured_content` carries `{"plans", "codes"}`, each code with its `id` when it has one.
+   With no pinned principal there can be no valid consent, so the result has no codes and says
+   why. A `MemoryStore` gets codes too: its consents come back on the call.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then
     `consume_once(nonce, exp)`; any failure refuses with one message. The answer is the `yea`
     entry of the input responses (`ctx.input_responses` in a job, `params["inputResponses"]`

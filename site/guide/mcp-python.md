@@ -125,7 +125,7 @@ Deleting can't be undone, so it always asks. Moving a file to a trash folder can
 
 - **The decorated function** returns the plans. It must not change anything: it runs on preview and on every retry. Its parameters are the tool's input, as with `@server.tool()`.
 - **`apply()`** runs at most once, and only after the plan is approved or allowed.
-- **`revert`** plus an **`undo_window`** make the plan undoable. The first job with `revert` adds an `undo` tool to the server.
+- **`revert`** plus an **`undo_window`** make the plan undoable. The window is a positive whole number of seconds; anything else, `0` included, leaves the plan not undoable (`undo: never`). The first job with `revert` adds an `undo` tool to the server.
 
 Ask the agent to move `docs/notes.txt` to the trash. After approval, the call returns a receipt:
 
@@ -220,22 +220,26 @@ Some clients don't support form elicitation. For them, a call that needs approva
 [1] Delete docs/report.pdf
   - delete file/docs/report.pdf
   risk: medium · undo: never
-Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints (pg1.…), then call again with the same input and `yea_consent` set to it.
-If `yea approve` saved the consent where this server reads approvals, calling again without it works too.
+Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.
+  [1] yea approve k7m2x9qa4b
+If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:
   code for [1]: pc1.eyJjYXBhYmlsaXR5Ijoi…
+If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it.
 ```
 
-`yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It prints the consent (`pg1.…`), which reaches the server one of two ways:
+`yea approve` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It prints the consent (`pg1.…`), which reaches the server one of two ways:
 
 - **Pasted back.** The person pastes it into the chat, and the model calls the tool again with the same input and the consent as `yea_consent`. This works wherever the key is: under another OS user, on another machine, or for a server that keeps its approvals in memory. The server checks it exactly as one from its store. It must be signed by the pinned key, for this server, this tool, this plan and its phrase, and not expired, and it runs once. A consent changed on the way, even by one character, is refused, and nothing runs.
 - **Through the store.** `yea approve` also saves the consent in its store (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When that's the store the server reads, as in the one-account setup, the model can call again without it.
+
+On the server's own account, the person needn't copy the code out of the chat: the server also writes it to its store's `pending/` under the short id, so `yea approve <id>` finds it, and `yea approve` alone lists what's pending. That's a convenience for trying it on one machine, not a stronger approval: an agent that runs as you could run `yea approve` too ([what an approval proves](/guide/security#what-an-approval-proves)). A store that isn't a `FileStore` gets no ids, and the result asks for the whole code. Either way, the person runs it in a terminal outside the chat: a client's own shell, such as Claude Code's `!`, has no terminal, and `yea approve` refuses there.
 
 On one account both routes work, and that's best effort: an agent that runs as you can reach the key. With the key on another OS user (the real setup above), that user runs `yea approve` and the person pastes the consent back, so the two users needn't share a store. That route is tested in both languages: the shared job-call cases run the same signed consent through the TypeScript and Python servers' approval sessions, and each package's end-to-end tests pass one back through an MCP client, to a store `yea approve` never wrote. No test runs two OS users. The route doesn't touch the store, so which user ran `yea approve` doesn't change what the server checks. A second user writing straight into the server's store isn't supported yet ([#376](https://github.com/yea-protocol/yea/issues/376)).
 
 **Why the pinned key matters here:** the server accepts only consents signed by the pinned principal key. Without one it can't accept any, so it gives no codes and says why:
 
 ```text
-No consent can be accepted: YEA_PRINCIPAL_PUB is not set.
+No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one.
 ```
 
 A server whose store is in memory (the default over HTTP) gives codes too: `yea approve` can't save where it reads, so its consents come back pasted.

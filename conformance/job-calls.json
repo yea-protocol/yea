@@ -2407,7 +2407,7 @@
               "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
             ],
             "codes": [],
-            "unavailable": "YEA_PRINCIPAL_PUB is not set"
+            "unavailable": "no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one"
           },
           "planned": true,
           "after": {
@@ -3012,7 +3012,7 @@
               "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
             ],
             "codes": [],
-            "unavailable": "YEA_PRINCIPAL_PUB is not set"
+            "unavailable": "no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one"
           },
           "planned": true,
           "after": {
@@ -3472,6 +3472,191 @@
             "consumed": []
           }
         }
+      ]
+    },
+    {
+      "name": "an undo window of 0 is none: inside the policy, the call still asks",
+      "tool": {
+        "name": "refund",
+        "revert": true
+      },
+      "steps": [
+        {
+          "now": 1790000000,
+          "sub": "",
+          "input": {
+            "who": "Chen",
+            "order": 42
+          },
+          "canAsk": true,
+          "plans": [
+            {
+              "summary": "Refund 30.00 USD to Chen",
+              "effects": [
+                {
+                  "op": "create",
+                  "target": "refund",
+                  "detail": "30.00 USD to card ••42"
+                }
+              ],
+              "uses": {
+                "spend": {
+                  "amount": 3000,
+                  "scale": 2,
+                  "unit": "USD"
+                }
+              },
+              "risk": "low",
+              "undoWindow": 0
+            }
+          ],
+          "policy": {
+            "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVmdW5kIl19LHsicmlzayI6ImxvdyJ9LHsidG90YWwiOnsibWF4Ijo1MDAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJleHAiOjE3OTAwMDM2MDB9XSwiaWF0IjoxNzg5OTk5OTAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6ImpvYi1jYWxscy1wb2xpY3kiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IkF3MUpmZmx3d25qWXdVTEIyb0YwdmdLOGRneVhoa2xSdkxFWENlclNUUnJJTEp4UnhrSXpIWU04OERuWHZDWHFibWdRU0FXNE9JMl9zYTlWN2NJZ0NnIn1d",
+            "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+            "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+            "deny": [],
+            "outOfBand": "high"
+          },
+          "before": {
+            "used": {
+              "PPb7LUUlxDE2alNNCSqmEcf_2Q49Mbdb-nPjVgj3xhk spend": "0"
+            },
+            "consumed": []
+          },
+          "outcome": {
+            "kind": "ask",
+            "form": {
+              "message": "Approval needed: refund can't be undone.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: never\n  to approve, type: approve",
+              "requestedSchema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "string",
+                    "title": "Confirm",
+                    "description": "Type \"approve\" to approve."
+                  }
+                },
+                "required": [
+                  "confirm"
+                ]
+              },
+              "offered": [
+                "W4-cq_9wuvhsOJFA25iotFZnTM3gRqKTIDQ34b9gGZk"
+              ]
+            },
+            "state": {
+              "v": 1,
+              "tool": "refund",
+              "inputHash": "884scU20cL4vsbzkrPdV8x9tq6xKMD-EZNO57bZcRBM",
+              "sub": "",
+              "plans": [
+                "W4-cq_9wuvhsOJFA25iotFZnTM3gRqKTIDQ34b9gGZk"
+              ],
+              "round": 1,
+              "exp": 1790000600
+            }
+          },
+          "planned": true,
+          "after": {
+            "used": {
+              "PPb7LUUlxDE2alNNCSqmEcf_2Q49Mbdb-nPjVgj3xhk spend": "0"
+            },
+            "consumed": []
+          }
+        }
+      ]
+    }
+  ],
+  "approveTexts": [
+    {
+      "name": "one code without an id: the whole code",
+      "planHashes": [
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+        "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg"
+      ],
+      "codes": [
+        {
+          "planHash": "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+          "code": "pc1.refund"
+        }
+      ],
+      "lines": [
+        "Ask the user to run `yea approve <code>` in a terminal outside this chat, then call this tool again with the same arguments.",
+        "  code for [1]: pc1.refund",
+        "If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it."
+      ]
+    },
+    {
+      "name": "every code has an id: the ids, then the whole codes",
+      "planHashes": [
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+        "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg"
+      ],
+      "codes": [
+        {
+          "planHash": "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+          "code": "pc1.refund",
+          "id": "k7m2x9qa4b"
+        },
+        {
+          "planHash": "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg",
+          "code": "pc1.credit",
+          "id": "p3n8w2zr6c"
+        }
+      ],
+      "lines": [
+        "Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.",
+        "  [1] yea approve k7m2x9qa4b",
+        "  [2] yea approve p3n8w2zr6c",
+        "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:",
+        "  code for [1]: pc1.refund",
+        "  code for [2]: pc1.credit",
+        "If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it."
+      ]
+    },
+    {
+      "name": "a code without an id: the whole codes only",
+      "planHashes": [
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+        "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg"
+      ],
+      "codes": [
+        {
+          "planHash": "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+          "code": "pc1.refund",
+          "id": "k7m2x9qa4b"
+        },
+        {
+          "planHash": "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg",
+          "code": "pc1.credit"
+        }
+      ],
+      "lines": [
+        "Ask the user to run `yea approve <code>` in a terminal outside this chat, then call this tool again with the same arguments.",
+        "  code for [1]: pc1.refund",
+        "  code for [2]: pc1.credit",
+        "If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it."
+      ]
+    },
+    {
+      "name": "no code for a denied plan: each numbered by its plan",
+      "planHashes": [
+        "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44",
+        "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg"
+      ],
+      "codes": [
+        {
+          "planHash": "aCba3waeo8IMyvjKsjeQjtNDki3-NmyrYMW1TFIbaZg",
+          "code": "pc1.credit",
+          "id": "p3n8w2zr6c"
+        }
+      ],
+      "lines": [
+        "Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.",
+        "  [2] yea approve p3n8w2zr6c",
+        "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:",
+        "  code for [2]: pc1.credit",
+        "If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it."
       ]
     }
   ]

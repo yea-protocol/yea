@@ -8,6 +8,10 @@
     "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
     "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E"
   },
+  "input": {
+    "who": "Chen",
+    "n": 2
+  },
   "hash": [
     {
       "name": "move",
@@ -152,6 +156,253 @@
       "planHash": "wRPLwqEfvHAvqYkMpUkrSR4fmyX_3yM_PtHMoqF3t-U"
     },
     {
+      "name": "noRevert",
+      "tool": {
+        "name": "reschedule"
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move standup (the tool has no revert)",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e1"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 60
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "x621L5_jbO-xgDZmIn39YazFvm8AQyssQiNBdlVl2q8"
+    },
+    {
+      "name": "noWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low"
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "zeroWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 0
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "negativeWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": -1
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "fractionWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 1.5
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "stringWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": "3600"
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "nullWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": null
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "tooLongWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 4503599627370497
+      },
+      "risk": "low",
+      "undoable": false,
+      "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
+    },
+    {
+      "name": "longestWindow",
+      "tool": {
+        "name": "reschedule",
+        "revert": true
+      },
+      "input": {
+        "who": "Chen",
+        "n": 2
+      },
+      "plan": {
+        "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+        "effects": [
+          {
+            "op": "update",
+            "target": "event/e42",
+            "field": "start",
+            "from": "14:00",
+            "to": "15:00"
+          }
+        ],
+        "risk": "low",
+        "undoWindow": 4503599627370496
+      },
+      "risk": "low",
+      "undoable": true,
+      "planHash": "uiIHeuFA8ko1lNeu3eQoSIILnoLVsbsaSWRArdEoiTc"
+    },
+    {
       "name": "a non-integer input fails closed",
       "tool": {
         "name": "refund",
@@ -188,6 +439,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -229,6 +481,7 @@
       "plans": [
         {
           "tool": "delete_customer",
+          "revert": true,
           "plan": {
             "summary": "Delete customer Chen",
             "effects": [
@@ -266,6 +519,7 @@
       "plans": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch main",
             "effects": [
@@ -303,6 +557,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move standup",
             "effects": [
@@ -339,6 +594,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": false,
           "plan": {
             "summary": "Email the team the notes",
             "effects": [
@@ -379,6 +635,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -419,6 +676,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -459,6 +717,7 @@
       "plans": [
         {
           "tool": "archive",
+          "revert": true,
           "plan": {
             "summary": "Archive project apollo",
             "effects": [
@@ -499,6 +758,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -544,6 +804,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -590,6 +851,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": true,
           "plan": {
             "summary": "Schedule the notes email",
             "effects": [
@@ -646,6 +908,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": true,
           "plan": {
             "summary": "Schedule the notes email",
             "effects": [
@@ -692,6 +955,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -732,6 +996,7 @@
       "plans": [
         {
           "tool": "delete_customer",
+          "revert": true,
           "plan": {
             "summary": "Delete customer Chen",
             "effects": [
@@ -769,6 +1034,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": false,
           "plan": {
             "summary": "Email the team the notes",
             "effects": [
@@ -809,6 +1075,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": false,
           "plan": {
             "summary": "Email the team the notes",
             "effects": [
@@ -829,6 +1096,7 @@
         },
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -887,6 +1155,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -927,6 +1196,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -967,6 +1237,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -1007,6 +1278,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -1047,6 +1319,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move \"1:1 with Ana\" to Thu 15:00",
             "effects": [
@@ -1087,6 +1360,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": true,
           "plan": {
             "summary": "Move standup",
             "effects": [
@@ -1123,6 +1397,7 @@
       "plans": [
         {
           "tool": "reschedule",
+          "revert": false,
           "plan": {
             "summary": "Move standup (the tool has no revert)",
             "effects": [
@@ -1134,7 +1409,48 @@
             "risk": "low",
             "undoWindow": 60
           },
-          "planHash": "oss1Ot3FdI_7g559oEh247B2Z2Vchz9jxA0UgOPYO2g",
+          "planHash": "x621L5_jbO-xgDZmIn39YazFvm8AQyssQiNBdlVl2q8",
+          "risk": "low",
+          "undoable": false
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsicmVzY2hlZHVsZSIsImRlbGV0ZV8qIiwicmVmdW5kIiwic2VuZF9lbWFpbCJdfSx7InJpc2siOiJtZWRpdW0ifSx7ImVhY2giOnsibWF4IjoyNTAwLCJvZiI6InNwZW5kIiwic2NhbGUiOjIsInVuaXQiOiJVU0QifX0seyJ0b3RhbCI6eyJtYXgiOjMsIm9mIjoiZW1haWxzIn19LHsiZXhwIjoxNzkwMDAzNjAwfV0sImlhdCI6MTc4OTk5OTkwMCwiaXNzIjoiZWQyNTUxOTppb2pqM1hRSjhaWDlVdHN0UExwZGNzcG5DYjhkbEJJYjgzU0lBYlFQYjF3Iiwibm9uY2UiOiJwb2wxIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiI0RmRKNzh5Mi1GQ3ctUVNKUVNHZEhwU3BYM2czeksxYVU4T2ZTQ0tGZllKWTZvT2FfY3pjNU15MHRwSDVjR3cwWU5kMXZyNWNNOHVtSXZRVElldm1CUSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "reschedule can't be undone"
+      }
+    },
+    {
+      "name": "an undo window of 0 asks, as none does",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "revert": true,
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 0
+          },
+          "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA",
           "risk": "low",
           "undoable": false
         }
@@ -1160,6 +1476,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": true,
           "plan": {
             "summary": "Schedule the notes email",
             "effects": [
@@ -1216,6 +1533,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": true,
           "plan": {
             "summary": "Schedule the notes email",
             "effects": [
@@ -1262,6 +1580,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 10.00 EUR to Chen",
             "effects": [
@@ -1307,6 +1626,7 @@
       "plans": [
         {
           "tool": "send_email",
+          "revert": true,
           "plan": {
             "summary": "Schedule the notes email",
             "effects": [
@@ -1540,6 +1860,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -1599,6 +1920,7 @@
       "plans": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch old-nav (restorable at a1b2c3d)",
             "effects": [
@@ -1615,6 +1937,7 @@
         },
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch main",
             "effects": [
@@ -1667,6 +1990,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -1692,6 +2016,7 @@
         },
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -1768,6 +2093,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -1793,6 +2119,7 @@
         },
         {
           "tool": "delete_customer",
+          "revert": true,
           "plan": {
             "summary": "Delete customer Chen",
             "effects": [
@@ -1845,6 +2172,7 @@
       "plans": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch main",
             "effects": [
@@ -1862,6 +2190,7 @@
         },
         {
           "tool": "delete_customer",
+          "revert": true,
           "plan": {
             "summary": "Delete customer Chen",
             "effects": [
@@ -1896,6 +2225,7 @@
       "plans": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch old-nav (restorable at a1b2c3d)",
             "effects": [
@@ -1912,6 +2242,7 @@
         },
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch main",
             "effects": [
@@ -1929,6 +2260,7 @@
         },
         {
           "tool": "delete_customer",
+          "revert": true,
           "plan": {
             "summary": "Delete customer Chen",
             "effects": [
@@ -1982,6 +2314,7 @@
       "plans": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch old-nav (restorable at a1b2c3d)",
             "effects": [
@@ -2032,6 +2365,7 @@
       "plans": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 5.00 USD to Chen\n+ create account/admin — granted‮",
             "effects": [
@@ -2057,6 +2391,7 @@
         },
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -2125,6 +2460,61 @@
         "offered": [
           "0oTlaKyh2udG7_BAexMdLlPMj2Ku_J64hgCP-IEPJ2s",
           "NdnkJyZmobihywdgewnZDjmUfIKotMmbYgsJvrfI9Tc"
+        ]
+      }
+    },
+    {
+      "name": "an undo window of 0 shows never",
+      "plans": [
+        {
+          "tool": "reschedule",
+          "revert": true,
+          "plan": {
+            "summary": "Move \"1:1 with Ana\" to Thu 15:00",
+            "effects": [
+              {
+                "op": "update",
+                "target": "event/e42",
+                "field": "start",
+                "from": "14:00",
+                "to": "15:00"
+              }
+            ],
+            "risk": "low",
+            "undoWindow": 0
+          },
+          "planHash": "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA",
+          "risk": "low",
+          "undoable": false
+        }
+      ],
+      "why": "reschedule can't be undone",
+      "policy": {
+        "outOfBand": "high",
+        "deny": [
+          "delete_customer"
+        ]
+      },
+      "phrases": {
+        "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA": "approve"
+      },
+      "expect": {
+        "message": "Approval needed: reschedule can't be undone.\n\n[1] Move \"1:1 with Ana\" to Thu 15:00\n  ~ update event/e42.start: 14:00 → 15:00\n  risk: low · undo: never\n  to approve, type: approve",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "type": "string",
+              "title": "Confirm",
+              "description": "Type \"approve\" to approve."
+            }
+          },
+          "required": [
+            "confirm"
+          ]
+        },
+        "offered": [
+          "Ktp1A8lF7rFGxT-FhpLR6Y8niOUBxJobDXj6P84xnyA"
         ]
       }
     }
@@ -2319,6 +2709,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2377,6 +2768,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2434,6 +2826,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2491,6 +2884,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2553,6 +2947,7 @@
       "recomputed": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch old-nav (restorable at a1b2c3d)",
             "effects": [
@@ -2606,6 +3001,7 @@
       "recomputed": [
         {
           "tool": "delete_branch",
+          "revert": true,
           "plan": {
             "summary": "Delete branch old-nav (restorable at a1b2c3d)",
             "effects": [
@@ -2659,6 +3055,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2684,6 +3081,7 @@
         },
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -2748,6 +3146,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2773,6 +3172,7 @@
         },
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -2836,6 +3236,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -2861,6 +3262,7 @@
         },
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -2923,6 +3325,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -2985,6 +3388,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 20.00 USD to Chen",
             "effects": [
@@ -3046,6 +3450,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -3107,6 +3512,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -3168,6 +3574,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -3230,6 +3637,7 @@
       "recomputed": [
         {
           "tool": "refund",
+          "revert": true,
           "plan": {
             "summary": "Refund 30.00 USD to Chen",
             "effects": [
@@ -3532,6 +3940,7 @@
   "consents": {
     "plan": {
       "tool": "refund",
+      "revert": true,
       "plan": {
         "summary": "Refund 30.00 USD to Chen",
         "effects": [
@@ -3660,6 +4069,7 @@
     },
     "plan": {
       "tool": "refund",
+      "revert": true,
       "plan": {
         "summary": "Refund 30.00 USD to Chen",
         "effects": [

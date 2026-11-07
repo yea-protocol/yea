@@ -6,10 +6,9 @@ from typing import Any
 
 import mcp_types as t
 from pydantic_core import to_jsonable_python
-from yea.approval import HashedPlan, new_receipt_id, settle_all
+from yea.approval import HashedPlan, new_receipt_id, settle_all, shown_plan
 from yea.store import Reservation
 from yea.text import printable
-from yea.uses import check_uses
 
 from ..render import receipt_result
 from ..result import error_result
@@ -53,12 +52,14 @@ async def _release_each(call: Call, held: list[Reservation]) -> None:
 
 def _receipt_for(call: Call, hp: HashedPlan, result: Any, kept_none: bool = False) -> dict:
     """The receipt a successful job leaves (SPEC-approval §8's job receipt)."""
-    p = hp.plan
+    shown = shown_plan(hp)
     receipt: dict[str, Any] = {"id": new_receipt_id(), "service": call.y.service_id, "proposal": hp.plan_hash,
-                               "capability": hp.tool, "summary": p.summary, "at": call.now, "effects": p.effects}
-    if (uses := check_uses(p.uses)) is not None:
-        receipt["uses"] = uses
-    receipt["undo"] = {"until": call.now + p.undo_window} if hp.undoable and p.undo_window is not None else None
+                               "capability": hp.tool, "summary": shown["summary"], "at": call.now,
+                               "effects": shown["effects"]}
+    if "uses" in shown:
+        receipt["uses"] = shown["uses"]
+    window = shown.get("undoWindow")
+    receipt["undo"] = None if window is None else {"until": call.now + window}
     receipt |= {"tool": hp.tool, "input": call.input, "planHash": hp.plan_hash, "sub": call.sub}
     if result is not None or kept_none:  # a result that couldn't be serialized is null, as mcp-ts's receiptFor
         receipt["result"] = result

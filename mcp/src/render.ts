@@ -5,54 +5,33 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
+  type ApprovalCode,
   type Clarification,
-  fmtDuration,
-  fmtUses,
   type HashedPlan,
+  howToApprove,
   type JobReceipt,
   lean,
+  planLines,
   printable,
-  safeEffectLine,
+  shownPlan,
   untrustedLens,
 } from '@yea-protocol/sdk';
 import { errorResult, NOTHING_RAN, refused, textResult } from './result.js';
 
 /** A plan as data: what the model and the person see, never `apply` or `data`. */
 function planView(hp: HashedPlan) {
-  const p = hp.plan;
+  const { undoWindow, ...shown } = shownPlan(hp);
 
   return {
     planHash: hp.planHash,
-    summary: p.summary,
-    effects: p.effects,
-    ...(p.uses && Object.keys(p.uses).length ? { uses: p.uses } : {}),
-    risk: hp.risk,
-    undo:
-      hp.undoable && p.undoWindow !== undefined
-        ? { window: p.undoWindow }
-        : null,
+    ...shown,
+    undo: undoWindow === undefined ? null : { window: undoWindow },
   };
-}
-
-/** One plan as Lens: summary, effects, then what it uses, risk and undo. */
-function planLines(n: number, hp: HashedPlan): string[] {
-  const v = planView(hp);
-  const attrs = [
-    ...(v.uses ? [`uses: ${fmtUses(v.uses)}`] : []),
-    `risk: ${v.risk}`,
-    `undo: ${v.undo ? fmtDuration(v.undo.window) : 'never'}`,
-  ];
-
-  return [
-    `[${n}] ${printable(v.summary)}`,
-    ...v.effects.map((e) => `  ${safeEffectLine(e)}`),
-    `  ${attrs.join(' · ')}`,
-  ];
 }
 
 const plansText = (plans: HashedPlan[]) => [
   `${plans.length} plan${plans.length === 1 ? '' : 's'}:`,
-  ...plans.flatMap((hp, i) => planLines(i + 1, hp)),
+  ...plans.flatMap((hp, i) => planLines(shownPlan(hp), i + 1)),
 ];
 
 /**
@@ -76,28 +55,19 @@ export function previewResult(
     : textResult(lines, structured);
 }
 
-/**
- * The two ways a consent from `yea approve` reaches this server (SPEC-approval §6): on the call,
- * which works anywhere, or through the store, where `yea approve` shares it.
- */
-const APPROVE_LINES = [
-  'Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints (pg1.…), then call again with the same input and `yea_consent` set to it.',
-  'If `yea approve` saved the consent where this server reads approvals, calling again without it works too.',
-];
-
-/** No approval could be asked for here: the plans, and a consent code for each. */
+/** No approval could be asked for here: the plans, and a consent code (and its id) for each. */
 export function consentResult(
   why: string,
   plans: HashedPlan[],
-  codes: { planHash: string; code: string }[],
+  codes: ApprovalCode[],
   unavailable: string | null,
 ): CallToolResult {
   const tail = unavailable
     ? [`No consent can be accepted: ${unavailable}.`]
-    : [
-        ...APPROVE_LINES,
-        ...codes.map((c) => `  code for [${codeNumber(plans, c)}]: ${c.code}`),
-      ];
+    : howToApprove(
+        plans.map((hp) => hp.planHash),
+        codes,
+      );
 
   return refused(
     `approval needed: ${printable(why)}`,
@@ -108,9 +78,6 @@ export function consentResult(
     },
   );
 }
-
-const codeNumber = (plans: HashedPlan[], c: { planHash: string }) =>
-  plans.findIndex((hp) => hp.planHash === c.planHash) + 1;
 
 /** A job's receipt as Lens (the protocol's RECEIPT), with the job's result. */
 export function receiptResult(

@@ -5,7 +5,7 @@
  * is asserted before it's written.
  */
 import * as P from '../dist/index.js';
-import { runCall } from './job-call-run.mjs';
+import { recordCalls } from './job-call-run.mjs';
 
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
 const now = 1790000000;
@@ -368,43 +368,52 @@ const calls = [
       }),
     ],
   },
+  {
+    // Only a positive integer is an undo window (SPEC-approval §1, #83).
+    name: 'an undo window of 0 is none: inside the policy, the call still asks',
+    before: { used: { [spendKey]: '0' }, consumed: [] },
+    steps: [
+      step('ask', {
+        plans: [{ ...refund, undoWindow: 0 }],
+        policy: allowed,
+        says: "refund can't be undone",
+      }),
+    ],
+  },
 ];
 
-/** Run each call, check each step's outcome (its kind, and any text it `says`), and record it. */
-async function generate() {
-  const out = [];
+/**
+ * How the model is told to approve outside the chat (SPEC-approval §6), for codes with and
+ * without short ids. The text reads only each code's plan hash, code and id, so the codes are
+ * stand-ins.
+ */
+const refundCode = { planHash: refundHp.planHash, code: 'pc1.refund' };
+const creditCode = { planHash: creditHp.planHash, code: 'pc1.credit' };
+const approveTexts = [
+  ['one code without an id: the whole code', [refundCode]],
+  [
+    'every code has an id: the ids, then the whole codes',
+    [
+      { ...refundCode, id: 'k7m2x9qa4b' },
+      { ...creditCode, id: 'p3n8w2zr6c' },
+    ],
+  ],
+  [
+    'a code without an id: the whole codes only',
+    [{ ...refundCode, id: 'k7m2x9qa4b' }, creditCode],
+  ],
+  [
+    'no code for a denied plan: each numbered by its plan',
+    [{ ...creditCode, id: 'p3n8w2zr6c' }],
+  ],
+].map(([name, codes]) => {
+  const planHashes = [refundHp.planHash, creditHp.planHash];
 
-  for (const c of calls) {
-    const spec = {
-      name: c.name,
-      tool: c.tool ?? tool,
-      ...(c.consents ? { consents: c.consents } : {}),
-      steps: c.steps.map(({ expect: _kind, says: _says, ...facts }, i) => ({
-        ...facts,
-        ...(i === 0 ? { before: c.before } : {}),
-      })),
-    };
-    const done = await runCall(P, spec);
-
-    c.steps.forEach((s, i) => {
-      const got = JSON.stringify(done[i].outcome);
-
-      if (done[i].outcome.kind !== s.expect || !got.includes(s.says ?? '')) {
-        throw new Error(
-          `job call "${c.name}" step ${i + 1}: expected ${s.expect}, got ${got}`,
-        );
-      }
-    });
-    out.push({
-      ...spec,
-      steps: spec.steps.map((facts, i) => ({ ...facts, ...done[i] })),
-    });
-  }
-
-  return out;
-}
+  return { name, planHashes, codes, lines: P.howToApprove(planHashes, codes) };
+});
 
 export const jobCalls = {
   keys: { principal: principal.public, server: server.public },
-  calls: await generate(),
+  calls: await recordCalls(P, calls, tool),
+  approveTexts,
 };

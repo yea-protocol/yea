@@ -20,10 +20,11 @@ from ..approval.decision import denied_reason
 from ..store import ApprovalStore
 from .answer import answer_round
 from .first import first_round
+from .approve_text import how_to_approve
 from .outcome import JobCall, JobTool, Outcome, Retry, Round
 from .plans import hash_plans, phrase_of, plans_of
 
-__all__ = ["JobCall", "JobTool", "Outcome", "Retry", "hash_plans", "job_call"]
+__all__ = ["JobCall", "JobTool", "Outcome", "Retry", "hash_plans", "how_to_approve", "job_call"]
 
 
 async def job_call(call: JobCall, store: ApprovalStore, retry: Retry | None = None) -> Outcome:

@@ -35,13 +35,16 @@ import {
 } from '../src/ask.js';
 import { grantCovers } from '../src/client/grant-scope.js';
 import { approveCode, NO_DETAIL } from '../src/consent-round.js';
+import { saveGrant } from '../src/home.js';
 import * as P from '../src/index.js';
+import { fmtTime } from '../src/lens.js';
 import {
   checkKeyFile,
   checkServerKeyDir,
   connect,
   FileStore,
   listen,
+  PendingCodes,
   readPinnedKey,
   readPrivateFile,
   readServerSeed,
@@ -1230,8 +1233,8 @@ describe('approval security (SPEC-approval)', () => {
     await expect(
       P.readJobConsent(await code({ capability: 'delete_customer' }), now),
     ).rejects.toThrow("doesn't match its hash");
-    await expect(P.readJobConsent(await code(), now + 600)).rejects.toThrow(
-      'expired',
+    await expect(P.readJobConsent(await code(), now + 700)).rejects.toThrow(
+      expiredWhy(now + 600, now + 700),
     );
 
     const long = await P.readJobConsent(
@@ -1241,6 +1244,186 @@ describe('approval security (SPEC-approval)', () => {
 
     expect(long.consent.expires).toBe(now + P.CONSENT_TTL);
   });
+
+  it('[A29] yea approve warns, last before the y/N, when a protocol consent stays valid over an hour', async () => {
+    const at = P.unixNow();
+    const agent = await P.keyPair();
+    const shown = async (expires: number) => {
+      let lines: string[] = [];
+
+      await approveCode({
+        code: await protocolCode({
+          principal: B.public,
+          agent: agent.public,
+          expires,
+        }),
+        principal: B.public,
+        localAgent: agent.public,
+        now: () => at,
+        approver: P.signer(B, async (ask) => {
+          lines = ask.lines;
+
+          return false;
+        }),
+      });
+
+      return lines;
+    };
+    const day = at + 86400 - 28;
+
+    expect((await shown(day)).slice(-2)).toEqual([
+      '',
+      `⚠ this approval stays valid until ${fmtTime(day)}, 23h 59m from now`,
+    ]);
+    expect((await shown(at + 7200)).at(-1)).toMatch(/, 2h from now$/);
+    expect((await shown(at + 3600)).join('\n')).not.toContain('⚠');
+  });
+
+  it('[A30] yea approve refuses an expired protocol consent code before showing or asking, from the second it expires (#370)', async () => {
+    // An hour ahead: a consent that is approved has its grant checked against the real clock.
+    const at = P.unixNow() + 3600;
+    const code = await protocolCode({
+      principal: B.public,
+      agent: agent.public,
+      expires: at,
+    });
+
+    expect(await approveProtocol(code, () => at - 1)).toMatchObject({
+      r: { ok: true },
+      asked: true,
+    });
+    // At `expires` the service refuses the commit, so the person is never asked.
+    expect(await approveProtocol(code, () => at)).toEqual({
+      r: { ok: false, why: expiredWhy(at, at) },
+      asked: false,
+    });
+
+    // The consent expires with its proposal, whatever the code's own `expires` says.
+    const early = await protocolCode({
+      principal: B.public,
+      agent: agent.public,
+      expires: at,
+      proposal: { expires: at - 60 },
+    });
+
+    expect(await approveProtocol(early, () => at - 1)).toEqual({
+      r: { ok: false, why: expiredWhy(at - 60, at - 1) },
+      asked: false,
+    });
+
+    // Refused before the agent is chosen: a person isn't sent to check --to for a dead code.
+    const elsewhere = await protocolCode({
+      principal: B.public,
+      agent: otherAgent.public,
+      expires: at,
+    });
+
+    expect(await approveProtocol(elsewhere, () => at)).toEqual({
+      r: { ok: false, why: expiredWhy(at, at) },
+      asked: false,
+    });
+
+    if (existsSync(CLI)) {
+      // End to end: nothing from the code is printed, and there's no y/N.
+      const home = approverHome(agent);
+      const gone = P.unixNow() - 3600;
+
+      try {
+        const r = approveIn(home, [
+          await protocolCode({
+            principal: B.public,
+            agent: agent.public,
+            expires: gone,
+          }),
+        ]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toContain(
+          `✗ this consent code expired at ${fmtTime(gone)}; it is `,
+        );
+        expect(r.out).not.toContain('Order 1 meal');
+        expect(r.out).not.toContain('[y/N]');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    }
+  }, 20_000);
+
+  it('[A31] yea approve refuses a protocol code whose proposal has no integer expires, without asking or throwing (#370)', async () => {
+    for (const expires of [undefined, String(now + 3600)]) {
+      const code = await protocolCode({
+        principal: B.public,
+        agent: agent.public,
+        expires: now + 3600,
+        proposal: { expires },
+      });
+
+      expect(await approveProtocol(code, () => now), String(expires)).toEqual({
+        r: {
+          ok: false,
+          why: "this consent code can't be approved: the proposal has a malformed expires",
+        },
+        asked: false,
+      });
+    }
+  });
+
+  it('[A32] yea approve checks expiry again after the y/N: a consent that expires while the person reads is refused, unused (#370)', async () => {
+    const at = P.unixNow() + 3600;
+    let t = at - 1;
+    const { r, asked } = await approveProtocol(
+      await protocolCode({
+        principal: B.public,
+        agent: agent.public,
+        expires: at,
+      }),
+      () => t,
+      () => {
+        t = at;
+      },
+    );
+
+    expect(asked).toBe(true);
+    expect(r).toEqual({ ok: false, why: expiredWhy(at, at) });
+  });
+
+  it('[A33] yea approve signs no job consent that expired while the person typed its phrase (#370)', async () => {
+    const at = now + P.CONSENT_TTL;
+    const j = await P.readJobConsent(await jobCodeAt(now), now);
+
+    expect(j.consent.expires).toBe(at);
+    await expect(P.signJobConsent(B, j, at)).rejects.toThrow(
+      expiredWhy(at, at),
+    );
+    expect(await P.signJobConsent(B, j, at - 1)).toMatch(/^pg1\./);
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    "[A35] yea approve escapes the code's agent field, which nothing signs, in its --to suggestion",
+    async () => {
+      const home = approverHome(agent);
+      const named = '\u001b[31mEVIL\u001b[0m';
+
+      try {
+        const r = approveIn(home, [
+          await protocolCode({
+            principal: B.public,
+            agent: named,
+            expires: P.unixNow() + 3600,
+          }),
+        ]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toContain(
+          'The code suggests --to \\u{1b}[31mEVIL\\u{1b}[0m (fingerprint ',
+        );
+        expect(r.out).not.toContain('\u001b');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 
   it('[A7] a job consent is signed by the principal, to the server, for that one plan', async () => {
     const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
@@ -1263,7 +1446,7 @@ describe('approval security (SPEC-approval)', () => {
       }),
       now,
     );
-    const g = await P.inspectGrant(await P.signJobConsent(B, j));
+    const g = await P.inspectGrant(await P.signJobConsent(B, j, now));
 
     expect(j.phrase).toBe('approve');
     expect(g.iss).toBe(B.public);
@@ -1276,7 +1459,7 @@ describe('approval security (SPEC-approval)', () => {
       { exp: j.consent.expires },
     ]);
     expect(
-      await checkJobConsent(await P.signJobConsent(B, j), {
+      await checkJobConsent(await P.signJobConsent(B, j, now), {
         hp,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
@@ -1435,10 +1618,13 @@ describe('approval security (SPEC-approval)', () => {
   it('[A12] a plan with a malformed uses never gets a plan hash', () => {
     expect(() =>
       P.planPreimage(
-        'refund',
         {},
-        { summary: 'x', effects: [], uses: [] as never },
-        'low',
+        {
+          tool: 'refund',
+          plan: { summary: 'x', effects: [], uses: [] as never },
+          risk: 'low',
+          undoable: false,
+        },
       ),
     ).toThrow('malformed uses');
   });
@@ -1446,10 +1632,13 @@ describe('approval security (SPEC-approval)', () => {
   it('[A13] a plan with an unknown risk never gets a plan hash', async () => {
     expect(() =>
       P.planPreimage(
-        'refund',
         {},
-        { summary: 'x', effects: [] },
-        'critical' as P.Risk,
+        {
+          tool: 'refund',
+          plan: { summary: 'x', effects: [] },
+          risk: 'critical' as P.Risk,
+          undoable: false,
+        },
       ),
     ).toThrow('unknown risk');
     await expect(
@@ -1670,7 +1859,7 @@ describe('approval security (SPEC-approval)', () => {
       edited({ hash: await P.consentHashOf(hp.planHash, 'approve') }),
       now,
     );
-    const grant = await P.signJobConsent(B, forged);
+    const grant = await P.signJobConsent(B, forged, now);
     const policy = { principal: B.public, server: A.public };
 
     expect(
@@ -1708,10 +1897,11 @@ describe('approval security (SPEC-approval)', () => {
     );
 
     // A consent bound to the bare plan hash, as before #141, never counts either.
-    const bare = await P.signJobConsent(B, {
-      ...forged,
-      consent: { ...forged.consent, hash: hp.planHash },
-    });
+    const bare = await P.signJobConsent(
+      B,
+      { ...forged, consent: { ...forged.consent, hash: hp.planHash } },
+      now,
+    );
 
     expect(
       await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
@@ -2194,6 +2384,415 @@ function yeaDo(args: string[], home: string) {
 // Every caller (`yea do`, test-drive, `yea approve`, the bridge, the site) goes through the
 // consent round (consent-round.ts). These run it with a fake approver against the pay service,
 // through a transport that edits its replies as a lying service would; [C6] also runs `yea do`.
+/** A bridge's protocol code for a proposal with a good hash, naming `agent`; `over` edits it. */
+async function protocolCode(o: {
+  principal: string;
+  agent: string;
+  expires: number;
+  summary?: string;
+  id?: string;
+  /** Fields of the proposal to change before it's hashed (`undefined` leaves one out). */
+  proposal?: Record<string, unknown>;
+}) {
+  const p = {
+    id: o.id ?? 'p_1',
+    capability: 'shop.order',
+    summary: o.summary ?? 'Order 1 meal',
+    effects: [],
+    risk: 'low' as const,
+    undo: null,
+    expires: o.expires,
+    ...o.proposal,
+  };
+  const proposal = { ...p, hash: await P.proposalHash(p) };
+
+  return P.consentCode(
+    {
+      proposal: proposal.id,
+      hash: proposal.hash,
+      service: 'shop.example',
+      capability: proposal.capability,
+      principal: o.principal,
+      summary: proposal.summary,
+      expires: o.expires,
+    },
+    proposal as unknown as P.Proposal,
+    { agent: o.agent },
+  );
+}
+
+/**
+ * `yea approve`'s round for a protocol code to principal B and `agent`, at the times `clock`
+ * gives: what it returns, and whether the person was asked, which is the only way any of the
+ * code's lines reach them. The person says yes; `onAsk` runs while they read.
+ */
+async function approveProtocol(
+  code: string,
+  clock: () => number,
+  onAsk = () => {},
+) {
+  let asked = false;
+  const r = await approveCode({
+    code,
+    principal: B.public,
+    localAgent: agent.public,
+    now: clock,
+    approver: P.signer(B, async () => {
+      asked = true;
+      onAsk();
+
+      return true;
+    }),
+  });
+
+  return { r, asked };
+}
+
+/** Why `yea approve` refuses a consent code that expired at `expires`, when it's `at` here. */
+function expiredWhy(expires: number, at: number) {
+  return `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Call the tool again for a fresh one`;
+}
+
+/** A job code for a plan the person can't confirm without a terminal. */
+async function jobCodeAt(at: number, summary = 'Delete a.txt') {
+  const [hp] = await P.hashPlans({ name: 'delete_file' }, { path: 'a.txt' }, [
+    { summary, effects: [], risk: 'medium', apply: () => null },
+  ]);
+
+  return jobConsentCode({
+    server: A.public,
+    principal: B.public,
+    input: { path: 'a.txt' },
+    hp,
+    phrase: 'approve',
+    now: at,
+  });
+}
+
+/** A home with the principal key (and, if given, an agent key), its store at `<home>/store`. */
+function approverHome(agent?: P.KeyPair) {
+  const home = mkdtempSync(join(tmpdir(), 'yea-pending-'));
+
+  writeFileSync(join(home, 'principal.key'), B.seed);
+
+  if (agent) {
+    writeFileSync(join(home, 'agent.key'), agent.seed);
+  }
+
+  return home;
+}
+
+/** `yea approve` in `home`, with no terminal: what it printed, and how it exited. */
+function approveIn(home: string, args: string[]) {
+  const r = spawnSync(process.execPath, [CLI, 'approve', ...args], {
+    env: {
+      ...process.env,
+      YEA_HOME: home,
+      YEA_PRINCIPAL_HOME: '',
+      YEA_STORE: '',
+    },
+    input: '',
+    encoding: 'utf8',
+  });
+
+  return { status: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
+  it('[A23] an id outside the pattern never reaches a path, and there is no prefix search', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yea-pending-'));
+    const pending = new PendingCodes(dir);
+
+    writeFileSync(join(dir, 'abcdefghij'), 'pc1.x\n');
+
+    for (const id of [
+      '../abcdefghij',
+      'abc/defghij',
+      'abcdefg',
+      '',
+      'a'.repeat(33),
+    ]) {
+      expect(() => pending.read(id), id).toThrow('not a pending id');
+    }
+
+    expect(pending.read('abcdefgh')).toBeNull();
+    expect(pending.read('abcdefghij')).toBe('pc1.x');
+    // Matched against the directory's names: a case-insensitive disk can't open another id's file.
+    expect(pending.read('ABCDEFGHIJ')).toBeNull();
+  });
+
+  it('[A24] a symlinked, oversize or non-regular pending file is refused, not followed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yea-pending-'));
+    const pending = new PendingCodes(dir);
+    const elsewhere = join(dir, '..', `${Date.now()}-target`);
+
+    writeFileSync(elsewhere, 'pc1.x\n');
+    symlinkSync(elsewhere, join(dir, 'linkedlink'));
+    writeFileSync(join(dir, 'oversizeds'), 'x'.repeat(64 * 1024 + 1));
+    mkdirSync(join(dir, 'adirectory'));
+
+    expect(() => pending.read('linkedlink')).toThrow('symlink');
+    expect(() => pending.read('oversizeds')).toThrow('larger than 64 KiB');
+    expect(() => pending.read('adirectory')).toThrow('not a regular file');
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    '[A25] a pending file whose plan or hash was edited is refused, and an expired or missing id says to call again',
+    async () => {
+      const home = approverHome();
+      const store = new PendingCodes(join(home, 'store', 'pending'));
+      const c = P.decodeConsentCode(await jobCodeAt(P.unixNow()));
+      const edited = `pc1.${P.b64u(
+        new TextEncoder().encode(
+          P.canonical({
+            ...c,
+            detail: {
+              ...(c.detail as unknown as Record<string, unknown>),
+              job: {
+                ...(c.detail as unknown as { job: object }).job,
+                summary: 'Delete nothing',
+              },
+            },
+          }),
+        ),
+      )}`;
+      const tampered = store.put(edited, P.unixNow());
+      const old = store.put(
+        await jobCodeAt(P.unixNow() - 700, 'Delete b.txt'),
+        P.unixNow() - 700,
+      );
+
+      try {
+        const r = approveIn(home, [tampered]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toMatch(/doesn't match its hash: refusing/);
+        expect(r.out).not.toContain('Delete nothing');
+
+        const expired = approveIn(home, [old]).out;
+
+        expect(expired).toContain(
+          `pending approval ${old} (in ${join(home, 'store', 'pending')}) has expired: call the tool again for a fresh one`,
+        );
+        // Its whole code has expired too, so passing that instead can't help.
+        expect(expired).not.toContain('pass the whole code');
+        expect(approveIn(home, ['zzzzzzzzzz']).out).toContain(
+          `no pending approval zzzzzzzzzz (looked in ${join(home, 'pending')} and ${join(home, 'store', 'pending')}): call the tool again for a fresh one`,
+        );
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A26] a pending file naming another agent still needs --to, and with no terminal nothing is signed',
+    async () => {
+      const mine = await P.keyPair();
+      const other = await P.keyPair();
+      const home = approverHome(mine);
+      const pending = new PendingCodes(join(home, 'pending'));
+      const theirs = pending.put(
+        await protocolCode({
+          principal: B.public,
+          agent: other.public,
+          expires: P.unixNow() + 900,
+        }),
+        P.unixNow(),
+      );
+      const job = new PendingCodes(join(home, 'store', 'pending')).put(
+        await jobCodeAt(P.unixNow()),
+        P.unixNow(),
+      );
+
+      try {
+        const r = approveIn(home, [theirs]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toMatch(/pass --to <key> to say which/);
+        expect(r.out).not.toContain('Order 1 meal');
+
+        const t = approveIn(home, [job]);
+
+        expect(t.status).toBe(1);
+        expect(t.out).toContain('Delete a.txt');
+        expect(t.out).toContain(
+          '✗ approval needs an interactive terminal: a person has to confirm, so run it in a separate terminal window, not through the agent',
+        );
+        expect(readdirSync(home)).not.toContain('consents');
+        expect(existsSync(join(home, 'store', 'consents'))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A27] the listing groups by directory, keeps service text on one line, and says what is waiting',
+    async () => {
+      const home = approverHome();
+      const now = P.unixNow();
+      const bridgeDir = join(home, 'pending');
+      const storeDir = join(home, 'store', 'pending');
+      const bridge = new PendingCodes(bridgeDir);
+      const store = new PendingCodes(storeDir);
+      const proto = (id: string, summary?: string) =>
+        protocolCode({
+          principal: B.public,
+          agent: B.public,
+          expires: now + 900,
+          summary,
+          id,
+        });
+      const shown = bridge.put(
+        await proto('p_1', 'Order\n  ✓ approved\u202e'),
+        now,
+        { pid: process.pid },
+      );
+      const ended = spawnSync(process.execPath, ['-e', '']).pid ?? 0;
+      const stopped = bridge.put(await proto('p_2'), now, { pid: ended });
+      // Approved on the bridge's path: the consent saved in the home under the proposal's hash.
+      const savedCode = await proto('p_3');
+      const saved = bridge.put(savedCode, now, { pid: process.pid });
+
+      saveGrant(
+        'pg1.example',
+        'consents',
+        P.decodeConsentCode(savedCode).hash,
+        home,
+      );
+
+      // A summary padded with whitespace, then too long to show whole.
+      const longCode = await jobCodeAt(
+        now,
+        `Delete${' \t'.repeat(300)}a.txt ${'x'.repeat(200)}`,
+      );
+      const long = store.put(longCode, now);
+      const gone = store.put(await jobCodeAt(now - 700), now - 700);
+
+      await new FileStore(join(home, 'store')).putConsent(
+        P.decodeConsentCode(longCode).proposal,
+        'pg1.example',
+      );
+
+      try {
+        const r = approveIn(home, []);
+        const lines = r.out.split('\n');
+        const lineOf = (id: string) => lines.filter((l) => l.includes(id));
+
+        expect(r.status).toBe(0);
+        expect(lines.indexOf(`in ${bridgeDir}:`)).toBeLessThan(
+          lines.indexOf(`in ${storeDir}:`),
+        );
+        expect(lineOf(shown)).toEqual([
+          expect.stringMatching(
+            new RegExp(
+              `^  ${shown} · shop\\.order · Order ✓ approved\\\\u\\{202e\\} · at shop\\.example · expires [^·]+$`,
+            ),
+          ),
+        ]);
+        expect(r.out).not.toContain('\u202e');
+        expect(lineOf(stopped)[0]).toMatch(
+          / · its bridge has stopped: call the tool again$/,
+        );
+        expect(lineOf(saved)[0]).toMatch(/ · approved, waiting for the agent$/);
+
+        // One line, its whitespace collapsed and its summary cut to 80 code points.
+        expect(lineOf(long)).toHaveLength(1);
+        expect(lineOf(long)[0]).toContain(
+          ` · Delete a.txt ${'x'.repeat(66)}… · at `,
+        );
+        expect(lineOf(long)[0].slice(2)).not.toMatch(/\s\s/);
+        expect(lineOf(long)[0]).toMatch(/ · approved, waiting for the agent$/);
+        expect(r.out).not.toContain(gone);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A28] an id in both directories is refused, and a file that holds no code is never quoted',
+    async () => {
+      const home = approverHome();
+      const now = P.unixNow();
+      const bridgeDir = join(home, 'pending');
+      const storeDir = join(home, 'store', 'pending');
+      const code = await jobCodeAt(now);
+
+      mkdirSync(bridgeDir, { recursive: true });
+      mkdirSync(storeDir, { recursive: true });
+      writeFileSync(join(bridgeDir, 'bothplaces'), `${code}\n`);
+      writeFileSync(join(storeDir, 'bothplaces'), `${code}\n`);
+      writeFileSync(join(bridgeDir, 'notacodexx'), 'SECRET text\n');
+      writeFileSync(join(bridgeDir, 'brokencode'), 'pc1.SECRET{"x":\n');
+      writeFileSync(join(bridgeDir, 'emptyfirst'), `\n${code}\n`);
+
+      try {
+        expect(approveIn(home, ['bothplaces']).out).toContain(
+          `pending id bothplaces is in both ${bridgeDir} and ${storeDir}, so it doesn't name one approval`,
+        );
+
+        for (const id of ['notacodexx', 'brokencode', 'emptyfirst']) {
+          const r = approveIn(home, [id]);
+
+          expect(r.status, id).toBe(1);
+          expect(r.out, id).toContain(
+            `pending file ${join(bridgeDir, id)} doesn't hold a consent code: call the tool again for a fresh one`,
+          );
+          expect(r.out, id).not.toMatch(/SECRET|JSON|Unexpected/);
+        }
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A34] a pending code is listed, and expires, with its consent: with its proposal, if that is sooner (#370)',
+    async () => {
+      const home = approverHome(agent);
+      const dir = join(home, 'store', 'pending');
+      const store = new PendingCodes(dir);
+      const at = P.unixNow();
+      // The code's own `expires` is two hours away; its proposal's is sooner.
+      const code = (id: string, proposal: number) =>
+        protocolCode({
+          principal: B.public,
+          agent: agent.public,
+          expires: at + 7200,
+          id,
+          proposal: { expires: proposal },
+        });
+      const soon = store.put(await code('p_soon', at + 3600), at);
+      const gone = store.put(await code('p_gone', at - 60), at);
+
+      try {
+        expect(store.list(at).map((e) => [e.id, e.consent.expires])).toEqual([
+          [soon, at + 3600],
+        ]);
+
+        const listed = approveIn(home, []).out;
+
+        expect(listed).toContain(
+          `${soon} · shop.order · Order 1 meal · at shop.example · expires ${fmtTime(at + 3600)}`,
+        );
+        expect(listed).not.toContain(gone);
+        expect(approveIn(home, [gone]).out).toContain(
+          `pending approval ${gone} (in ${dir}) has expired: call the tool again for a fresh one`,
+        );
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+});
+
 describe('consent requests (SPEC.md §6.6)', () => {
   type Edit = (r: P.FinalReply) => P.FinalReply;
 
@@ -4526,6 +5125,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
       summary: 'Update settings',
       effects: [effect(levels)],
       risk: 'low',
+      expires: now,
     });
   const tooDeep = 'the proposal is nested too deep to show in full';
 
@@ -4536,7 +5136,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
   });
 
   it('whatever member is deep: a malformed summary or effects too', async () => {
-    const base = { id: 'p1', capability: 's.set', risk: 'low' };
+    const base = { id: 'p1', capability: 's.set', risk: 'low', expires: now };
 
     for (const p of [
       { ...base, summary: buried(40), effects: [] },
@@ -4700,7 +5300,9 @@ describe('an INTENT no grant authorized (#287)', async () => {
   const commitOnly: P.Caveat[] = [{ verbs: ['COMMIT'] }];
   const grantOf = (from: P.KeyPair, caveats: P.Caveat[] = []) =>
     P.issueGrant({ principal: from, to: agent.public, caveats });
-  const fixture = (opts: { requireGrants?: boolean } = {}) => {
+  const fixture = (
+    opts: { requireGrants?: boolean; proposalTtl?: number } = {},
+  ) => {
     const applied: (string | null)[] = [];
     const svc = P.service({
       id: 'v',
@@ -4893,5 +5495,225 @@ describe('an INTENT no grant authorized (#287)', async () => {
 
     expect(r.kind === 'RECEIPT' && r.auto).toBe(true);
     expect(applied).toEqual([principal.public]);
+  });
+
+  it("[A22] a consent yea approve signs commits it: its exp is the proposal's, never capped (#325)", async () => {
+    // Open for an hour, so a consent capped at 10 minutes would fall short of the proposal's expiry.
+    const { applied, as } = fixture({ proposalTtl: 3600 });
+    const c = as([await grantOf(principal, commitOnly)]);
+    const p = proposalOf(await c.intent('v.do', {}, { auto: true }));
+    // The code the bridge hands the person, approved at once as `yea approve <id>` does.
+    const r = await approveCode({
+      code: P.consentCode(consentOf(await c.commit(p)), p, {
+        agent: agent.public,
+      }),
+      principal: principal.public,
+      localAgent: agent.public,
+      approver: P.signer(principal, async () => true),
+    });
+    const grant = r.ok ? r.grant : '';
+
+    expect((await P.inspectGrant(grant)).blocks[0].caveats).toContainEqual({
+      exp: p.expires,
+    });
+    expect((await c.commit(p, { grants: [grant] })).kind).toBe('RECEIPT');
+    expect(applied).toEqual([principal.public]);
+  });
+});
+
+// #83: only an integer from 1 to 2^52 is an undo window. A plan or proposal with any other
+// window, zero and null included, can't be undone, so it never runs or commits on its own and
+// reads `never`.
+describe('an undo window is a positive integer, or there is none (#83)', async () => {
+  const server = await P.keyPair();
+  const notWindows = [
+    0,
+    -1,
+    1.5,
+    '3600',
+    Number.NaN,
+    2 ** 52 + 1,
+    2 ** 53,
+    true,
+    null,
+  ];
+  const move = {
+    summary: 'Move standup',
+    effects: [P.update('event/e1', 'start', '14:00', '15:00')],
+    risk: 'low' as const,
+    apply: () => null,
+  };
+  const policy = {
+    grant: await P.issueGrant({
+      principal,
+      to: server.public,
+      caveats: [{ can: ['reschedule'] }],
+    }),
+    principal: principal.public,
+    server: server.public,
+    deny: [],
+    outOfBand: 'high' as const,
+  };
+  const callWith = (undoWindow: unknown, revert?: () => null) =>
+    P.jobCall(
+      {
+        tool: { name: 'reschedule', ...(revert ? { revert } : {}) },
+        input: {},
+        plan: () => [{ ...move, undoWindow: undoWindow as number }],
+        sub: '',
+        now,
+        policy,
+        canAsk: true,
+      },
+      new P.MemoryStore(),
+    );
+  const hashOf = async (undoWindow: unknown, revert?: () => null) => {
+    const tool = { name: 'reschedule', ...(revert ? { revert } : {}) };
+    const [hp] = await P.hashPlans(tool, {}, [
+      { ...move, undoWindow: undoWindow as number },
+    ]);
+
+    return hp;
+  };
+
+  it('a job plan with any other window is not undoable, so the policy asks', async () => {
+    const revert = () => null;
+
+    expect((await callWith(60, revert)).kind).toBe('run');
+
+    for (const w of notWindows) {
+      const o = await callWith(w, revert);
+
+      if (o.kind !== 'ask') {
+        throw new Error(`${String(w)}: ${o.kind}`);
+      }
+
+      expect(o.form.message, String(w)).toContain(
+        "Approval needed: reschedule can't be undone.",
+      );
+      expect(o.form.message, String(w)).toContain('undo: never');
+    }
+  });
+
+  it('its plan hash is the same as with no window, as is a window on a tool without revert', async () => {
+    const none = (await hashOf(undefined, () => null)).planHash;
+
+    for (const w of notWindows) {
+      expect(await hashOf(w, () => null), String(w)).toMatchObject({
+        undoable: false,
+        planHash: none,
+      });
+    }
+
+    expect(await hashOf(60)).toMatchObject({ undoable: false, planHash: none });
+    expect((await hashOf(60, () => null)).planHash).not.toBe(none);
+  });
+
+  it('yea approve reads undo from the consent code, and shows never for any other window', async () => {
+    const show = async (hp: P.HashedPlan) => {
+      const code = await jobConsentCode({
+        server: server.public,
+        principal: principal.public,
+        input: {},
+        hp,
+        phrase: 'approve',
+        now,
+      });
+
+      return P.planLines((await P.readJobConsent(code, now)).job).at(-1);
+    };
+
+    expect(await show(await hashOf(60, () => null))).toBe(
+      '  risk: low · undo: 1m',
+    );
+    expect(await show(await hashOf(60))).toBe('  risk: low · undo: never');
+    expect(await show(await hashOf(0, () => null))).toBe(
+      '  risk: low · undo: never',
+    );
+
+    for (const w of notWindows) {
+      expect(P.planLines({ ...move, undoWindow: w }).at(-1), String(w)).toBe(
+        '  risk: low · undo: never',
+      );
+    }
+  });
+
+  /** An auto INTENT to a service whose one plan has `revert` and this undo window. */
+  const autoMove = async (undoWindow: unknown) => {
+    const apply = vi.fn(() => null);
+    const svc = P.service({
+      id: 'cal',
+      name: 'Cal',
+      summary: 'cal',
+      trust: [principal.public],
+    }).intent('cal.move', {
+      summary: 'move',
+      plan: () => ({
+        summary: 'move it',
+        effects: [P.update('event/1', 'start', 'a', 'b')],
+        undoWindow: undoWindow as number,
+        apply,
+        revert: () => null,
+      }),
+    });
+    const r = await (await client(svc, agent, principal)).intent(
+      'cal.move',
+      {},
+      { auto: true },
+    );
+
+    return { r, apply };
+  };
+
+  it('a service sends undo: null for any other window, and never auto-commits it', async () => {
+    for (const w of notWindows) {
+      const { r, apply } = await autoMove(w);
+
+      expect(r.kind === 'PROPOSALS' && r.proposals[0].undo, String(w)).toBe(
+        null,
+      );
+      expect(apply, String(w)).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a window of up to 2^52 auto-commits, and its receipt's until is a safe integer", async () => {
+    for (const w of [undefined, 60, 2 ** 52]) {
+      const { r, apply } = await autoMove(w);
+
+      if (r.kind !== 'RECEIPT') {
+        throw new Error(`${String(w)}: ${r.lens}`);
+      }
+
+      const until = r.receipt.undo?.until;
+
+      expect(apply, String(w)).toHaveBeenCalledOnce();
+      expect(until, String(w)).toBe(r.receipt.at + (w ?? 86400));
+      expect(Number.isSafeInteger(until), String(w)).toBe(true);
+    }
+  });
+
+  it('a client renders a proposal whose window is any other value as undo: never', () => {
+    for (const w of notWindows) {
+      const lines = P.lens({
+        yea: 1,
+        id: 'f',
+        re: 'f',
+        kind: 'PROPOSALS',
+        proposals: [
+          {
+            id: 'p_1',
+            capability: 'cal.move',
+            summary: 'move it',
+            effects: [],
+            risk: 'low',
+            undo: { window: w as number },
+            expires: now,
+            hash: 'h',
+          },
+        ],
+      });
+
+      expect(lines, String(w)).toContain('undo: never');
+    }
   });
 });

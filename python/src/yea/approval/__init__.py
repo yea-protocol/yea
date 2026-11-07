@@ -1,5 +1,6 @@
 """Approval for job tools (docs/framework/SPEC-approval.md): the plan hash, the policy decision,
-the approval form, the state that goes round the client, and how an answer is judged.
+the approval form and the plan lines it shows, the state that goes round the client, and how an
+answer is judged.
 
 The decisions (plan hash, decide, the form, the state, judging) are synchronous and pure. The
 store helpers (reservations, undo, consents, ``spent``) are async, and the key-file checks and
@@ -35,7 +36,8 @@ from .pinned_key import (
     check_key_file,
     load_principal_key,
 )
-from .plan import HashedPlan, input_hash, plan_hash, plan_preimage
+from .plan import HashedPlan, JudgedPlan, input_hash, plan_hash, plan_preimage, shown_plan
+from .plan_text import plan_lines
 from .policy import (
     DEFAULT_OUT_OF_BAND,
     Policy,
@@ -53,6 +55,9 @@ __all__ = [
     "plan_hash",
     "input_hash",
     "HashedPlan",
+    "JudgedPlan",
+    "shown_plan",
+    "plan_lines",
     "normalize_phrase",
     "strip_phrase_edge",
     "checked_phrase",

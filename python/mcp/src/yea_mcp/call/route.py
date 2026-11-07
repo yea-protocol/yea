@@ -16,6 +16,7 @@ from ..ask import answer_of, ask_in_call, can_ask, input_required, is_modern, pa
 from ..render import clarify_result, consent_result, preview_result
 from ..result import NOTHING_RAN, error_result
 from .model import Call, JobDef, Req, Reserved, Result, Yea
+from .pending import drop_pending, with_ids
 from .prepare import caller_of, policy_for
 from .run import _run_plan
 
@@ -60,11 +61,12 @@ async def _result_of(call: Call, o: Outcome) -> Result:
     if o.kind == "preview":
         return preview_result(o.plans, call.job.own_results_are_errors())
     if o.kind == "run" and o.plan is not None:
+        drop_pending(call, o.plan.plan_hash)
         return await _run_plan(call, o.plan, o.held, o.how or "approved")
     if o.kind == "ask" and o.form is not None and o.state is not None and o.otherwise is not None:
         return await _ask(call, o.form, o.state, o.otherwise)
     if o.kind == "consent-codes":
-        return consent_result(o.why or "", o.plans, o.codes, o.unavailable)
+        return consent_result(o.why or "", o.plans, with_ids(call, o.codes), o.unavailable)
     if o.again:
         return error_result([f"✗ {o.why}; {NOTHING_RAN}. Call the tool again to ask again."])
     return error_result([f"✗ {o.why}; {NOTHING_RAN}"])

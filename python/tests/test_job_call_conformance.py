@@ -14,7 +14,7 @@ from conftest import CONFORMANCE, load_vectors
 
 from yea import Plan, clarify
 from yea.approval import Tightening, load_policy
-from yea.job_call import JobCall, JobTool, Outcome, Retry, job_call
+from yea.job_call import JobCall, JobTool, Outcome, Retry, how_to_approve, job_call
 from yea.store import LedgerKey, MemoryStore
 
 DATA = load_vectors("job-calls")
@@ -154,3 +154,14 @@ def test_the_keys_are_the_ones_every_step_uses():
 def test_job_call(call):
     want = [{k: s[k] for k in ("before", "outcome", "planned", "after")} for s in call["steps"]]
     assert asyncio.run(_run(call)) == want
+
+
+def _approve_texts():
+    if DATA is None:
+        return [pytest.param(None)]
+    return [pytest.param(t, id=t["name"]) for t in DATA["approveTexts"]]
+
+
+@pytest.mark.parametrize("t", _approve_texts())
+def test_how_to_approve(t):
+    assert how_to_approve(t["planHashes"], t["codes"]) == t["lines"]

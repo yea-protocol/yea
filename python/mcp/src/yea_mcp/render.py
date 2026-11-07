@@ -7,38 +7,27 @@ from typing import Any
 
 import mcp_types as t
 from yea import lean
-from yea.approval import HashedPlan
-from yea.lens import fmt_duration, safe_effect_line, untrusted_lens
+from yea.approval import HashedPlan, plan_lines, shown_plan
+from yea.job_call import how_to_approve
+from yea.lens import untrusted_lens
 from yea.service import Clarification
 from yea.text import printable
-from yea.uses import check_uses, fmt_uses
 
 from .result import error_result, text_content
 
 
 def plan_view(hp: HashedPlan) -> dict:
     """A plan as data: what the model and the person see, never ``apply`` or ``data``."""
-    p = hp.plan
-    view: dict[str, Any] = {"planHash": hp.plan_hash, "summary": p.summary, "effects": p.effects}
-    if (uses := check_uses(p.uses)) is not None:
-        view["uses"] = uses
-    view["risk"] = hp.risk
-    view["undo"] = {"window": p.undo_window} if hp.undoable and p.undo_window is not None else None
+    shown = shown_plan(hp)
+    window = shown.pop("undoWindow", None)
+    view: dict[str, Any] = {"planHash": hp.plan_hash, **shown}
+    view["undo"] = None if window is None else {"window": window}
     return view
-
-
-def _plan_lines(n: int, hp: HashedPlan) -> list[str]:
-    v = plan_view(hp)
-    attrs = [*([f"uses: {fmt_uses(v['uses'])}"] if "uses" in v else []), f"risk: {v['risk']}",
-             f"undo: {fmt_duration(v['undo']['window']) if v['undo'] else 'never'}"]
-    # Service text is untrusted: escaped, so a summary can't forge lines or hide characters.
-    return [f"[{n}] {printable(v['summary'])}", *(f"  {safe_effect_line(e)}" for e in v["effects"]),
-            "  " + " · ".join(attrs)]
 
 
 def plans_text(plans: list[HashedPlan]) -> list[str]:
     head = f"{len(plans)} plan{'' if len(plans) == 1 else 's'}:"
-    return [head, *(line for i, hp in enumerate(plans, 1) for line in _plan_lines(i, hp))]
+    return [head, *(line for i, hp in enumerate(plans, 1) for line in plan_lines(shown_plan(hp), i))]
 
 
 def preview_result(plans: list[HashedPlan], as_error: bool) -> t.CallToolResult:
@@ -52,27 +41,14 @@ def preview_result(plans: list[HashedPlan], as_error: bool) -> t.CallToolResult:
     )
 
 
-# The two ways a consent from `yea approve` reaches this server (SPEC-approval §6): on the call, which
-# works anywhere, or through the store, where `yea approve` shares it.
-_APPROVE_LINES = [
-    "Ask the user to run `yea approve <code>` in their terminal and paste back the consent it prints (pg1.…), "
-    "then call again with the same input and `yea_consent` set to it.",
-    "If `yea approve` saved the consent where this server reads approvals, calling again without it works too.",
-]
-
-
 def consent_result(why: str, plans: list[HashedPlan], codes: list[dict], unavailable: str | None) -> t.CallToolResult:
-    """No approval could be asked for here: the plans, and a consent code for each."""
+    """No approval could be asked for here: the plans, and a consent code (and its id) for each."""
     if unavailable:
         tail = [f"No consent can be accepted: {unavailable}."]
     else:
-        tail = [*_APPROVE_LINES, *(f"  code for [{_number(plans, c)}]: {c['code']}" for c in codes)]
+        tail = how_to_approve([hp.plan_hash for hp in plans], codes)
     return error_result([f"✗ approval needed: {printable(why)}; nothing was run", *plans_text(plans), *tail],
                         {"plans": [plan_view(hp) for hp in plans], "codes": codes})
-
-
-def _number(plans: list[HashedPlan], c: dict) -> int:
-    return next(i for i, hp in enumerate(plans, 1) if hp.plan_hash == c["planHash"])
 
 
 def receipt_result(receipt: dict, auto: bool) -> t.CallToolResult:

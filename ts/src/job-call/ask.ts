@@ -39,6 +39,13 @@ export async function ask(
 }
 
 /**
+ * Why no consent counts without a pinned key, for the model to pass on: it names `yea doctor`,
+ * which changes no keys, never a command that makes one (§6).
+ */
+const noPrincipal = (why?: string) =>
+  `no principal key is pinned${why ? ` (${why})` : ''}: run \`yea doctor\` in a terminal outside this chat; it says how to pin one`;
+
+/**
  * Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6). Any
  * store gets codes: a consent `yea approve` can't save where the server reads comes back on the
  * call.
@@ -54,7 +61,7 @@ export async function consentCodes(
   if (!call.policy.principal) {
     return {
       ...base,
-      unavailable: call.unpinned ?? 'no principal key is pinned',
+      unavailable: noPrincipal(call.unpinned),
     };
   }
 

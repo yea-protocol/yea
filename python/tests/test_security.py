@@ -13,9 +13,9 @@ import pytest
 
 from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
-    local, serve_http, verify_grant,
+    lens, local, serve_http, verify_grant,
 )
-from yea._json import b64url_encode
+from yea._json import MAX_SAFE_INT, b64url_encode
 from yea.approval import Policy, Tightening, consent_hash_of, load_policy, reserve_all
 from yea.errors import YeaError
 from yea.grants import Grant
@@ -208,21 +208,22 @@ def test_a18_a_state_sent_again_runs_nothing_whatever_its_answer():
 
 
 # [A22] A consent on the call (``yea_consent``) is checked exactly as one from the store (#358).
-SERVER = key_from_seed(bytes([6]) * 32)
+# The server key the a22/a23 calls run under (not the undo-window tests' SERVER, below).
+CONSENT_SERVER = key_from_seed(bytes([6]) * 32)
 _REFUND = Plan("Refund 30.00 USD to Chen", [], apply=lambda c: None, risk="low", undo_window=60)
 _CREDIT = Plan("Give Chen store credit", [], apply=lambda c: None, risk="low", undo_window=60)
 _REFUND_TOOL = JobTool("refund", revert=lambda r: None)
 _REFUND_HASH = hash_plans(_REFUND_TOOL, {"who": "Chen"}, [_REFUND])[0].plan_hash
 # A policy that would run the refund without asking.
-_RUNS_REFUNDS = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["refund"]}, {"risk": "low"}, {"exp": NOW + 3600}]).encode()
+_RUNS_REFUNDS = issue_grant(PRINCIPAL, CONSENT_SERVER.public, [{"can": ["refund"]}, {"risk": "low"}, {"exp": NOW + 3600}]).encode()
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
 
 
-def _consent(by=PRINCIPAL, to: str = SERVER.public, svc: str | None = None, can: str = "refund",
+def _consent(by=PRINCIPAL, to: str = CONSENT_SERVER.public, svc: str | None = None, can: str = "refund",
              exp: int = NOW + 600) -> str:
     """A consent for the refund as ``yea approve`` signs one, with ``by``, ``to``, ``svc``, ``can`` or
     ``exp`` changed."""
-    return issue_grant(by, to, [{"svc": [svc or SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [can]},
+    return issue_grant(by, to, [{"svc": [svc or CONSENT_SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": [can]},
                                 {"only": consent_hash_of(_REFUND_HASH, "approve")}, {"exp": exp}], iat=NOW).encode()
 
 
@@ -231,7 +232,7 @@ def _carrying(consent: str | None, now: int = NOW, plans: tuple = (_REFUND,), pr
     """A refund call carrying ``consent``, from a client that can't ask, under a policy that would run it."""
     async def plan():
         return list(plans)
-    policy = load_policy(_RUNS_REFUNDS, SERVER.public, principal, Tightening((), "high"))
+    policy = load_policy(_RUNS_REFUNDS, CONSENT_SERVER.public, principal, Tightening((), "high"))
     return JobCall(_REFUND_TOOL, {"who": "Chen"}, plan, "", now, policy, False, unpinned=unpinned, consent=consent)
 
 
@@ -256,7 +257,7 @@ def test_a22_once_used_on_the_call_a_stored_copy_of_the_consent_is_used_too():
         assert (await job_call(_carrying(token), store)).how == "approved"
         await store.put_consent(_REFUND_HASH, token)
         plain = _carrying(None)
-        no_policy = JobCall(plain.tool, plain.input, plain.plan, "", NOW, Policy(None, PRINCIPAL.public, SERVER.public),
+        no_policy = JobCall(plain.tool, plain.input, plain.plan, "", NOW, Policy(None, PRINCIPAL.public, CONSENT_SERVER.public),
                             False)
         assert (await job_call(no_policy, store)).kind == "consent-codes"
 
@@ -307,7 +308,7 @@ def test_a23_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_t
     try:
         call = asking_call()
         o = run(job_call(JobCall(call.tool, call.input, call.plan, "", NOW,
-                                 Policy(None, PRINCIPAL.public, SERVER.public), False), store))
+                                 Policy(None, PRINCIPAL.public, CONSENT_SERVER.public), False), store))
         assert o.kind == "consent-codes" and "EACCES" not in repr(o)
         assert "can't be read (EACCES), so it counts as absent" in capsys.readouterr().err
     finally:
@@ -698,7 +699,7 @@ def test_approval_never_covers_content_lens_cuts():
     import pytest
 
     from yea import proposal_hash
-    from yea.approval.plan import plan_preimage
+    from yea.approval.plan import JudgedPlan, plan_preimage
     from yea.approve import check_proposal
     from yea.lens import safe_effect_line
     from yea.service.plan import Plan
@@ -715,7 +716,7 @@ def test_approval_never_covers_content_lens_cuts():
     def hashed(p):
         return {**p, "hash": proposal_hash(p)}
 
-    base = {"id": "p1", "capability": "s.set", "risk": "low"}
+    base = {"id": "p1", "capability": "s.set", "risk": "low", "expires": 1_790_000_000}
 
     def proposal(levels):
         return hashed({**base, "summary": "Update settings", "effects": [effect(levels)]})
@@ -734,10 +735,10 @@ def test_approval_never_covers_content_lens_cuts():
     def plan(levels, wrap=list):
         return Plan("Update settings", wrap([effect(levels)]), apply=lambda: None)
 
-    assert plan_preimage("t", {}, plan(28), "low")["tool"] == "t"
+    assert plan_preimage({}, JudgedPlan("t", plan(28), "low", False))["tool"] == "t"
     for p in (plan(29), plan(29, tuple)):
         with pytest.raises(ValueError, match="nested past 32 levels"):
-            plan_preimage("t", {}, p, "low")
+            plan_preimage({}, JudgedPlan("t", p, "low", False))
 
     shown = safe_effect_line(proposal(28)["effects"][0])
     assert "attacker@evil.test" in shown and "…" not in shown
@@ -936,3 +937,90 @@ def test_an_intent_a_grant_authorized_still_auto_commits_under_its_principal():
         assert applied == [PRINCIPAL.public]
 
     run(go())
+
+
+# #83: only an integer from 1 to 2^52 is an undo window. A plan or proposal with any other window,
+# zero and None included, can't be undone, so it never runs or commits on its own and reads
+# ``never``. Mirrors ts/test/security.test.ts, "an undo window is a positive integer, or there is
+# none".
+NOT_WINDOWS = (0, -1, 1.5, "3600", float("nan"), 2**52 + 1, 2**53, True, None)
+SERVER = key_from_seed(bytes([5]) * 32)
+
+
+def _moving(undo_window, revert=True) -> JobCall:
+    """A reschedule call that the signed policy allows, its one plan with this undo window."""
+    async def plan():
+        return [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=undo_window)]
+    grant = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["reschedule"]}]).encode()
+    policy = load_policy(grant, SERVER.public, PRINCIPAL.public, Tightening())
+    tool = JobTool("reschedule", revert=(lambda _: None) if revert else None)
+    return JobCall(tool, {}, plan, "", NOW, policy, True)
+
+
+def test_83_a_job_plan_with_any_other_window_is_not_undoable_so_the_policy_asks():
+    async def go():
+        assert (await job_call(_moving(60), MemoryStore())).kind == "run"
+        for w in NOT_WINDOWS:
+            o = await job_call(_moving(w), MemoryStore())
+            assert o.kind == "ask", (w, o)
+            assert "Approval needed: reschedule can't be undone." in o.form["message"], w
+            assert "undo: never" in o.form["message"], w
+
+    run(go())
+
+
+def test_83_its_plan_hash_is_the_same_as_with_no_window_as_is_a_window_on_a_tool_without_revert():
+    def hashed(revert=True, **window):
+        [hp] = hash_plans(JobTool("reschedule", revert=(lambda _: None) if revert else None), {},
+                          [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", **window)])
+        return hp
+
+    none = hashed().plan_hash
+    for w in NOT_WINDOWS:
+        assert (hashed(undo_window=w).undoable, hashed(undo_window=w).plan_hash) == (False, none), w
+    no_revert = hashed(revert=False, undo_window=60)
+    assert (no_revert.undoable, no_revert.plan_hash) == (False, none)
+    assert hashed(undo_window=60).plan_hash != none
+
+
+async def _auto_move(**window):
+    """An auto INTENT to a service whose one plan has ``revert`` and this undo window: the reply, and
+    how many times the plan was applied."""
+    applied = []
+    svc = Service("cal", "Cal", "cal", trust=[PRINCIPAL.public])
+
+    @svc.intent("cal.move", "move")
+    def move(ctx):
+        return Plan("move it", [create("event/1")], apply=lambda c: applied.append(1), revert=lambda c: None,
+                    **window)
+
+    return await client(svc).intent("cal.move", {}, auto=True), len(applied)
+
+
+def test_83_a_service_sends_undo_null_for_any_other_window_and_never_auto_commits_it():
+    async def go():
+        for w in NOT_WINDOWS:
+            r, applied = await _auto_move(undo_window=w)
+            assert r.kind == "PROPOSALS" and r.proposals[0]["undo"] is None, (w, r.lens)
+            assert applied == 0, w
+
+    run(go())
+
+
+def test_83_a_window_of_up_to_2_52_auto_commits_and_its_receipts_until_is_a_safe_integer():
+    async def go():
+        for window, seconds in (({}, 86400), ({"undo_window": 60}, 60), ({"undo_window": 2**52}, 2**52)):
+            r, applied = await _auto_move(**window)
+            assert r.kind == "RECEIPT", (window, r.lens)
+            assert applied == 1, window
+            until = r.receipt["undo"]["until"]
+            assert until == r.receipt["at"] + seconds and until <= MAX_SAFE_INT, window
+
+    run(go())
+
+
+def test_83_a_client_renders_a_proposal_whose_window_is_any_other_value_as_undo_never():
+    for w in NOT_WINDOWS:
+        p = {"id": "p_1", "capability": "cal.move", "summary": "move it", "effects": [], "risk": "low",
+             "undo": {"window": w}, "expires": NOW, "hash": "h"}
+        assert "undo: never" in lens({"yea": 1, "id": "f", "re": "f", "kind": "PROPOSALS", "proposals": [p]}), w

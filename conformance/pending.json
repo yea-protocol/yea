@@ -1,0 +1,114 @@
+{
+  "dirs": {
+    "server": "<store>/pending",
+    "bridge": "<home>/pending"
+  },
+  "writtenId": "^[a-z2-7]{10}$",
+  "readId": "^[A-Za-z0-9_-]{8,32}$",
+  "maxBytes": 65536,
+  "file": {
+    "code": "pc1.eyJjYXBhYmlsaXR5IjoiZGVsZXRlX2ZpbGUiLCJkZXRhaWwiOnsiam9iIjp7ImVmZmVjdHMiOltdLCJpbnB1dCI6eyJwYXRoIjoiYS50eHQifSwicmlzayI6Im1lZGl1bSIsInN1bW1hcnkiOiJEZWxldGUgYS50eHQiLCJ0b29sIjoiZGVsZXRlX2ZpbGUifSwicGhyYXNlIjoiYXBwcm92ZSJ9LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoiSHpOelEzMXlkazV4azZoY1F5aDg5RVRZd0ItRXdYNTl3Rk40NUZYWU8xUSIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiY1ZGUFFmLTk5cTRPMGtzdGs4dEdRaGVjMmE1OW1HZmhUaEpOWDF0UmNnbyIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiRGVsZXRlIGEudHh0In0",
+    "text": "pc1.eyJjYXBhYmlsaXR5IjoiZGVsZXRlX2ZpbGUiLCJkZXRhaWwiOnsiam9iIjp7ImVmZmVjdHMiOltdLCJpbnB1dCI6eyJwYXRoIjoiYS50eHQifSwicmlzayI6Im1lZGl1bSIsInN1bW1hcnkiOiJEZWxldGUgYS50eHQiLCJ0b29sIjoiZGVsZXRlX2ZpbGUifSwicGhyYXNlIjoiYXBwcm92ZSJ9LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoiSHpOelEzMXlkazV4azZoY1F5aDg5RVRZd0ItRXdYNTl3Rk40NUZYWU8xUSIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiY1ZGUFFmLTk5cTRPMGtzdGs4dEdRaGVjMmE1OW1HZmhUaEpOWDF0UmNnbyIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiRGVsZXRlIGEudHh0In0\n"
+  },
+  "taggedFile": {
+    "code": "pc1.eyJhZ2VudCI6ImVkMjU1MTk6Nmtwc1ktS2NVZ3EtOVZCN0V5N0YtWlZIZHE2LXZudVNRaDdxYVJSRzBpdyIsImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZGV0YWlsIjp7ImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZWZmZWN0cyI6W10sImV4cGlyZXMiOjE3OTAwMDA5MDAsImhhc2giOiIzT29KMzBLWW91RHJIb3M2VHUxVTh3VkRVS3RHbTFJbzNXVUM3SnVtbTI0IiwiaWQiOiJwXzEiLCJyaXNrIjoibG93Iiwic3VtbWFyeSI6Ik9yZGVyIDEgw5cgbTAwMSIsInVuZG8iOm51bGx9LCJleHBpcmVzIjoxNzkwMDAwOTAwLCJoYXNoIjoiM09vSjMwS1lvdURySG9zNlR1MVU4d1ZEVUt0R20xSW8zV1VDN0p1bW0yNCIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoicF8xIiwic2VydmljZSI6InNob3AuZXhhbXBsZSIsInN1bW1hcnkiOiJPcmRlciAxIMOXIG0wMDEifQ",
+    "issuer": {
+      "pid": 4242
+    },
+    "text": "pc1.eyJhZ2VudCI6ImVkMjU1MTk6Nmtwc1ktS2NVZ3EtOVZCN0V5N0YtWlZIZHE2LXZudVNRaDdxYVJSRzBpdyIsImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZGV0YWlsIjp7ImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZWZmZWN0cyI6W10sImV4cGlyZXMiOjE3OTAwMDA5MDAsImhhc2giOiIzT29KMzBLWW91RHJIb3M2VHUxVTh3VkRVS3RHbTFJbzNXVUM3SnVtbTI0IiwiaWQiOiJwXzEiLCJyaXNrIjoibG93Iiwic3VtbWFyeSI6Ik9yZGVyIDEgw5cgbTAwMSIsInVuZG8iOm51bGx9LCJleHBpcmVzIjoxNzkwMDAwOTAwLCJoYXNoIjoiM09vSjMwS1lvdURySG9zNlR1MVU4d1ZEVUt0R20xSW8zV1VDN0p1bW0yNCIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoicF8xIiwic2VydmljZSI6InNob3AuZXhhbXBsZSIsInN1bW1hcnkiOiJPcmRlciAxIMOXIG0wMDEifQ\n{\"pid\":4242}\n"
+  },
+  "agentSeed": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "codes": {
+    "old": "pc1.eyJjYXBhYmlsaXR5IjoiZGVsZXRlX2ZpbGUiLCJkZXRhaWwiOnsiam9iIjp7ImVmZmVjdHMiOltdLCJpbnB1dCI6eyJwYXRoIjoiYS50eHQifSwicmlzayI6Im1lZGl1bSIsInN1bW1hcnkiOiJEZWxldGUgYS50eHQiLCJ0b29sIjoiZGVsZXRlX2ZpbGUifSwicGhyYXNlIjoiYXBwcm92ZSJ9LCJleHBpcmVzIjoxNzg5OTk5OTAwLCJoYXNoIjoiSHpOelEzMXlkazV4azZoY1F5aDg5RVRZd0ItRXdYNTl3Rk40NUZYWU8xUSIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiY1ZGUFFmLTk5cTRPMGtzdGs4dEdRaGVjMmE1OW1HZmhUaEpOWDF0UmNnbyIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiRGVsZXRlIGEudHh0In0",
+    "plan": "pc1.eyJjYXBhYmlsaXR5IjoiZGVsZXRlX2ZpbGUiLCJkZXRhaWwiOnsiam9iIjp7ImVmZmVjdHMiOltdLCJpbnB1dCI6eyJwYXRoIjoiYS50eHQifSwicmlzayI6Im1lZGl1bSIsInN1bW1hcnkiOiJEZWxldGUgYS50eHQiLCJ0b29sIjoiZGVsZXRlX2ZpbGUifSwicGhyYXNlIjoiYXBwcm92ZSJ9LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoiSHpOelEzMXlkazV4azZoY1F5aDg5RVRZd0ItRXdYNTl3Rk40NUZYWU8xUSIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiY1ZGUFFmLTk5cTRPMGtzdGs4dEdRaGVjMmE1OW1HZmhUaEpOWDF0UmNnbyIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiRGVsZXRlIGEudHh0In0",
+    "again": "pc1.eyJjYXBhYmlsaXR5IjoiZGVsZXRlX2ZpbGUiLCJkZXRhaWwiOnsiam9iIjp7ImVmZmVjdHMiOltdLCJpbnB1dCI6eyJwYXRoIjoiYS50eHQifSwicmlzayI6Im1lZGl1bSIsInN1bW1hcnkiOiJEZWxldGUgYS50eHQiLCJ0b29sIjoiZGVsZXRlX2ZpbGUifSwicGhyYXNlIjoiYXBwcm92ZSJ9LCJleHBpcmVzIjoxNzkwMDAwNjYwLCJoYXNoIjoiSHpOelEzMXlkazV4azZoY1F5aDg5RVRZd0ItRXdYNTl3Rk40NUZYWU8xUSIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiY1ZGUFFmLTk5cTRPMGtzdGs4dEdRaGVjMmE1OW1HZmhUaEpOWDF0UmNnbyIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiRGVsZXRlIGEudHh0In0",
+    "other": "pc1.eyJjYXBhYmlsaXR5IjoiZGVsZXRlX2ZpbGUiLCJkZXRhaWwiOnsiam9iIjp7ImVmZmVjdHMiOltdLCJpbnB1dCI6eyJwYXRoIjoiYS50eHQifSwicmlzayI6Im1lZGl1bSIsInN1bW1hcnkiOiJEZWxldGUgYS50eHQgZm9yIGdvb2QiLCJ0b29sIjoiZGVsZXRlX2ZpbGUifSwicGhyYXNlIjoiYXBwcm92ZSJ9LCJleHBpcmVzIjoxNzkwMDAwNjAwLCJoYXNoIjoiMXo4NDdSeXdmd1B1VFlpdFk2VU11NWpzU2JtcnhUQ2VXNGUwSWRlZ2pncyIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoiSU1wRW9URGZfb3lLdUlRbWR0OS1hYk5tblJkNldocVk5SmdaemZ5WkwyWSIsInNlcnZpY2UiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UiLCJzdW1tYXJ5IjoiRGVsZXRlIGEudHh0IGZvciBnb29kIn0",
+    "bridge": "pc1.eyJhZ2VudCI6ImVkMjU1MTk6Nmtwc1ktS2NVZ3EtOVZCN0V5N0YtWlZIZHE2LXZudVNRaDdxYVJSRzBpdyIsImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZGV0YWlsIjp7ImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZWZmZWN0cyI6W10sImV4cGlyZXMiOjE3OTAwMDA5MDAsImhhc2giOiIzT29KMzBLWW91RHJIb3M2VHUxVTh3VkRVS3RHbTFJbzNXVUM3SnVtbTI0IiwiaWQiOiJwXzEiLCJyaXNrIjoibG93Iiwic3VtbWFyeSI6Ik9yZGVyIDEgw5cgbTAwMSIsInVuZG8iOm51bGx9LCJleHBpcmVzIjoxNzkwMDAwOTAwLCJoYXNoIjoiM09vSjMwS1lvdURySG9zNlR1MVU4d1ZEVUt0R20xSW8zV1VDN0p1bW0yNCIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoicF8xIiwic2VydmljZSI6InNob3AuZXhhbXBsZSIsInN1bW1hcnkiOiJPcmRlciAxIMOXIG0wMDEifQ",
+    "early": "pc1.eyJhZ2VudCI6ImVkMjU1MTk6Nmtwc1ktS2NVZ3EtOVZCN0V5N0YtWlZIZHE2LXZudVNRaDdxYVJSRzBpdyIsImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZGV0YWlsIjp7ImNhcGFiaWxpdHkiOiJzaG9wLm9yZGVyIiwiZWZmZWN0cyI6W10sImV4cGlyZXMiOjE3OTAwMDA2MDAsImhhc2giOiJNcEsxOWlxMURVQWJUYk9oUXpYNGVjQV82NjNjNzN3Q1Fzd0gybWkxZHVRIiwiaWQiOiJwXzIiLCJyaXNrIjoibG93Iiwic3VtbWFyeSI6Ik9yZGVyIDEgw5cgbTAwMSIsInVuZG8iOm51bGx9LCJleHBpcmVzIjoxNzkwMDAwOTAwLCJoYXNoIjoiTXBLMTlpcTFEVUFiVGJPaFF6WDRlY0FfNjYzYzczd0NRc3dIMm1pMWR1USIsInByaW5jaXBhbCI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsInByb3Bvc2FsIjoicF8yIiwic2VydmljZSI6InNob3AuZXhhbXBsZSIsInN1bW1hcnkiOiJPcmRlciAxIMOXIG0wMDEifQ"
+  },
+  "ops": [
+    {
+      "op": "put",
+      "code": "old",
+      "now": 1789999300,
+      "as": "x",
+      "files": {
+        "x": "old"
+      }
+    },
+    {
+      "op": "put",
+      "code": "plan",
+      "now": 1790000000,
+      "as": "x",
+      "files": {
+        "x": "plan"
+      }
+    },
+    {
+      "op": "put",
+      "code": "other",
+      "now": 1790000000,
+      "as": "y",
+      "files": {
+        "x": "plan",
+        "y": "other"
+      }
+    },
+    {
+      "op": "put",
+      "code": "bridge",
+      "now": 1790000000,
+      "as": "z",
+      "files": {
+        "x": "plan",
+        "y": "other",
+        "z": "bridge"
+      }
+    },
+    {
+      "op": "put",
+      "code": "early",
+      "now": 1790000000,
+      "as": "v",
+      "files": {
+        "x": "plan",
+        "y": "other",
+        "z": "bridge",
+        "v": "early"
+      }
+    },
+    {
+      "op": "put",
+      "code": "again",
+      "now": 1790000000,
+      "as": "x",
+      "files": {
+        "x": "again",
+        "y": "other",
+        "z": "bridge",
+        "v": "early"
+      }
+    },
+    {
+      "op": "drop",
+      "service": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+      "proposal": "IMpEoTDf_oyKuIQmdt9-abNmnRd6WhqY9JgZzfyZL2Y",
+      "files": {
+        "x": "again",
+        "z": "bridge",
+        "v": "early"
+      }
+    },
+    {
+      "op": "put",
+      "code": "other",
+      "now": 1790000700,
+      "as": "w",
+      "files": {
+        "z": "bridge",
+        "w": "other"
+      }
+    }
+  ]
+}

@@ -7,10 +7,11 @@ from conftest import CONFORMANCE, load_vectors
 
 from yea import Plan, decode_grant, key_from_seed
 from yea.approval import (
-    HashedPlan, Policy, Tightening, build_form, check_job_consent, checked_phrase, consent_hash_of, undo_receipt, check_state, decide, job_consent_code, judge_answer,
+    Policy, Tightening, build_form, check_job_consent, checked_phrase, consent_hash_of, undo_receipt, check_state, decide, job_consent_code, judge_answer,
     load_policy,
-    phrase_matches, plan_hash, read_tightening,
+    phrase_matches, read_tightening,
 )
+from yea.job_call import JobTool, hash_plans
 from yea.store import FileStore, LedgerKey, MemoryStore
 from yea.uses import value
 
@@ -34,8 +35,20 @@ def to_plan(d):
                 undo_window=d.get("undoWindow"))
 
 
+def rehash(tool, input, plan):
+    """``plan`` hashed through ``hash_plans``, as a job call hashes it, so ``undoable`` is ours."""
+    [hp] = hash_plans(tool, input, [to_plan(plan)])
+    return hp
+
+
 def to_hashed(d):
-    return HashedPlan(d["tool"], to_plan(d["plan"]), d["planHash"], d["risk"], d["undoable"])
+    """A vector's hashed plan, recomputed from its tool's ``revert`` and the shared input: the
+    hash, the risk and ``undoable`` must come out as the vector has them. The resolved risk stands
+    in for the tool's: a plan's own risk wins over it either way."""
+    tool = JobTool(d["tool"], risk=d["risk"], revert=(lambda _: None) if d["revert"] else None)
+    hp = rehash(tool, DATA["input"], d["plan"])
+    assert (hp.plan_hash, hp.risk, hp.undoable) == (d["planHash"], d["risk"], d["undoable"]), d["plan"]["summary"]
+    return hp
 
 
 def to_policy(d):
@@ -47,11 +60,14 @@ def to_policy(d):
 
 @pytest.mark.parametrize("case", cases("hash"))
 def test_plan_hash(case):
+    t = case["tool"]
+    tool = JobTool(t["name"], risk=t.get("risk"), revert=(lambda _: None) if t.get("revert") else None)
     if case.get("error"):
         with pytest.raises(ValueError):
-            plan_hash(case["tool"]["name"], case["input"], to_plan(case["plan"]), "low")
+            rehash(tool, case["input"], case["plan"])
         return
-    assert plan_hash(case["tool"]["name"], case["input"], to_plan(case["plan"]), case["risk"]) == case["planHash"]
+    hp = rehash(tool, case["input"], case["plan"])
+    assert (hp.plan_hash, hp.risk, hp.undoable) == (case["planHash"], case["risk"], case["undoable"])
 
 
 @pytest.mark.parametrize("case", cases("decide"))

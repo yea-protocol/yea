@@ -5,18 +5,18 @@
  */
 import { createInterface } from 'node:readline/promises';
 import {
-  type JobConsent,
   phraseMatches,
+  planLines,
   readJobConsent,
   signJobConsent,
 } from '../../ask.js';
 import type { KeyPair } from '../../crypto.js';
 import { defaultFileStore, type FileStore } from '../../file-store.js';
-import { effectLine, fmtDuration, fmtTime } from '../../lens.js';
+import { fmtTime } from '../../lens.js';
 import { printable } from '../../text.js';
-import { fmtUses, isUses } from '../../uses.js';
 import { errno, unixNow } from '../../util.js';
 import { die } from '../shared.js';
+import { NO_TERMINAL } from './terminal.js';
 
 /**
  * Approve one job plan for an MCP server (SPEC-approval §6): re-check the plan hash, show the
@@ -24,21 +24,19 @@ import { die } from '../shared.js';
  * to paste back into the chat, and saved in the store, for a server that reads it.
  */
 export async function approveJob(p: KeyPair, code: string) {
-  const now = unixNow();
-  let j: JobConsent;
-
-  try {
-    j = await readJobConsent(code, now);
-  } catch (e) {
-    die(`✗ ${printable((e as Error).message)}: refusing`);
-  }
+  const j = await orRefuse(() => readJobConsent(code, unixNow()));
 
   console.log(printable(`at server ${j.consent.service}, tool ${j.job.tool}:`));
-  console.log(jobLines(j.job).map(printable).join('\n'));
+  console.log(
+    [
+      ...planLines(j.job),
+      printable(`  input: ${JSON.stringify(j.job.input)}`),
+    ].join('\n'),
+  );
   console.log(`  approval expires: ${fmtTime(j.consent.expires)}`);
 
   if (!process.stdin.isTTY) {
-    die('✗ approval needs an interactive terminal: a human has to confirm');
+    die(NO_TERMINAL);
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -52,7 +50,8 @@ export async function approveJob(p: KeyPair, code: string) {
     die('not approved');
   }
 
-  const token = await signJobConsent(p, j);
+  // Signed at the time it's signed, so a consent that expired while the person typed is refused.
+  const token = await orRefuse(() => signJobConsent(p, j));
   const store = defaultFileStore();
   const unsaved = await saveConsent(store, j.planHash, token);
 
@@ -107,19 +106,11 @@ export function jobApprovedLines(
   ];
 }
 
-/** The plan as the person reads it: summary, effects, then what it uses, risk and undo. */
-function jobLines(job: JobConsent['job']): string[] {
-  const uses =
-    isUses(job.uses) && Object.keys(job.uses).length
-      ? `uses: ${fmtUses(job.uses)} · `
-      : '';
-  const undo =
-    typeof job.undoWindow === 'number' ? fmtDuration(job.undoWindow) : 'never';
-
-  return [
-    job.summary,
-    ...job.effects.map((e) => `  ${effectLine(e)}`),
-    `  ${uses}risk: ${String(job.risk)} · undo: ${undo}`,
-    `  input: ${JSON.stringify(job.input)}`,
-  ];
+/** What `f` resolves to, or the command dies refusing, with `f`'s error, escaped, as the reason. */
+async function orRefuse<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    return die(`✗ ${printable((e as Error).message)}: refusing`);
+  }
 }

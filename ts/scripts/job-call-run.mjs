@@ -3,7 +3,8 @@
  * what each step did as the vectors record it: the store before, the outcome, whether the
  * handler ran, and the store after. The first step's `before` sets the store up; the ledger
  * entries it lists are the ones each snapshot reads. The generator (job-call-vectors.mjs) and the TS conformance
- * test share it; python/tests/test_job_call_conformance.py is its Python twin.
+ * test share it; python/tests/test_job_call_conformance.py is its Python twin. `recordCalls`
+ * runs the generator's cases and records them as vectors.
  *
  * The store is a MemoryStore behind a plain object that records each id it consumes. A step's `race` is reserved by
  * "another call" just before the session's first reservation, after the policy has decided.
@@ -186,6 +187,43 @@ export async function runCall(P, call) {
       outcome: project(o),
       planned: ran.planned,
       after: await snapshot(),
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Run each of the generator's calls (with `tool` unless it names its own), check each step's
+ * outcome (its kind, and any text it `says`), and record it as a vector.
+ */
+export async function recordCalls(P, calls, tool) {
+  const out = [];
+
+  for (const c of calls) {
+    const spec = {
+      name: c.name,
+      tool: c.tool ?? tool,
+      ...(c.consents ? { consents: c.consents } : {}),
+      steps: c.steps.map(({ expect: _kind, says: _says, ...facts }, i) => ({
+        ...facts,
+        ...(i === 0 ? { before: c.before } : {}),
+      })),
+    };
+    const done = await runCall(P, spec);
+
+    c.steps.forEach((s, i) => {
+      const got = JSON.stringify(done[i].outcome);
+
+      if (done[i].outcome.kind !== s.expect || !got.includes(s.says ?? '')) {
+        throw new Error(
+          `job call "${c.name}" step ${i + 1}: expected ${s.expect}, got ${got}`,
+        );
+      }
+    });
+    out.push({
+      ...spec,
+      steps: spec.steps.map((facts, i) => ({ ...facts, ...done[i] })),
     });
   }
 

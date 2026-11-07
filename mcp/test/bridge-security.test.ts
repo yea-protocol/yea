@@ -3,8 +3,8 @@
  * bridge's "never sign a consent that doesn't match the proposal shown", moved here from
  * ts/test/security.test.ts.
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   b64u,
@@ -17,6 +17,7 @@ import {
   type FinalReply,
   issueGrant,
   keyPair,
+  type Proposal,
   proposalHash,
   service,
   unixNow,
@@ -287,6 +288,53 @@ describe('bridge security', () => {
     expect(text).toContain('\\u{a}✓ approved');
   });
 
+  it('an undo that has no undo window is null in the data too, as the Lens reads it never (#83)', async () => {
+    const k = await keys();
+    const undoOf = async (undo?: unknown) => {
+      const rec = recorded(
+        shop({ trust: [k.principal.public] }),
+        async (f, r) =>
+          undo !== undefined && f.verb === 'INTENT' && r.kind === 'PROPOSALS'
+            ? {
+                ...r,
+                proposals: await Promise.all(
+                  r.proposals.map(async (p) => {
+                    const q = { ...p, undo: undo as Proposal['undo'] };
+
+                    return { ...q, hash: await proposalHash(q) };
+                  }),
+                ),
+              }
+            : r,
+      );
+      const conn = await connect(
+        '2026',
+        await bridgeIn(k, [await agentClient(k, rec.t)]),
+      );
+      const r = await conn.call(BIG_ORDER, 'shop_order');
+      const { proposals } = proposalsOf(r) as unknown as {
+        proposals: { undo: unknown }[];
+      };
+
+      expect(proposals.length, String(undo)).toBeGreaterThan(0);
+
+      return { text: textOf(r), undos: proposals.map((p) => p.undo) };
+    };
+
+    expect((await undoOf()).undos[0]).toEqual({ window: 7200 });
+
+    for (const undo of [
+      ...[0, -1, '3600', null, true, 2 ** 52 + 1].map((window) => ({ window })),
+      {},
+      true,
+    ]) {
+      const { text, undos } = await undoOf(undo);
+
+      expect(text, JSON.stringify(undo)).toContain('undo: never');
+      expect(new Set(undos), JSON.stringify(undo)).toEqual(new Set([null]));
+    }
+  });
+
   it("a service's own lens is never shown; the bridge renders the reply itself", async () => {
     const k = await keys();
     const rec = recorded(shop({ trust: [k.principal.public] }), (f, r) =>
@@ -319,6 +367,26 @@ describe('bridge security', () => {
       const text = readFileSync(f, 'utf8');
 
       expect(text, f).not.toMatch(SIGNS);
+    }
+  });
+
+  it('a pending file is the code and nothing else: never a seed (SPEC-approval §6)', async () => {
+    const k = await keys();
+    const { conn } = await bridged(k);
+    const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const dir = join(k.home, 'pending');
+    const files = readdirSync(dir).map((f) =>
+      readFileSync(join(dir, f), 'utf8'),
+    );
+
+    // The code, then the process that wrote it: nothing `yea approve` reads but the code.
+    expect(files.sort()).toEqual(
+      codes.map((c) => `${c.code}\n{"pid":${process.pid}}\n`).sort(),
+    );
+
+    for (const text of files) {
+      expect(text).not.toContain(k.agent.seed);
+      expect(text).not.toContain(k.principal.seed);
     }
   });
 

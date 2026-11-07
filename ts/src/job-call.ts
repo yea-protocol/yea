@@ -23,6 +23,11 @@ import type {
 } from './job-call/types.js';
 import type { ApprovalStore } from './store.js';
 
+export {
+  type ApprovalCode,
+  howToApprove,
+} from './job-call/approve-text.js';
+
 export type {
   ConsentCodes,
   ConsentCodesOutcome,

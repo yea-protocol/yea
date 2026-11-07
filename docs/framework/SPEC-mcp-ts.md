@@ -131,7 +131,7 @@ Registers a job tool. `config`:
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `requireInteraction` | Optional. `yea()`'s `requireInteraction`, for this tool alone. On, it also marks the server's `undo`, whenever `undo` is registered. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
-| `revert({ input, planHash, result }, ctx)` | Optional. With it, plans that set `undoWindow` are undoable. |
+| `revert({ input, planHash, result }, ctx)` | Optional. With it, plans whose `undoWindow` is a positive integer are undoable (SPEC-approval §1). |
 | `confirmWith(plan, input)` | Optional. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
 `JobPlan` is the SDK core's: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`, `data?`
@@ -329,11 +329,12 @@ step 11 for a `run`.
    ```
    `round` is 1 on a first ask, and the verdict's round on an ask-again.
 9. **Fail closed.** Return `isError: true` with the plans in Lens, a `jobConsentCode` for each
-   plan that isn't denied, and SPEC-approval §6's lines: run `yea approve <code>`, paste back
-   the consent it prints, and call again with it as `yea_consent` (or without it, where
-   `yea approve` saved it in this server's store). The result carries
-   `structuredContent: { plans, codes }`. Without a pinned principal key no consent can be
-   accepted, so there are no codes, and the result says why.
+   plan that isn't denied, its short id on a `FileStore`, and how to approve, in SPEC-approval
+   §6's words (`howToApprove`): run `yea approve` in a terminal outside this chat and call again,
+   carrying as `yea_consent` a consent the person pastes back. The result carries
+   `structuredContent: { plans, codes }`, each code with its `id` when it has one. Without a
+   pinned principal key no consent can be accepted, so there are no codes, and the result says
+   why.
 10. **Answer.**
     - `checkState(state.yea, { tool, inputHash, sub, now })`, then
       `consumeOnce(state.yea.nonce, state.yea.exp)`. Any failure refuses, with one message.

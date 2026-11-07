@@ -3,8 +3,9 @@
  * regression tests are in ts/test/security.test.ts.
  */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createRequestStateCodec,
   McpServer,
@@ -972,10 +973,12 @@ describe('the code that reads a form answer (#337)', () => {
       // The SDK: the job call session, and also its signers, which SIGNS refuses by name and the
       // key watch catches in use.
       '@yea-protocol/sdk': 'any file',
-      // FileStore, the home and the pinned key; also a stdio transport that spawns
-      // (ts/src/node/stdio.ts), which the spawn watch catches.
+      // FileStore, the home and the pinned key, and the store's pending files, which hold codes
+      // only, never a key or a consent (SPEC-approval §6, Short ids); also a stdio transport
+      // that spawns (ts/src/node/stdio.ts), which the spawn watch catches.
       '@yea-protocol/sdk/node': [
         'mcp/src/index.ts',
+        'mcp/src/call/pending.ts',
         'mcp/src/policy.ts',
         'mcp/src/server-key.ts',
       ],
@@ -1064,5 +1067,27 @@ describe('the code that reads a form answer (#337)', () => {
       `${bad}: does not tokenize, line 1: a string is not closed`,
       `${u}: does not tokenize, line 1: a / here could divide or start a regular expression`,
     ]);
+  });
+});
+
+describe('tool results never name a command that makes a principal key', () => {
+  it('no tool host source mentions `yea init` or `--with-principal` (SPEC-approval §6)', () => {
+    // The model reads every result, and an agent told to run one could make the key itself.
+    const root = fileURLToPath(new URL('../..', import.meta.url));
+    const sources = ['mcp/src', 'python/mcp/src', 'connectors/stripe/src']
+      .flatMap((d) =>
+        readdirSync(join(root, d), { recursive: true, encoding: 'utf8' }).map(
+          (f) => join(root, d, f),
+        ),
+      )
+      .filter((f) => /\.(ts|py)$/.test(f));
+
+    expect(sources.length).toBeGreaterThan(50);
+
+    for (const f of sources) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(
+        /yea init|--with-principal/,
+      );
+    }
   });
 });

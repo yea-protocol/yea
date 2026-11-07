@@ -1,9 +1,9 @@
 /**
  * Asking a person to approve a job (docs/framework/SPEC-approval.md §3–§6): the confirmation
- * phrase, the form, the state that goes round the client, how the answer is judged, and the
- * consent code for `yea approve` when the client can't ask. The job call session (job-call.ts)
- * orders them; the package's index keeps only reading and signing a consent code. The parts
- * live in ask/; this file re-exports them.
+ * phrase, the form and the plan lines it shows, the state that goes round the client, how the
+ * answer is judged, and the consent code for `yea approve` when the client can't ask. The job
+ * call session (job-call.ts) orders them; the package's index keeps only reading and signing a
+ * consent code, and showing a plan. The parts live in ask/; this file re-exports them.
  */
 
 export {
@@ -29,6 +29,8 @@ export {
   type PhraseFor,
   phraseMatches,
 } from './ask/phrase.js';
+
+export { type PlanToShow, planLines } from './ask/plan-text.js';
 
 export {
   type ApprovalState,
