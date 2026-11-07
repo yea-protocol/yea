@@ -18,7 +18,7 @@ mkdir -p ~/yea-pkgs && npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp --pack
 
 cd ~/your-server
 npm i ~/yea-pkgs/yea-protocol-sdk-0.1.0.tgz ~/yea-pkgs/yea-protocol-mcp-0.1.0.tgz \
-  @modelcontextprotocol/server zod
+  @modelcontextprotocol/server zod@4
 ```
 
 Steps 5 and 6 also use the `yea` command. From the clone: `alias yea="node $HOME/yea/cli/bin/yea.js"`.
@@ -72,7 +72,7 @@ Then, in **Claude Code**, from your server's folder:
 claude mcp add files -e FILES_ROOT="$HOME/yea-scratch" -- npx tsx server.ts
 ```
 
-Node 22.18 or later can run TypeScript directly, so `node server.ts` works in place of `npx tsx server.ts`.
+Node 22.18 or later can run TypeScript directly, so `node server.ts` works in place of `npx tsx server.ts` when your `package.json` has `"type": "module"`. `npm init` writes `"type": "commonjs"`, and then Node stops at the file's first `import`.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):

@@ -6,8 +6,8 @@ editLink: false
 
 An agent states an intent. The service answers with proposals that list their effects before
 anything happens. The person's signed policy lets some go ahead on their own and stops the rest for
-their approval, and a receipt can be undone. This page runs that loop, first in your browser or
-terminal, then in your own code.
+their approval, and a receipt can be undone. This page runs that loop in your browser or terminal,
+then shows where the service and agent code lives.
 
 <!--@include: ../../README.md#quickstart-->
 
