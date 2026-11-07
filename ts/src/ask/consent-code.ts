@@ -17,18 +17,21 @@ import {
 } from '../consent.js';
 import type { KeyPair } from '../crypto.js';
 import { isRisk } from '../risk.js';
-import type { ConsentRequest, Effect } from '../types.js';
-import { isUses } from '../uses.js';
+import type { ConsentRequest, Effect, Risk } from '../types.js';
+import { isUses, type Uses } from '../uses.js';
 import { unixNow } from '../util.js';
 import { checkedPhrase } from './phrase.js';
 
 /** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */
 export interface JobConsent {
   consent: ConsentRequest;
+  /** The plan-hash preimage; its `undoWindow` is unchecked, so read it with `planLines`. */
   job: Record<string, unknown> & {
     tool: string;
     summary: string;
     effects: Effect[];
+    uses?: Uses;
+    risk: Risk;
   };
   phrase: string;
   planHash: string;
@@ -51,7 +54,7 @@ export async function jobConsentCode(o: {
   ttl?: number;
 }): Promise<string> {
   const detail = {
-    job: planPreimage(o.hp.tool, o.input, o.hp.plan, o.hp.risk),
+    job: planPreimage(o.input, o.hp),
     phrase: checkedPhrase(o.phrase),
   };
   const consent: ConsentRequest = {

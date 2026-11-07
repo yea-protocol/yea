@@ -13,9 +13,9 @@ from ..store import ApprovalStore, Reservation
 
 @dataclass(frozen=True)
 class JobTool:
-    """The job tool being called, as the session needs it. With ``revert``, a plan with an
-    ``undo_window`` can be undone; ``confirm_with`` gives the phrase the person types for a plan
-    (``approve`` when it's absent or empty)."""
+    """The job tool being called, as the session needs it. With ``revert``, a plan whose
+    ``undo_window`` is a positive integer can be undone; ``confirm_with`` gives the phrase the
+    person types for a plan (``approve`` when it's absent or empty)."""
 
     name: str
     risk: str | None = None

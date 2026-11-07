@@ -11,11 +11,14 @@ export {
   hashPlans,
   isReceiptId,
   type JobPlan,
+  type JudgedPlan,
   newReceiptId,
   type Policy,
   planHashOf,
   planPreimage,
   readTightening,
+  type ShownPlan,
+  shownPlan,
   type Tightening,
   type UndoOutcome,
   undoJob,
@@ -35,6 +38,8 @@ export {
   type ApprovalState,
   CONSENT_TTL,
   type JobConsent,
+  type PlanToShow,
+  planLines,
   readJobConsent,
   signJobConsent,
 } from './ask.js';
@@ -163,6 +168,8 @@ export {
 export { clip, printable } from './text.js';
 
 export * from './types.js';
+
+export { isUndoWindow } from './undo-window.js';
 
 export {
   exact,

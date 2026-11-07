@@ -9,6 +9,7 @@ import { fix, YeaError } from '../errors.js';
 import { replyFrame } from '../frames.js';
 import type { Reservation } from '../store.js';
 import type { ErrorReply, Event, FinalReply, ReceiptReply } from '../types.js';
+import { isUndoWindow } from '../undo-window.js';
 import { type AutoReplay, AutoReplies } from './commit-ledger/autos.js';
 import {
   type Admit,
@@ -135,15 +136,15 @@ export class CommitLedger {
 
   /**
    * Commit an auto INTENT's fresh proposal now if it is undoable and its grant admits it
-   * outright (SPEC §4.3.1): the same step as a COMMIT. Null leaves it a proposal. An undo window
-   * of 0 can never be used, so it doesn't count.
+   * outright (SPEC §4.3.1): the same step as a COMMIT. Null leaves it a proposal. Undoable means
+   * a window that is a positive integer: any other can never be used, so it doesn't count.
    */
   async autoCommit(
     stored: StoredProposal,
     admit: Admit,
     answer: Answer,
   ): Promise<Outcome | null> {
-    if ((stored.proposal.undo?.window ?? 0) <= 0) {
+    if (!isUndoWindow(stored.proposal.undo?.window)) {
       return null;
     }
 

@@ -149,7 +149,7 @@ it (rather than adding a second one) and leaves it out of `input`.
 | `name`, `title`, `description`, `annotations` | As in `server.add_tool`. `description` defaults to the docstring. |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `require_interaction` | Optional. `yea()`'s `require_interaction`, for this tool alone. `True` also marks the server's `undo`, whenever `undo` is registered. |
-| `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans that set `undo_window` are undoable. |
+| `revert` | Optional `revert({"input", "planHash", "result"}, ctx) -> Any` (sync or async), as in `mcp-ts`. With it, plans whose `undo_window` is a positive integer are undoable (SPEC-approval §1). |
 | `confirm_with` | Optional `confirm_with(plan: HashedPlan, input: dict) -> str`. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
 
 `Plan` is the SDK core's (`summary`, `effects`, `apply`, `uses`, `risk`, `undo_window`,

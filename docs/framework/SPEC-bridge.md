@@ -181,8 +181,8 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
 
    Proposals that fail are dropped, and said so. The rest are stored as pending. Each also
    becomes a `HashedPlan` for the approval core: `planHash` is the proposal's hash, which the
-   consent must bind; `risk`, `undoable` (undo not null), `summary`, `effects` and `uses`
-   come from the proposal.
+   consent must bind; `risk`, `undoable` (its `undo` has a positive-integer `window`, SPEC.md
+   §5.1), `summary`, `effects` and `uses` come from the proposal.
 
    Auto-commit only ever covers the first proposal, and only if it's undoable (SPEC.md
    §4.3.1). For an irreversible proposal, or any but the first, that the grant allows, the

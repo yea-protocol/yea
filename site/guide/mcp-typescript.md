@@ -132,7 +132,7 @@ Deleting can't be undone, so it always asks. Moving a file to a trash folder can
 
 - **`plan(input)`** returns the plans. It must not change anything: it runs on preview and on every retry.
 - **`apply()`** runs at most once, and only after the plan is approved or allowed.
-- **`revert`** plus an **`undoWindow`** make the plan undoable. The first job with `revert` adds an `undo` tool to the server.
+- **`revert`** plus an **`undoWindow`** make the plan undoable. The window is a positive whole number of seconds; anything else, `0` included, leaves the plan not undoable (`undo: never`). The first job with `revert` adds an `undo` tool to the server.
 
 Ask the agent to move `docs/notes.txt` to the trash. After approval, the call returns a receipt:
 

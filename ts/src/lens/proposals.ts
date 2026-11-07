@@ -3,14 +3,18 @@
  * effects and attributes, the attributes they all share stated once.
  */
 import type { Proposal } from '../types.js';
+import { isUndoWindow } from '../undo-window.js';
 import { fmtUses } from '../uses.js';
 import { isObject } from '../util.js';
 import { effectLine, fmtDuration, fmtTime } from './format.js';
 import { entry, scalar } from './notation.js';
 
-/** An undo object with a `window` renders it as a duration; anything else is `never`. */
-function undoWindow(undo: unknown): string {
-  return isObject(undo) && 'window' in undo
+/**
+ * An undo object whose `window` is a positive integer renders it as a duration. Anything else
+ * is `never`: a client treats a window that isn't one as no undo at all (SPEC §5.1).
+ */
+function undoText(undo: unknown): string {
+  return isObject(undo) && isUndoWindow(undo.window)
     ? fmtDuration(undo.window)
     : 'never';
 }
@@ -19,7 +23,7 @@ const ATTRS: [string, (p: Proposal) => string][] = [
   // Absent means nothing to show; anything else present renders, and a malformed one as `?`.
   ['uses', (p) => (p.uses === undefined ? '' : fmtUses(p.uses))],
   ['risk', (p) => scalar(p.risk)],
-  ['undo', (p) => undoWindow(p.undo)],
+  ['undo', (p) => undoText(p.undo)],
   ['expires', (p) => fmtTime(p.expires)],
 ];
 

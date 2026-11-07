@@ -3,15 +3,25 @@ attributes they all share stated once."""
 
 from __future__ import annotations
 
+from ..undo_window import is_undo_window
 from ..uses import fmt_uses
 from .format import effect_line, fmt_duration, fmt_time
 from .notation import _entry_lines, scalar
+
+
+def _undo(p: dict) -> str:
+    """An undo whose ``window`` is a positive integer renders it as a duration. Anything else is
+    ``never``: a client treats a window that isn't one as no undo at all (SPEC §5.1)."""
+    undo = p.get("undo")
+    window = undo.get("window") if isinstance(undo, dict) else None
+    return fmt_duration(window) if is_undo_window(window) else "never"
+
 
 # Each renders a proposal's attribute, or None when it's omitted (only `uses` can be).
 _ATTRS = (
     ("uses", lambda p: fmt_uses(p["uses"]) if "uses" in p else None),
     ("risk", lambda p: scalar(p.get("risk"))),
-    ("undo", lambda p: fmt_duration(p["undo"]["window"]) if isinstance(p.get("undo"), dict) and "window" in p["undo"] else "never"),
+    ("undo", _undo),
     ("expires", lambda p: fmt_time(p.get("expires"))),
 )
 

@@ -6,53 +6,30 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Clarification,
-  fmtDuration,
-  fmtUses,
   type HashedPlan,
   type JobReceipt,
   lean,
+  planLines,
   printable,
-  safeEffectLine,
+  shownPlan,
   untrustedLens,
 } from '@yea-protocol/sdk';
 import { errorResult, NOTHING_RAN, refused, textResult } from './result.js';
 
 /** A plan as data: what the model and the person see, never `apply` or `data`. */
 function planView(hp: HashedPlan) {
-  const p = hp.plan;
+  const { undoWindow, ...shown } = shownPlan(hp);
 
   return {
     planHash: hp.planHash,
-    summary: p.summary,
-    effects: p.effects,
-    ...(p.uses && Object.keys(p.uses).length ? { uses: p.uses } : {}),
-    risk: hp.risk,
-    undo:
-      hp.undoable && p.undoWindow !== undefined
-        ? { window: p.undoWindow }
-        : null,
+    ...shown,
+    undo: undoWindow === undefined ? null : { window: undoWindow },
   };
-}
-
-/** One plan as Lens: summary, effects, then what it uses, risk and undo. */
-function planLines(n: number, hp: HashedPlan): string[] {
-  const v = planView(hp);
-  const attrs = [
-    ...(v.uses ? [`uses: ${fmtUses(v.uses)}`] : []),
-    `risk: ${v.risk}`,
-    `undo: ${v.undo ? fmtDuration(v.undo.window) : 'never'}`,
-  ];
-
-  return [
-    `[${n}] ${printable(v.summary)}`,
-    ...v.effects.map((e) => `  ${safeEffectLine(e)}`),
-    `  ${attrs.join(' · ')}`,
-  ];
 }
 
 const plansText = (plans: HashedPlan[]) => [
   `${plans.length} plan${plans.length === 1 ? '' : 's'}:`,
-  ...plans.flatMap((hp, i) => planLines(i + 1, hp)),
+  ...plans.flatMap((hp, i) => planLines(shownPlan(hp), i + 1)),
 ];
 
 /**

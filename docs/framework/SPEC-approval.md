@@ -120,6 +120,14 @@ planHash = b64url(sha256(canonical({ tool, input, summary, effects, uses, risk, 
   than 32 levels deep (that object being the first) gets no plan hash and fails closed, and
   `yea approve` refuses a consent code carrying one: the form would cut part of what the person
   approves (SPEC.md §6.6, §9.1).
+- A plan is **undoable** if and only if its `undoWindow` is a positive integer of at most 2^52
+  seconds (so a commit time plus it is still a safe integer, SPEC.md §5.1) and its tool has
+  `revert` (§7). Any other `undoWindow` (zero, negative, a fraction, a larger number, a string,
+  `null`, anything that isn't a number) leaves the plan not undoable, as having no window does.
+- The preimage carries `undoWindow` only when the plan is undoable, so a plan that isn't hashes
+  as if it had no window. Everything that shows a plan (the form, the MCP results and
+  `yea approve`) reads its undo from that one field: the window as a duration when it is there
+  and a positive integer, and `undo: never` otherwise.
 
 ### 2. Policy
 
@@ -155,7 +163,8 @@ A plan runs without asking only when **all** of these hold:
    must name its tools), its `svc` (if any) includes the server's service id, its `verbs` (if
    any) include `COMMIT`, and it hasn't expired at the time of the call;
 2. its risk is at most the `risk` caveat, and below `outOfBand` (default `high`);
-3. **it can be undone**: it has an `undoWindow` and the tool has `revert` (§7);
+3. **it can be undone** (§1): its `undoWindow` is a positive integer and the tool has
+   `revert` (§7);
 4. what it `uses` fits every `each` and `total` limit, by SPEC.md §6.3's rules (units match
    exactly, values compare exactly, a plan that doesn't report a measure passes).
 
@@ -355,7 +364,8 @@ itself, and the key would land on its side (ADR-0003).
 
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
 plan's details. For a job, its `detail` is `{ job, phrase }`: `job` is the full plan-hash
-preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, `undoWindow`), and `phrase`
+preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, and `undoWindow` when the plan
+is undoable, §1), and `phrase`
 is what the person types, after the `approve` fallback (§3). The **consent preimage** binds
 that phrase to the plan, whose hash already covers `job`:
 
@@ -379,7 +389,8 @@ an empty or blank phrase hashes as `approve`.
    clock shows); it caps `expires` at 10 minutes from now, whatever the code says;
 2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
    and invisible filler characters are shown as `\u{…}` escapes (`printable` itself keeps
-   backslashes, §3), so the text can't rewrite what the person reads;
+   backslashes, §3), so the text can't rewrite what the person reads, and its undo as the form
+   shows it (§1: `never` unless `job` carries an `undoWindow` that is a positive integer);
 3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
@@ -486,7 +497,7 @@ with `FileStore`. For remote HTTP servers, url-mode approval pages come later.
 
 ### 7. Undo
 
-A plan is undoable when it has an `undoWindow` and the tool defines
+A plan is undoable when its `undoWindow` is a positive integer (§1) and the tool defines
 `revert({ input, planHash, result })`. `revert` is on the tool, not the plan, so a receipt can
 be undone from any process: the receipt stores what it needs.
 
@@ -778,7 +789,8 @@ export function decide(
   - a consent for one plan can't run another, and a replayed state or consent runs nothing;
   - a consent code with an edited phrase is refused, and a consent signed for an edited phrase
     never runs; a phrase over 64 characters is refused;
-  - an irreversible plan never auto-runs, whatever the grant says;
+  - an irreversible plan never auto-runs, whatever the grant says, and neither does one whose
+    `undoWindow` is zero, negative or not an integer;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
   - no answer to the form, whatever it is, makes a signature or saves a consent, even with a
     principal key on the machine: in the session, and through real MCP clients of both eras in

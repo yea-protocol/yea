@@ -12,12 +12,12 @@ import pytest
 
 from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
-    local, serve_http, verify_grant,
+    lens, local, serve_http, verify_grant,
 )
-from yea._json import b64url_encode
-from yea.approval import Policy, reserve_all
+from yea._json import MAX_SAFE_INT, b64url_encode
+from yea.approval import Policy, Tightening, load_policy, reserve_all
 from yea.errors import YeaError
-from yea.job_call import JobCall, JobTool, Outcome, Retry, job_call
+from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
 from yea.keys import sign_proof
 from yea.service.verified_request import VerifiedIntent, verify_request
 from yea.store import LedgerKey, MemoryStore
@@ -589,7 +589,7 @@ def test_approval_never_covers_content_lens_cuts():
     import pytest
 
     from yea import proposal_hash
-    from yea.approval.plan import plan_preimage
+    from yea.approval.plan import JudgedPlan, plan_preimage
     from yea.approve import check_proposal
     from yea.lens import safe_effect_line
     from yea.service.plan import Plan
@@ -625,10 +625,10 @@ def test_approval_never_covers_content_lens_cuts():
     def plan(levels, wrap=list):
         return Plan("Update settings", wrap([effect(levels)]), apply=lambda: None)
 
-    assert plan_preimage("t", {}, plan(28), "low")["tool"] == "t"
+    assert plan_preimage({}, JudgedPlan("t", plan(28), "low", False))["tool"] == "t"
     for p in (plan(29), plan(29, tuple)):
         with pytest.raises(ValueError, match="nested past 32 levels"):
-            plan_preimage("t", {}, p, "low")
+            plan_preimage({}, JudgedPlan("t", p, "low", False))
 
     shown = safe_effect_line(proposal(28)["effects"][0])
     assert "attacker@evil.test" in shown and "…" not in shown
@@ -827,3 +827,90 @@ def test_an_intent_a_grant_authorized_still_auto_commits_under_its_principal():
         assert applied == [PRINCIPAL.public]
 
     run(go())
+
+
+# #83: only an integer from 1 to 2^52 is an undo window. A plan or proposal with any other window,
+# zero and None included, can't be undone, so it never runs or commits on its own and reads
+# ``never``. Mirrors ts/test/security.test.ts, "an undo window is a positive integer, or there is
+# none".
+NOT_WINDOWS = (0, -1, 1.5, "3600", float("nan"), 2**52 + 1, 2**53, True, None)
+SERVER = key_from_seed(bytes([5]) * 32)
+
+
+def _moving(undo_window, revert=True) -> JobCall:
+    """A reschedule call that the signed policy allows, its one plan with this undo window."""
+    async def plan():
+        return [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", undo_window=undo_window)]
+    grant = issue_grant(PRINCIPAL, SERVER.public, [{"can": ["reschedule"]}]).encode()
+    policy = load_policy(grant, SERVER.public, PRINCIPAL.public, Tightening())
+    tool = JobTool("reschedule", revert=(lambda _: None) if revert else None)
+    return JobCall(tool, {}, plan, "", NOW, policy, True)
+
+
+def test_83_a_job_plan_with_any_other_window_is_not_undoable_so_the_policy_asks():
+    async def go():
+        assert (await job_call(_moving(60), MemoryStore())).kind == "run"
+        for w in NOT_WINDOWS:
+            o = await job_call(_moving(w), MemoryStore())
+            assert o.kind == "ask", (w, o)
+            assert "Approval needed: reschedule can't be undone." in o.form["message"], w
+            assert "undo: never" in o.form["message"], w
+
+    run(go())
+
+
+def test_83_its_plan_hash_is_the_same_as_with_no_window_as_is_a_window_on_a_tool_without_revert():
+    def hashed(revert=True, **window):
+        [hp] = hash_plans(JobTool("reschedule", revert=(lambda _: None) if revert else None), {},
+                          [Plan("Move standup", [create("event/e1")], apply=lambda c: None, risk="low", **window)])
+        return hp
+
+    none = hashed().plan_hash
+    for w in NOT_WINDOWS:
+        assert (hashed(undo_window=w).undoable, hashed(undo_window=w).plan_hash) == (False, none), w
+    no_revert = hashed(revert=False, undo_window=60)
+    assert (no_revert.undoable, no_revert.plan_hash) == (False, none)
+    assert hashed(undo_window=60).plan_hash != none
+
+
+async def _auto_move(**window):
+    """An auto INTENT to a service whose one plan has ``revert`` and this undo window: the reply, and
+    how many times the plan was applied."""
+    applied = []
+    svc = Service("cal", "Cal", "cal", trust=[PRINCIPAL.public])
+
+    @svc.intent("cal.move", "move")
+    def move(ctx):
+        return Plan("move it", [create("event/1")], apply=lambda c: applied.append(1), revert=lambda c: None,
+                    **window)
+
+    return await client(svc).intent("cal.move", {}, auto=True), len(applied)
+
+
+def test_83_a_service_sends_undo_null_for_any_other_window_and_never_auto_commits_it():
+    async def go():
+        for w in NOT_WINDOWS:
+            r, applied = await _auto_move(undo_window=w)
+            assert r.kind == "PROPOSALS" and r.proposals[0]["undo"] is None, (w, r.lens)
+            assert applied == 0, w
+
+    run(go())
+
+
+def test_83_a_window_of_up_to_2_52_auto_commits_and_its_receipts_until_is_a_safe_integer():
+    async def go():
+        for window, seconds in (({}, 86400), ({"undo_window": 60}, 60), ({"undo_window": 2**52}, 2**52)):
+            r, applied = await _auto_move(**window)
+            assert r.kind == "RECEIPT", (window, r.lens)
+            assert applied == 1, window
+            until = r.receipt["undo"]["until"]
+            assert until == r.receipt["at"] + seconds and until <= MAX_SAFE_INT, window
+
+    run(go())
+
+
+def test_83_a_client_renders_a_proposal_whose_window_is_any_other_value_as_undo_never():
+    for w in NOT_WINDOWS:
+        p = {"id": "p_1", "capability": "cal.move", "summary": "move it", "effects": [], "risk": "low",
+             "undo": {"window": w}, "expires": NOW, "hash": "h"}
+        assert "undo: never" in lens({"yea": 1, "id": "f", "re": "f", "kind": "PROPOSALS", "proposals": [p]}), w
