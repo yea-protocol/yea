@@ -29,6 +29,15 @@ def test_check_proposal():
     assert check_proposal({**proposal(), "summary": 1.5}) == "the proposal doesn't match its hash"
 
 
+def test_check_proposal_needs_an_integer_expires():
+    # A consent's exp is taken from it (#370): one with none, or no integer, is refused.
+    no_expires = {k: v for k, v in proposal().items() if k not in ("expires", "hash")}
+    for p in ({**no_expires, "hash": proposal_hash(no_expires)}, proposal(expires=None),
+              proposal(expires=str(NOW + 60)), proposal(expires=True)):
+        assert check_proposal(p) == "the proposal has a malformed expires", p.get("expires")
+    assert check_proposal(proposal(expires=float(NOW + 60))) is None  # JSON 1.0 is the integer 1 in JS
+
+
 @pytest.mark.parametrize("over,why", [
     ({"proposal": "p2"}, "the consent request names another proposal"),
     ({"hash": "h"}, "the consent request's hash isn't the proposal's"),

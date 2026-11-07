@@ -12,7 +12,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-from ..grants import decode_consent_code
+from ..grants import consent_expiry, decode_consent_code
 from .files import _write_atomic
 
 # The ids ``yea approve <id>`` accepts, matched whole: never a path, and no prefix search.
@@ -69,13 +69,13 @@ class PendingCodes:
     def put(self, code: str, now: int) -> str:
         """Write ``code`` and return its id. A file already there for the code's service and
         proposal is rewritten under its id, so an id handed out earlier still works; other files
-        for the pair, and every file whose code has expired, are removed."""
+        for the pair, and every file whose consent has expired (``consent_expiry``), are removed."""
         c = decode_consent_code(code)
         entries = self._entries()
         same = [i for i, e in entries.items() if _same_pair(e, c["service"], c["proposal"])]
         kept = same[0] if same else self._fresh_id()
         for i, e in entries.items():
-            if i != kept and (i in same or e["expires"] <= now):
+            if i != kept and (i in same or consent_expiry(e) <= now):
                 self._remove(i)
         _write_atomic(self.dir / kept, pending_file(code))
         return kept

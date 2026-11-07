@@ -141,14 +141,7 @@ function isJobCode(code: string): boolean {
  * plan, have the person type its phrase, and store a consent signed to the server's key.
  */
 async function approveJob(p: KeyPair, code: string) {
-  const now = unixNow();
-  let j: JobConsent;
-
-  try {
-    j = await readJobConsent(code, now);
-  } catch (e) {
-    die(`✗ ${printable((e as Error).message)}: refusing`);
-  }
+  const j = await orRefuse(() => readJobConsent(code, unixNow()));
 
   console.log(printable(`at server ${j.consent.service}, tool ${j.job.tool}:`));
   console.log(jobLines(j.job).map(printable).join('\n'));
@@ -169,10 +162,22 @@ async function approveJob(p: KeyPair, code: string) {
     die('not approved');
   }
 
-  await defaultFileStore().putConsent(j.planHash, await signJobConsent(p, j));
+  // Signed at the time it's signed, so a consent that expired while the person typed is refused.
+  const grant = await orRefuse(() => signJobConsent(p, j));
+
+  await defaultFileStore().putConsent(j.planHash, grant);
   console.log(
     '✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.',
   );
+}
+
+/** What `f` resolves to, or the command dies refusing, with `f`'s error, escaped, as the reason. */
+async function orRefuse<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    return die(`✗ ${printable((e as Error).message)}: refusing`);
+  }
 }
 
 /** The plan as the person reads it: summary, effects, then what it uses, risk and undo. */

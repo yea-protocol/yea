@@ -8,13 +8,16 @@
 import { closeSync, fstatSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonical } from '../canonical.js';
-import { decodeConsentCode } from '../consent.js';
+import { consentExpiry, decodeConsentCode } from '../consent.js';
 import { openNoFollow, readCapped } from '../key-file.js';
 import type { ConsentRequest } from '../types.js';
 import { errno } from '../util.js';
 import { writeAtomic } from './files.js';
 
-/** What a pending code says: the consent request it carries, and the agent it names, if any. */
+/**
+ * What a pending code says: the consent request it carries, and the agent it names, if any. Its
+ * `expires` is the consent's (`consentExpiry`), so a code is listed, and removed, with its proposal.
+ */
 export type PendingConsent = ConsentRequest & { agent?: unknown };
 
 /** The process that wrote a pending file: its pid, in this home's one-machine account. */
@@ -134,7 +137,7 @@ export class PendingCodes {
   /**
    * Write `code` and return its id. A file already there for the code's service and proposal is
    * rewritten under its id, so an id handed out earlier still works; other files for the pair,
-   * and every file whose code has expired, are removed.
+   * and every file whose consent has expired, are removed.
    */
   put(code: string, now: number, issuer?: PendingIssuer): string {
     const c = decodeConsentCode(code);
@@ -218,10 +221,12 @@ export class PendingCodes {
       return null;
     }
 
+    const c = decodeConsentCode(code);
+
     return {
       id,
       code,
-      consent: decodeConsentCode(code),
+      consent: { ...c, expires: consentExpiry(c) },
       issuer: issuerOf(text),
     };
   }

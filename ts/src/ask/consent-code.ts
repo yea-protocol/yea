@@ -10,6 +10,7 @@ import {
   planTooDeep,
 } from '../approval.js';
 import {
+  codeExpired,
   consentGrant,
   decodeConsentCode,
   encodeConsentCode,
@@ -18,6 +19,7 @@ import type { KeyPair } from '../crypto.js';
 import { isRisk } from '../risk.js';
 import type { ConsentRequest, Effect } from '../types.js';
 import { isUses } from '../uses.js';
+import { unixNow } from '../util.js';
 import { checkedPhrase } from './phrase.js';
 
 /** A job consent code as `yea approve` may sign it: checked, with its expiry capped. */
@@ -117,10 +119,10 @@ export async function readJobConsent(
     );
   }
 
-  if (now >= c.expires) {
-    throw new Error(
-      'this consent code has expired; call the tool again for a fresh one',
-    );
+  const expired = codeExpired(c.expires, now);
+
+  if (expired) {
+    throw new Error(expired);
   }
 
   const { detail: _d, ...consent } = c;
@@ -133,6 +135,25 @@ export async function readJobConsent(
   };
 }
 
-/** The consent grant for a read job consent: signed by the principal, issued to the server. */
-export const signJobConsent = (principal: KeyPair | string, j: JobConsent) =>
-  consentGrant({ principal, agent: j.consent.service, consent: j.consent });
+/**
+ * The consent grant for a read job consent: signed by the principal, issued to the server. It's
+ * signed only while the consent is valid at `now`, the time of signing by default: a person who
+ * took longer to type the phrase gets a refusal, not a consent that has already expired.
+ */
+export async function signJobConsent(
+  principal: KeyPair | string,
+  j: JobConsent,
+  now = unixNow(),
+): Promise<string> {
+  const expired = codeExpired(j.consent.expires, now);
+
+  if (expired) {
+    throw new Error(expired);
+  }
+
+  return consentGrant({
+    principal,
+    agent: j.consent.service,
+    consent: j.consent,
+  });
+}

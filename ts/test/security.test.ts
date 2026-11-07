@@ -1233,8 +1233,8 @@ describe('approval security (SPEC-approval)', () => {
     await expect(
       P.readJobConsent(await code({ capability: 'delete_customer' }), now),
     ).rejects.toThrow("doesn't match its hash");
-    await expect(P.readJobConsent(await code(), now + 600)).rejects.toThrow(
-      'expired',
+    await expect(P.readJobConsent(await code(), now + 700)).rejects.toThrow(
+      expiredWhy(now + 600, now + 700),
     );
 
     const long = await P.readJobConsent(
@@ -1259,7 +1259,7 @@ describe('approval security (SPEC-approval)', () => {
         }),
         principal: B.public,
         localAgent: agent.public,
-        now: at,
+        now: () => at,
         approver: P.signer(B, async (ask) => {
           lines = ask.lines;
 
@@ -1278,6 +1278,152 @@ describe('approval security (SPEC-approval)', () => {
     expect((await shown(at + 7200)).at(-1)).toMatch(/, 2h from now$/);
     expect((await shown(at + 3600)).join('\n')).not.toContain('⚠');
   });
+
+  it('[A30] yea approve refuses an expired protocol consent code before showing or asking, from the second it expires (#370)', async () => {
+    // An hour ahead: a consent that is approved has its grant checked against the real clock.
+    const at = P.unixNow() + 3600;
+    const code = await protocolCode({
+      principal: B.public,
+      agent: agent.public,
+      expires: at,
+    });
+
+    expect(await approveProtocol(code, () => at - 1)).toMatchObject({
+      r: { ok: true },
+      asked: true,
+    });
+    // At `expires` the service refuses the commit, so the person is never asked.
+    expect(await approveProtocol(code, () => at)).toEqual({
+      r: { ok: false, why: expiredWhy(at, at) },
+      asked: false,
+    });
+
+    // The consent expires with its proposal, whatever the code's own `expires` says.
+    const early = await protocolCode({
+      principal: B.public,
+      agent: agent.public,
+      expires: at,
+      proposal: { expires: at - 60 },
+    });
+
+    expect(await approveProtocol(early, () => at - 1)).toEqual({
+      r: { ok: false, why: expiredWhy(at - 60, at - 1) },
+      asked: false,
+    });
+
+    // Refused before the agent is chosen: a person isn't sent to check --to for a dead code.
+    const elsewhere = await protocolCode({
+      principal: B.public,
+      agent: otherAgent.public,
+      expires: at,
+    });
+
+    expect(await approveProtocol(elsewhere, () => at)).toEqual({
+      r: { ok: false, why: expiredWhy(at, at) },
+      asked: false,
+    });
+
+    if (existsSync(CLI)) {
+      // End to end: nothing from the code is printed, and there's no y/N.
+      const home = approverHome(agent);
+      const gone = P.unixNow() - 3600;
+
+      try {
+        const r = approveIn(home, [
+          await protocolCode({
+            principal: B.public,
+            agent: agent.public,
+            expires: gone,
+          }),
+        ]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toContain(
+          `✗ this consent code expired at ${fmtTime(gone)}; it is `,
+        );
+        expect(r.out).not.toContain('Order 1 meal');
+        expect(r.out).not.toContain('[y/N]');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    }
+  }, 20_000);
+
+  it('[A31] yea approve refuses a protocol code whose proposal has no integer expires, without asking or throwing (#370)', async () => {
+    for (const expires of [undefined, String(now + 3600)]) {
+      const code = await protocolCode({
+        principal: B.public,
+        agent: agent.public,
+        expires: now + 3600,
+        proposal: { expires },
+      });
+
+      expect(await approveProtocol(code, () => now), String(expires)).toEqual({
+        r: {
+          ok: false,
+          why: "this consent code can't be approved: the proposal has a malformed expires",
+        },
+        asked: false,
+      });
+    }
+  });
+
+  it('[A32] yea approve checks expiry again after the y/N: a consent that expires while the person reads is refused, unused (#370)', async () => {
+    const at = P.unixNow() + 3600;
+    let t = at - 1;
+    const { r, asked } = await approveProtocol(
+      await protocolCode({
+        principal: B.public,
+        agent: agent.public,
+        expires: at,
+      }),
+      () => t,
+      () => {
+        t = at;
+      },
+    );
+
+    expect(asked).toBe(true);
+    expect(r).toEqual({ ok: false, why: expiredWhy(at, at) });
+  });
+
+  it('[A33] yea approve signs no job consent that expired while the person typed its phrase (#370)', async () => {
+    const at = now + P.CONSENT_TTL;
+    const j = await P.readJobConsent(await jobCodeAt(now), now);
+
+    expect(j.consent.expires).toBe(at);
+    await expect(P.signJobConsent(B, j, at)).rejects.toThrow(
+      expiredWhy(at, at),
+    );
+    expect(await P.signJobConsent(B, j, at - 1)).toMatch(/^pg1\./);
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    "[A35] yea approve escapes the code's agent field, which nothing signs, in its --to suggestion",
+    async () => {
+      const home = approverHome(agent);
+      const named = '\u001b[31mEVIL\u001b[0m';
+
+      try {
+        const r = approveIn(home, [
+          await protocolCode({
+            principal: B.public,
+            agent: named,
+            expires: P.unixNow() + 3600,
+          }),
+        ]);
+
+        expect(r.status).toBe(1);
+        expect(r.out).toContain(
+          'The code suggests --to \\u{1b}[31mEVIL\\u{1b}[0m (fingerprint ',
+        );
+        expect(r.out).not.toContain('\u001b');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 
   it('[A7] a job consent is signed by the principal, to the server, for that one plan', async () => {
     const [hp] = await P.hashPlans({ name: 'refund', revert: true }, {}, [
@@ -1300,7 +1446,7 @@ describe('approval security (SPEC-approval)', () => {
       }),
       now,
     );
-    const g = await P.inspectGrant(await P.signJobConsent(B, j));
+    const g = await P.inspectGrant(await P.signJobConsent(B, j, now));
 
     expect(j.phrase).toBe('approve');
     expect(g.iss).toBe(B.public);
@@ -1313,7 +1459,7 @@ describe('approval security (SPEC-approval)', () => {
       { exp: j.consent.expires },
     ]);
     expect(
-      await checkJobConsent(await P.signJobConsent(B, j), {
+      await checkJobConsent(await P.signJobConsent(B, j, now), {
         hp,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
@@ -1707,7 +1853,7 @@ describe('approval security (SPEC-approval)', () => {
       edited({ hash: await P.consentHashOf(hp.planHash, 'approve') }),
       now,
     );
-    const grant = await P.signJobConsent(B, forged);
+    const grant = await P.signJobConsent(B, forged, now);
     const policy = { principal: B.public, server: A.public };
 
     expect(
@@ -1745,10 +1891,11 @@ describe('approval security (SPEC-approval)', () => {
     );
 
     // A consent bound to the bare plan hash, as before #141, never counts either.
-    const bare = await P.signJobConsent(B, {
-      ...forged,
-      consent: { ...forged.consent, hash: hp.planHash },
-    });
+    const bare = await P.signJobConsent(
+      B,
+      { ...forged, consent: { ...forged.consent, hash: hp.planHash } },
+      now,
+    );
 
     expect(
       await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
@@ -2025,6 +2172,8 @@ async function protocolCode(o: {
   expires: number;
   summary?: string;
   id?: string;
+  /** Fields of the proposal to change before it's hashed (`undefined` leaves one out). */
+  proposal?: Record<string, unknown>;
 }) {
   const p = {
     id: o.id ?? 'p_1',
@@ -2034,6 +2183,7 @@ async function protocolCode(o: {
     risk: 'low' as const,
     undo: null,
     expires: o.expires,
+    ...o.proposal,
   };
   const proposal = { ...p, hash: await P.proposalHash(p) };
 
@@ -2045,11 +2195,43 @@ async function protocolCode(o: {
       capability: proposal.capability,
       principal: o.principal,
       summary: proposal.summary,
-      expires: proposal.expires,
+      expires: o.expires,
     },
     proposal as unknown as P.Proposal,
     { agent: o.agent },
   );
+}
+
+/**
+ * `yea approve`'s round for a protocol code to principal B and `agent`, at the times `clock`
+ * gives: what it returns, and whether the person was asked, which is the only way any of the
+ * code's lines reach them. The person says yes; `onAsk` runs while they read.
+ */
+async function approveProtocol(
+  code: string,
+  clock: () => number,
+  onAsk = () => {},
+) {
+  let asked = false;
+  const r = await approveCode({
+    code,
+    principal: B.public,
+    localAgent: agent.public,
+    now: clock,
+    approver: P.signer(B, async () => {
+      asked = true;
+      onAsk();
+
+      return true;
+    }),
+  });
+
+  return { r, asked };
+}
+
+/** Why `yea approve` refuses a consent code that expired at `expires`, when it's `at` here. */
+function expiredWhy(expires: number, at: number) {
+  return `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Call the tool again for a fresh one`;
 }
 
 /** A job code for a plan the person can't confirm without a terminal. */
@@ -2167,9 +2349,14 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
         expect(r.status).toBe(1);
         expect(r.out).toMatch(/doesn't match its hash: refusing/);
         expect(r.out).not.toContain('Delete nothing');
-        expect(approveIn(home, [old]).out).toContain(
+
+        const expired = approveIn(home, [old]).out;
+
+        expect(expired).toContain(
           `pending approval ${old} (in ${join(home, 'store', 'pending')}) has expired: call the tool again for a fresh one`,
         );
+        // Its whole code has expired too, so passing that instead can't help.
+        expect(expired).not.toContain('pass the whole code');
         expect(approveIn(home, ['zzzzzzzzzz']).out).toContain(
           `no pending approval zzzzzzzzzz (looked in ${join(home, 'pending')} and ${join(home, 'store', 'pending')}): call the tool again for a fresh one`,
         );
@@ -2339,6 +2526,46 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
           );
           expect(r.out, id).not.toMatch(/SECRET|JSON|Unexpected/);
         }
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!existsSync(CLI))(
+    '[A34] a pending code is listed, and expires, with its consent: with its proposal, if that is sooner (#370)',
+    async () => {
+      const home = approverHome(agent);
+      const dir = join(home, 'store', 'pending');
+      const store = new PendingCodes(dir);
+      const at = P.unixNow();
+      // The code's own `expires` is two hours away; its proposal's is sooner.
+      const code = (id: string, proposal: number) =>
+        protocolCode({
+          principal: B.public,
+          agent: agent.public,
+          expires: at + 7200,
+          id,
+          proposal: { expires: proposal },
+        });
+      const soon = store.put(await code('p_soon', at + 3600), at);
+      const gone = store.put(await code('p_gone', at - 60), at);
+
+      try {
+        expect(store.list(at).map((e) => [e.id, e.consent.expires])).toEqual([
+          [soon, at + 3600],
+        ]);
+
+        const listed = approveIn(home, []).out;
+
+        expect(listed).toContain(
+          `${soon} · shop.order · Order 1 meal · at shop.example · expires ${fmtTime(at + 3600)}`,
+        );
+        expect(listed).not.toContain(gone);
+        expect(approveIn(home, [gone]).out).toContain(
+          `pending approval ${gone} (in ${dir}) has expired: call the tool again for a fresh one`,
+        );
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
@@ -4679,6 +4906,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
       summary: 'Update settings',
       effects: [effect(levels)],
       risk: 'low',
+      expires: now,
     });
   const tooDeep = 'the proposal is nested too deep to show in full';
 
@@ -4689,7 +4917,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
   });
 
   it('whatever member is deep: a malformed summary or effects too', async () => {
-    const base = { id: 'p1', capability: 's.set', risk: 'low' };
+    const base = { id: 'p1', capability: 's.set', risk: 'low', expires: now };
 
     for (const p of [
       { ...base, summary: buried(40), effects: [] },
