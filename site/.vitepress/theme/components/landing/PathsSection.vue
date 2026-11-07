@@ -30,7 +30,7 @@ import { withBase } from 'vitepress';
       <p class="tag">Unreleased: the SDKs and the <code>yea</code> command aren't on npm or PyPI yet; the guides install from the repo.</p>
       <p class="tag warn">
         Keep the principal key where the agent can't reach it. An agent with shell access that can read it can sign its own
-        consent. <a :href="withBase('/guide/security')">Security model</a>
+        consent. <a :href="withBase('/guide/security#what-an-approval-proves')">Security model</a>
       </p>
       <ul class="links">
         <li><a :href="withBase('/guide/quickstart')">Quickstart</a></li>

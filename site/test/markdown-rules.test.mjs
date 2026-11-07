@@ -15,10 +15,13 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 /**
  * A claim that the model can't approve, that the person is asked, or approves in their client, or
- * that nothing goes back through the chat (#325's short ids).
+ * that nothing goes back through the chat (#325's short ids). Also what #324 found in a draft
+ * pitch: that the model can't fake an approval, that a key is out of the model's or agent's
+ * reach, or that an approval is human-typed. Plain "can't reach" is left alone: the guides say
+ * it of paths and stores.
  */
 const CLAIM =
-  /can['’]t approve|cannot approve|asks the person|approve in (your|the|their) (MCP )?client|no paste-back|nothing (needs pasting|goes|is handed) back/i;
+  /can['’]t approve|cannot approve|asks the person|approve in (your|the|their) (MCP )?client|no paste-back|nothing (needs pasting|goes|is handed) back|can['’]t fake|(model|agent) can['’]t reach|human-typed/i;
 /** A link to the threat model, in SPEC-approval §9 or the security guide's summary of it. */
 const PROOF = /(guide\/security|SPEC-approval\.md)#what-an-approval-proves/;
 
@@ -223,6 +226,19 @@ test('an approval claim without a link to what it proves is caught', () => {
     bareClaims(`a form that asks the\nperson to type (${link})`),
     [],
   );
+
+  // What a draft README pitch said (#324): an approval the model can't fake, a key it can't reach.
+  for (const claim of [
+    'risky tools need a human-typed approval',
+    "an approval the model can't fake",
+    'signed by a key the model can’t reach',
+    "Keep the key where the agent can't reach it.",
+  ]) {
+    assert.deepEqual(bareClaims(claim), [claim]);
+    assert.deepEqual(bareClaims(`${claim} (${link})`), []);
+  }
+
+  assert.deepEqual(bareClaims("A path can't reach anything else."), []);
 
   // That nothing goes back through the chat, said of a short id.
   for (const claim of [
