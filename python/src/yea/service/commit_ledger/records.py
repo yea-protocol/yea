@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...errors import YeaError
-from ...store import LedgerKey
+from ...store import LedgerKey, Reservation
 from ..plan import Plan
 from ..util import Emit, random_id
 from .runs import Run
@@ -62,13 +62,35 @@ class Admitted:
 Admit = Callable[[dict, Used], "Admitted | YeaError"]
 
 
+@dataclass(frozen=True)
+class Doubt:
+    """Whom a commit in doubt ran for, and its capability (runs.py): while one is, an auto INTENT for
+    the same principal and capability only proposes, since the agent may be sending it again."""
+
+    principal: str
+    capability: str
+
+
+@dataclass(frozen=True)
+class InFlight:
+    """A commit's run that hasn't finished, the doubt it would leave, and the reservations it holds."""
+
+    run: Run
+    doubt: Doubt
+    held: list[Reservation]
+
+
 @dataclass
 class Records:
     """Everything the ledger keeps, by id."""
 
     proposals: dict[str, StoredProposal] = field(default_factory=dict)
-    # A commit's run, by proposal id: in flight or done. A failed run is removed, to allow a retry.
+    # A commit's run, by proposal id: in flight, done or in doubt. A failed run is removed, to allow a retry.
     runs: dict[str, Run] = field(default_factory=dict)
+    # The commits whose run hasn't finished, by proposal id, so one stranded on a closed loop is found.
+    in_flight: dict[str, InFlight] = field(default_factory=dict)
+    # The commits in doubt, by proposal id, kept with their run until their proposal is forgotten.
+    in_doubt: set[str] = field(default_factory=set)
     receipts: dict[str, StoredReceipt] = field(default_factory=dict)
     # An undo's run, by receipt id, removed like a commit's when it fails.
     undos: dict[str, Run] = field(default_factory=dict)

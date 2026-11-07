@@ -1021,3 +1021,60 @@ def test_a_request_cancelled_mid_run_still_runs_once_and_its_retry_gets_a_replay
         assert ran == ["apply", "apply", "revert"]
 
     run(go())
+
+
+def test_a_run_cut_off_by_its_loops_teardown_is_in_doubt_never_run_again_and_its_spend_kept():
+    """Python only (#291): a host that runs each request in its own asyncio.run tears the loop down
+    with a run pending, after its apply sent a payment. Treated as never having happened, a retry paid
+    again, past the total, and an agent's fresh auto INTENT auto-paid again. The run is in doubt: a
+    retry gets ``internal``, the spend still counts, and a fresh auto INTENT only proposes."""
+    sent, hanging = [], []
+    svc = Service("pay", "Pay", "pay", trust=[PRINCIPAL.public])
+
+    @svc.intent("pay.send", "send money", {"amt": "int"})
+    def send(ctx):
+        async def apply(c):
+            sent.append(ctx.params["amt"])  # the payment is out
+            if hanging:
+                await asyncio.Event().wait()  # and the bank's answer never comes
+
+        uses = {"spend": quantity(ctx.params["amt"], scale=2, unit="USD")}
+        return Plan("pay", [create("payment/1")], apply=apply, revert=lambda c: None, uses=uses)
+
+    grants = [issue_grant(PRINCIPAL, AGENT.public, [{"total": {"of": "spend", "max": 100, "scale": 2, "unit": "USD"}}]).encode()]
+
+    def framed(verb, target, **fields):
+        return {"yea": 1, "verb": verb, "grants": grants, "proof": sign_proof(AGENT, "pay", verb, target, int(time.time())),
+                **fields}
+
+    def auto(fid, amt):
+        return framed("INTENT", f"auto:pay.send:{fid}", id=fid, capability="pay.send", params={"amt": amt}, auto=True)
+
+    def commit(p, fid):
+        return framed("COMMIT", p["hash"], id=fid, proposal=p["id"], hash=p["hash"])
+
+    async def paying(frame):
+        paid = len(sent)
+        asyncio.ensure_future(svc.handle(frame))
+        while len(sent) == paid:
+            await asyncio.sleep(0)
+
+    def cut_off(frame):
+        """The host gives up on the request once its payment is out; asyncio.run then tears down."""
+        hanging.append(1)
+        run(paying(frame))
+        hanging.clear()
+
+    def in_doubt(reply):
+        return (reply["kind"], reply["code"]) == ("ERROR", "internal") and "unknown" in reply["message"]
+
+    cut_off(auto("i1", 60))
+    assert in_doubt(run(svc.handle(auto("i1", 60))))
+    fresh = run(svc.handle(auto("i2", 40)))
+    assert fresh["kind"] == "PROPOSALS" and sent == [60]  # it proposes; it doesn't pay again
+    cut_off(commit(fresh["proposals"][0], "c1"))
+    assert in_doubt(run(svc.handle(commit(fresh["proposals"][0], "c1"))))
+    assert sent == [60, 40]
+    # Both count: 100 of the 100 is used.
+    one = run(svc.handle(framed("INTENT", "pay.send", id="i3", capability="pay.send", params={"amt": 1})))["proposals"][0]
+    assert run(svc.handle(commit(one, "c2")))["code"] == "consent_required"

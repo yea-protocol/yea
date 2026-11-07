@@ -123,7 +123,8 @@ class Service:
 
         Cancelling the task that awaits this stops the wait only: a commit, undo or auto INTENT it
         started runs to the end, so a retry of the frame gets a replay. Serve a Service from one event
-        loop; its commit ledger is not thread-safe."""
+        loop; its commit ledger is not thread-safe. Let requests finish before closing the loop: one cut
+        off mid-run is in doubt, so its retry gets ``internal`` and it never runs again (SPEC §4.4)."""
         emit = emit or (lambda _e: None)
         re = frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
         try:

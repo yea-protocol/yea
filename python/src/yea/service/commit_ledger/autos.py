@@ -8,8 +8,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from ..replies import replay_of
-from .runs import Run, forget_if_cancelled, outcome
+from ..replies import error_reply, replay_of
+from .runs import Run, forget_if_cancelled, in_doubt, outcome
 
 AUTO_MEMORY = 900  # seconds a reply is kept past the later of its arrival and its proof's `ts`
 PRUNE_AT = 10_000  # past this many replies kept, a new one prunes those past `exp`
@@ -37,13 +37,13 @@ class AutoReplies:
         ``now`` and the proof's ``ts``: that outlives every proof that could carry this frame id."""
         prior = self._replies.get(replay.key)
         if prior is not None and prior.exp > now:
-            return replay_of(await outcome(prior.reply), re)
-        reply = asyncio.ensure_future(_answered(answer))
+            return replay_of(await outcome(prior.reply, "auto INTENT"), re)
+        reply = asyncio.ensure_future(_answered(answer, re))
         self._replies[replay.key] = _Kept(reply, max(now, replay.proof_ts) + AUTO_MEMORY)
         forget_if_cancelled(reply, lambda: self._drop(replay.key, reply))
         if len(self._replies) > PRUNE_AT:
             self.forget(now)
-        return await outcome(reply)
+        return await outcome(reply, "auto INTENT")
 
     def forget(self, now: int) -> None:
         """Forget replies past ``exp``."""
@@ -56,9 +56,10 @@ class AutoReplies:
             del self._replies[key]
 
 
-async def _answered(answer: Callable[[], Awaitable[dict]]) -> dict:
-    """``answer()``'s reply. Its own cancellation is a failure, which every repeat gets too (runs.py)."""
+async def _answered(answer: Callable[[], Awaitable[dict]], re: str) -> dict:
+    """``answer()``'s reply to the frame ``re``. Cut off, it is in doubt, which every repeat gets too
+    (runs.py)."""
     try:
         return await answer()
-    except asyncio.CancelledError as e:
-        raise RuntimeError("the auto INTENT was cancelled while it ran") from e
+    except asyncio.CancelledError:
+        return error_reply(re, in_doubt("auto INTENT"))

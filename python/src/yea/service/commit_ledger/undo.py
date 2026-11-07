@@ -13,7 +13,7 @@ from ..plan import CommitCtx
 from ..replies import error_reply, event_frame, replay_of, reply_frame
 from ..util import Emit, _call, _iso, random_id
 from .records import StoredReceipt, Undo
-from .runs import Run, forget_if_cancelled, outcome
+from .runs import Run, forget, forget_if_cancelled, in_doubt, outcome
 
 _INVERSE = {"create": "delete", "delete": "create"}
 
@@ -24,13 +24,13 @@ async def undo_once(undos: dict[str, Run], req: Undo, emit: Emit, now: Callable[
     rid = req.stored.receipt["id"]
     prior = undos.get(rid)
     if prior is not None:
-        return replay_of(await outcome(prior), req.id)
+        return replay_of(await outcome(prior, "undo"), req.id)
     _check_undoable(req.stored, now())
     # Stored before revert starts, so a synchronous raise from `plan.revert` can clear it (#187).
     run = asyncio.ensure_future(_revert_once(undos, req, emit, now))
     undos[rid] = run
-    forget_if_cancelled(run, lambda: undos.pop(rid, None))
-    return await outcome(run)
+    forget_if_cancelled(run, lambda: forget(undos, rid, run))
+    return await outcome(run, "undo")
 
 
 def _check_undoable(stored: StoredReceipt, now: int) -> None:
@@ -43,10 +43,13 @@ def _check_undoable(stored: StoredReceipt, now: int) -> None:
 
 
 async def _revert_once(undos: dict[str, Run], req: Undo, emit: Emit, now: Callable[[], int]) -> dict:
-    """The undo receipt, or the ERROR reply for a failed revert, which frees the receipt to be undone again."""
+    """The undo receipt, or the ERROR reply for a failed revert, which frees the receipt to be undone
+    again. A revert cut off is in doubt instead, and stays kept so it never runs again (runs.py)."""
     try:
         return await _revert(req, emit, now)
-    except (Exception, asyncio.CancelledError) as e:  # its own cancellation too (runs.py)
+    except asyncio.CancelledError:
+        return error_reply(req.id, in_doubt("undo"))
+    except Exception as e:
         undos.pop(req.stored.receipt["id"], None)
         return error_reply(req.id, e)
 

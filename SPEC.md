@@ -267,7 +267,8 @@ receipt with `"replay": true` and MUST NOT execute again. A replay is authorized
 commit, by the same requester and principal, except that `each`, `total` and `risk`, and
 the consent a proposal with no principal needs, are not re-evaluated, because the commit
 already happened. So a retry after a lost response never turns into a consent prompt, and
-other principals can't read the receipt.
+other principals can't read the receipt. A service that can't tell whether a commit took effect
+treats it as having taken effect for limits, and never re-applies it.
 
 ### 4.5 `UNDO` — reverse a receipt within its window
 

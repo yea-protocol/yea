@@ -10,11 +10,14 @@ PROPOSAL_GRACE = 3600  # seconds an uncommitted proposal is kept past its expiry
 
 
 def sweep(r: Records, now: int) -> None:
-    """Forget proposals an hour past expiry that no commit is running or ran, and receipts (with their
-    proposal, run and undo) a day after their undo window, or their time when they have none."""
+    """Forget proposals an hour past expiry that no commit is running or ran, or whose commit is in
+    doubt (with its run: a COMMIT of it then finds no proposal), and receipts (with their proposal,
+    run and undo) a day after their undo window, or their time when they have none."""
     for pid, s in list(r.proposals.items()):
-        if s.proposal["expires"] < now - PROPOSAL_GRACE and pid not in r.runs:
+        if s.proposal["expires"] < now - PROPOSAL_GRACE and (pid not in r.runs or pid in r.in_doubt):
             del r.proposals[pid]
+            r.runs.pop(pid, None)
+            r.in_doubt.discard(pid)
     for rid, s in list(r.receipts.items()):
         undo = s.receipt["undo"]
         if (undo["until"] if undo else s.receipt["at"]) + DAY < now:
