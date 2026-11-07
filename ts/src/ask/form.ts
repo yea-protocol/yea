@@ -2,11 +2,15 @@
  * The approval form (docs/framework/SPEC-approval.md §3): the message listing
  * each plan, escaped, and the schema of what the person answers.
  */
-import { type HashedPlan, type Policy, ruledOut } from '../approval.js';
-import { fmtDuration, safeEffectLine } from '../lens.js';
+import {
+  type HashedPlan,
+  type Policy,
+  ruledOut,
+  shownPlan,
+} from '../approval.js';
 import { printable } from '../text.js';
-import { fmtUses } from '../uses.js';
 import { type PhraseFor, withFallback } from './phrase.js';
+import { planLines } from './plan-text.js';
 
 export interface ApprovalForm {
   message: string;
@@ -19,27 +23,11 @@ export interface ApprovalForm {
   offered: string[];
 }
 
-/**
- * One plan as the person reads it: summary, effects, then what it uses, risk and undo. Service
- * text is untrusted, so it's escaped: a summary can't forge a line or hide characters.
- */
-function planText(n: number, hp: HashedPlan, phrase: string | null): string[] {
-  const p = hp.plan;
-  const attrs = [
-    ...(p.uses && Object.keys(p.uses).length
-      ? [`uses: ${fmtUses(p.uses)}`]
-      : []),
-    `risk: ${hp.risk}`,
-    `undo: ${hp.undoable && p.undoWindow ? fmtDuration(p.undoWindow) : 'never'}`,
-  ];
-
-  return [
-    `[${n}] ${printable(p.summary)}`,
-    ...p.effects.map((e) => `  ${safeEffectLine(e)}`),
-    `  ${attrs.join(' · ')}`,
-    ...(phrase === null ? [] : [`  to approve, type: ${printable(phrase)}`]),
-  ];
-}
+/** One plan as the person reads it, then its phrase when it is offered. */
+const planText = (n: number, hp: HashedPlan, phrase: string | null) => [
+  ...planLines(shownPlan(hp), n),
+  ...(phrase === null ? [] : [`  to approve, type: ${printable(phrase)}`]),
+];
 
 /** `[n], [m]` for the listed plans, numbered as in the message. */
 const numbers = (plans: HashedPlan[], some: HashedPlan[]) =>

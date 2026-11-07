@@ -243,6 +243,19 @@ test('proposal facts: one wording for the slip and the consent card', {
 
   assert.deepEqual(f.effects, ['- delete file/a']);
   assert.equal(factsLine(f), 'Uses spend 53.95 USD, risk low, undo within 2h');
+
+  // A window that isn't a positive integer is no undo, as the Lens beside it says (#83).
+  for (const window of [0, -60, 1.5, '3600']) {
+    const none = proposalFacts(sdk, {
+      effects: [],
+      risk: 'low',
+      undo: { window },
+    });
+
+    assert.equal(none.undo, "can't be undone", JSON.stringify(window));
+    assert.equal(factsLine(none), "Risk low, can't be undone");
+  }
+
   assert.equal(
     factsLine({
       effects: [],

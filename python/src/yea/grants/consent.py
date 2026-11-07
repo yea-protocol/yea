@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .._json import b64url_decode, b64url_encode, canonical_bytes, loads
+from .._json import b64url_decode, b64url_encode, canonical_bytes, is_safe_integer, loads
 from ..keys import KeyPair
 from .token import Grant, _safe_int, issue_grant
 
@@ -70,3 +70,12 @@ def decode_consent_code(code: str) -> dict:
     if not _safe_int(c.get("expires")):
         raise ValueError("consent code missing expires")
     return c
+
+
+def consent_expiry(c: Mapping[str, Any]) -> int:
+    """When a decoded consent code's consent expires, as ``yea approve`` signs it (SPEC-bridge):
+    with the code, or with its proposal if that's sooner. A detail without an integer ``expires``
+    (a job's) leaves the code's. Mirrors ``consentExpiry`` in ts/src/consent.ts."""
+    detail = c.get("detail")
+    p = detail.get("expires") if isinstance(detail, dict) else None
+    return min(c["expires"], int(p)) if is_safe_integer(p) else c["expires"]

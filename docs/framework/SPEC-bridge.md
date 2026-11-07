@@ -181,8 +181,8 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
 
    Proposals that fail are dropped, and said so. The rest are stored as pending. Each also
    becomes a `HashedPlan` for the approval core: `planHash` is the proposal's hash, which the
-   consent must bind; `risk`, `undoable` (undo not null), `summary`, `effects` and `uses`
-   come from the proposal.
+   consent must bind; `risk`, `undoable` (its `undo` has a positive-integer `window`, SPEC.md
+   §5.1), `summary`, `effects` and `uses` come from the proposal.
 
    Auto-commit only ever covers the first proposal, and only if it's undoable (SPEC.md
    §4.3.1). For an irreversible proposal, or any but the first, that the grant allows, the
@@ -291,6 +291,13 @@ one exact proposal at one service, and still needs the agent key's proof.
   commits a proposal no grant authorized only with a consent whose `exp` is the proposal's.
   When that's more than an hour away, the last line before the y/N says so: `⚠ this approval
   stays valid until <time>, <duration> from now`, with the time escaped like all service text.
+
+  Once that time comes on this machine's clock (an `exp` holds only before it, SPEC.md §6.3),
+  `yea approve` refuses the code before showing it or choosing the agent, and again if it comes
+  while the person reads, so it never hands out a consent that has expired here: *this
+  consent code expired at <time>; it is <time> on this machine. Call the tool again for a fresh
+  one*. Both times are in UTC, so a wrong clock shows. A proposal whose `expires` isn't an
+  integer is refused too.
 
   After the y/N, it prints the signed consent on stdout, and saves it in `~/.yea/consents` only
   when this machine's agent key is the one it's issued to. Then it says what's next: when it

@@ -37,13 +37,18 @@ class Plan:
 
     summary: str
     effects: list[dict]
+    # Performs the effects, on COMMIT. Raise only when nothing took effect, or when performing them
+    # again is safe: a failed commit may be retried, which calls apply again (SPEC §4.4).
     apply: Callable[[CommitCtx], Any]
     uses: dict | None = None  # SPEC §5.1, e.g. {"spend": spend("22.87", "USD"), "emails": quantity(1)}
     risk: str | None = None
     expires_in: int | None = None  # seconds; default is the service's proposal_ttl
     data: Any = _UNSET
     revert: Callable[[CommitCtx], Any] | None = None  # makes the proposal undoable
-    undo_window: int | None = None  # seconds; default one day when revert is set
+    # Seconds, with revert: a day if left out. It must be an undo window (is_undo_window: a positive
+    # integer of at most 2^52); any other value, zero and None included, makes the proposal
+    # irreversible (undo: null).
+    undo_window: int | None = _UNSET
 
 
 @dataclass

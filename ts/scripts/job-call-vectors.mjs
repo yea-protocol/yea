@@ -5,7 +5,7 @@
  * is asserted before it's written.
  */
 import * as P from '../dist/index.js';
-import { runCall } from './job-call-run.mjs';
+import { recordCalls } from './job-call-run.mjs';
 
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
 const now = 1790000000;
@@ -258,43 +258,21 @@ const calls = [
     before: empty,
     steps: [step('refuse', { plans: [] })],
   },
+  {
+    // Only a positive integer is an undo window (SPEC-approval §1, #83).
+    name: 'an undo window of 0 is none: inside the policy, the call still asks',
+    before: { used: { [spendKey]: '0' }, consumed: [] },
+    steps: [
+      step('ask', {
+        plans: [{ ...refund, undoWindow: 0 }],
+        policy: allowed,
+        says: "refund can't be undone",
+      }),
+    ],
+  },
 ];
-
-/** Run each call, check each step's outcome (its kind, and any text it `says`), and record it. */
-async function generate() {
-  const out = [];
-
-  for (const c of calls) {
-    const spec = {
-      name: c.name,
-      tool: c.tool ?? tool,
-      ...(c.consents ? { consents: c.consents } : {}),
-      steps: c.steps.map(({ expect: _kind, says: _says, ...facts }, i) => ({
-        ...facts,
-        ...(i === 0 ? { before: c.before } : {}),
-      })),
-    };
-    const done = await runCall(P, spec);
-
-    c.steps.forEach((s, i) => {
-      const got = JSON.stringify(done[i].outcome);
-
-      if (done[i].outcome.kind !== s.expect || !got.includes(s.says ?? '')) {
-        throw new Error(
-          `job call "${c.name}" step ${i + 1}: expected ${s.expect}, got ${got}`,
-        );
-      }
-    });
-    out.push({
-      ...spec,
-      steps: spec.steps.map((facts, i) => ({ ...facts, ...done[i] })),
-    });
-  }
-
-  return out;
-}
 
 export const jobCalls = {
   keys: { principal: principal.public, server: server.public },
-  calls: await generate(),
+  calls: await recordCalls(P, calls, tool),
 };

@@ -4,18 +4,17 @@ ts/src/service/verified-request/verbs.ts."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from ...errors import YeaError, fix
-from ...grants import Verification
 from ...keys import verify_proof
 from ...validate import validate_params
 from ..capabilities import unknown_capability
-from ..state import ServiceState, _AskDef, _IntentDef, _StoredProposal, _StoredReceipt
+from ..commit_ledger import Admit, AutoReplay, StoredProposal, StoredReceipt
+from ..state import ServiceState, _AskDef, _IntentDef
 from ..util import _json_str
-from .identity import Identity, Scope, consenter, first_grant, identify, identify_required, with_limits
+from .identity import Identity, Scope, admitter, consenter, identify, identify_required
 
 
 @dataclass(frozen=True)
@@ -38,11 +37,11 @@ class VerifiedAsk:
 @dataclass(frozen=True)
 class AutoCommit:
     """An auto INTENT (§4.3.1). ``replay``: the verified holder key and frame id, and the proof's
-    ``ts``; None with no verified proof. ``grant(proposal)``: a grant that authorizes COMMIT of the
-    proposal with no consent, if it is undoable; else None."""
+    ``ts``; None with no verified proof. ``admit``: the commit ledger's grant evaluation for the
+    proposal (ADR-0002); None with no principal."""
 
-    replay: tuple[str, int] | None
-    grant: Callable[[dict], Verification | None]
+    replay: AutoReplay | None
+    admit: Admit | None
 
 
 @dataclass(frozen=True)
@@ -60,15 +59,15 @@ class VerifiedIntent:
 
 @dataclass(frozen=True)
 class VerifiedCommit:
-    """A COMMIT from the proposal's requester, under a grant from its principal. ``limits()``: the
-    grant that also admits the proposal's ``each``, ``total`` and ``risk``, or the error why none does."""
+    """A COMMIT from the proposal's requester, under a grant from its principal. ``admit``: grant
+    evaluation with the limits included, for the commit ledger (ADR-0002)."""
 
     id: str
     budget: int
-    stored: _StoredProposal
+    stored: StoredProposal
     holder: str
     principal: str
-    limits: Callable[[], Verification]
+    admit: Admit
 
 
 @dataclass(frozen=True)
@@ -77,7 +76,7 @@ class VerifiedUndo:
 
     id: str
     budget: int
-    stored: _StoredReceipt
+    stored: StoredReceipt
     holder: str
     principal: str
 
@@ -109,31 +108,25 @@ def verify_intent(state: ServiceState, req: dict, budget: int) -> VerifiedIntent
 
 
 def _auto_commit(state: ServiceState, req: dict, who: Identity) -> AutoCommit:
-    """The auto-commit check of an INTENT whose identity was verified against the auto target. Only
-    that proof's key is ever a replay key: an unverified one would let anyone claim a replay.
+    """The auto-commit of an INTENT whose identity was verified against the auto target. Only that
+    proof's key is ever a replay key: an unverified one would let anyone claim a replay.
 
-    The proof is checked once, when the request arrives (#278). ``grant`` doesn't check it again
+    The proof is checked once, when the request arrives (#278). ``admit`` doesn't check it again
     after the plan runs, so a plan that outlasts the proof's 300s window still auto-commits. The
-    grants are checked again at commit time, so ``exp`` and the other caveats still hold then.
+    grants are checked again at commit time, so ``exp`` and the other caveats still hold then. Only
+    a grant from the proposal's principal counts, so the search goes on past a valid grant from
+    another one.
 
     An INTENT no grant authorized has no principal, so it never auto-commits (§4.3.1, #287): its
     plan ran without knowing whose action it was."""
-
-    def grant(proposal: dict) -> Verification | None:
-        if not proposal["undo"] or who.holder is None or who.principal is None:
-            return None
-        # Only a grant from the proposal's principal counts, so the search goes on past a valid
-        # grant from another one.
-        scope = Scope("COMMIT", proposal["capability"], proposal, who.principal)
-        return first_grant(state, req["grants"], who.holder, scope, limits=True)[0]
-
-    replay = (f"{who.proof['key']}:{req['id']}", who.proof["ts"]) if who.proof else None
-    return AutoCommit(replay, grant)
+    replay = AutoReplay(f"{who.proof['key']}:{req['id']}", who.proof["ts"]) if who.proof else None
+    admit = admitter(state, req["grants"], who.holder, who.principal) if who.holder and who.principal else None
+    return AutoCommit(replay, admit)
 
 
 def verify_commit(state: ServiceState, req: dict, budget: int) -> VerifiedCommit:
     pid = req["proposal"]
-    stored = state.proposals.get(pid) if pid is not None else None
+    stored = state.ledger.proposal(pid) if pid is not None else None
     if stored is None:
         raise YeaError("not_found", f"no proposal {_json_str(pid)}", fix=[fix("send INTENT again to get fresh proposals")])
     proposal = stored.proposal
@@ -150,10 +143,10 @@ def verify_commit(state: ServiceState, req: dict, budget: int) -> VerifiedCommit
     if stored.principal is None:
         # With no principal of its own, it commits under its consent's issuer, and replays match that.
         principal = consenter(state, req["grants"], holder, scope) or principal
-    return VerifiedCommit(req["id"], budget, stored, holder, principal, lambda: with_limits(state, req["grants"], holder, scope))
+    return VerifiedCommit(req["id"], budget, stored, holder, principal, admitter(state, req["grants"], holder, stored.principal))
 
 
-def _check_requester(stored: _StoredProposal, holder: str) -> None:
+def _check_requester(stored: StoredProposal, holder: str) -> None:
     """Only the agent that asked for a proposal (with a verified proof) may commit it (§4.4)."""
     if stored.requester is None:
         raise YeaError("forbidden", "this proposal came from an anonymous INTENT and can't be committed",
@@ -165,7 +158,7 @@ def _check_requester(stored: _StoredProposal, holder: str) -> None:
 
 def verify_undo(state: ServiceState, req: dict, budget: int) -> VerifiedUndo:
     rid = req["receipt"]
-    stored = state.receipts.get(rid) if rid is not None else None
+    stored = state.ledger.receipt(rid) if rid is not None else None
     if stored is None or rid is None or stored.receipt.get("undoes"):
         raise YeaError("not_found", f"no undoable receipt {_json_str(rid)}")
     holder, principal, _ = identify_required(state, req, Scope("UNDO", stored.receipt["capability"]), rid)

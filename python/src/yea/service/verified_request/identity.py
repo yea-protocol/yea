@@ -1,7 +1,7 @@
 """Who is acting, and for whom: a request's verified holder key and the principal of the grant that
-lets it act, checked without the ``each``, ``total`` and ``risk`` limits (ADR-0002). Also the check
-with those limits, which a COMMIT and an auto INTENT still make here until the commit ledger does
-(#279). Like ts/src/service/verified-request/grants.ts and identity.ts."""
+lets it act, checked without the ``each``, ``total`` and ``risk`` limits (ADR-0002). Also the grant
+evaluation with those limits that a COMMIT and an auto INTENT carry to the commit ledger as
+``admit``. Like ts/src/service/verified-request/grants.ts and identity.ts."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from dataclasses import dataclass, replace
 from ...errors import YeaError, fix
 from ...grants import Grant, GrantContext, Verification, matches_consent, verify_grant
 from ...keys import verify_proof
+from ...uses import limit_value
+from ..commit_ledger import Admit, Admitted, TotalLimit, Used
 from ..replies import consent_request
 from ..state import ServiceState
 
@@ -48,7 +50,7 @@ def identify(state: ServiceState, req: dict, scope: Scope, target: str) -> Ident
     if not req["grants"]:
         return Identity(None, None, None)
     proof = _verified_proof(state, req["proof"], scope.verb, target)
-    granted, _ = first_grant(state, req["grants"], proof["key"], scope, limits=False)
+    granted, _ = first_grant(state, req["grants"], proof["key"], scope, used=None)
     return Identity(proof["key"], granted.principal if granted else None, proof)
 
 
@@ -62,40 +64,47 @@ def identify_required(state: ServiceState, req: dict, scope: Scope, target: str)
             fix=[fix("ask your principal to issue a grant (yea grant) and send it in `grants` with a `proof`")],
         )
     proof = _verified_proof(state, req["proof"], scope.verb, target)
-    granted, failed = first_grant(state, req["grants"], proof["key"], scope, limits=False)
+    granted, failed = first_grant(state, req["grants"], proof["key"], scope, used=None)
     if granted is None:
         raise grant_failure(state, failed, scope.proposal)
     assert granted.principal is not None  # a grant that authorizes has a root, so a principal
     return proof["key"], granted.principal, proof
 
 
-def with_limits(state: ServiceState, grants: list[str], holder: str, scope: Scope) -> Verification:
-    """The grant that authorizes the request with its limits too, or the error that says why none does.
-    A scope with no principal (no grant authorized the proposal's INTENT) admits only a consent grant
-    to the proposal, from any principal the service trusts (§4.4)."""
-    scope = replace(scope, consent_only=scope.principal is None)
-    granted, failed = first_grant(state, grants, holder, scope, limits=True)
-    if granted is None:
-        raise grant_failure(state, failed, scope.proposal)
-    return granted
+def admitter(state: ServiceState, grants: list[str], holder: str, principal: str | None) -> Admit:
+    """Grant evaluation with the limits included (ADR-0002), for the commit ledger: of the grants from
+    ``principal`` held by ``holder``, the first that admits a COMMIT of the proposal, or the error that
+    says why none does. A None ``principal`` (no grant authorized the proposal's INTENT) admits only a
+    consent grant to the proposal, from any principal the service trusts (§4.4)."""
+
+    def admit(proposal: dict, used: Used) -> Admitted | YeaError:
+        scope = Scope("COMMIT", proposal["capability"], proposal, principal, consent_only=principal is None)
+        granted, failed = first_grant(state, grants, holder, scope, used=used)
+        if granted is None:
+            return grant_failure(state, failed, proposal)
+        assert granted.principal is not None  # a grant that authorizes has a root, so a principal
+        return Admitted(granted.principal, [TotalLimit(b, t["of"], limit_value(t)) for b, t in granted.total_limits()])
+
+    return admit
 
 
 def consenter(state: ServiceState, grants: list[str], holder: str, scope: Scope) -> str | None:
     """The principal a COMMIT of a proposal with no principal acts for, if it carries a consent: the
     issuer of its first consent grant to the proposal, checked without limits (§4.4)."""
-    granted, _ = first_grant(state, grants, holder, replace(scope, consent_only=True), limits=False)
+    granted, _ = first_grant(state, grants, holder, replace(scope, consent_only=True), used=None)
     return granted.principal if granted else None
 
 
 def first_grant(
-    state: ServiceState, grants: list[str], holder: str, scope: Scope, *, limits: bool
+    state: ServiceState, grants: list[str], holder: str, scope: Scope, *, used: Used | None
 ) -> tuple[Verification | None, list[Verification]]:
     """Try each grant against a proof key already verified: the first that authorizes wins; the rest
-    say why not."""
+    say why not. ``used``: the usage ledger ``total`` counts against, to check ``each``, ``total`` and
+    ``risk`` too; None checks who may act only, and those three never deny (ADR-0002)."""
     ctx = GrantContext(
         state.id, scope.verb, scope.capability, state.now(),
         _checked(scope.proposal) if scope.proposal else None,
-        state.spent, limits,
+        {} if used is None else used, used is not None,
     )
     failed = []
     for g in grants:

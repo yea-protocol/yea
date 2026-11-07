@@ -7,22 +7,24 @@ import inspect
 from collections.abc import Callable
 from typing import Any
 
-from ..approval import HashedPlan, checked_phrase, plan_hash
+from ..approval import HashedPlan, JudgedPlan, checked_phrase, plan_hash
 from ..risk import resolve_risk
 from ..service import Clarification, Plan
+from ..undo_window import is_undo_window
 from .outcome import JobCall, JobTool, Outcome
 
 
 def hash_plans(tool: JobTool, input: dict, plans: list[Any]) -> list[HashedPlan]:
-    """Hash each plan and resolve its risk (plan, else the tool's, else ``medium``). An unknown
-    risk, or a plan that isn't a ``yea.Plan``, refuses the call."""
+    """Hash each plan and resolve its risk (plan, else the tool's, else ``medium``). A plan is
+    undoable if and only if its ``undo_window`` is an undo window (``is_undo_window``) and the tool
+    has ``revert`` (§1, §7). An unknown risk, or a plan that isn't a ``yea.Plan``, refuses the call."""
     out = []
     for p in plans:
         if not isinstance(p, Plan):
             raise TypeError("a job's plan function must return a list of yea.Plan, or clarify(...)")
         risk = resolve_risk("medium", p.risk, tool.risk)
-        undoable = p.undo_window is not None and tool.revert is not None
-        out.append(HashedPlan(tool.name, p, plan_hash(tool.name, input, p, risk), risk, undoable))
+        judged = JudgedPlan(tool.name, p, risk, is_undo_window(p.undo_window) and tool.revert is not None)
+        out.append(HashedPlan(tool.name, p, plan_hash(input, judged), risk, judged.undoable))
     return out
 
 

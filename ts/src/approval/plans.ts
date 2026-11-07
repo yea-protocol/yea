@@ -1,9 +1,13 @@
-/** Job plans and their hashes (SPEC-approval §1): the preimage, its integer check, and each plan's risk. */
+/**
+ * Job plans and their hashes (SPEC-approval §1): the preimage, its integer check, each plan's
+ * risk, and whether it can be undone.
+ */
 import { canonical } from '../canonical.js';
 import { sha256 } from '../crypto.js';
 import { MAX_APPROVAL_DEPTH, tooDeepToApprove } from '../lens.js';
 import { knownRisk, resolveRisk } from '../risk.js';
 import type { Effect, Risk } from '../types.js';
+import { isUndoWindow } from '../undo-window.js';
 import { isUses, type Uses } from '../uses.js';
 
 /** What a job tool's handler returns for each way it could do the job (SPEC-approval §1). */
@@ -12,20 +16,44 @@ export interface JobPlan {
   effects: Effect[];
   uses?: Uses;
   risk?: Risk;
-  /** Seconds the job can be undone for; needs the tool's `revert` too. */
+  /**
+   * Seconds the job can be undone for: a positive integer of at most 2^52 (`isUndoWindow`), and
+   * the tool needs `revert` too. Anything else, zero included, leaves the plan not undoable.
+   */
   undoWindow?: number;
   data?: unknown;
   /** Do the job. Only called once the plan is allowed or approved. */
   apply(): unknown;
 }
 
-/** A plan with what the approval core needs to judge it. */
-export interface HashedPlan {
+/**
+ * What a plan's preimage is built from: the plan, its tool, its resolved risk and whether it can
+ * be undone.
+ */
+export interface JudgedPlan {
   tool: string;
-  plan: JobPlan;
-  planHash: string;
+  plan: Pick<JobPlan, 'summary' | 'effects' | 'uses' | 'undoWindow'>;
   risk: Risk;
   undoable: boolean;
+}
+
+/** A plan with what the approval core needs to judge it: a {@link JudgedPlan}, and its hash. */
+export interface HashedPlan extends JudgedPlan {
+  plan: JobPlan;
+  planHash: string;
+}
+
+/**
+ * A plan as a person is shown it and its hash binds it: the plan-hash preimage without `tool`
+ * and `input` (SPEC-approval §1). `undoWindow` is there only when the plan is undoable, so
+ * hashing, the form, the MCP results and `yea approve` all read undo from this one field.
+ */
+export interface ShownPlan {
+  summary: string;
+  effects: Effect[];
+  uses?: Uses;
+  risk: Risk;
+  undoWindow?: number;
 }
 
 /**
@@ -57,13 +85,32 @@ export const planTooDeep = ({
 }: Pick<JobPlan, 'summary' | 'effects' | 'uses'>) =>
   tooDeepToApprove({ summary, effects, uses });
 
+/** The plan as a person is shown it (see {@link ShownPlan}), absent fields left out. */
+export function shownPlan({
+  plan,
+  risk,
+  undoable,
+}: Omit<JudgedPlan, 'tool'>): ShownPlan {
+  return {
+    summary: plan.summary,
+    effects: plan.effects,
+    // Absent and empty mean the same (SPEC.md §5.1), so they hash the same.
+    ...(plan.uses && Object.keys(plan.uses).length ? { uses: plan.uses } : {}),
+    risk,
+    // Checked again so a hand-built HashedPlan can't put a window that isn't one in view.
+    ...(undoable && isUndoWindow(plan.undoWindow)
+      ? { undoWindow: plan.undoWindow }
+      : {}),
+  };
+}
+
 /** The fields a plan hash covers, in the form `yea approve` recomputes it from. */
 export function planPreimage(
-  tool: string,
   input: unknown,
-  plan: Pick<JobPlan, 'summary' | 'effects' | 'uses' | 'undoWindow'>,
-  risk: Risk,
+  judged: JudgedPlan,
 ): Record<string, unknown> {
+  const { plan } = judged;
+
   assertIntegers(input);
 
   if (plan.uses !== undefined && !isUses(plan.uses)) {
@@ -72,7 +119,7 @@ export function planPreimage(
     );
   }
 
-  knownRisk(risk);
+  knownRisk(judged.risk);
 
   if (planTooDeep(plan)) {
     throw new TypeError(
@@ -80,23 +127,18 @@ export function planPreimage(
     );
   }
 
-  return {
-    tool,
-    input,
-    summary: plan.summary,
-    effects: plan.effects,
-    // Absent and empty mean the same (SPEC.md §5.1), so they hash the same.
-    ...(plan.uses && Object.keys(plan.uses).length ? { uses: plan.uses } : {}),
-    risk,
-    ...(plan.undoWindow === undefined ? {} : { undoWindow: plan.undoWindow }),
-  };
+  return { tool: judged.tool, input, ...shownPlan(judged) };
 }
 
 /** SPEC-approval §1: stable when the same plan is recomputed, unlike a proposal hash. */
 export const planHashOf = (preimage: Record<string, unknown>) =>
   sha256(canonical(preimage));
 
-/** Hash each plan and resolve its risk (plan, else the tool's, else `medium`). */
+/**
+ * Hash each plan and resolve its risk (plan, else the tool's, else `medium`). A plan is undoable
+ * if and only if its `undoWindow` is an undo window (`isUndoWindow`) and the tool has `revert`
+ * (§1, §7).
+ */
 export function hashPlans(
   tool: { name: string; risk?: Risk; revert?: unknown },
   input: unknown,
@@ -104,14 +146,16 @@ export function hashPlans(
 ): Promise<HashedPlan[]> {
   return Promise.all(
     plans.map(async (plan) => {
-      const risk = resolveRisk('medium', plan.risk, tool.risk);
-
-      return {
+      const judged = {
         tool: tool.name,
         plan,
-        planHash: await planHashOf(planPreimage(tool.name, input, plan, risk)),
-        risk,
-        undoable: plan.undoWindow !== undefined && tool.revert !== undefined,
+        risk: resolveRisk('medium', plan.risk, tool.risk),
+        undoable: isUndoWindow(plan.undoWindow) && tool.revert !== undefined,
+      };
+
+      return {
+        ...judged,
+        planHash: await planHashOf(planPreimage(input, judged)),
       };
     }),
   );

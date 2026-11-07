@@ -1,0 +1,92 @@
+[
+  {
+    "name": "a new commit its grant admits, on time, with room",
+    "committed": false,
+    "full": false,
+    "late": false,
+    "by": "alice",
+    "admit": "admits",
+    "outcome": "RECEIPT",
+    "evaluated": true
+  },
+  {
+    "name": "a repeat past expiry, whose limits now refuse it, is a replay",
+    "committed": true,
+    "full": false,
+    "late": true,
+    "by": "alice",
+    "admit": "consent_required",
+    "outcome": "replay",
+    "evaluated": false
+  },
+  {
+    "name": "a repeat by another principal",
+    "committed": true,
+    "full": false,
+    "late": false,
+    "by": "eve",
+    "admit": "admits",
+    "outcome": "forbidden",
+    "evaluated": false
+  },
+  {
+    "name": "an expired proposal its limits refuse",
+    "committed": false,
+    "full": false,
+    "late": true,
+    "by": "alice",
+    "admit": "consent_required",
+    "outcome": "expired",
+    "evaluated": false
+  },
+  {
+    "name": "an expired proposal its grant forbids",
+    "committed": false,
+    "full": false,
+    "late": true,
+    "by": "alice",
+    "admit": "forbidden",
+    "outcome": "expired",
+    "evaluated": false
+  },
+  {
+    "name": "an expired proposal with no room under its total",
+    "committed": false,
+    "full": true,
+    "late": true,
+    "by": "alice",
+    "admit": "admits",
+    "outcome": "expired",
+    "evaluated": false
+  },
+  {
+    "name": "a proposal its limits refuse",
+    "committed": false,
+    "full": false,
+    "late": false,
+    "by": "alice",
+    "admit": "consent_required",
+    "outcome": "consent_required",
+    "evaluated": true
+  },
+  {
+    "name": "a proposal its grant forbids",
+    "committed": false,
+    "full": false,
+    "late": false,
+    "by": "alice",
+    "admit": "forbidden",
+    "outcome": "forbidden",
+    "evaluated": true
+  },
+  {
+    "name": "a proposal its grant admits, with no room under its total",
+    "committed": false,
+    "full": true,
+    "late": false,
+    "by": "alice",
+    "admit": "admits",
+    "outcome": "consent_required",
+    "evaluated": true
+  }
+]

@@ -194,6 +194,16 @@ const plans = {
       undoWindow: 60,
     },
   },
+  // Only a positive integer is an undo window (#83): this plan is not undoable.
+  zeroWindow: {
+    tool: { name: 'reschedule', revert: true },
+    plan: {
+      summary: 'Move standup (an undo window of 0)',
+      effects: [{ op: 'update', target: 'event/e1' }],
+      risk: 'low',
+      undoWindow: 0,
+    },
+  },
 };
 const input = { who: 'Chen', n: 2 };
 const noApply = ({ apply: _a, ...p }) => p;
@@ -203,8 +213,21 @@ const hashed = async (key) => {
     { ...f.plan, apply: () => null },
   ]);
 
-  return { ...hp, plan: noApply(hp.plan) };
+  return { ...hp, plan: noApply(hp.plan), revert: f.tool.revert === true };
 };
+/**
+ * A hashed plan as the vectors carry it. `revert` says whether its tool has one, so an
+ * implementation recomputes `undoable` and the hash (from the top-level `input`) rather than
+ * reading them.
+ */
+const hashedOut = (hp) => ({
+  tool: hp.tool,
+  revert: hp.revert,
+  plan: hp.plan,
+  planHash: hp.planHash,
+  risk: hp.risk,
+  undoable: hp.undoable,
+});
 
 // ---- plan hash (§1) ----
 const hash = [];
@@ -214,7 +237,44 @@ plans.emptyUses = {
   plan: { ...plans.move.plan, uses: {} },
 };
 
-for (const key of ['move', 'email', 'refund', 'unrated', 'emptyUses']) {
+// Only an integer from 1 to 2^52 is an undo window (§1, #83): with any other, the plan is not
+// undoable and hashes as if it had none, as does a window on a tool without revert.
+const { undoWindow: _w, ...noWindow } = plans.move.plan;
+const notWindows = {
+  zero: 0,
+  negative: -1,
+  fraction: 1.5,
+  string: '3600',
+  null: null,
+  tooLong: 2 ** 52 + 1,
+};
+
+plans.noWindow = { tool: plans.move.tool, plan: noWindow };
+plans.longestWindow = {
+  tool: plans.move.tool,
+  plan: { ...noWindow, undoWindow: 2 ** 52 },
+};
+
+for (const [name, undoWindow] of Object.entries(notWindows)) {
+  plans[`${name}Window`] = {
+    tool: plans.move.tool,
+    plan: { ...noWindow, undoWindow },
+  };
+}
+
+const hashKeys = [
+  'move',
+  'email',
+  'refund',
+  'unrated',
+  'emptyUses',
+  'noRevert',
+  'noWindow',
+  ...Object.keys(notWindows).map((name) => `${name}Window`),
+  'longestWindow',
+];
+
+for (const key of hashKeys) {
   const hp = await hashed(key);
 
   hash.push({
@@ -231,7 +291,10 @@ for (const key of ['move', 'email', 'refund', 'unrated', 'emptyUses']) {
 let floatError = null;
 
 try {
-  P.planPreimage('refund', { amount: 1.5 }, plans.refund.plan, 'low');
+  P.planPreimage(
+    { amount: 1.5 },
+    { tool: 'refund', plan: plans.refund.plan, risk: 'low', undoable: true },
+  );
 } catch (e) {
   floatError = e.message;
 }
@@ -253,6 +316,41 @@ must(
   'unrated plan resolves to medium',
   hash.find((h) => h.name === 'unrated').risk,
   'medium',
+);
+
+const hashCase = (name) => hash.find((h) => h.name === name);
+
+for (const name of Object.keys(notWindows)) {
+  const h = hashCase(`${name}Window`);
+
+  must(`${name} window is not undoable`, h.undoable, false);
+  must(
+    `${name} window hashes as none`,
+    h.planHash,
+    hashCase('noWindow').planHash,
+  );
+}
+
+must(
+  'the longest window, 2^52, is undoable',
+  hashCase('longestWindow').undoable,
+  true,
+);
+
+const { undoWindow: _nw, ...noRevertNoWindow } = plans.noRevert.plan;
+const [revertless] = await P.hashPlans(plans.noRevert.tool, input, [
+  { ...noRevertNoWindow, apply: () => null },
+]);
+
+must(
+  'a window without revert is not undoable',
+  hashCase('noRevert').undoable,
+  false,
+);
+must(
+  'a window without revert hashes as none',
+  hashCase('noRevert').planHash,
+  revertless.planHash,
 );
 
 // ---- decide (§2, §5) ----
@@ -500,6 +598,13 @@ const decideCases = [
     { kind: 'ask', why: "reschedule can't be undone" },
   ],
   [
+    'an undo window of 0 asks, as none does',
+    ['zeroWindow'],
+    {},
+    {},
+    { kind: 'ask', why: "reschedule can't be undone" },
+  ],
+  [
     'a repeated total reserves once with the smallest max',
     ['emailUndoable'],
     { grant: grants.repeated },
@@ -571,13 +676,7 @@ for (const [name, keys, policyChange, used, want, at = now] of decideCases) {
   must(name, JSON.parse(JSON.stringify(shown)), want);
   decideOut.push({
     name,
-    plans: hps.map((hp) => ({
-      tool: hp.tool,
-      plan: hp.plan,
-      planHash: hp.planHash,
-      risk: hp.risk,
-      undoable: hp.undoable,
-    })),
+    plans: hps.map(hashedOut),
     policy,
     used,
     now: at,
@@ -703,6 +802,12 @@ for (const [name, keys, why, policyChange] of [
     'spend over the limit\n+ forged',
     {},
   ],
+  [
+    'an undo window of 0 shows never',
+    ['zeroWindow'],
+    "reschedule can't be undone",
+    {},
+  ],
 ]) {
   const hps = await Promise.all(keys.map(hashed));
   const policy = { ...base, ...policyChange };
@@ -715,13 +820,7 @@ for (const [name, keys, why, policyChange] of [
 
   forms.push({
     name,
-    plans: hps.map((hp) => ({
-      tool: hp.tool,
-      plan: hp.plan,
-      planHash: hp.planHash,
-      risk: hp.risk,
-      undoable: hp.undoable,
-    })),
+    plans: hps.map(hashedOut),
     why,
     policy: { outOfBand: policy.outOfBand, deny: policy.deny },
     phrases: Object.fromEntries(hps.map((hp) => [hp.planHash, phraseOf(hp)])),
@@ -744,6 +843,14 @@ must(
   'both lines',
   form('out of band and denied lines').message.endsWith(
     '\n\nNot offered here (approve outside the chat): [2]\n\nNever allowed by your policy: [3]',
+  ),
+  true,
+);
+
+must(
+  'an undo window of 0 shows never',
+  form('an undo window of 0 shows never').message.includes(
+    '  risk: low · undo: never\n',
   ),
   true,
 );
@@ -997,13 +1104,7 @@ for (const [
     name,
     state,
     answer: ans,
-    recomputed: recomputed.map((hp) => ({
-      tool: hp.tool,
-      plan: hp.plan,
-      planHash: hp.planHash,
-      risk: hp.risk,
-      undoable: hp.undoable,
-    })),
+    recomputed: recomputed.map(hashedOut),
     policy: { outOfBand: policy.outOfBand, deny: policy.deny },
     phrases: Object.fromEntries(
       recomputed.map((hp) => [hp.planHash, phraseOf(hp)]),
@@ -1364,6 +1465,8 @@ rmSync(dir, { recursive: true });
 export const approval = {
   seeds: { principal: seed(1), server: seed(5), stranger: seed(6) },
   keys: { principal: principal.public, server: server.public },
+  // The input every hashed plan below was hashed with, unless its case names its own.
+  input,
   hash,
   decide: decideOut,
   phrases,
@@ -1374,13 +1477,7 @@ export const approval = {
   tightening,
   undo: { service: 'S', receipts, cases: undo },
   consents: {
-    plan: {
-      tool: refundHp.tool,
-      plan: refundHp.plan,
-      planHash: refundHp.planHash,
-      risk: refundHp.risk,
-      undoable: refundHp.undoable,
-    },
+    plan: hashedOut(refundHp),
     phrase: consentPhrase,
     consentHash: refundConsent,
     cases: consents,
@@ -1389,13 +1486,7 @@ export const approval = {
     server: server.public,
     principal: principal.public,
     input,
-    plan: {
-      tool: refundHp.tool,
-      plan: refundHp.plan,
-      planHash: refundHp.planHash,
-      risk: refundHp.risk,
-      undoable: refundHp.undoable,
-    },
+    plan: hashedOut(refundHp),
     now,
     cases: consentCodes,
   },

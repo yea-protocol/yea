@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from yea import Client, GrantContext, Plan, Service, create, issue_grant, key_from_seed, local, verify_grant
-from yea.approval import Policy, at_least, plan_hash
+from yea.approval import JudgedPlan, Policy, at_least, plan_hash
 from yea.client import Reply
 from yea.client.reply import _checked_reply
 from yea.risk import exceeds, known_risk, resolve_risk
@@ -31,7 +31,7 @@ def test_resolve_and_known():
 
 def test_an_unknown_risk_never_gets_a_plan_hash():
     with pytest.raises(ValueError, match="unknown risk"):
-        plan_hash("t", {}, Plan("x", [], lambda: None), "critical")
+        plan_hash({}, JudgedPlan("t", Plan("x", [], lambda: None), "critical", False))
 
 
 def test_a_risk_caveat_against_an_unknown_risk_is_forbidden():

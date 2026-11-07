@@ -9,6 +9,7 @@ import { fix, YeaError } from '../errors.js';
 import { replyFrame } from '../frames.js';
 import type { Reservation } from '../store.js';
 import type { ErrorReply, Event, FinalReply, ReceiptReply } from '../types.js';
+import { isUndoWindow } from '../undo-window.js';
 import { type AutoReplay, AutoReplies } from './commit-ledger/autos.js';
 import {
   type Admit,
@@ -87,8 +88,9 @@ export class CommitLedger {
 
   /**
    * Commit a proposal once (SPEC §4.4). A repeat gets the original outcome, for the same
-   * principal only, with no limit re-evaluated. Otherwise the grant's limits are evaluated, and
-   * the reservation follows with no await in between, so concurrent commits can't overshoot a
+   * principal only, with no limit re-evaluated. Otherwise an expired proposal is refused before
+   * its limits, so it never asks for consent. Then the grant's limits are evaluated, and the
+   * reservation follows with no await in between, so concurrent commits can't overshoot a
    * `total`. Throws the error to reply with when the proposal expired or no grant admits it.
    *
    * The reservation re-checks each `total` against the usage ledger as it is then. When a commit
@@ -103,6 +105,12 @@ export class CommitLedger {
       return this.replay(prior, req);
     }
 
+    if (this.svc.now() >= proposal.expires) {
+      throw new YeaError('expired', 'this proposal has expired', {
+        fix: [fix('send INTENT again to get a fresh proposal')],
+      });
+    }
+
     const admitted = await req.admit(proposal, this.used);
 
     // Another COMMIT of this proposal may have started while this one was admitted.
@@ -112,12 +120,6 @@ export class CommitLedger {
 
     if (admitted instanceof YeaError) {
       throw admitted;
-    }
-
-    if (this.svc.now() >= proposal.expires) {
-      throw new YeaError('expired', 'this proposal has expired', {
-        fix: [fix('send INTENT again to get a fresh proposal')],
-      });
     }
 
     const r = this.usage.reserveAll(proposal, admitted.totals);
@@ -135,15 +137,17 @@ export class CommitLedger {
 
   /**
    * Commit an auto INTENT's fresh proposal now if it is undoable and its grant admits it
-   * outright (SPEC §4.3.1): the same step as a COMMIT. Null leaves it a proposal. An undo window
-   * of 0 can never be used, so it doesn't count.
+   * outright (SPEC §4.3.1): the same step as a COMMIT. Null leaves it a proposal. Undoable means
+   * a window that is a positive integer: any other can never be used, so it doesn't count.
+   * §4.3.1's third condition, no commit in doubt, never applies here: a run can't be cut off part
+   * way, and a throwing `apply` had no effect (§4.4).
    */
   async autoCommit(
     stored: StoredProposal,
     admit: Admit,
     answer: Answer,
   ): Promise<Outcome | null> {
-    if ((stored.proposal.undo?.window ?? 0) <= 0) {
+    if (!isUndoWindow(stored.proposal.undo?.window)) {
       return null;
     }
 

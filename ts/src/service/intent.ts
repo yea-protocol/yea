@@ -6,6 +6,7 @@ import { replyFrame } from '../frames.js';
 import type { IntentDef, Plan } from '../plan.js';
 import { resolveRisk } from '../risk.js';
 import type { Event, FinalReply, Proposal } from '../types.js';
+import { isUndoWindow } from '../undo-window.js';
 import { isUses, type Uses } from '../uses.js';
 import { DAY } from '../util.js';
 import type { Admit, StoredProposal } from './commit-ledger.js';
@@ -98,7 +99,6 @@ export class IntentHandler {
     capability: string,
     now: number,
   ): Promise<Proposal> {
-    const window = plan.revert ? (plan.undoWindow ?? DAY) : null;
     const p: Omit<Proposal, 'hash'> = {
       id: randomId('p', 6),
       capability,
@@ -106,7 +106,7 @@ export class IntentHandler {
       effects: plan.effects,
       ...usesOf(plan),
       risk: resolveRisk('low', plan.risk, def.risk),
-      undo: window === null ? null : { window },
+      undo: undoOf(plan),
       expires:
         Math.ceil(
           (now + (plan.expiresIn ?? this.state.opts.proposalTtl ?? 600)) / 60,
@@ -133,6 +133,16 @@ export class IntentHandler {
       ? fit({ ...out, auto: true }, req.budget, this.state.handles, req.holder)
       : out;
   }
+}
+
+/**
+ * A proposal's `undo` (SPEC §5.1): with a `revert`, the plan's window, a day when it leaves it
+ * out. A value that isn't an undo window, `null` included, makes the proposal irreversible.
+ */
+function undoOf(plan: Plan): Proposal['undo'] {
+  const window = plan.undoWindow === undefined ? DAY : plan.undoWindow;
+
+  return plan.revert && isUndoWindow(window) ? { window } : null;
 }
 
 /** The plan's `uses` for its proposal: omitted when empty, and rejected when malformed. */

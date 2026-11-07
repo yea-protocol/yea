@@ -27,6 +27,13 @@ class CanonicalError(ValueError):
     """Raised when a value cannot be canonicalized (floats, unsafe ints, bad types)."""
 
 
+def is_safe_integer(v: Any) -> bool:
+    """As ``Number.isSafeInteger``: 3.0 counts, since JSON can't tell it from 3."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return False
+    return float(v).is_integer() and abs(v) <= MAX_SAFE_INT if isinstance(v, float) else abs(v) <= MAX_SAFE_INT
+
+
 def quote(s: str) -> str:
     """JSON-quote a string the way SPEC §10 (and well-formed JSON.stringify) does."""
     out = ['"']

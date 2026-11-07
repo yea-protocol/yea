@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { runCase } from '../scripts/commit-ledger-run.mjs';
 import { runCall } from '../scripts/job-call-run.mjs';
 import { checkJobConsent, decide } from '../src/approval.js';
 import {
@@ -28,6 +29,7 @@ import {
   pendingFile,
 } from '../src/file-store.js';
 import * as P from '../src/index.js';
+import { CommitLedger } from '../src/service/commit-ledger.js';
 import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
@@ -249,15 +251,40 @@ describe('conformance vectors', () => {
     signers.delete(null);
     expect([...signers]).toEqual([(await P.keyPair(v.seeds.stranger)).public]);
 
-    const asHashed = (x: HP): HP => ({
-      ...x,
-      plan: { ...x.plan, apply: () => null },
-    });
+    /**
+     * A vector's hashed plan, recomputed from its tool's `revert` and the shared `input`, so
+     * `undoable` and the hash are ours, and must come out as the vector has them. The resolved
+     * risk stands in for the tool's: a plan's own risk wins over it either way.
+     */
+    const rehash = async (x: HP & { revert: boolean }): Promise<HP> => {
+      const revert = x.revert ? { revert: () => null } : {};
+      const [hp] = await P.hashPlans(
+        { name: x.tool, risk: x.risk, ...revert },
+        v.input,
+        [{ ...x.plan, apply: () => null }],
+      );
+
+      expect([hp.planHash, hp.risk, hp.undoable], x.plan.summary).toEqual([
+        x.planHash,
+        x.risk,
+        x.undoable,
+      ]);
+
+      return hp;
+    };
+    const rehashAll = (xs: (HP & { revert: boolean })[]) =>
+      Promise.all(xs.map(rehash));
 
     for (const h of v.hash) {
       if (h.error) {
         expect(
-          () => P.planPreimage(h.tool.name, h.input, h.plan, 'low'),
+          () =>
+            P.planPreimage(h.input, {
+              tool: h.tool.name,
+              plan: h.plan,
+              risk: 'low',
+              undoable: false,
+            }),
           h.name,
         ).toThrow();
 
@@ -278,7 +305,7 @@ describe('conformance vectors', () => {
     for (const c of v.decide) {
       const used = (k: P.LedgerKey) =>
         c.used[k.of] ? P.exact(c.used[k.of]) : 0n;
-      const d = await decide(c.plans.map(asHashed), c.policy, used, c.now);
+      const d = await decide(await rehashAll(c.plans), c.policy, used, c.now);
       const got = {
         kind: d.kind,
         ...('why' in d ? { why: d.why } : {}),
@@ -315,7 +342,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.forms) {
       const f = buildForm(
-        c.plans.map(asHashed),
+        await rehashAll(c.plans),
         c.why,
         c.policy,
         (hp) => c.phrases[hp.planHash],
@@ -330,7 +357,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.judge) {
       const verdict = judgeAnswer(c.state, c.answer, {
-        recomputed: c.recomputed.map(asHashed),
+        recomputed: await rehashAll(c.recomputed),
         policy: c.policy,
         phraseFor: (hp) => c.phrases[hp.planHash],
       });
@@ -348,7 +375,7 @@ describe('conformance vectors', () => {
 
     for (const c of v.consents.cases) {
       const r = await checkJobConsent(c.grant, {
-        hp: asHashed(v.consents.plan),
+        hp: await rehash(v.consents.plan),
         phrase: v.consents.phrase,
         policy: { principal: v.keys.principal, server: v.keys.server },
         now: c.now,
@@ -395,7 +422,7 @@ describe('conformance vectors', () => {
           server: cc.server,
           principal: cc.principal,
           input: cc.input,
-          hp: asHashed(cc.plan),
+          hp: await rehash(cc.plan),
           phrase: c.phrase,
           now: cc.now,
         }),
@@ -427,6 +454,14 @@ describe('conformance vectors', () => {
       );
 
       expect(await runCall(P, c), c.name).toEqual(want);
+    }
+  });
+  it('commit ledger: the order a COMMIT is checked in', async () => {
+    for (const c of load('commit-ledger')) {
+      expect(
+        await runCase({ CommitLedger, YeaError: P.YeaError }, c),
+        c.name,
+      ).toEqual({ outcome: c.outcome, evaluated: c.evaluated });
     }
   });
   it('approval FileStore layout', async () => {

@@ -1472,6 +1472,22 @@ const replies = [
     }),
   ],
   [
+    'proposals: an undo window that is not an integer from 1 to 2^52 is never',
+    r({
+      kind: 'PROPOSALS',
+      proposals: [
+        { ...baseP, undo: { window: 0 } },
+        { ...baseP, id: 'p_2', undo: { window: -60 } },
+        { ...baseP, id: 'p_3', undo: { window: '3600' } },
+        { ...baseP, id: 'p_4', undo: { window: 9007199254740992 } },
+        { ...baseP, id: 'p_5', undo: { window: 1 } },
+        { ...baseP, id: 'p_6', undo: { window: null } },
+        { ...baseP, id: 'p_7', undo: { window: 2 ** 52 + 1 } },
+        { ...baseP, id: 'p_8', undo: { window: 2 ** 52 } },
+      ],
+    }),
+  ],
+  [
     'receipt: malformed undo',
     r({
       kind: 'RECEIPT',
@@ -2038,4 +2054,8 @@ out('requests', requests);
 out('approval', (await import('./approval-vectors.mjs')).approval);
 out('job-calls', (await import('./job-call-vectors.mjs')).jobCalls);
 out('pending', (await import('./pending-vectors.mjs')).pending);
+out(
+  'commit-ledger',
+  (await import('./commit-ledger-vectors.mjs')).commitLedger,
+);
 console.log('vectors written');

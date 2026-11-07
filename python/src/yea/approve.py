@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ._json import CanonicalError, proposal_hash
+from ._json import CanonicalError, is_safe_integer, proposal_hash
 from .lens import untrusted_lens
 from .lens.depth import too_deep_to_approve
 from .risk import is_risk
@@ -18,12 +18,15 @@ from .uses import is_uses
 
 def check_proposal(p: Mapping[str, Any]) -> str | None:
     """Why a proposal can't be bound by a consent, or None if it can (SPEC §5.1, §6.6): its ``uses``
-    well formed, its ``risk`` known, its bound fields shallow enough to show in full, and it hashes to
-    its ``hash`` (an unhashable one can't)."""
+    well formed, its ``risk`` known, its ``expires`` an integer (a consent's ``exp`` is taken from
+    it), its bound fields shallow enough to show in full, and it hashes to its ``hash`` (an
+    unhashable one can't)."""
     if "uses" in p and not is_uses(p["uses"]):
         return "the proposal has a malformed uses"
     if not is_risk(p.get("risk")):
         return "the proposal has an unknown risk"
+    if not is_safe_integer(p.get("expires")):
+        return "the proposal has a malformed expires"
     if too_deep_to_approve({k: v for k, v in p.items() if k != "data"}):
         return "the proposal is nested too deep to show in full"
     try:

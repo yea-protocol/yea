@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .._json import is_safe_integer
+
 # A member's type: a JSON type by name, a one-element list for an array of it, or a dict of an
 # object's members. A member named ``k?`` may be absent or null.
 _EFFECT = {"op": "string", "target": "string", "field?": "string", "detail?": "string", "from?": "scalar", "to?": "scalar"}
@@ -35,18 +37,10 @@ _KINDS: dict[str, Any] = {
 
 _MORE = [{"remaining": "integer", "path": "string", "handle": "string", "est": "integer"}]
 
-_MAX_SAFE = 2**53 - 1
 # So checking and rendering a param schema can't overflow the stack. Keep it well under depth.py's
 # MAX_DEPTH, which a schema must never reach.
 _MAX_PARAM_DEPTH = 32
 _ABSENT = object()
-
-
-def is_safe_integer(v: Any) -> bool:
-    """As ``Number.isSafeInteger``: 3.0 counts, since JSON can't tell it from 3."""
-    if isinstance(v, bool) or not isinstance(v, (int, float)):
-        return False
-    return float(v).is_integer() and abs(v) <= _MAX_SAFE if isinstance(v, float) else abs(v) <= _MAX_SAFE
 
 
 def _is_params(v: Any, depth: int = 0) -> bool:

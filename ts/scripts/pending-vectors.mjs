@@ -41,16 +41,19 @@ async function jobCode(summary, at) {
   });
 }
 
-/** The bridge's code for a service's proposal, naming the agent it's for. */
-async function bridgeCode() {
+/**
+ * The bridge's code for a service's proposal, naming the agent it's for. The code expires at
+ * now + 900, and so does the proposal, unless `proposalExpires` is sooner.
+ */
+async function bridgeCode(id = 'p_1', proposalExpires = now + 900) {
   const p = {
-    id: 'p_1',
+    id,
     capability: 'shop.order',
     summary: 'Order 1 × m001',
     effects: [],
     risk: 'low',
     undo: null,
-    expires: now + 900,
+    expires: proposalExpires,
   };
   const proposal = { ...p, hash: await P.proposalHash(p) };
 
@@ -62,7 +65,7 @@ async function bridgeCode() {
       capability: proposal.capability,
       principal: principal.public,
       summary: proposal.summary,
-      expires: proposal.expires,
+      expires: now + 900,
     },
     proposal,
     { agent: agent.public },
@@ -75,6 +78,7 @@ const codes = {
   again: await jobCode('Delete a.txt', now + 60),
   other: await jobCode('Delete a.txt for good', now),
   bridge: await bridgeCode(),
+  early: await bridgeCode('p_2', now + 600),
 };
 const pairOf = (label) => {
   const c = P.decodeConsentCode(codes[label]);
@@ -98,13 +102,25 @@ const ops = [
   },
   {
     op: 'put',
+    code: 'early',
+    now,
+    as: 'v',
+    files: { x: 'plan', y: 'other', z: 'bridge', v: 'early' },
+  },
+  {
+    op: 'put',
     code: 'again',
     now,
     as: 'x',
-    files: { x: 'again', y: 'other', z: 'bridge' },
+    files: { x: 'again', y: 'other', z: 'bridge', v: 'early' },
   },
-  { op: 'drop', ...pairOf('other'), files: { x: 'again', z: 'bridge' } },
-  // Writing removes what has expired: `again` at now + 660, `bridge` at now + 900.
+  {
+    op: 'drop',
+    ...pairOf('other'),
+    files: { x: 'again', z: 'bridge', v: 'early' },
+  },
+  // Writing removes what has expired: `again` at now + 660, `bridge` at now + 900, and `early`
+  // with its proposal at now + 600, though the code itself says now + 900.
   {
     op: 'put',
     code: 'other',
