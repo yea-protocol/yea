@@ -87,7 +87,8 @@ class Records:
     proposals: dict[str, StoredProposal] = field(default_factory=dict)
     # A commit's run, by proposal id: in flight, done or in doubt. A failed run is removed, to allow a retry.
     runs: dict[str, Run] = field(default_factory=dict)
-    # The commits whose run hasn't finished, by proposal id, so one stranded on a closed loop is found.
+    # The commits whose run hasn't finished, by proposal id, so one stranded on a loop that no longer
+    # runs is found.
     in_flight: dict[str, InFlight] = field(default_factory=dict)
     # The commits in doubt, by proposal id, kept with their run until their proposal is forgotten.
     in_doubt: set[str] = field(default_factory=set)

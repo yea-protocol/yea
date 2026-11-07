@@ -139,6 +139,8 @@ export class CommitLedger {
    * Commit an auto INTENT's fresh proposal now if it is undoable and its grant admits it
    * outright (SPEC §4.3.1): the same step as a COMMIT. Null leaves it a proposal. Undoable means
    * a window that is a positive integer: any other can never be used, so it doesn't count.
+   * §4.3.1's third condition, no commit in doubt, never applies here: a run can't be cut off part
+   * way, and a throwing `apply` had no effect (§4.4).
    */
   async autoCommit(
     stored: StoredProposal,

@@ -8,8 +8,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from ..replies import error_reply, replay_of
-from .runs import Run, forget_if_cancelled, in_doubt, outcome
+from ..replies import replay_of
+from .runs import Run, forget_if_cancelled, outcome
 
 AUTO_MEMORY = 900  # seconds a reply is kept past the later of its arrival and its proof's `ts`
 PRUNE_AT = 10_000  # past this many replies kept, a new one prunes those past `exp`
@@ -38,7 +38,9 @@ class AutoReplies:
         prior = self._replies.get(replay.key)
         if prior is not None and prior.exp > now:
             return replay_of(await outcome(prior.reply, "auto INTENT"), re)
-        reply = asyncio.ensure_future(_answered(answer, re))
+        # Cut off before its commit ran, the answer ends cancelled and is forgotten, so a repeat plans
+        # again; cut off while it ran, ``auto_commit`` answers in doubt (commit_ledger/__init__.py).
+        reply = asyncio.ensure_future(answer())
         self._replies[replay.key] = _Kept(reply, max(now, replay.proof_ts) + AUTO_MEMORY)
         forget_if_cancelled(reply, lambda: self._drop(replay.key, reply))
         if len(self._replies) > PRUNE_AT:
@@ -55,11 +57,3 @@ class AutoReplies:
         if kept is not None and kept.reply is reply:
             del self._replies[key]
 
-
-async def _answered(answer: Callable[[], Awaitable[dict]], re: str) -> dict:
-    """``answer()``'s reply to the frame ``re``. Cut off, it is in doubt, which every repeat gets too
-    (runs.py)."""
-    try:
-        return await answer()
-    except asyncio.CancelledError:
-        return error_reply(re, in_doubt("auto INTENT"))

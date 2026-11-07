@@ -10,7 +10,7 @@ from typing import Any
 
 from ...errors import YeaError
 from ..plan import CommitCtx
-from ..replies import error_reply, event_frame, replay_of, reply_frame
+from ..replies import error_reply, event_frame, log, replay_of, reply_frame
 from ..util import Emit, _call, _iso, random_id
 from .records import StoredReceipt, Undo
 from .runs import Run, forget, forget_if_cancelled, in_doubt, outcome
@@ -43,33 +43,39 @@ def _check_undoable(stored: StoredReceipt, now: int) -> None:
 
 
 async def _revert_once(undos: dict[str, Run], req: Undo, emit: Emit, now: Callable[[], int]) -> dict:
-    """The undo receipt, or the ERROR reply for a failed revert, which frees the receipt to be undone
-    again. A revert cut off is in doubt instead, and stays kept so it never runs again (runs.py)."""
-    try:
-        return await _revert(req, emit, now)
-    except asyncio.CancelledError:
-        return error_reply(req.id, in_doubt("undo"))
-    except Exception as e:
-        undos.pop(req.stored.receipt["id"], None)
-        return error_reply(req.id, e)
-
-
-async def _revert(req: Undo, emit: Emit, now: Callable[[], int]) -> dict:
-    """Reverse a receipt's effects and issue the undo receipt; raises what ``revert`` raises."""
+    """The undo receipt. ``revert`` raising says it had no effect (SPEC §4.4), which frees the
+    receipt to be undone again. Anything else that stops it once ``revert`` started leaves the undo in
+    doubt, kept so it never runs again (runs.py): a cancellation, an exit, or a failure after
+    ``revert`` returned."""
     stored, re = req.stored, req.id
-    receipt = stored.receipt
 
     def progress(message: str, pct: float | None, _data: Any) -> None:
         emit(event_frame(re, message, pct))
 
-    # _check_undoable has refused a plan without `revert`.
-    await _call(stored.plan.revert, CommitCtx(req.principal, progress, stored.result))
+    try:
+        # _check_undoable has refused a plan without `revert`.
+        await _call(stored.plan.revert, CommitCtx(req.principal, progress, stored.result))
+    except Exception as e:
+        undos.pop(stored.receipt["id"], None)
+        return error_reply(re, e)
+    except asyncio.CancelledError:
+        return error_reply(re, in_doubt("undo"))
+    try:
+        return _reversal(req, now())
+    except Exception:
+        log.exception("an undo failed after its plan's revert returned, so it is in doubt")
+        return error_reply(re, in_doubt("undo"))
+
+
+def _reversal(req: Undo, at: int) -> dict:
+    """The undo receipt for a receipt whose plan was reverted at ``at``."""
+    receipt = req.stored.receipt
     undo = {
         "id": random_id("r"), "proposal": receipt["proposal"], "capability": receipt["capability"],
-        "summary": receipt["summary"], "at": now(), "effects": [_inverse(e) for e in receipt["effects"]],
+        "summary": receipt["summary"], "at": at, "effects": [_inverse(e) for e in receipt["effects"]],
         "undo": None, "undoes": receipt["id"],
     }
-    return reply_frame(re, "RECEIPT", {"receipt": undo})
+    return reply_frame(req.id, "RECEIPT", {"receipt": undo})
 
 
 def _inverse(e: dict) -> dict:

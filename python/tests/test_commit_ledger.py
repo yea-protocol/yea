@@ -7,6 +7,7 @@ a run cut off after it starts (in doubt), one cancelled before it starts, and a 
 import asyncio
 import logging
 import sys
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +16,7 @@ from commit_ledger_fixture import T0, LedgerFixture, TotalGrant, code_of, commit
 from yea import YeaError, create, update
 from yea.budget import MemoryHandleStore
 from yea.service.commit import on_commit
-from yea.service.commit_ledger import Admitted, Answer, AutoReplay, TotalLimit, Undo
+from yea.service.commit_ledger import Admitted, Answer, AutoReplay, CommitLedger, TotalLimit, Undo
 from yea.service.replies import reply_frame
 from yea.service.undo import on_undo
 from yea.service.verified_request import VerifiedCommit, VerifiedUndo
@@ -548,9 +549,10 @@ def test_an_auto_intent_whose_caller_is_cancelled_mid_plan_still_answers_once():
 # under a host that times requests out. Once it has started, its plan may have acted, so its outcome
 # is unknown: it is in doubt. What it held counts as spent, it never runs again, every retry gets the
 # error that says so (SPEC §4.4), and for a while an auto INTENT for the same principal and
-# capability only proposes, since the agent may be sending the same action again.
+# capability only proposes (§4.3.1), since the agent may be sending the same action again.
 
-IN_DOUBT = "is unknown: check the service before trying again"
+IN_DOUBT = "is unknown: it may have taken effect"
+CHECK_FIRST = [{"say": "check the service's records, or ask the person, before acting again"}]
 
 
 async def cut_off(call, started):
@@ -595,6 +597,8 @@ def test_a_commit_cut_off_mid_apply_is_in_doubt_counted_as_spent_and_never_appli
         again = run(commit(p))
         assert (again["kind"], again["code"], again["re"]) == ("ERROR", "internal", "c_p_1")
         assert IN_DOUBT in again["message"] and "replay" not in again
+        # Never "try again": the same COMMIT can only ever get this error.
+        assert again["fix"] == CHECK_FIRST and "again" not in again["message"]
     assert applied == [60]
     # Counted as spent: 60 of the 100 is used, so 41 is over and 40 fits.
     assert run(code_of(commit(f.propose(41)))) == "consent_required"
@@ -622,6 +626,85 @@ def test_an_apply_that_raises_cancelled_error_itself_is_in_doubt_too():
     run(go())
 
 
+def clock_that_fails(f):
+    """Give ``f`` a ledger whose clock raises once, the next time it is read after the returned
+    ``down()`` is called: a host clock that fails just after a plan acted."""
+    down = []
+
+    def now():
+        if down:
+            down.pop()
+            raise OSError("the clock is unavailable")
+        return f.t
+
+    f.ledger = CommitLedger("pay", now)
+    return lambda: down.append(1)
+
+
+def test_a_failure_after_apply_returned_leaves_the_commit_in_doubt_not_freed():
+    """Only ``apply`` raising says it had no effect (SPEC §4.4). A host clock that fails once it
+    returned can't say that: the plan acted."""
+    f, grant, applied = LedgerFixture(), TotalGrant(100), []
+    down = clock_that_fails(f)
+
+    def apply(c):
+        applied.append(60)
+        down()
+
+    p = f.propose(60, apply=apply)
+
+    def commit(stored):
+        return f.ledger.commit(commit_of(stored, grant.admit), no_events)
+
+    for _ in range(2):
+        out = run(commit(p))
+        assert out["code"] == "internal" and IN_DOUBT in out["message"]
+    assert applied == [60]
+    assert run(code_of(commit(f.propose(41)))) == "consent_required"
+
+
+def test_a_failure_after_revert_returned_leaves_the_undo_in_doubt_not_freed():
+    f, reverts = LedgerFixture(), []
+    down = clock_that_fails(f)
+
+    def revert(c):
+        reverts.append(1)
+        down()
+
+    out = run(f.ledger.commit(commit_of(f.propose(10, revert=revert), TotalGrant(100).admit), no_events))
+    stored = f.ledger.receipt(out["receipt"]["id"])
+    for _ in range(2):
+        again = run(f.ledger.undo(Undo("u1", stored, "alice"), no_events))
+        assert again["code"] == "internal" and IN_DOUBT in again["message"]
+    assert reverts == [1]
+
+
+def test_an_apply_that_exits_is_in_doubt_and_its_retry_gets_the_in_doubt_error_not_the_exit():
+    """A ``BaseException`` that isn't a cancellation (``SystemExit`` from a plan) still reaches the
+    host. The commit is left in doubt first, so a retry gets its error, and the sweep forgets it."""
+    f, grant, applied = LedgerFixture(), TotalGrant(100), []
+
+    def apply(c):
+        applied.append(60)
+        raise SystemExit(3)
+
+    p = f.propose(60, apply=apply)
+
+    def commit(stored):
+        return f.ledger.commit(commit_of(stored, grant.admit), no_events)
+
+    with pytest.raises(SystemExit):
+        run(commit(p))
+    for _ in range(2):
+        with pytest.raises(YeaError, match=IN_DOUBT):
+            run(commit(p))
+    assert applied == [60]
+    assert run(code_of(commit(f.propose(41)))) == "consent_required"
+    f.advance(600 + 3600 + 1)
+    f.ledger.sweep()
+    assert f.ledger.proposal(p.proposal["id"]) is None
+
+
 def test_an_undo_cut_off_mid_revert_is_in_doubt_and_never_reverted_again(caplog):
     started = asyncio.Event()
     r = run(receipted(hung(started)))
@@ -645,20 +728,38 @@ def test_a_revert_that_raises_cancelled_error_itself_is_in_doubt_too():
     run(go())
 
 
-def test_an_auto_answer_cut_off_after_it_started_keeps_an_in_doubt_reply(caplog):
-    """Not a RuntimeError out of the kept reply: that was every repeat's ``internal`` with no reason,
-    and a traceback as asyncio.run shut down."""
+def test_an_auto_intent_cut_off_while_it_planned_is_forgotten_and_answered_afresh(caplog):
+    """No commit had started, so nothing happened: the repeat plans again rather than being told the
+    outcome is unknown."""
     f, started, answers = LedgerFixture(), asyncio.Event(), []
     replay, step = AutoReplay("agent:f1", T0), hung(started)
 
     async def answer():
         answers.append(1)
-        return await step()
+        await step()  # a rate lookup that, the first time, never answers
+        return reply_frame("f1", "PROPOSALS", {"proposals": []})
 
     run(cut_off(f.ledger.answer_once(replay, "f1", answer), started))
     again = run(f.ledger.answer_once(replay, "f1b", answer))
-    assert (again["kind"], again["code"], again["re"]) == ("ERROR", "internal", "f1b") and IN_DOUBT in again["message"]
-    assert answers == [1]
+    assert (again["kind"], "replay" in again, answers) == ("PROPOSALS", False, [1, 1])
+    assert no_shutdown_errors(caplog) or sys.version_info < (3, 11)
+
+
+def test_an_auto_intent_cut_off_while_its_commit_ran_keeps_an_in_doubt_reply_and_pauses(caplog):
+    """Not a RuntimeError out of the kept reply: that was every repeat's ``internal`` with no reason,
+    and a traceback as asyncio.run shut down."""
+    f, grant, started = LedgerFixture(), TotalGrant(100), asyncio.Event()
+    replay = AutoReplay("agent:f1", T0)
+    p = f.propose(10, apply=hung(started), revert=lambda c: None)
+
+    def answer():
+        return f.ledger.auto_commit(p, grant.admit, ANSWER)
+
+    run(cut_off(f.ledger.answer_once(replay, "f1", answer), started))
+    for re in ("f1b", "f1c"):
+        again = run(f.ledger.answer_once(replay, re, answer))
+        assert (again["kind"], again["code"], again["re"]) == ("ERROR", "internal", re) and IN_DOUBT in again["message"]
+    assert auto_commits(f, grant.admit)() is None
     assert no_shutdown_errors(caplog)
 
 
@@ -689,9 +790,37 @@ def test_an_auto_intent_only_proposes_for_900s_while_a_commit_of_its_principal_a
     assert f.ledger._paused == {}  # white-box: a pause past its time is forgotten
 
 
-def test_an_auto_intent_whose_reply_was_lost_with_its_loop_only_proposes_after():
-    """The run committed, but the loop was torn down before the auto INTENT's answer read its outcome:
-    that reply is in doubt, so a fresh INTENT for the same action only proposes."""
+def test_an_auto_intent_cut_off_while_its_commit_carries_on_pauses_auto_intents_like_it():
+    """Its answer is in doubt even when the commit itself goes on to finish (a plan that won't be cut
+    off): the agent was told the outcome is unknown, so it may send the same action again."""
+    f, grant, started, gate = LedgerFixture(), TotalGrant(100), asyncio.Event(), asyncio.Event()
+    replay = AutoReplay("agent:f1", T0)
+
+    async def apply(c):
+        started.set()
+        await gate.wait()
+
+    p = f.propose(10, apply=apply, revert=lambda c: None)
+
+    def answer():
+        return f.ledger.auto_commit(p, grant.admit, ANSWER)
+
+    async def go():
+        caller = asyncio.ensure_future(f.ledger.answer_once(replay, "f1", answer))
+        await started.wait()
+        (kept,) = [t for t in asyncio.all_tasks() if t.get_coro().__name__ == "auto_commit"]
+        kept.cancel()  # the answer alone, as a teardown that reaches it before the commit would
+        out = await caller
+        gate.set()
+        return out
+
+    assert run(go())["code"] == "internal"
+    assert auto_commits(f, grant.admit)() is None
+
+
+def test_an_auto_intent_whose_commit_finished_as_its_loop_was_torn_down_keeps_the_receipt():
+    """The run committed, but the loop was torn down before the auto INTENT's answer read its outcome.
+    The answer keeps the run's receipt, so a repeat of the frame gets it, and the agent can undo it."""
     f, grant, applied = LedgerFixture(), TotalGrant(100), []
     replay = AutoReplay("agent:f1", T0)
 
@@ -706,9 +835,9 @@ def test_an_auto_intent_whose_reply_was_lost_with_its_loop_only_proposes_after()
 
     run(host())
     again = run(f.ledger.answer_once(replay, "f1b", paid))
-    assert again["code"] == "internal" and IN_DOUBT in again["message"]
-    assert applied == [1]  # it did commit: apply ran to the end
-    assert auto_commits(f, grant.admit)() is None
+    assert (again["kind"], again["replay"], applied) == ("RECEIPT", True, [1])
+    assert f.ledger.receipt(again["receipt"]["id"]).principal == "alice"
+    assert auto_commits(f, grant.admit)()["kind"] == "RECEIPT"  # nothing is in doubt
 
 
 # ------------------------------------------------------------ a run cancelled before it starts (Python only)
@@ -772,7 +901,7 @@ def test_no_caller_receives_a_runs_own_cancellation():
         await asyncio.sleep(0)  # a yield, so the waiter is waiting on the run
         cancelled_run.cancel()
         for caller in (waiter, outcome(cancelled_run, "commit")):
-            with pytest.raises(YeaError, match="was cancelled before it started") as e:
+            with pytest.raises(YeaError, match="was cancelled before it took effect") as e:
                 await caller
             assert e.value.code == "internal"
 
@@ -783,39 +912,44 @@ def test_no_caller_receives_a_runs_own_cancellation():
 
 
 def test_a_replay_from_another_event_loop_reads_a_finished_run_and_refuses_one_in_flight():
-    """One Service serves one event loop. A run in flight on another loop can't be waited on, so its
-    replay is ``internal`` with the reason, not a traceback; a finished one is read as is."""
+    """One Service serves one event loop. A run in flight on another loop that is running (another
+    thread's) can't be waited on, so its replay is ``internal`` with the reason, not a traceback; a
+    finished one is read as is."""
     f, grant = LedgerFixture(), TotalGrant(100)
+    started, gate = threading.Event(), asyncio.Event()
 
-    async def start():
-        gate = SimpleNamespace(started=asyncio.Event(), held=asyncio.Event())
+    async def apply(c):
+        started.set()
+        await gate.wait()
 
-        async def apply(c):
-            gate.started.set()
-            await gate.held.wait()
+    p = f.propose(10, apply=apply)
 
-        p = f.propose(10, apply=apply)
-        first = asyncio.ensure_future(f.ledger.commit(commit_of(p, grant.admit), no_events))
-        await gate.started.wait()
-        return p, gate, first
+    def commit():
+        return f.ledger.commit(commit_of(p, grant.admit), no_events)
 
     loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever)
+    thread.start()
     try:
-        p, gate, first = loop.run_until_complete(start())  # stops with the run in flight on `loop`
+        first = asyncio.run_coroutine_threadsafe(commit(), loop)
+        assert started.wait(5)
         with pytest.raises(YeaError) as e:
-            run(f.ledger.commit(commit_of(p, grant.admit), no_events))
+            run(commit())
         assert e.value.code == "internal" and "in flight on another event loop" in e.value.message
-        gate.held.set()
-        receipt = loop.run_until_complete(first)["receipt"]
+        loop.call_soon_threadsafe(gate.set)
+        receipt = first.result(5)["receipt"]
     finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(5)
         loop.close()
-    again = run(f.ledger.commit(commit_of(p, grant.admit), no_events))
+    again = run(commit())
     assert (again["replay"], again["receipt"]) == (True, receipt)
 
 
-def stranded(f, grant, cents):
-    """Commit ``cents`` with an apply that hangs, on a loop then closed without being torn down, as a
-    host that drives its own loop may: the run can never finish. Returns the proposal and a COMMIT."""
+def stranded(f, grant, cents, close):
+    """Commit ``cents`` with an apply that hangs, on a loop then dropped with the run pending, closed
+    or not, as a host that drives its own loops may: the run can never finish. Returns the proposal, a
+    COMMIT of it, and the loop, to close once the test is done."""
     started = asyncio.Event()
     p = f.propose(cents, apply=hung(started))
 
@@ -824,26 +958,71 @@ def stranded(f, grant, cents):
 
     loop = asyncio.new_event_loop()
     loop.run_until_complete(cut_off(commit(p), started))
-    loop.close()
-    return p, commit
+    if close:
+        loop.close()
+    return p, commit, loop
 
 
-def test_a_commit_stranded_on_a_closed_loop_is_in_doubt_and_forgotten_an_hour_after_it_expires():
+DROPPED = pytest.mark.parametrize("close", [True, False], ids=["closed", "abandoned"])
+
+
+@DROPPED
+def test_a_commit_stranded_on_a_dropped_loop_is_in_doubt_and_forgotten_an_hour_after_it_expires(close):
     f, grant = LedgerFixture(), TotalGrant(100)
-    p, commit = stranded(f, grant, 60)
-    with pytest.raises(YeaError, match=IN_DOUBT) as e:
-        run(commit(p))
-    assert e.value.code == "internal"
-    assert run(code_of(commit(f.propose(41)))) == "consent_required"
+    p, commit, loop = stranded(f, grant, 60, close)
+    try:
+        with pytest.raises(YeaError, match=IN_DOUBT) as e:
+            run(commit(p))
+        assert e.value.code == "internal"
+        assert run(code_of(commit(f.propose(41)))) == "consent_required"
+        f.advance(600 + 3600 + 1)
+        f.ledger.sweep()
+        assert f.ledger.proposal(p.proposal["id"]) is None
+        assert run(code_of(commit(p))) == "expired"  # its run is forgotten too; it never applies
+        assert (f.ledger._records.in_flight, f.ledger._records.in_doubt) == ({}, set())  # white-box
+        assert run(code_of(commit(f.propose(40)))) == "ok"
+    finally:
+        loop.close()
+
+
+@DROPPED
+def test_an_auto_intent_only_proposes_while_a_commit_stranded_on_a_dropped_loop_is_in_doubt(close):
+    f, grant = LedgerFixture(), TotalGrant(100)
+    *_, loop = stranded(f, grant, 10, close)
+    try:
+        assert auto_commits(f, grant.admit)() is None
+    finally:
+        loop.close()
+
+
+def test_a_run_whose_loop_runs_again_after_it_was_put_in_doubt_finishes_and_keeps_its_receipt():
+    """A loop that only stood still (driven with run_until_complete) can run again. Its run, put in doubt
+    meanwhile from another loop, then finishes as usual: its receipt is kept and replayed, not swept."""
+    f, grant = LedgerFixture(), TotalGrant(100)
+    started, gate = asyncio.Event(), asyncio.Event()
+
+    async def apply(c):
+        started.set()
+        await gate.wait()
+
+    p = f.propose(60, apply=apply)
+
+    def commit():
+        return f.ledger.commit(commit_of(p, grant.admit), no_events)
+
+    loop = asyncio.new_event_loop()
+    try:
+        first = loop.create_task(commit())
+        loop.run_until_complete(started.wait())
+        with pytest.raises(YeaError, match=IN_DOUBT):
+            run(commit())
+        f.ledger.sweep()  # meanwhile, a sweep puts it in doubt
+        gate.set()
+        receipt = loop.run_until_complete(first)["receipt"]
+    finally:
+        loop.close()
     f.advance(600 + 3600 + 1)
     f.ledger.sweep()
-    assert f.ledger.proposal(p.proposal["id"]) is None
-    assert run(code_of(commit(p))) == "expired"  # its run is forgotten too; it never applies
-    assert (f.ledger._records.in_flight, f.ledger._records.in_doubt) == ({}, set())  # white-box
-    assert run(code_of(commit(f.propose(40)))) == "ok"
+    again = run(commit())
+    assert (again["replay"], again["receipt"]) == (True, receipt)
 
-
-def test_an_auto_intent_only_proposes_while_a_commit_stranded_on_a_closed_loop_is_in_doubt():
-    f, grant = LedgerFixture(), TotalGrant(100)
-    stranded(f, grant, 10)
-    assert auto_commits(f, grant.admit)() is None

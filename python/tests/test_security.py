@@ -1078,3 +1078,44 @@ def test_a_run_cut_off_by_its_loops_teardown_is_in_doubt_never_run_again_and_its
     # Both count: 100 of the 100 is used.
     one = run(svc.handle(framed("INTENT", "pay.send", id="i3", capability="pay.send", params={"amt": 1})))["proposals"][0]
     assert run(svc.handle(commit(one, "c2")))["code"] == "consent_required"
+
+
+def test_an_emit_that_raises_never_fails_a_commit_or_undo_so_neither_runs_twice():
+    """Python twin of TS #166/#167 (``neverThrows``): a host whose emit raises once its client hung
+    up turned a plan's ``progress`` after the payment into a failed ``apply``. The commit was freed,
+    so a retry paid again, past the total. ``Service.handle`` now drops and logs that EVENT."""
+    sent, refunded = [], []
+    svc = Service("pay", "Pay", "pay", trust=[PRINCIPAL.public])
+
+    @svc.intent("pay.send", "send money", {"amt": "int"})
+    def send(ctx):
+        def apply(c):
+            sent.append(ctx.params["amt"])
+            c.progress("payment sent", 1.0)
+
+        def revert(c):
+            refunded.append(ctx.params["amt"])
+            c.progress("payment refunded", 1.0)
+
+        uses = {"spend": quantity(ctx.params["amt"], scale=2, unit="USD")}
+        return Plan("pay", [create("payment/1")], apply=apply, revert=revert, uses=uses)
+
+    grants = [issue_grant(PRINCIPAL, AGENT.public, [{"total": {"of": "spend", "max": 100, "scale": 2, "unit": "USD"}}]).encode()]
+
+    def framed(verb, target, **fields):
+        return {"yea": 1, "verb": verb, "grants": grants, "proof": sign_proof(AGENT, "pay", verb, target, int(time.time())),
+                **fields}
+
+    def hung_up(_event):
+        raise ConnectionResetError("the client hung up")
+
+    p = run(svc.handle(framed("INTENT", "pay.send", id="i1", capability="pay.send", params={"amt": 60})))["proposals"][0]
+    commit = framed("COMMIT", p["hash"], id="c1", proposal=p["id"], hash=p["hash"])
+    first = run(svc.handle(commit, hung_up))
+    assert first["kind"] == "RECEIPT"
+    assert run(svc.handle(commit))["replay"] is True and sent == [60]
+    rid = first["receipt"]["id"]
+    undo = framed("UNDO", rid, id="u1", receipt=rid)
+    assert run(svc.handle(undo, hung_up))["receipt"]["undoes"] == rid
+    assert run(svc.handle(undo))["replay"] is True and refunded == [60]
+
