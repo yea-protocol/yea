@@ -2168,6 +2168,38 @@ function yeaDo(args: string[], home: string) {
   );
 }
 
+/**
+ * A service `yea do` runs as a script in `home`: it answers each verb with its reply in `replies`
+ * and logs every frame. Its target for `yea do`, and the COMMITs it got.
+ */
+function scriptedService(home: string, replies: Record<string, object>) {
+  const log = join(home, 'frames.log');
+  const script = join(home, 'service.mjs');
+
+  writeFileSync(
+    script,
+    `import { appendFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+const replies = ${JSON.stringify(replies)};
+for await (const line of createInterface({ input: process.stdin })) {
+  const f = JSON.parse(line);
+  appendFileSync(${JSON.stringify(log)}, JSON.stringify(f) + '\\n');
+  process.stdout.write(JSON.stringify({ yea: 1, id: 's', re: f.id, ...replies[f.verb] }) + '\\n');
+}
+`,
+  );
+
+  return {
+    target: `stdio:${process.execPath} ${script}`,
+    commits: () =>
+      readFileSync(log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l))
+        .filter((f) => f.verb === 'COMMIT'),
+  };
+}
+
 // Every caller (`yea do`, test-drive, `yea approve`, the bridge, the site) goes through the
 // consent round (consent-round.ts). These run it with a fake approver against the pay service,
 // through a transport that edits its replies as a lying service would; [C6] also runs `yea do`.
@@ -2238,6 +2270,11 @@ async function approveProtocol(
 /** Why `yea approve` refuses a consent code that expired at `expires`, when it's `at` here. */
 function expiredWhy(expires: number, at: number) {
   return `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Call the tool again for a fresh one`;
+}
+
+/** Why the consent round refuses a consent request that expired at `expires`, when it's `at`. */
+function requestExpiredWhy(expires: number, at: number) {
+  return `this consent request expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine`;
 }
 
 /** A job code for a plan the person can't confirm without a terminal. */
@@ -2679,20 +2716,26 @@ describe('consent requests (SPEC.md §6.6)', () => {
   /** The principal, saying yes. */
   const yes = P.signer(principal, async () => true);
 
-  /** One round for the proposal shown (default: the one the service sent), with its lie. */
+  /**
+   * One round for the proposal shown (default: the one the service sent), with its lie. `now` is
+   * the round's clock, read with the proposal shown; the system's if absent.
+   */
   async function round(
     o: Parameters<typeof lyingClient>[0] & {
       answer?: (a: P.ConsentAsk) => Promise<P.ConsentAnswer>;
       consents?: P.ConsentStore;
+      now?: (p: P.Proposal) => number;
     } = {},
   ) {
     const { c, commits, shown } = await lyingClient(o);
     const { asks, approver } = fakeApprover(o.answer);
+    const { now } = o;
     const out = await P.consentRound({
       client: c,
       proposal: shown,
       approver,
       consents: o.consents,
+      now: now && (() => now(shown)),
     });
 
     return { out, asks, commits, p: shown };
@@ -2890,33 +2933,13 @@ describe('consent requests (SPEC.md §6.6)', () => {
             },
           },
         };
-        const log = join(home, 'frames.log');
-        const script = join(home, 'evil.mjs');
+        const evil = scriptedService(home, replies);
 
-        writeFileSync(
-          script,
-          `import { appendFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
-const replies = ${JSON.stringify(replies)};
-for await (const line of createInterface({ input: process.stdin })) {
-  const f = JSON.parse(line);
-  appendFileSync(${JSON.stringify(log)}, JSON.stringify(f) + '\\n');
-  process.stdout.write(JSON.stringify({ yea: 1, id: 's', re: f.id, ...replies[f.verb] }) + '\\n');
-}
-`,
-        );
         writeFileSync(join(home, 'principal.key'), principal.seed);
         writeFileSync(join(home, 'agent.key'), agent.seed);
 
-        const r = await yeaDo(
-          [`stdio:${process.execPath} ${script}`, 'pay.send'],
-          home,
-        );
-        const commits = readFileSync(log, 'utf8')
-          .trim()
-          .split('\n')
-          .map((l) => JSON.parse(l))
-          .filter((f) => f.verb === 'COMMIT');
+        const r = await yeaDo([evil.target, 'pay.send'], home);
+        const commits = evil.commits();
 
         expect(r.status).not.toBe(0);
         expect(r.stderr).toContain("the proposal doesn't match its hash");
@@ -3071,6 +3094,149 @@ for await (const line of createInterface({ input: process.stdin })) {
     ).toBe('consent_required');
     expect(out.kind === 'reply' && out.consent).toMatch(/^pg1\./);
   });
+
+  // #383: the round asked for a consent request it never compared with the clock, and refused one
+  // that expired while the person read only through the grant check, as "grant has expired".
+  it('[C12] an expired consent request is refused before anyone is asked, from the second it expires (#383)', async () => {
+    const before = await round({ now: (p) => p.expires - 1, answer: yes });
+
+    expect(before.asks).toHaveLength(1);
+    expect(before.out.kind === 'reply' && before.out.reply.kind).toBe(
+      'RECEIPT',
+    );
+
+    const at = await round({ now: (p) => p.expires, answer: yes });
+
+    expect(at.out).toMatchObject({
+      kind: 'refused',
+      why: requestExpiredWhy(at.p.expires, at.p.expires),
+      expired: true,
+    });
+    expect(at.asks).toEqual([]);
+    expect(at.commits).toHaveLength(1);
+
+    // A request that expires before its proposal is refused at its own, earlier expiry.
+    const early = await round({
+      lie: (p) => patched({ expires: p.expires - 60 }),
+      now: (p) => p.expires - 1,
+      answer: yes,
+    });
+
+    expect(early.out).toMatchObject({
+      kind: 'refused',
+      why: requestExpiredWhy(early.p.expires - 60, early.p.expires - 1),
+    });
+    expect(early.asks).toEqual([]);
+
+    // One that also names something else is refused for that first, in [C1]'s words.
+    expect(
+      await refusal({
+        lie: () => patched({ service: 'other', expires: 1 }),
+        answer: yes,
+      }),
+    ).toBe('the consent request names another service');
+  });
+
+  it('[C13] a consent that expires while the person reads is refused unused: not kept, not sent (#383)', async () => {
+    const put = vi.fn();
+    let answered = false;
+    const { out, asks, commits, p } = await round({
+      now: (p) => (answered ? p.expires : p.expires - 1),
+      answer: async (a) => {
+        const signed = await yes(a);
+
+        answered = true;
+
+        return signed;
+      },
+      consents: { get: () => null, put },
+    });
+
+    expect(asks).toHaveLength(1);
+    expect(out).toMatchObject({
+      kind: 'refused',
+      why: requestExpiredWhy(p.expires, p.expires),
+      expired: true,
+    });
+    expect(commits).toHaveLength(1);
+    expect(put).not.toHaveBeenCalled();
+
+    // One clock decides: the grant is checked by the round's clock, which still has the consent
+    // valid here, though this machine's has it expired. It's sent; the service judges it.
+    const late = P.unixNow() - 10;
+    const sent = await round({
+      lie: () => patched({ expires: late }),
+      now: () => late - 10,
+      answer: yes,
+    });
+
+    expect(sent.asks).toHaveLength(1);
+    expect(sent.commits).toHaveLength(2);
+    expect(sent.out.kind).toBe('reply');
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    '[C14] yea do says the consent request expired and to run it again, and asks no one (#383)',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'yea-do-'));
+
+      try {
+        const p = {
+          id: 'p_1',
+          capability: 'pay.send',
+          summary: 'pay a 1',
+          effects: [],
+          risk: 'low' as const,
+          undo: null,
+          expires: 4_000_000_000,
+        };
+        const hash = await P.proposalHash(p);
+        // The proposal is live; the service's request for it expired long ago.
+        const gone = 1_000_000_000;
+        const svc = scriptedService(home, {
+          HELLO: {
+            kind: 'BRIEF',
+            service: { id: 'pay', name: 'Pay', summary: 'x' },
+            capabilities: [],
+          },
+          INTENT: { kind: 'PROPOSALS', proposals: [{ ...p, hash }] },
+          COMMIT: {
+            kind: 'ERROR',
+            code: 'consent_required',
+            message: 'needs consent',
+            consent: {
+              proposal: p.id,
+              hash,
+              service: 'pay',
+              capability: p.capability,
+              principal: principal.public,
+              summary: p.summary,
+              expires: gone,
+            },
+          },
+        });
+
+        writeFileSync(join(home, 'principal.key'), principal.seed);
+        writeFileSync(join(home, 'agent.key'), agent.seed);
+
+        const r = await yeaDo([svc.target, 'pay.send'], home);
+
+        expect(r.status).toBe(1);
+        expect(r.stderr).toMatch(
+          new RegExp(
+            `✗ this consent request expired at ${fmtTime(gone)}; it is \\S+ on this machine\\. Run the command again for a fresh proposal\\n`,
+          ),
+        );
+        expect(r.stderr).not.toContain('not signing');
+        expect(r.stdout).not.toContain('approve this exact proposal');
+        expect(svc.commits()).toHaveLength(1);
+        expect(existsSync(join(home, 'consents'))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 });
 
 // #89: `show` (yea hello/ask/intent/commit/undo) and test-drive's tool results passed the

@@ -130,6 +130,7 @@ async function commitPending(
     approver: outOfBand(),
     consents: o.consents,
     onEvent: (e) => events.push(untrustedLens(e)),
+    now: () => b.now(),
   });
   const r = out.reply;
 
@@ -160,6 +161,8 @@ async function commitPending(
  * A round that ended without a consent: the proposal and its code again. The code is the one
  * handed out with it, built from the proposal and the principal of the agent's grants, never
  * from the service's consent request (the round's code takes the principal from that request).
+ * So a request the round refused, for naming something else or for expiring before its proposal,
+ * is reported with no "call again": the code below doesn't depend on it.
  */
 function needsConsent(
   b: Bridge,

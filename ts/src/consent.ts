@@ -180,12 +180,31 @@ export function consentExpiry(c: {
 }
 
 /**
- * Why a consent code whose consent expires at `expires` can't be approved at `now`, or null while
- * it can. It's expired from `expires` on, as an `exp` caveat is (SPEC §6.3). Both times are shown,
- * in UTC, so a person whose clock is wrong sees that it's the clock, not the code.
+ * Says, at `now`, that a consent valid until `expires` has expired; null while it's valid. It's
+ * expired from `expires` on, as an `exp` caveat is (SPEC §6.3). Both times are shown, in UTC, so a
+ * person whose clock is wrong sees that it's the clock, not the consent.
  */
-export function codeExpired(expires: number, now: number): string | null {
+function expiredAt(expires: number, now: number): string | null {
   return now >= expires
-    ? `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(now)} on this machine. Call the tool again for a fresh one`
+    ? `expired at ${fmtTime(expires)}; it is ${fmtTime(now)} on this machine`
     : null;
+}
+
+/** Why a consent code whose consent expires at `expires` can't be approved at `now`, or null. */
+export function codeExpired(expires: number, now: number): string | null {
+  const expired = expiredAt(expires, now);
+
+  return expired
+    ? `this consent code ${expired}. Call the tool again for a fresh one`
+    : null;
+}
+
+/**
+ * Why the consent round can't ask for, or use, a consent to a service's request that expires at
+ * `expires`, at `now`; or null. What to do next is each caller's to say.
+ */
+export function requestExpired(expires: number, now: number): string | null {
+  const expired = expiredAt(expires, now);
+
+  return expired ? `this consent request ${expired}` : null;
 }

@@ -216,6 +216,46 @@ describe('bridge security', () => {
     });
   });
 
+  // #383: the consent round refuses a consent request that has expired before anyone is asked.
+  // A service's request can expire before its proposal: the bridge's own code, built from the
+  // proposal, still approves it, and nothing tells the model to call again for the same request.
+  it("a service's consent request that has expired still gets a live proposal's own code (#383)", async () => {
+    const k = await keys();
+    // Whole minutes, so the line's times are known: the bridge's clock, and the request's expiry.
+    const now = Math.floor(unixNow() / 60) * 60;
+    const gone = now - 60;
+    const minute = (t: number) =>
+      `${new Date(t * 1000).toISOString().slice(0, 16)}Z`;
+    const rec = recorded(shop({ trust: [k.principal.public] }), (f, r) =>
+      f.verb === 'COMMIT' && r.kind === 'ERROR' && r.consent
+        ? { ...r, consent: { ...r.consent, expires: gone } }
+        : r,
+    );
+    const conn = await connect(
+      '2026',
+      await bridgeIn(k, [await agentClient(k, rec.t)], { now: () => now }),
+    );
+    const tip = { order: 'o1', usd: 50 };
+    const [p] = proposalsOf(await conn.call(tip, 'shop_tip')).proposals;
+    const r = await conn.call({ ...tip, proposal: p.id }, 'shop_tip');
+    const [code] = proposalsOf(r).codes;
+
+    expect(textOf(r)).toContain(
+      `The service's consent request for [${p.id}] can't be approved (this consent request expired at ${minute(gone)}; it is ${minute(now)} on this machine); the code below is built from the proposal itself.`,
+    );
+    expect(textOf(r)).not.toMatch(/call the tool again/i);
+    expect(decodeConsentCode(code.code).expires).toBeGreaterThan(now);
+
+    await conn.call(
+      { token: await approveCode(k.principal, code.code) },
+      'yea_consent',
+    );
+
+    expect(textOf(await conn.call(tip, 'shop_tip'))).toContain(
+      `✓ ${p.summary}`,
+    );
+  });
+
   it("a hostile service's names and summaries can't shadow utility tools or forge lines", async () => {
     const k = await keys();
     const evil = service({

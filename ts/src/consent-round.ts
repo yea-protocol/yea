@@ -2,7 +2,8 @@
  * The consent round (GLOSSARY.md): what an agent does when a commit comes back
  * `consent_required` (SPEC.md §6.6). It commits, checks the service's consent request against
  * the proposal the agent was shown, asks an approver for a consent to the request it builds from
- * that proposal, checks the grant it gets back signs exactly that, and commits once more.
+ * that proposal, checks the grant it gets back signs exactly that, and commits once more. A
+ * consent that has expired, before the ask or by the answer, is refused and never sent.
  *
  * The principal key never enters it: an approver (approvers.ts) signs, or declines, or hands
  * back a consent code for `yea approve`. A consent store holds consents given somewhere else,
@@ -10,6 +11,7 @@
  */
 
 import type { Client, WithLens } from './client.js';
+import { requestExpired } from './consent.js';
 import {
   checkConsentRequest,
   consentFrom,
@@ -25,6 +27,7 @@ import type {
   Proposal,
   ReceiptReply,
 } from './types.js';
+import { unixNow } from './util.js';
 
 export { checkProposal } from './consent-round/check.js';
 
@@ -75,11 +78,12 @@ export type CommitReply = WithLens<ReceiptReply | ErrorReply>;
  * How a round ended. `reply` is a COMMIT's reply, from the first try or the one retry, and
  * `consent` the consent grant it carried; a retry that again needs consent ends here too, never
  * in a second round. The others carry the first `consent_required`. `saved` is the stored
- * consent the first COMMIT carried, if any.
+ * consent the first COMMIT carried, if any. A refusal is `expired` when time ran out and nothing
+ * else was wrong, so a fresh proposal may go through.
  */
 export type RoundOutcome = { saved: string | null } & (
   | { kind: 'reply'; reply: CommitReply; consent: string | null }
-  | { kind: 'refused'; why: string; reply: ErrorReply }
+  | { kind: 'refused'; why: string; expired?: true; reply: ErrorReply }
   | { kind: 'declined'; reply: ErrorReply }
   | { kind: 'pending'; code: string; reply: ErrorReply }
 );
@@ -95,16 +99,36 @@ export interface RoundOptions {
   /** Where consents given elsewhere are found, and a new one is kept. */
   consents?: ConsentStore;
   onEvent?: (e: WithLens<Event>) => void;
+  /**
+   * The clock, in seconds: the one the consent's expiry and the grant check are both read by. The
+   * system's by default.
+   */
+  now?: () => number;
+}
+
+/** Why a round can't go on; `expired` as in `RoundOutcome`. */
+interface Refusal {
+  why: string;
+  expired?: true;
+}
+
+/** The refusal for a consent to `request` that has expired at `now`, or null while it's valid. */
+function expiry(request: ConsentRequest, now: number): Refusal | null {
+  const why = requestExpired(request.expires, now);
+
+  return why ? { why, expired: true } : null;
 }
 
 /**
  * The ask for the first reply's consent request, or why there is none: the service sent no
- * request, the agent has no key, or the request doesn't name the proposal shown.
+ * request, the agent has no key, the request doesn't name the proposal shown, or the consent it
+ * asks for has expired by `clock`. A request that names something else is refused for that first.
  */
 async function askFor(
   first: ErrorReply,
   o: RoundOptions,
-): Promise<ConsentAsk | { why: string }> {
+  clock: () => number,
+): Promise<ConsentAsk | Refusal> {
   const k = first.consent;
   const p = o.proposal;
 
@@ -118,15 +142,47 @@ async function askFor(
 
   const why = await checkConsentRequest(k, p, await o.client.audience());
 
-  return why
-    ? { why }
-    : {
-        request: consentFrom(k, p),
-        proposal: p,
-        agent: (await keyPair(o.client.key)).public,
-        lines: consentLines(k, p),
-        reason: printable(first.message),
-      };
+  if (why) {
+    return { why };
+  }
+
+  const request = consentFrom(k, p);
+  const expired = expiry(request, clock());
+
+  if (expired) {
+    return expired;
+  }
+
+  return {
+    request,
+    proposal: p,
+    agent: (await keyPair(o.client.key)).public,
+    lines: consentLines(k, p),
+    reason: printable(first.message),
+  };
+}
+
+/**
+ * Why the approver's grant for `ask` can't be used at `now`, or null if it can. The person may
+ * have read for a while: a consent that expired meanwhile is refused as that, before the grant
+ * check would call it an expired grant.
+ */
+async function grantRefusal(
+  grant: string,
+  ask: ConsentAsk,
+  now: number,
+): Promise<Refusal | null> {
+  const expired = expiry(ask.request, now);
+
+  if (expired) {
+    return expired;
+  }
+
+  const bad = await grantMismatch(grant, ask, now);
+
+  return bad
+    ? { why: `the consent the approver gave can't be used: ${bad}` }
+    : null;
 }
 
 /** Ask the approver, check its grant, and commit once more with it. */
@@ -135,10 +191,11 @@ async function askAndRetry(
   saved: string | null,
   o: RoundOptions,
 ): Promise<RoundOutcome> {
-  const ask = await askFor(first, o);
+  const clock = o.now ?? unixNow;
+  const ask = await askFor(first, o, clock);
 
   if ('why' in ask) {
-    return { kind: 'refused', why: ask.why, reply: first, saved };
+    return { kind: 'refused', ...ask, reply: first, saved };
   }
 
   const a = await o.approver(ask);
@@ -151,12 +208,10 @@ async function askAndRetry(
     return { kind: 'declined', reply: first, saved };
   }
 
-  const bad = await grantMismatch(a.grant, ask);
+  const bad = await grantRefusal(a.grant, ask, clock());
 
   if (bad) {
-    const why = `the consent the approver gave can't be used: ${bad}`;
-
-    return { kind: 'refused', why, reply: first, saved };
+    return { kind: 'refused', ...bad, reply: first, saved };
   }
 
   // Kept before the retry, so a COMMIT that fails in transport can be tried again with it. One
