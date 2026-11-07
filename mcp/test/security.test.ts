@@ -854,10 +854,12 @@ describe('the code that reads a form answer (#337)', () => {
       // The SDK: the job call session, and also its signers, which SIGNS refuses by name and the
       // key watch catches in use.
       '@yea-protocol/sdk': 'any file',
-      // FileStore, the home and the pinned key; also a stdio transport that spawns
-      // (ts/src/node/stdio.ts), which the spawn watch catches.
+      // FileStore, the home and the pinned key, and the store's pending files, which hold codes
+      // only, never a key or a consent (SPEC-approval §6, Short ids); also a stdio transport
+      // that spawns (ts/src/node/stdio.ts), which the spawn watch catches.
       '@yea-protocol/sdk/node': [
         'mcp/src/index.ts',
+        'mcp/src/call/pending.ts',
         'mcp/src/policy.ts',
         'mcp/src/server-key.ts',
       ],
