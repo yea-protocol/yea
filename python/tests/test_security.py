@@ -606,7 +606,7 @@ def test_approval_never_covers_content_lens_cuts():
     def hashed(p):
         return {**p, "hash": proposal_hash(p)}
 
-    base = {"id": "p1", "capability": "s.set", "risk": "low"}
+    base = {"id": "p1", "capability": "s.set", "risk": "low", "expires": 1_790_000_000}
 
     def proposal(levels):
         return hashed({**base, "summary": "Update settings", "effects": [effect(levels)]})

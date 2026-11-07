@@ -6,6 +6,7 @@ import { b64u, fromUtf8, unb64u, utf8 } from './b64.js';
 import { canonical } from './canonical.js';
 import type { KeyPair } from './crypto.js';
 import { type Caveat, isPublicKey, issueGrant } from './grants.js';
+import { fmtTime } from './lens.js';
 import type { ConsentRequest, Proposal } from './types.js';
 
 /** What a consent is to: one proposal's hash and capability, at one service, until it expires. */
@@ -159,4 +160,15 @@ export function decodeConsentCode(
   }
 
   return c;
+}
+
+/**
+ * Why a consent code whose consent expires at `expires` can't be approved at `now`, or null while
+ * it can. It's expired from `expires` on, as an `exp` caveat is (SPEC §6.3). Both times are shown,
+ * in UTC, so a person whose clock is wrong sees that it's the clock, not the code.
+ */
+export function codeExpired(expires: number, now: number): string | null {
+  return now >= expires
+    ? `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(now)} on this machine. Call the tool again for a fresh one`
+    : null;
 }

@@ -10,6 +10,7 @@ import {
   planTooDeep,
 } from '../approval.js';
 import {
+  codeExpired,
   consentGrant,
   decodeConsentCode,
   encodeConsentCode,
@@ -117,10 +118,10 @@ export async function readJobConsent(
     );
   }
 
-  if (now >= c.expires) {
-    throw new Error(
-      'this consent code has expired; call the tool again for a fresh one',
-    );
+  const expired = codeExpired(c.expires, now);
+
+  if (expired) {
+    throw new Error(expired);
   }
 
   const { detail: _d, ...consent } = c;

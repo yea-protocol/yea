@@ -375,8 +375,8 @@ an empty or blank phrase hashes as `approve`.
 1. recomputes the plan hash from `job`, then the consent hash from it and the phrase, and
    refuses if they don't equal the code's `proposal` and `hash`, if the phrase isn't typeable
    (§3, so one over 64 characters is refused), if the code's `capability` isn't the plan's
-   `tool`, or if the code has expired; it caps `expires` at 10 minutes from now, whatever the
-   code says;
+   `tool`, or if the code has expired (saying when, and the time on this machine, so a wrong
+   clock shows); it caps `expires` at 10 minutes from now, whatever the code says;
 2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
    and invisible filler characters are shown as `\u{…}` escapes (`printable` itself keeps
    backslashes, §3), so the text can't rewrite what the person reads;

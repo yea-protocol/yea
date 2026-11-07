@@ -5,11 +5,16 @@
  * same way the round does it.
  */
 
-import { consentRecipient, decodeConsentCode } from '../consent.js';
+import {
+  codeExpired,
+  consentRecipient,
+  decodeConsentCode,
+} from '../consent.js';
 import type { Approver, ConsentAsk } from '../consent-round.js';
 import { sha256 } from '../crypto.js';
 import { fmtTime } from '../lens.js';
 import { printable } from '../text.js';
+import type { ConsentRequest, Proposal } from '../types.js';
 import { unixNow } from '../util.js';
 import { checkConsentRequest, consentFrom, consentLines } from './check.js';
 import { grantMismatch } from './grant.js';
@@ -90,16 +95,27 @@ interface CodeApproval {
   principal: string;
   localAgent: string | null;
   to?: string;
-  /** The time, in seconds; now by default. */
-  now?: number;
+  /** The clock, in seconds; the system's by default. */
+  now?: () => number;
+}
+
+/** A code that passed its own checks, with its proposal and the consent it asks for. */
+interface CheckedCode {
+  code: ReturnType<typeof decodeConsentCode>;
+  proposal: Proposal;
+  request: ConsentRequest;
 }
 
 /**
- * The ask for a consent code, or why it can't be approved. The consent expires with the code and
- * its proposal: SPEC.md §4.4 commits a proposal no grant authorized only with a consent whose `exp`
- * is the proposal's, so it isn't capped, and a long one is flagged before the y/N (SPEC-bridge).
+ * The code checked on its own, before anyone is asked anything: it must be for `principal`, carry
+ * its proposal, match it as a service's request must (SPEC.md §6.6), and its consent mustn't have
+ * expired at `now`. The consent expires with the code and its proposal: §4.4 commits a proposal
+ * no grant authorized only with a consent whose `exp` is the proposal's, so it isn't capped.
  */
-async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
+async function checkCode(
+  o: CodeApproval,
+  now: number,
+): Promise<CheckedCode | Refusal> {
   let c: ReturnType<typeof decodeConsentCode>;
 
   try {
@@ -119,12 +135,6 @@ async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
     return { ok: false, why: NO_DETAIL };
   }
 
-  const agent = await recipientOf(c.agent, o);
-
-  if ('why' in agent) {
-    return { ok: false, why: agent.why };
-  }
-
   const why = await checkConsentRequest(c, c.detail);
 
   if (why) {
@@ -132,16 +142,42 @@ async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
   }
 
   const request = consentFrom(c, c.detail);
+  const expired = codeExpired(request.expires, now);
+
+  return expired
+    ? { ok: false, why: expired }
+    : { code: c, proposal: c.detail, request };
+}
+
+/**
+ * The ask for a consent code, or why it can't be approved: the code's own checks, then the agent
+ * it's for (SPEC-bridge). A consent valid for long is flagged before the y/N.
+ */
+async function askForCode(
+  o: CodeApproval,
+  now: number,
+): Promise<ConsentAsk | Refusal> {
+  const k = await checkCode(o, now);
+
+  if ('ok' in k) {
+    return k;
+  }
+
+  const agent = await recipientOf(k.code.agent, o);
+
+  if ('why' in agent) {
+    return { ok: false, why: agent.why };
+  }
 
   return {
-    request,
-    proposal: c.detail,
+    request: k.request,
+    proposal: k.proposal,
     agent: agent.key,
     lines: [
-      ...consentLines(c, c.detail),
+      ...consentLines(k.code, k.proposal),
       `  consent issued to agent: ${agent.key} (fingerprint ${await keyFingerprint(agent.key)})`,
-      `  approval expires: ${fmtTime(request.expires)}`,
-      ...longConsentLines(request.expires, o.now ?? unixNow()),
+      `  approval expires: ${fmtTime(k.request.expires)}`,
+      ...longConsentLines(k.request.expires, now),
     ],
     reason: '',
   };
@@ -150,12 +186,13 @@ async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
 /**
  * Approve one protocol consent code for `principal` (its public key): check it, pick the agent
  * (SPEC-bridge), ask the approver, and check the grant it signs. A code the approver hands on
- * again, or declines, is not approved.
+ * again, or declines, is not approved, nor is one whose consent expires while the person reads.
  */
 export async function approveCode(
   o: CodeApproval & { approver: Approver },
 ): Promise<{ ok: true; grant: string; agent: string; hash: string } | Refusal> {
-  const ask = await askForCode(o);
+  const clock = o.now ?? unixNow;
+  const ask = await askForCode(o, clock());
 
   if ('ok' in ask) {
     return ask;
@@ -165,6 +202,13 @@ export async function approveCode(
 
   if (!('grant' in a)) {
     return { ok: false, why: 'not approved' };
+  }
+
+  // The person may have read for a while: a consent that expired meanwhile is never handed out.
+  const expired = codeExpired(ask.request.expires, clock());
+
+  if (expired) {
+    return { ok: false, why: expired };
   }
 
   const bad = await grantMismatch(a.grant, ask);

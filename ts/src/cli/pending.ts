@@ -23,7 +23,7 @@ import { clip, printable } from '../text.js';
 /** A listed summary is cut to this many code points, once its whitespace is collapsed. */
 const SUMMARY_MAX = 80;
 
-/** Why a pending id can't be used, and what to do instead. */
+/** What to do instead when there's no one approval under a pending id. */
 const AGAIN =
   'call the tool again for a fresh one, or, if the agent runs as another OS user or on another machine, pass the whole code instead';
 
@@ -81,8 +81,11 @@ function usable(
     };
   }
 
+  // Not AGAIN: its whole code has expired too, so passing that instead can't help.
   return expires <= now
-    ? { why: `pending approval ${id} (in ${f.dir}) has expired: ${AGAIN}` }
+    ? {
+        why: `pending approval ${id} (in ${f.dir}) has expired: call the tool again for a fresh one`,
+      }
     : { code: f.code };
 }
 
