@@ -36,6 +36,7 @@ from .call import (
     run_job,
 )
 from .guard import Guarded, GuardMiddleware
+from .options import check_annotations, check_risk, check_tighten
 from .policy import pinned_principal
 from .result import job_annotations, job_meta
 from .server_key import check_name, default_key_path, load_server_key
@@ -94,6 +95,7 @@ def yea(*, name: str, transport: str, home: str | os.PathLike[str] | None = None
     key live in it. The principal key is never read from it. ``require_interaction`` marks job tools,
     guarded tools and ``undo`` with ``_meta["anthropic/requiresUserInteraction"]``: Claude Code then
     prompts for every call, even in ``auto`` or ``bypassPermissions``, and denies them in ``claude -p``."""
+    check_tighten("yea()", tighten)  # first, so a refused option writes no key file
     check_name(name)
     resolved = Path(home) if home is not None else yea_home()
     chosen = store if store is not None else _default_store(transport, resolved)
@@ -125,7 +127,7 @@ class Approvals:
         self._guards: weakref.WeakKeyDictionary[Any, GuardMiddleware] = weakref.WeakKeyDictionary()
         self._reverts: weakref.WeakKeyDictionary[Any, dict[str, Callable[..., Any]]] = weakref.WeakKeyDictionary()
         self._jobs: weakref.WeakKeyDictionary[Any, set[str]] = weakref.WeakKeyDictionary()  # job() names per server
-        self._prompting: weakref.WeakSet[Any] = weakref.WeakSet()  # servers with a job whose own setting is on
+        self._prompting: weakref.WeakSet[Any] = weakref.WeakSet()  # servers with a job or guard whose own setting is on
 
     def service_id(self) -> str:
         """This server's service id (its public key): pass it to ``yea grant --to``."""
@@ -143,6 +145,8 @@ class Approvals:
         """Decorator: register the plan function as a job tool on ``server``. ``require_interaction`` is
         ``yea()``'s, for this tool alone (default: ``yea()``'s). On, it also marks this server's ``undo``:
         undoing acts too."""
+        check_annotations("job()", annotations)
+        check_risk("job()", risk)
 
         def register(plan_fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or plan_fn.__name__
@@ -167,10 +171,7 @@ class Approvals:
                 server.add_tool(fn, name=tool_name, title=title, description=description or plan_fn.__doc__,
                                 annotations=t.ToolAnnotations(**given), meta=meta)
             self._jobs.setdefault(server, set()).add(tool_name)
-            if require_interaction is True:
-                self._prompting.add(server)
-                if server in self._reverts:
-                    prompt_undo(server)
+            self._mark_prompting(server, require_interaction)
             if revert is not None:
                 self._undo_for(server)[tool_name] = revert
             return plan_fn
@@ -179,8 +180,11 @@ class Approvals:
 
     def guard(self, server: Any, name: str, *, describe: Callable[[dict], Any],
               revert: Callable[..., Any] | None = None,
-              confirm_with: Callable[[HashedPlan, dict], str] | None = None, risk: str | None = None) -> None:
-        """Turn the tool ``name`` already registered on ``server`` into a job, without touching it."""
+              confirm_with: Callable[[HashedPlan, dict], str] | None = None, risk: str | None = None,
+              require_interaction: bool | None = None) -> None:
+        """Turn the tool ``name`` already registered on ``server`` into a job, without touching it.
+        ``require_interaction`` is as ``job()``'s: ``yea()``'s, for this tool alone."""
+        check_risk("guard()", risk)
         if name in self._jobs.get(server, ()):  # the listing's meta refuses one registered elsewhere, per call
             raise ValueError(f"guard(): {name} is already a job tool")
         if revert is not None:
@@ -194,9 +198,17 @@ class Approvals:
                 server.middleware.insert(0, mw)  # first, so no other middleware can run the tool before it's wrapped
             else:
                 server.middleware.append(mw)
-        mw.add(name, Guarded(describe, revert, confirm_with, risk))
+        mw.add(name, Guarded(describe, revert, confirm_with, risk, require_interaction))
+        self._mark_prompting(server, require_interaction)
         if revert is not None:
             self._undo_for(server)[name] = revert
+
+    def _mark_prompting(self, server: Any, require_interaction: bool | None) -> None:
+        """A job or guard whose own ``require_interaction`` is on marks the server's ``undo`` too."""
+        if require_interaction is True:
+            self._prompting.add(server)
+            if server in self._reverts:
+                prompt_undo(server)
 
     def _undo_free(self, server: Any) -> None:
         """Refuse, before registering anything, a server whose ``undo`` tool isn't ours (as mcp-ts)."""

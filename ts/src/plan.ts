@@ -48,7 +48,10 @@ export interface Plan<R = unknown> {
   /** Seconds this proposal can be committed for (default: service proposalTtl). */
   expiresIn?: number;
   data?: unknown;
-  /** Perform the effects. Only ever called on COMMIT, at most once. */
+  /**
+   * Perform the effects, on COMMIT. Throw only when nothing took effect, or when performing them
+   * again is safe: a failed commit may be retried, which calls `apply` again (SPEC §4.4).
+   */
   apply(ctx: CommitCtx): R | Promise<R>;
   /** Reverse the effects. If present, the proposal is undoable for its `undoWindow`. */
   revert?(ctx: CommitCtx & { result: R }): unknown;

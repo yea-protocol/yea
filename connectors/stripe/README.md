@@ -179,7 +179,7 @@ What the server does enforce, whoever calls it:
   direction-changing characters escaped, so a customer can't forge what you approve;
 - Stripe is called through Stripe's official Node SDK
   ([`stripe`](https://www.npmjs.com/package/stripe)), with the API version pinned
-  (`2026-09-30.endive`) and the SDK's telemetry off. Even so, when the environment names an AI
+  (`2026-10-28.endive`) and the SDK's telemetry off. Even so, when the environment names an AI
   coding tool (Claude Code, Codex, Cursor, Gemini CLI and others), the SDK names it in its
   User-Agent; when `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` is set, it also prints a hint
   line to stderr; and it turns Stripe's notices into process warnings.
@@ -219,7 +219,9 @@ billing interval or currency, inactive prices, customers with more than 100 subs
 (unless you name the `sub_` id), and "at renewal" on a subscription that already has a
 schedule, has discounts, or has any of automatic tax, custom invoice settings, billing
 thresholds, `on_behalf_of`, `transfer_data`, an application fee or pending invoice items
-(the schedule copy can't carry those yet).
+(the schedule copy can't carry those yet). On a subscription with a schedule, a pending pause
+refuses both jobs, and a later phase refuses `change_plan` and leaves `cancel_subscription`
+only "now": edit the schedule in the Stripe dashboard first.
 
 ## As a library
 

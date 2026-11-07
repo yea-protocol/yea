@@ -21,7 +21,7 @@ import {
   priceName,
   SUBSCRIPTION_FIELD,
 } from '../find.js';
-import { getSchedule } from '../schedule.js';
+import { changesPending, getSchedule, hasPause } from '../schedule.js';
 import { confirmPhrase, who } from '../text.js';
 import { cancelNow } from './cancel/now.js';
 import {
@@ -79,6 +79,24 @@ function now(ctx: Ctx, t: Target): JobPlan {
   };
 }
 
+/**
+ * The subscription's schedule, if it has one. A schedule with a pause is refused, saying why:
+ * no plan would show the pause, and offering only "now" would hide the reason.
+ */
+async function scheduleOf(ctx: Ctx, sub: Stripe.Subscription) {
+  if (!sub.schedule) {
+    return null;
+  }
+
+  const s = await getSchedule(ctx, idOf(sub.schedule));
+
+  if (hasPause(s)) {
+    throw changesPending(sub.id, s);
+  }
+
+  return s;
+}
+
 /** The cancellation plans: at period end when it can be offered, and now. */
 async function plan(ctx: Ctx, input: CancelInput) {
   const found = await oneCustomerSubscription(ctx, input);
@@ -91,11 +109,7 @@ async function plan(ctx: Ctx, input: CancelInput) {
 
   oneItem(sub);
 
-  const t: Target = {
-    c,
-    sub,
-    schedule: sub.schedule ? await getSchedule(ctx, idOf(sub.schedule)) : null,
-  };
+  const t: Target = { c, sub, schedule: await scheduleOf(ctx, sub) };
 
   return canEndAtPeriodEnd(t.sub, t.schedule)
     ? [atPeriodEnd(ctx, t), now(ctx, t)]

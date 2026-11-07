@@ -72,7 +72,7 @@ yea delegate <token> --to <sub-agent key> --svc calendar.example --exp 1h
 In an MCP server built with the framework:
 
 - **The signed policy** (`YEA_POLICY`: a `pg1.` token, or the path of a file holding one) is the only thing that can let a plan run without asking.
-- **`~/.yea/policy.json`**, or the server's options, hold unsigned local rules that can only tighten it: `deny` stops a tool from running at all, and `outOfBand` sends plans at or above a risk level to `yea approve` instead of the chat form.
+- **`~/.yea/policy.json`**, or the server's options, hold unsigned local rules that can only tighten it: `deny` stops a tool from running at all, and `outOfBand` sends plans at or above a risk level to `yea approve` instead of the chat form. A rule in the server's options that can't be read stops the server from starting; one in `policy.json` refuses every job until the file is fixed.
 
 ## Where to go next
 

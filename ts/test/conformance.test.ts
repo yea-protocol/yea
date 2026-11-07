@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { runCase } from '../scripts/commit-ledger-run.mjs';
 import { runCall } from '../scripts/job-call-run.mjs';
 import { checkJobConsent, decide } from '../src/approval.js';
 import {
@@ -28,6 +29,7 @@ import {
   pendingFile,
 } from '../src/file-store.js';
 import * as P from '../src/index.js';
+import { CommitLedger } from '../src/service/commit-ledger.js';
 import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
@@ -460,6 +462,14 @@ describe('conformance vectors', () => {
   it('job calls: how the model is told to approve outside the chat', () => {
     for (const t of load('job-calls').approveTexts) {
       expect(P.howToApprove(t.planHashes, t.codes), t.name).toEqual(t.lines);
+    }
+  });
+  it('commit ledger: the order a COMMIT is checked in', async () => {
+    for (const c of load('commit-ledger')) {
+      expect(
+        await runCase({ CommitLedger, YeaError: P.YeaError }, c),
+        c.name,
+      ).toEqual({ outcome: c.outcome, evaluated: c.evaluated });
     }
   });
   it('approval FileStore layout', async () => {

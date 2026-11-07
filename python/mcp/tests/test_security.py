@@ -58,6 +58,34 @@ async def plan_hashes(world, tool, args):
     return [p["planHash"] for p in r.structured_content["plans"]]
 
 
+@pytest.mark.parametrize("tighten, error", [
+    ({"deny": "refund"}, TypeError), ({"deny": ["refund", 1]}, TypeError), ({"deny": None}, TypeError),
+    ({"dney": ["refund"]}, TypeError), ({"out_of_band": "medium"}, TypeError), (["refund"], TypeError),
+    ({"outOfBand": "hgh"}, ValueError),
+])
+def test_a_tighten_option_that_cannot_be_read_refuses_start_up_instead_of_dropping_the_rule(tmp_path, tighten, error):
+    """AGENTS.md rule 3 (#368): an option is code, so a malformed one is stopped at start-up, before
+    the key file is written. A warning on a stdio server's stderr is seen by no one."""
+    with pytest.raises(error):
+        yea(name="s", transport="stdio", home=tmp_path, server_key=tmp_path / "k.key", tighten=tighten)
+    assert not (tmp_path / "k.key").exists()
+
+
+async def test_a_well_formed_tighten_option_applies(tmp_path):
+    a = yea(name="s", transport="stdio", home=tmp_path, server_key=tmp_path / "k.key", principal=PRINCIPAL.public,
+            tighten={"deny": ["refund"]})
+    server = MCPServer("s", request_state_security=a.request_state_security())
+    done = []
+
+    @a.job(server, risk="low")
+    def refund() -> list[Plan]:
+        return [Plan("Refund", [], apply=lambda: done.append(1))]
+
+    async with Client(server, mode="auto") as c:
+        r = await c.call_tool("refund", {})
+    assert r.is_error and "never allows refund" in text(r) and done == []
+
+
 async def test_a_denied_tool_never_runs_even_with_a_stored_consent(world):
     done = []
     jobs(world, done)

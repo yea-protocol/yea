@@ -192,7 +192,7 @@ class FastMCPGuard(Middleware):
         tool.fn = wrapper_fn
         tool.parameters = shape.parameters
         tool.annotations = t.ToolAnnotations(**job_annotations(given))
-        tool.meta = {**(tool.meta or {}), **job_meta(g.risk, g.revert is not None, self.y.require_interaction)}
+        tool.meta = {**(tool.meta or {}), **job_meta(g.risk, g.revert is not None, g.prompts(self.y))}
 
 
 def _wrapped(tool: Any) -> bool:

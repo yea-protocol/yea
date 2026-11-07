@@ -199,18 +199,24 @@ about intent. `params` carries the structured request. The reply is one of:
 #### 4.3.1 Policy-gated auto-commit
 
 An `INTENT` MAY carry `"auto": true`. The service then MUST commit the **first**
-proposal in the same round trip if, and only if, both of these hold:
+proposal in the same round trip if, and only if, all of these hold:
 
 1. a grant authorized the `INTENT` (the first presented grant that authorizes it names the
    principal), and a grant from that principal authorizes a `COMMIT` of that proposal
-   outright (§6.3), with no consent needed; and
+   outright (§6.3), with no consent needed;
 2. the proposal is undoable: its `undo` is an object whose `window` is a positive integer
-   (§5.1).
+   (§5.1); and
+3. no commit for that principal and capability was found in doubt (§4.4) in the last 900
+   seconds.
 
 The reply is then a `RECEIPT` with `"auto": true` on the reply frame. In every other
 case the service replies exactly as it would without `auto`. So an `INTENT` that no grant
 authorized never auto-commits, even when one of its grants allows the `COMMIT` outright: it
 planned without a principal, and its proposals commit only as §4.4 allows.
+
+Condition 3 is there because an agent told a commit's outcome is unknown may send the same
+action again, and that should stop for review rather than commit a second time. A service whose
+commits can't be cut off part way never finds one in doubt, but the rule holds for every service.
 
 The principal's grant, not the agent, decides what may skip the preview. Low-risk,
 reversible actions inside the policy take one round trip. Anything over a limit, riskier or
@@ -256,7 +262,9 @@ proposal or, with none, of its first presented grant that authorizes it, and a r
 
 A service checks the requester and the principal before the consent a proposal with no
 principal needs and before the proposal's `each`, `total` and `risk` (§6.6), so a `COMMIT`
-those two checks refuse gets `forbidden`, never `consent_required`.
+those two checks refuse gets `forbidden`, never `consent_required`. A service checks a
+proposal's `expires` before its limits, so an expired proposal gets `expired` and never asks
+for consent.
 
 Reply: `RECEIPT`, optionally preceded by `EVENT`s.
 
@@ -265,7 +273,11 @@ receipt with `"replay": true` and MUST NOT execute again. A replay is authorized
 commit, by the same requester and principal, except that `each`, `total` and `risk`, and
 the consent a proposal with no principal needs, are not re-evaluated, because the commit
 already happened. So a retry after a lost response never turns into a consent prompt, and
-other principals can't read the receipt.
+other principals can't read the receipt. A failed commit may be retried and applied again, so the
+code that applies it (a plan's `apply` in both SDKs) fails only when it had no effect, or when
+applying it again is safe. A service that can't tell whether a commit took effect, as when that
+code was interrupted after it started, holds it **in doubt**: it treats it as having taken effect
+for limits, and never re-applies it.
 
 ### 4.5 `UNDO` — reverse a receipt within its window
 

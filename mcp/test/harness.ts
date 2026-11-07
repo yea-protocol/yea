@@ -13,6 +13,7 @@ import {
   type ElicitResult,
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import {
   type CallToolResult,
   createMcpHandler,
@@ -178,6 +179,51 @@ export async function connect(
     );
   }
 
+  return connOf(partial, client);
+}
+
+/** A server started as its own process, over stdio, and what it has written to stderr. */
+export interface ProcessConn extends Conn {
+  stderr(): string;
+  close(): Promise<void>;
+}
+
+/**
+ * A 2026 client that answers forms, on `command args` started as its own process over stdio.
+ * The process gets `env` over the SDK's default environment, which passes no `YEA_*` on.
+ */
+export async function connectProcess(
+  command: string,
+  args: string[],
+  env: Record<string, string>,
+): Promise<ProcessConn> {
+  const partial = { elicited: [], answers: [] as AnswerStep[] };
+  const client = elicitingClient('2026', partial);
+  const transport = new StdioClientTransport({
+    command,
+    args,
+    env,
+    stderr: 'pipe',
+  });
+  let stderr = '';
+
+  transport.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  await client.connect(transport);
+
+  return {
+    ...connOf(partial, client),
+    stderr: () => stderr,
+    close: () => client.close(),
+  };
+}
+
+/** The `Conn` over a connected `client` whose forms `partial` records and answers. */
+function connOf(
+  partial: Pick<Conn, 'elicited' | 'answers'>,
+  client: Client,
+): Conn {
   return {
     ...partial,
     client,
