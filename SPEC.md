@@ -256,7 +256,9 @@ proposal or, with none, of its first presented grant that authorizes it, and a r
 
 A service checks the requester and the principal before the consent a proposal with no
 principal needs and before the proposal's `each`, `total` and `risk` (§6.6), so a `COMMIT`
-those two checks refuse gets `forbidden`, never `consent_required`.
+those two checks refuse gets `forbidden`, never `consent_required`. A service checks a
+proposal's `expires` before its limits, so an expired proposal gets `expired` and never asks
+for consent.
 
 Reply: `RECEIPT`, optionally preceded by `EVENT`s.
 

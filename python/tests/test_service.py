@@ -28,7 +28,6 @@ from yea import (
     sign_proof,
     spend,
 )
-from yea.uses import value
 
 PRINCIPAL = key_from_seed(bytes([1]) * 32)
 AGENT = key_from_seed(bytes([2]) * 32)
@@ -578,14 +577,14 @@ def test_spend_is_reserved_before_apply_and_released_on_failure():
         assert r2.code == "consent_required"  # t1's reservation is already counted
         gate.set()
         assert (await t1).kind == "RECEIPT"
-        key = (g.block_ids[0], "spend")
-        assert svc._spent[key] == value(spend("6.00", "USD"))
-        # A failed apply releases its reservation.
-        fail["on"] = True
+        assert (await c.commit(p2)).code == "consent_required"  # t1's 600 is settled now
+        # A failed apply releases its reservation: under a fresh grant, 600 fails and the retry fits.
+        c = Client(local(svc), key=AGENT, grants=[grant({"total": {"of": "spend", "max": 1000, "scale": 2, "unit": "USD"}})])
         p3 = (await c.intent("x.buy")).proposals[0]
-        assert (await c.commit(p3)).code == "consent_required"  # 600 + 600 > 1000, regardless
-        svc._spent[key] = 0
-        assert (await c.commit(p3)).code == "internal" and svc._spent[key] == 0
+        fail["on"] = True
+        assert (await c.commit(p3)).code == "internal"
+        fail["on"] = False
+        assert (await c.commit(p3)).kind == "RECEIPT"  # 600 + 600 would pass the 1000 had it leaked
 
     run(go())
 
@@ -638,8 +637,7 @@ def test_auto_dedupe_outlives_the_proof():
         first = await svc.handle(frame)
         assert first["kind"] == "RECEIPT"
         clock[0] += 599  # proof ts is now+300, still valid; the old 600s memory would have been close
-        assert (await svc.handle(frame))["replay"] is True
-        assert svc._auto_seen["%s:c_fixed" % AGENT.public][1] == 1_790_000_000 + 300 + 900
+        assert (await svc.handle(frame))["replay"] is True  # kept 900s past ts (test_commit_ledger.py)
 
     run(go())
 
@@ -827,39 +825,12 @@ def test_proof_failures_read_as_in_ts():
     assert verify_proof({**good, "ts": 2**53}, "s", "ASK", "x", now) == "missing or malformed proof"  # not a safe integer
 
 
-def test_an_in_flight_total_refusal_names_its_measure():
-    """As ts/src/service/commit-ledger.ts: "<measure> would pass a total limit (other commits are in flight)" (#145)."""
-    from yea.grants import GrantContext, verify_grant
-    from yea.service.execute import reserve
-
-    svc = shop()
-    g = grant({"total": {"of": "spend", "max": 100, "scale": 2, "unit": "USD"}})
-    from yea.uses import spend
-
-    proposal = {"hash": "h", "risk": "low", "uses": {"spend": spend("0.60", "USD")}}
-    auth = verify_grant(g, [PRINCIPAL.public], AGENT.public, GrantContext("shop.example", "COMMIT", "shop.order", 1, proposal))
-    assert auth.ok, auth.message
-    held, over = reserve(svc.state, proposal, auth)
-    assert held and over is None
-    held, over = reserve(svc.state, proposal, auth)  # 0.60 + 0.60 > 1.00
-    assert held is None and over == "spend"
-
-
 def test_a_forbidden_with_nothing_to_drop_sends_no_need():
     """The different-principal refusal has no caveats to drop; TS leaves `need` out, not [] (#145)."""
     from yea.grants import Verification
 
     assert Verification(False, "forbidden", "x").need is None
     assert Verification(False, "forbidden", "x", failed=[{"can": ["a"]}]).need == [{"can": ["a"]}]
-
-
-def test_undo_swaps_only_the_sides_an_update_had():
-    """§4.5: a side the original left out stays left out, never null; an explicit null still swaps (#159)."""
-    from yea.service.undo import _inverse
-
-    assert _inverse({"op": "update", "target": "t", "field": "f", "to": 2}) == {"op": "update", "target": "t", "field": "f", "from": 2}
-    assert _inverse({"op": "update", "target": "t", "from": None, "to": 1}) == {"op": "update", "target": "t", "from": 1, "to": None}
-    assert list(_inverse({"op": "update", "from": 1, "target": "t", "to": 2})) == ["op", "target", "from", "to"]  # as TS
 
 
 def test_a_client_that_didnt_learn_the_service_id_signs_nothing():
@@ -992,7 +963,8 @@ def test_after_the_connection_fails_a_new_request_fails_at_once():
 
 def test_old_proposals_receipts_and_replays_are_swept():
     """Memory stays bounded: every 100th INTENT (or at 5000 proposals) forgets uncommitted
-    proposals an hour past expiry and receipts a day past their undo window, as TS's commit ledger."""
+    proposals an hour past expiry and receipts a day past their undo window, as TS's commit ledger.
+    The sweep itself is tested at the ledger's interface (test_commit_ledger.py)."""
     clock = [int(time.time())]  # proofs carry real time, so the commit happens before the clock moves
 
     async def go():
@@ -1004,22 +976,21 @@ def test_old_proposals_receipts_and_replays_are_swept():
 
         c = Client(local(svc), key=AGENT.seed, grants=[grant({"svc": ["s"]})])
         kept = (await c.intent("s.do")).proposals[0]
-        assert (await c.commit(kept)).kind == "RECEIPT"
+        rid = (await c.commit(kept)).receipt["id"]
         anon = Client(local(svc))  # INTENT needs no grant here, so later calls don't need fresh proofs
         stale = (await anon.intent("s.do")).proposals[0]
         clock[0] += 2 * 3600  # both proposals expired over an hour ago; the receipt is kept until its until + a day
         for _ in range(97):  # INTENTs 3-99
             await anon.intent("s.do")
-        assert stale["id"] in svc._proposals  # no sweep before the 100th INTENT
+        ledger = svc.state.ledger
+        assert ledger.proposal(stale["id"])  # no sweep before the 100th INTENT
         await anon.intent("s.do")
-        assert stale["id"] not in svc._proposals  # uncommitted and an hour past expiry: forgotten
-        assert kept["id"] in svc._proposals and len(svc._receipts) == 1  # committed: kept with its receipt
+        assert ledger.proposal(stale["id"]) is None  # uncommitted and an hour past expiry: forgotten
+        assert ledger.proposal(kept["id"]) and ledger.receipt(rid)  # committed: kept with its receipt
         clock[0] += 86400
-        svc._auto_seen["key:old"] = (None, clock[0] - 1)  # an auto-INTENT replay past its memory
         for _ in range(100):
             await anon.intent("s.do")
-        assert kept["id"] not in svc._proposals and svc._receipts == {} and kept["id"] not in svc._commits
-        assert len(svc._proposals) <= 100 and "key:old" not in svc._auto_seen
+        assert (ledger.proposal(kept["id"]), ledger.receipt(rid)) == (None, None)
 
     run(go())
 

@@ -7,8 +7,10 @@ import socket
 import time
 import urllib.error
 import urllib.request
+from types import SimpleNamespace
 
 import pytest
+from commit_ledger_fixture import LedgerFixture, TotalGrant, code_of, commit_of
 
 from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
@@ -19,6 +21,7 @@ from yea.approval import Policy, Tightening, load_policy, reserve_all
 from yea.errors import YeaError
 from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
 from yea.keys import sign_proof
+from yea.service.commit_ledger import Admitted, TotalLimit
 from yea.service.verified_request import VerifiedIntent, verify_request
 from yea.store import LedgerKey, MemoryStore
 from yea.uses import quantity
@@ -118,21 +121,6 @@ def test_u4_a_block_that_repeats_a_total_counts_each_commit_once():
         c = client(pay_service(), {"total": limit}, {"total": limit})
         assert (await c.commit(await proposal(c, "a", 60))).kind == "RECEIPT"
         assert (await c.commit(await proposal(c, "b", 30))).kind == "RECEIPT"
-
-    run(go())
-
-
-def test_u5_two_concurrent_commits_of_one_proposal_run_it_once_and_count_it_once():
-    """[U5] apply runs once, one reply is a replay, and only 60 of 100 is used."""
-    runs = []
-
-    async def go():
-        c = client(pay_service(runs, slow=0.02), {"total": {"of": "spend", "max": 100, "scale": 2, "unit": "USD"}})
-        p = await proposal(c, "a", 60)
-        r1, r2 = await asyncio.gather(c.commit(p), c.commit(p))
-        assert runs == [1] and [r1.kind, r2.kind] == ["RECEIPT", "RECEIPT"]
-        assert [bool(r.get("replay")) for r in (r1, r2)].count(True) == 1
-        assert (await c.commit(await proposal(c, "b", 40))).kind == "RECEIPT"  # 40 still fits
 
     run(go())
 
@@ -356,21 +344,6 @@ def test_an_undo_that_finished_after_the_done_check_is_not_claimed_again(tmp_pat
     monkeypatch.setattr(fs, "_create_excl", finish_then_create)
     assert run(store.claim_undo(rid)) is False
     assert not (tmp_path / "store" / "undo" / f"{rid}.claim").exists()  # its claim was released
-
-
-def test_a_commit_replay_whose_receipt_is_gone_is_refused_not_crashed():
-    """The replay path looks the receipt up with .get(): a missing one is forbidden, not a KeyError."""
-    async def go():
-        svc = pay_service()
-        c = client(svc)
-        p = await proposal(c, "a", 1)
-        first = await c.commit(p)
-        assert first.kind == "RECEIPT"
-        svc._receipts.clear()
-        return await c.commit(p)
-
-    r = run(go())
-    assert r.kind == "ERROR" and r.code == "forbidden"
 
 
 class _HostileReplies:
@@ -914,3 +887,137 @@ def test_83_a_client_renders_a_proposal_whose_window_is_any_other_value_as_undo_
         p = {"id": "p_1", "capability": "cal.move", "summary": "move it", "effects": [], "risk": "low",
              "undo": {"window": w}, "expires": NOW, "hash": "h"}
         assert "undo: never" in lens({"yea": 1, "id": "f", "re": "f", "kind": "PROPOSALS", "proposals": [p]}), w
+
+
+# The commit ledger at its interface (#279), with no keys, proofs or sleeps: grant evaluation is a
+# stand-in that judges one `total` (commit_ledger_fixture.py). More of it is in test_commit_ledger.py.
+# Mirrors 'the commit ledger (#279)' in ts/test/security.test.ts.
+
+
+def _no_events(_e):
+    pass
+
+
+def test_h2_concurrent_commits_cant_overshoot_a_spend_cap():
+    """[H2] Grant evaluation is synchronous here, so the second commit's sees the first's reservation
+    and needs consent. Had it missed it, the reservation refuses, naming the measure (#145)."""
+
+    async def go():
+        f, grant = LedgerFixture(), TotalGrant(100)
+        a, b = f.propose(60), f.propose(60)
+        ra, rb = await asyncio.gather(
+            f.ledger.commit(commit_of(a, grant.admit), _no_events), f.ledger.commit(commit_of(b, grant.admit), _no_events),
+            return_exceptions=True)
+        assert ra["kind"] == "RECEIPT" and grant.calls == 2
+        assert isinstance(rb, YeaError) and rb.code == "consent_required"
+
+        def blind(proposal, used):
+            return Admitted("alice", [TotalLimit("b_1", "spend", grant.max)])
+
+        with pytest.raises(YeaError) as e:
+            await f.ledger.commit(commit_of(b, blind), _no_events)
+        assert (e.value.code, e.value.message.split(";")[0]) == (
+            "consent_required", "spend would pass a total limit (other commits are in flight)")
+        assert (e.value.consent["proposal"], e.value.consent["principal"]) == (b.proposal["id"], "alice")
+
+    run(go())
+
+
+def test_u5_two_concurrent_commits_of_one_proposal_run_it_once_and_count_it_once():
+    """[U5] apply runs once, one reply is a replay, and only 60 of 100 is used."""
+
+    async def go():
+        f, grant, runs = LedgerFixture(), TotalGrant(100), []
+        started, held = asyncio.Event(), asyncio.Event()
+
+        async def apply(c):
+            runs.append(1)
+            started.set()
+            await held.wait()
+
+        p = f.propose(60, apply=apply)
+        both = asyncio.gather(
+            f.ledger.commit(commit_of(p, grant.admit), _no_events), f.ledger.commit(commit_of(p, grant.admit), _no_events))
+        await started.wait()
+        held.set()
+        r1, r2 = await both
+        assert runs == [1] and [r1["kind"], r2["kind"]] == ["RECEIPT", "RECEIPT"]
+        assert [bool(r.get("replay")) for r in (r1, r2)].count(True) == 1
+        assert await code_of(f.ledger.commit(commit_of(f.propose(40), grant.admit), _no_events)) == "ok"  # 40 still fits
+
+    run(go())
+
+
+def test_u5b_a_sync_apply_that_raises_once_is_retried_and_a_success_still_runs_once(caplog):
+    """[U5b] #187: a synchronous raise from apply() must not leave its ERROR kept as the outcome."""
+
+    async def go():
+        f, grant, runs = LedgerFixture(), TotalGrant(100), []
+
+        def apply(c):
+            runs.append(1)
+            if len(runs) == 1:
+                raise RuntimeError("card network down")
+            return {"ok": True}
+
+        p = f.propose(60, apply=apply)
+
+        def commit():
+            return f.ledger.commit(commit_of(p, grant.admit), _no_events)
+
+        assert (await commit())["code"] == "internal" and "card network down" in caplog.text
+        retried = await commit()
+        assert retried["kind"] == "RECEIPT" and "replay" not in retried and len(runs) == 2
+        assert (await commit())["replay"] is True and len(runs) == 2
+        # The failed attempt released its spend exactly once: 60 of the 100 is used, so 41 is over
+        # and 40 fits.
+        assert await code_of(f.ledger.commit(commit_of(f.propose(41), grant.admit), _no_events)) == "consent_required"
+        assert await code_of(f.ledger.commit(commit_of(f.propose(40), grant.admit), _no_events)) == "ok"
+
+    run(go())
+
+
+def test_a_request_cancelled_mid_run_still_runs_once_and_its_retry_gets_a_replay():
+    """Python only (#291): a transport may cancel a request's task when its client goes away. The auto
+    INTENT, COMMIT or UNDO it started still runs once, and a retry of the same frame gets the replay
+    from Service.handle, never a CancelledError."""
+    gate, ran = SimpleNamespace(started=asyncio.Event(), held=asyncio.Event()), []
+    svc = Service("v", "V", "v", trust=[PRINCIPAL.public])
+    grants = [issue_grant(PRINCIPAL, AGENT.public, []).encode()]
+
+    async def held(step):
+        ran.append(step)
+        gate.started.set()
+        await gate.held.wait()
+
+    @svc.intent("v.do", "do")
+    def do(ctx):
+        return Plan("do it", [create("thing/1")], apply=lambda c: held("apply"), revert=lambda c: held("revert"))
+
+    def framed(verb, target, **fields):
+        proof = sign_proof(AGENT, "v", verb, target, int(time.time()))
+        return {"yea": 1, "verb": verb, "grants": grants, "proof": proof, **fields}
+
+    async def cancelled_then_retried(frame):
+        gate.started.clear()
+        gate.held.clear()
+        task = asyncio.ensure_future(svc.handle(frame))
+        await gate.started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        gate.held.set()
+        return await svc.handle(frame)
+
+    async def go():
+        auto = await cancelled_then_retried(framed("INTENT", "auto:v.do:i1", id="i1", capability="v.do", auto=True))
+        assert (auto["kind"], auto["auto"], auto["replay"]) == ("RECEIPT", True, True)
+        p = (await svc.handle(framed("INTENT", "v.do", id="i2", capability="v.do")))["proposals"][0]
+        commit = await cancelled_then_retried(framed("COMMIT", p["hash"], id="c1", proposal=p["id"], hash=p["hash"]))
+        assert (commit["kind"], commit["replay"]) == ("RECEIPT", True)
+        rid = commit["receipt"]["id"]
+        undo = await cancelled_then_retried(framed("UNDO", rid, id="u1", receipt=rid))
+        assert (undo["kind"], undo["replay"], undo["receipt"]["undoes"]) == ("RECEIPT", True, rid)
+        assert ran == ["apply", "apply", "revert"]
+
+    run(go())

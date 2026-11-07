@@ -87,6 +87,19 @@ describe('a new commit', () => {
     ).toBe('expired');
   });
 
+  it('refuses an expired proposal before its limits, so it never asks for consent', async () => {
+    const { ledger, propose, advance } = ledgerFixture();
+    const grant = totalGrant(5);
+    const p = propose(10);
+
+    advance(600);
+
+    expect(
+      await codeOf(ledger.commit(commitOf(p, grant.admit), noEvents)),
+    ).toBe('expired');
+    expect(grant.calls).toBe(0);
+  });
+
   it('settles the spend of a commit that applied', async () => {
     const { ledger, propose } = ledgerFixture();
     const grant = totalGrant(100);

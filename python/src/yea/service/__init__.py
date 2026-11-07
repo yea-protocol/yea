@@ -62,7 +62,7 @@ class Service:
     ):
         self.name, self.summary = name, summary
         self.default_budget = default_budget
-        # What every verb's handler reads and changes (state.py); the properties below read it.
+        # What every verb's handler reads and changes (state.py), the commit ledger included.
         self.state = ServiceState(
             id, trust if callable(trust) else list(trust), require_grants, proposal_ttl,
             handles or MemoryHandleStore(), now or time.time,
@@ -87,13 +87,6 @@ class Service:
     @property
     def handles(self) -> HandleStore:
         return self.state.handles
-
-    # The state's tables, as the tests read them.
-    _proposals = property(lambda self: self.state.proposals)
-    _receipts = property(lambda self: self.state.receipts)
-    _commits = property(lambda self: self.state.commits)
-    _spent = property(lambda self: self.state.spent)
-    _auto_seen = property(lambda self: self.state.auto_seen)
 
     def now(self) -> int:
         return self.state.now()
@@ -126,7 +119,11 @@ class Service:
 
     async def handle(self, frame: Any, emit: Emit | None = None) -> dict:
         """Handle one request frame: verify it, then run its verb's handler. EVENTs go to ``emit`` (a
-        plain callable). Returns the final reply."""
+        plain callable). Returns the final reply.
+
+        Cancelling the task that awaits this stops the wait only: a commit, undo or auto INTENT it
+        started runs to the end, so a retry of the frame gets a replay. Serve a Service from one event
+        loop; its commit ledger is not thread-safe."""
         emit = emit or (lambda _e: None)
         re = frame["id"] if isinstance(frame, dict) and isinstance(frame.get("id"), str) else "?"
         try:

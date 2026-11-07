@@ -88,8 +88,9 @@ export class CommitLedger {
 
   /**
    * Commit a proposal once (SPEC §4.4). A repeat gets the original outcome, for the same
-   * principal only, with no limit re-evaluated. Otherwise the grant's limits are evaluated, and
-   * the reservation follows with no await in between, so concurrent commits can't overshoot a
+   * principal only, with no limit re-evaluated. Otherwise an expired proposal is refused before
+   * its limits, so it never asks for consent. Then the grant's limits are evaluated, and the
+   * reservation follows with no await in between, so concurrent commits can't overshoot a
    * `total`. Throws the error to reply with when the proposal expired or no grant admits it.
    *
    * The reservation re-checks each `total` against the usage ledger as it is then. When a commit
@@ -104,6 +105,12 @@ export class CommitLedger {
       return this.replay(prior, req);
     }
 
+    if (this.svc.now() >= proposal.expires) {
+      throw new YeaError('expired', 'this proposal has expired', {
+        fix: [fix('send INTENT again to get a fresh proposal')],
+      });
+    }
+
     const admitted = await req.admit(proposal, this.used);
 
     // Another COMMIT of this proposal may have started while this one was admitted.
@@ -113,12 +120,6 @@ export class CommitLedger {
 
     if (admitted instanceof YeaError) {
       throw admitted;
-    }
-
-    if (this.svc.now() >= proposal.expires) {
-      throw new YeaError('expired', 'this proposal has expired', {
-        fix: [fix('send INTENT again to get a fresh proposal')],
-      });
     }
 
     const r = this.usage.reserveAll(proposal, admitted.totals);

@@ -207,7 +207,7 @@ def test_plan_uses_is_copied_when_built():
         c = _client(svc, {"total": {"of": "emails", "max": 1}})
         p = (await c.intent("x.buy")).proposals[0]
         uses["emails"]["amount"] = 0  # the author's dict changes after the proposal was hashed
-        assert svc._proposals[p["id"]].proposal["uses"] == {"emails": {"amount": 1}}
+        assert svc.state.ledger.proposal(p["id"]).proposal["uses"] == {"emails": {"amount": 1}}
 
     asyncio.run(go())
 
@@ -256,7 +256,7 @@ def test_a_proposal_without_uses_passes_limits_on_commit_and_auto():
         svc.intent("x.note", "n")(lambda ctx: Plan("note", [create("note/1")], lambda c: "ok", revert=lambda c: None))
         c = _client(svc, {"each": {"of": "spend", "max": 0, "unit": "USD"}}, {"total": {"of": "emails", "max": 0}})
         p = (await c.intent("x.note")).proposals[0]
-        assert "uses" not in p and "uses" not in svc._proposals[p["id"]].proposal
+        assert "uses" not in p and "uses" not in svc.state.ledger.proposal(p["id"]).proposal
         assert (await c.commit(p)).kind == "RECEIPT"
         auto = await c.intent("x.note", auto=True)
         assert auto.kind == "RECEIPT" and auto.auto is True
