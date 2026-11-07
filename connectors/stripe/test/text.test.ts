@@ -51,6 +51,11 @@ describe('customer text is untrusted', () => {
     expect(safeText('é'.repeat(80))).toBe('é'.repeat(80));
   });
 
+  it('escapes `\\` and `"` before printable, which keeps that escaping', () => {
+    // printable never escapes a backslash (SPEC-approval §3), so the quoting survives it.
+    expect(quoted('a\\b "q" ​')).toBe('"a\\\\b \\"q\\" \\u{200b}"');
+  });
+
   it('the phrase to type is the email only when it can be read and typed as it is', () => {
     const c = { id: 'cus_1', name: null };
 

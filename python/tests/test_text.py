@@ -29,6 +29,12 @@ def test_printable_keeps_tab_accents_cjk_and_plain_emoji():
     assert printable("\tcafé 東京 😀") == "\tcafé 東京 😀"
 
 
+def test_printable_keeps_backslashes_so_a_literal_escape_stays_as_typed():
+    # SPEC-approval §3: printable never escapes a backslash.
+    assert printable("a\\b") == "a\\b"
+    assert printable("\\u{200b}") == "\\u{200b}"
+
+
 CPS = [chr(cp) for cp in (0x85, 0x180E, 0x3164, 0x206A, 0xFFF9, 0xE0041, 0xE0400, 0x2028)]
 
 

@@ -37,7 +37,7 @@ const escapeUnsafe = (s: string, esc: (c: string) => string) =>
  * too (woman, U+200D, laptop shows as 👩\u{200d}💻 rather than one glyph): on a consent
  * screen, seeing every character beats a pretty picture. It never escapes a backslash, so it's
  * idempotent and safe over text already escaped or Lens-quoted; a `\u{…}` in the input may be
- * literal, but every real control or invisible character is escaped (SPEC-approval §3).
+ * literal, but every unsafe control or invisible character is escaped (SPEC-approval §3).
  */
 export const printable = (s: string) =>
   escapeUnsafe(s, (c) => `\\u{${(c.codePointAt(0) ?? 0).toString(16)}}`);

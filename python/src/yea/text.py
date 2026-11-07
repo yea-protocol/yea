@@ -58,7 +58,7 @@ def printable(s: str) -> str:
     """One line of untrusted text, each unsafe character shown as ``\\u{hex}``. A newline inside
     it is escaped, so it can't add fake lines. It never escapes a backslash, so it's idempotent
     and safe over text already escaped or Lens-quoted; a ``\\u{…}`` in the input may be literal,
-    but every real control or invisible character is escaped (SPEC-approval §3)."""
+    but every unsafe control or invisible character is escaped (SPEC-approval §3)."""
     return escape_unsafe(s, lambda c: f"\\u{{{ord(c):x}}}")
 
 

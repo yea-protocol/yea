@@ -245,7 +245,7 @@ the message or hide characters in it. The conformance cases pin this, and
 `conformance/printable.json` pins which code points `printable` escapes and which it leaves alone.
 `printable` is idempotent: it never escapes a backslash, so its output is its own fixed point,
 and it's safe to apply over text that is already escaped or Lens-quoted. A `\u{…}` in service
-text may therefore be literal, but every real control or invisible character is always escaped.
+text may therefore be literal, but every unsafe control or invisible character is always escaped.
 
 An accepted form counts as approval **only** when `confirm` matches the phrase: both sides are
 NFC-normalized, then stripped of leading and trailing characters in **exactly** this set:
@@ -357,8 +357,8 @@ an empty or blank phrase hashes as `approve`.
    `tool`, or if the code has expired; it caps `expires` at 10 minutes from now, whatever the
    code says;
 2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
-   and invisible filler characters are shown as `\u{…}` escapes (backslashes are kept, see
-   §3), so the text can't rewrite what the person reads;
+   and invisible filler characters are shown as `\u{…}` escapes (`printable` itself keeps
+   backslashes, §3), so the text can't rewrite what the person reads;
 3. asks the person to type the plan's phrase (§3), the same check as the form (an empty
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,

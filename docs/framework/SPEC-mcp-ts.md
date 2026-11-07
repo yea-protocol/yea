@@ -394,8 +394,8 @@ whether the request carries an envelope, which a 2025 client can spoof:
     line or hide characters: plan summaries and effect lines (as in the approval form,
     SPEC-approval §3), the reason in a consent result, a clarification's question and labels,
     error messages from `plan`, `apply` and `revert`, and a receipt, which is rendered with
-    `untrustedLens`. Backslashes are kept (SPEC-approval §3). `structuredContent` is data,
-    not display, and keeps the raw strings.
+    `untrustedLens`. `printable` itself keeps backslashes (SPEC-approval §3).
+    `structuredContent` is data, not display, and keeps the raw strings.
   - Refusals and failures are `isError: true` results, so the model sees the reason and the
     fix.
   - On a guarded tool with an `outputSchema`, the plugin's own results (the preview too) are
