@@ -329,8 +329,29 @@ Claude Desktop, claude.ai and Gemini CLI can't elicit today. A job outside the p
 chosen plan at or above `outOfBand`, then returns an error result with:
 
 - the plans in Lens,
-- a **consent code** for each plan that may be approved (not for denied tools), and
-- the line: *Ask the user to run `yea approve <code>` in their terminal, then call again.*
+- a **consent code** for each plan that may be approved (not for denied tools),
+- a **short id** for each code, when the server's store is a `FileStore` (below), and
+- how to approve, in these lines (`<id>` and `<code>` literally, then one line per plan):
+
+  ```
+  Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.
+    [1] yea approve k7m2x9qa4b
+  If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:
+    code for [1]: pc1.…
+  ```
+
+  Without ids (the store isn't a `FileStore`, or a pending file couldn't be written), the first
+  line names `<code>` instead, and the id lines and the line after them are left out. The words *outside this chat* are there because a client's own shell (Claude
+  Code's `! command`) gives `yea approve` no terminal, so it refuses there.
+
+When no consent can be accepted here, there are no codes, and the result says why in one line:
+*No consent can be accepted: …*. With no pinned principal key, the reason is *no principal key
+is pinned (`<why>`): run `yea doctor` in a terminal outside this chat; it says how to pin one*,
+where `<why>` is what the key check found (`YEA_PRINCIPAL_PUB is not set`, say), and the
+brackets are left out when there's nothing to say.
+The model reads this line, so it names a command that changes no keys. No tool result names
+`yea init` or `--with-principal`, which make a principal key: an agent told to could run them
+itself, and the key would land on its side (ADR-0003).
 
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
 plan's details. For a job, its `detail` is `{ job, phrase }`: `job` is the full plan-hash
@@ -364,6 +385,78 @@ an empty or blank phrase hashes as `approve`.
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
    with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`, and
    saves it in the store under the plan hash (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`).
+
+When there is no terminal (stdin isn't a TTY), `yea approve` refuses before asking:
+*approval needs an interactive terminal: a person has to confirm, so run it in a separate
+terminal window, not through the agent*.
+
+#### Short ids
+
+So the person needn't copy a 1.5 KB code out of the chat, each issuer also writes the code to
+a **pending file**, under a short id, where `yea approve` on the same account finds it:
+
+- a framework server, in its store: `<store>/pending/<id>`, where the store is `YEA_STORE`, else
+  `<home>/store`. A store that isn't a `FileStore` gets no files;
+- the bridge, in its home: `<home>/pending/<id>` (SPEC-bridge step 6).
+
+A result names ids only when every one of its files was written; otherwise it gives the codes
+alone, and approving works as before.
+
+**The format**, pinned by `conformance/pending.json`:
+- The file's first line is the `pc1.` code verbatim. A server's file is that line alone
+  (`<code>\n`). The bridge's adds a second naming the process that wrote it, `{"pid":<pid>}`
+  in canonical JSON, for its start-up cleanup and the listing (SPEC-bridge step 6). A home is
+  one account's on one machine, so its pids are that machine's. `yea approve` reads the first
+  line only. A file holds nothing else: no field
+  `yea approve` would trust, and never a key or seed.
+- `<id>` is 10 random characters of lowercase base32 (`a`–`z`, `2`–`7`), made by the issuer. An
+  id never starts with `-`, so the command line never reads one as a flag.
+- The directory is created `0700` and the file `0600`, written to a temp file and renamed (§8).
+  If the store is ever shared with the principal's OS user
+  ([#358](https://github.com/yea-protocol/yea/issues/358)), `pending/` must stay readable by
+  that user.
+
+**The lifecycle.** A directory holds at most one file per service and proposal, the code's
+`service` and `proposal` (a plan hash, or the bridge's proposal id):
+- Writing a code for a service and proposal that already have a file rewrites that file and
+  keeps its id, so an id the model passed on earlier still works. Any other file for the same
+  pair is removed.
+- Every write also removes the files whose codes have expired.
+- A plan that runs removes its files, whether it ran on its own, from the form or with a consent.
+- The bridge removes an entry's files when it drops, replaces or commits the entry, or when a
+  proposal loses its code. At start-up it removes the files whose process has ended, never a
+  running bridge's (SPEC-bridge step 6).
+
+**`yea approve` with no argument** lists the pending codes under each directory's name: the
+home's `pending/`, then the store's (`<home>` is `YEA_HOME`, else `~/.yea`; the store as above).
+Each code is one line: its id, capability, summary, service and expiry. The service-written
+fields have their whitespace runs collapsed to one space, the summary is cut to 80 code points,
+and then each goes through `printable`. Expired codes are left out. A line ends with *its
+bridge has stopped: call the tool again* when the file's process has ended, or with *approved,
+waiting for the agent* when a consent for it is already saved (in the home under its `hash`,
+or in the store under its plan hash).
+
+**`yea approve <id>`**:
+1. accepts only an id matching `^[A-Za-z0-9_-]{8,32}$`, exactly: there is no prefix search,
+   and nothing but the id reaches a path;
+2. looks for `pending/<id>` in the home and in the store, matching each directory's names
+   exactly before it opens anything, so a case-insensitive disk can't hand back another id's
+   file. An id in both is refused, naming both directories: it doesn't name one approval;
+3. opens it without following a symlink, and refuses anything but a regular file of at most
+   64 KiB;
+4. takes its first line as the code, and from there is `yea approve <code>`, unchanged: every
+   check above, the plan in full, the phrase, and where the consent is saved. Nothing in the
+   file is trusted that a pasted code isn't. A first line that's empty, or isn't a consent
+   code, is refused as *pending file `<path>` doesn't hold a consent code*, and the file is
+   never quoted, not even in a parse error.
+
+An id it can't find is refused with where it looked, and one whose code has expired with where
+it is. Every refusal of an id says *call the tool again for a fresh one*.
+
+**Short ids are a one-account convenience**, for trying YEA on one machine. There they are
+form tier ([§9, What an approval proves](#what-an-approval-proves)): the agent runs as the same
+OS user, so it can run `yea approve` itself, and a terminal isn't a person. Another OS user or
+device keeps the whole code.
 
 On the next identical call, the server looks up a consent for each recomputed plan's hash
 and checks it against that plan's consent hash, recomputed from the plan and the phrase the
@@ -452,6 +545,7 @@ undo/<receipt id>.claim, .done       markers, created with O_EXCL; the claim hol
 receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
+pending/<id>                         a consent code waiting for `yea approve <id>` (§6, Short ids)
 ```
 
 Ledger files are `{"settled": "<decimal>", "reserved": {"<v_ id>": "<decimal>"}}`, updated under
@@ -600,11 +694,14 @@ ts/src/job-call.ts        the job call session: the decisions below, in their sa
 ts/src/approval.ts        plan hash, policy decision, reservations, undo
 ts/src/ask.ts             form builder, state payload, answer check, consent codes
 ts/src/store.ts           ApprovalStore, MemoryStore, FileStore
-ts/src/cli/approve.ts     yea approve for job consent codes
+ts/src/cli/approve.ts     yea approve for job consent codes, and for pending ids
+ts/src/cli/pending.ts     where yea approve looks for a pending id (the home, then the store), and the listing
+ts/src/file-store/pending.ts  pending files (§6, Short ids)
 ts/test/approval.test.ts  unit tests + the shared conformance cases
 python/src/yea/job_call/, approval/, store/, python/tests/test_approval.py   the same, for Python
 conformance/approval.json shared cases for the decisions, generated from the TS reference
 conformance/job-calls.json shared cases for the session, a round per step
+conformance/pending.json  the pending file's format, for every writer
 ```
 
 The SDK core stays zero-dependency. The MCP SDKs are peer dependencies of `mcp-ts` and
@@ -670,7 +767,7 @@ export function decide(
     an unknown plan, a replayed or resent state, other input, and plans that changed;
   - confirmation matching, with its whitespace and Unicode edge cases;
   - reading an unsigned policy file with loosening and unknown fields;
-  - the `FileStore` on-disk format.
+  - the `FileStore` on-disk format, and the pending file's (`conformance/pending.json`).
 - **Unit tests** for the store: consume-once under concurrent calls, claim-undo once, and
   reservations under concurrency and failure.
 - **Security tests** in `ts/test/security.test.ts` and its Python counterpart:
@@ -690,6 +787,12 @@ export function decide(
   - undo refuses outside its window, for another principal, a second time, for an id that
     isn't in the generated format (`../x`), and for a receipt from another server;
   - a plan with a malformed `uses` or an unknown `risk` never gets a plan hash;
+  - `yea approve <id>` refuses an id outside its pattern (`../x`), an id that differs only in
+    case, an id in both directories, a symlinked or oversize pending file, a pending file whose
+    plan or hash was edited, one that holds no code (never quoting it), and an expired one; a
+    file naming another agent still needs `--to`; the listing keeps service text escaped and on
+    one line; a pending file holds the code and nothing else, never a seed;
+  - no tool result names `yea init` or `--with-principal`;
   - a principal key file writable by the server's user, or in a directory it can write, is
     refused;
   - a partly failed reservation releases the reservations already made;

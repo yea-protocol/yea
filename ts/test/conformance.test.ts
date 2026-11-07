@@ -1,4 +1,10 @@
-import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -12,8 +18,16 @@ import {
   judgeAnswer,
   phraseMatches,
 } from '../src/ask.js';
+import {
+  FileStore,
+  homePending,
+  newPendingId,
+  PENDING_ID,
+  PendingCodes,
+  pendingCodesOf,
+  pendingFile,
+} from '../src/file-store.js';
 import * as P from '../src/index.js';
-import { FileStore } from '../src/node.js';
 import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
@@ -452,6 +466,64 @@ describe('conformance vectors', () => {
 
     walk(dir);
     expect(files).toEqual(v.fileStore.files);
+  });
+  it('pending files', () => {
+    const v = load('pending');
+    const root = mkdtempSync(join(tmpdir(), 'yea-conf-'));
+
+    expect(pendingCodesOf(new FileStore(root))?.dir).toBe(
+      v.dirs.server.replace('<store>', root),
+    );
+    expect(homePending(root).dir).toBe(v.dirs.bridge.replace('<home>', root));
+    expect(pendingCodesOf(new P.MemoryStore())).toBeNull();
+    expect(PENDING_ID.source).toBe(v.readId);
+    expect(newPendingId()).toMatch(new RegExp(v.writtenId));
+    expect(pendingFile(v.file.code)).toBe(v.file.text);
+    expect(pendingFile(v.taggedFile.code, v.taggedFile.issuer)).toBe(
+      v.taggedFile.text,
+    );
+
+    const dir = join(root, 'ops');
+    const store = new PendingCodes(dir);
+    const ids: Record<string, string> = {};
+
+    for (const o of v.ops) {
+      if (o.op === 'put') {
+        const id = store.put(v.codes[o.code], o.now);
+
+        expect(id).toBe(ids[o.as] ?? id);
+        ids[o.as] = id;
+      } else {
+        store.drop(o.service, o.proposal);
+      }
+
+      const byId = Object.fromEntries(
+        Object.entries(ids).map(([label, id]) => [id, label]),
+      );
+      const files = Object.fromEntries(
+        readdirSync(dir).map((f) => [
+          byId[f],
+          readFileSync(join(dir, f), 'utf8'),
+        ]),
+      );
+      const want = Object.fromEntries(
+        Object.entries(o.files as Record<string, string>).map(([l, c]) => [
+          l,
+          `${v.codes[c]}\n`,
+        ]),
+      );
+
+      expect(files, JSON.stringify(o)).toEqual(want);
+      expect(Object.values(files).join('')).not.toContain(v.agentSeed);
+    }
+
+    // A tagged file reads as its code, whoever wrote it.
+    writeFileSync(join(dir, 'taggedfile'), v.taggedFile.text);
+    expect(store.read('taggedfile')).toBe(v.taggedFile.code);
+    writeFileSync(join(dir, 'abcdefghij'), 'x'.repeat(v.maxBytes));
+    expect(store.read('abcdefghij')).toBe('x'.repeat(v.maxBytes));
+    writeFileSync(join(dir, 'abcdefghij'), 'x'.repeat(v.maxBytes + 1));
+    expect(() => store.read('abcdefghij')).toThrow('larger than 64 KiB');
   });
   it('printable', () => {
     for (const c of load('printable')) {

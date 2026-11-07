@@ -283,8 +283,9 @@ again, with the clock, the policy and the plans as they are then.
    `None`, step 9. Otherwise ask **per era** (next section), with `round` 1 on a first ask and
    the verdict's round on an ask-again.
 9. **Fail closed.** Return `is_error: true` with the plans in Lens, a `job_consent_code` for
-   each plan that isn't denied, and: *Ask the user to run `yea approve <code>` in their
-   terminal, then call again.* `structured_content` carries `{"plans", "codes"}`. With no
+   each plan that isn't denied, its short id on a `FileStore`, and how to approve, in
+   SPEC-approval §6's words. `structured_content` carries `{"plans", "codes"}`, each code with
+   its `id` when it has one. With no
    pinned principal there can be no valid consent, and on a `MemoryStore` `yea approve` can't
    reach the store, so in both cases the result has no codes and says why.
 10. **Answer.** `check_state(state["yea"], tool, input_hash, sub, now)`, then

@@ -1,4 +1,7 @@
-/** `yea approve`: review and sign a one-time consent for one proposal or one job plan. */
+/**
+ * `yea approve`: review and sign a one-time consent for one proposal or one job plan, given its
+ * consent code or, on the same account, the short id of a pending one (SPEC-approval §6).
+ */
 import { createInterface } from 'node:readline/promises';
 import { approveConsentCode } from '../approve.js';
 import {
@@ -16,7 +19,8 @@ import { effectLine, fmtDuration, fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import { fmtUses, isUses } from '../uses.js';
 import { unixNow } from '../util.js';
-import { command, type Flags, positional, type Values } from './command.js';
+import { command, type Flags, type Values } from './command.js';
+import { pendingCode, pendingLines } from './pending.js';
 import { confirm, die } from './shared.js';
 
 const APPROVE_FLAGS = {
@@ -27,17 +31,36 @@ const APPROVE_FLAGS = {
   },
 } as const satisfies Flags;
 
+/** Why there's no terminal to approve at, and where to go instead (SPEC-approval §6). */
+const NO_TERMINAL =
+  '✗ approval needs an interactive terminal: a person has to confirm, so run it in a separate terminal window, not through the agent';
+
 export const cmdApprove = command({
   summary:
-    "Review a proposal's real effects and sign a one-time consent for it, to paste back to the agent.",
-  usage: 'approve <code> [flags]',
+    "Review a proposal's real effects and sign a one-time consent for it. With no argument, list the pending ones.",
+  usage: 'approve [<id>|<code>] [flags]',
   flags: APPROVE_FLAGS,
-  example: 'yea approve pc1.…',
+  example: 'yea approve k7m2x9qa4b',
   run: approve,
 });
 
 async function approve(rest: string[], o: Values<typeof APPROVE_FLAGS>) {
-  const code = positional(rest, 0, 'code');
+  const arg = rest[0];
+
+  if (arg === undefined) {
+    console.log((await pendingLines(unixNow())).join('\n'));
+
+    return;
+  }
+
+  const code = arg.startsWith('pc1.') ? arg : codeFor(arg);
+  const p = await signerFor(code);
+
+  return isJobCode(code) ? approveJob(p, code) : approveProposal(p, code, o.to);
+}
+
+/** The principal key that may sign `code`: refused first if the code shows nothing to check. */
+async function signerFor(code: string): Promise<KeyPair> {
   const consent = decodeConsentCode(code);
 
   // Refused before any key is loaded: there's nothing here a person could check (SPEC §6.6).
@@ -57,22 +80,21 @@ async function approve(rest: string[], o: Values<typeof APPROVE_FLAGS>) {
     );
   }
 
-  if (isJobCode(code)) {
-    return approveJob(p, code);
-  }
+  return p;
+}
 
+/** Approve a protocol proposal's code (SPEC-bridge, "yea approve"): a y/N, then the consent. */
+async function approveProposal(p: KeyPair, code: string, to?: string) {
   const r = await approveConsentCode({
     principal: p,
     code,
     localAgent: (await agentKey())?.public ?? null,
-    to: o.to,
+    to,
     io: {
       print: (line) => console.log(line),
       confirm: async (question) => {
         if (!process.stdin.isTTY) {
-          die(
-            '✗ approval needs an interactive terminal: a human has to confirm',
-          );
+          die(NO_TERMINAL);
         }
 
         return confirm(question);
@@ -85,11 +107,20 @@ async function approve(rest: string[], o: Values<typeof APPROVE_FLAGS>) {
     die(r.why === 'not approved' ? r.why : `✗ ${r.why}: refusing`);
   }
 
-  // Printed to paste back to the agent: its bridge takes it through yea_consent.
+  // Printed to paste back to an agent elsewhere: its bridge takes it through yea_consent.
   console.log(r.token);
   console.error(
-    `\n✓ approved: a one-time consent for this proposal only${r.saved ? ", saved for this machine's agent" : ''}. Paste the consent above back to the agent (it passes it to yea_consent), then it can commit.`,
+    r.saved
+      ? "\n✓ approved: a one-time consent for this proposal only, saved for this machine's agent. Nothing needs pasting back: ask the agent to call the tool again."
+      : '\n✓ approved: a one-time consent for this proposal only. Paste the consent above back to the agent (it passes it to yea_consent), then it can commit.',
   );
+}
+
+/** The code a pending id stands for, read as any pasted code is; dies saying why if there's none. */
+function codeFor(id: string): string {
+  const r = pendingCode(id, unixNow());
+
+  return 'code' in r ? r.code : die(`✗ ${r.why}`);
 }
 
 /** Whether a consent code carries a job (an MCP tool's plan) rather than a proposal. */
@@ -124,7 +155,7 @@ async function approveJob(p: KeyPair, code: string) {
   console.log(`  approval expires: ${fmtTime(j.consent.expires)}`);
 
   if (!process.stdin.isTTY) {
-    die('✗ approval needs an interactive terminal: a human has to confirm');
+    die(NO_TERMINAL);
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });

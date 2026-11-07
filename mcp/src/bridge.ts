@@ -13,7 +13,7 @@
  */
 import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
 import { Client, type ConsentStore, unixNow } from '@yea-protocol/sdk';
-import { home, homeConsents } from '@yea-protocol/sdk/node';
+import { home, homeConsents, homePending } from '@yea-protocol/sdk/node';
 import { greet } from './bridge/greet.js';
 import { instructionsFor } from './bridge/instructions.js';
 import { passThrough } from './bridge/params.js';
@@ -106,7 +106,7 @@ export async function bridge(
   // The one place the home is resolved; everything below is handed it.
   const dir = o.home ?? home();
   const b: Bridge = {
-    pending: new PendingProposals(),
+    pending: new PendingProposals(homePending(dir)),
     consents: o.consents ?? homeConsents(dir),
     budget: o.budget ?? 1500,
     tighten: o.tighten ?? {},
@@ -114,6 +114,10 @@ export async function bridge(
     now: o.now ?? unixNow,
   };
   const { services: greeted, problems } = await greet(services.map(asEntry));
+
+  // Codes from a bridge that has ended are for proposals no one holds now (decision 3).
+  b.pending.clearOrphans();
+
   const byId = new Map(greeted.map((s) => [s.id, s]));
   const remote = await buildTools(b, greeted, mode);
   const tools = [...remote, ...utilityTools(b, byId)];

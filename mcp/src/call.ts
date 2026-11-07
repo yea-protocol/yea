@@ -13,6 +13,7 @@ import {
 } from '@yea-protocol/sdk';
 import { runPlan } from './call/apply.js';
 import { begin, type Call, type Result } from './call/context.js';
+import { dropPending, withIds } from './call/pending.js';
 import { askResult, retryOf } from './call/round.js';
 import { canAsk } from './client.js';
 import { clarifyResult, consentResult, previewResult } from './render.js';
@@ -66,11 +67,18 @@ function resultOf(call: Call, o: JobCallOutcome): Promise<Result> | Result {
     case 'preview':
       return previewResult(o.plans, call.job.ownResultsAreErrors?.() ?? false);
     case 'run':
+      dropPending(call, o.plan.planHash);
+
       return runPlan(call, o.plan, o.held, o.how);
     case 'ask':
       return askResult(call, o);
     case 'consent-codes':
-      return consentResult(o.why, o.plans, o.codes, o.unavailable);
+      return consentResult(
+        o.why,
+        o.plans,
+        withIds(call, o.codes),
+        o.unavailable,
+      );
     case 'refuse':
       return o.again
         ? errorResult([

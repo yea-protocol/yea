@@ -94,5 +94,5 @@ async function proposalsFound(
 
   return principals.length > 1
     ? manyPrincipals(entry, principals, dropped)
-    : proposalsResult(entry, AUTO_ONLY, dropped);
+    : proposalsResult(b, entry, AUTO_ONLY, dropped);
 }

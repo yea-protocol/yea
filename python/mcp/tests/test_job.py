@@ -10,7 +10,7 @@ import mcp_types as t
 import pytest
 from pydantic import BaseModel, Field
 from yea import Plan, create, decode_consent_code, decode_grant, issue_grant, quantity
-from yea.store import LedgerKey
+from yea.store import LedgerKey, pending_codes_of
 
 from conftest import MODES, PRINCIPAL, Person, text
 
@@ -99,13 +99,25 @@ async def test_a_client_that_cant_ask_gets_consent_codes_and_a_signed_consent_ru
     register(world, done)
     async with world.client("auto") as c:
         r = await c.call_tool("send", {"to": "ana"})
-        assert r.is_error and "yea approve" in text(r) and done == []
+        assert r.is_error and done == []
         (code,) = r.structured_content["codes"]
+        assert "\n".join([  # the words mcp-ts uses (SPEC-approval §6)
+            "Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again "
+            "with the same arguments.",
+            f"  [1] yea approve {code['id']}",
+            "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole "
+            "code instead:",
+            f"  code for [1]: {code['code']}"]) in text(r)
+        again = await c.call_tool("send", {"to": "ana"})
+        assert again.structured_content["codes"][0]["id"] == code["id"]  # the id passed on still works
+        pending = pending_codes_of(world.store)
+        assert (pending.dir / code["id"]).read_text().startswith("pc1.")
         consent = issue_grant(PRINCIPAL, world.approvals.service_id(), [
             {"svc": [world.approvals.service_id()]}, {"verbs": ["COMMIT"]}, {"can": ["send"]},
             {"only": decode_consent_code(code["code"])["hash"]}, {"exp": 2**31}]).encode()
         await world.store.put_consent(code["planHash"], consent)
         assert not (await c.call_tool("send", {"to": "ana"})).is_error
+        assert not (pending.dir / code["id"]).exists()  # the plan ran: its file went with it
         assert (await c.call_tool("send", {"to": "ana"})).is_error  # used once
     assert done == [("send", "ana")]
 

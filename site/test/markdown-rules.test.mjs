@@ -13,9 +13,12 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-/** A claim that the model can't approve, that the person is asked, or approves in their client. */
+/**
+ * A claim that the model can't approve, that the person is asked, or approves in their client, or
+ * that nothing goes back through the chat (#325's short ids).
+ */
 const CLAIM =
-  /can['’]t approve|cannot approve|asks the person|approve in (your|the|their) (MCP )?client/i;
+  /can['’]t approve|cannot approve|asks the person|approve in (your|the|their) (MCP )?client|no paste-back|nothing (needs pasting|goes|is handed) back/i;
 /** A link to the threat model, in SPEC-approval §9 or the security guide's summary of it. */
 const PROOF = /(guide\/security|SPEC-approval\.md)#what-an-approval-proves/;
 
@@ -220,6 +223,17 @@ test('an approval claim without a link to what it proves is caught', () => {
     bareClaims(`a form that asks the\nperson to type (${link})`),
     [],
   );
+
+  // That nothing goes back through the chat, said of a short id.
+  for (const claim of [
+    'so nothing goes\nback through the chat.',
+    'nothing is handed back.',
+    'Nothing needs pasting back.',
+    'with no paste-back.',
+  ]) {
+    assert.deepEqual(bareClaims(claim), [claim]);
+    assert.deepEqual(bareClaims(`${claim} (${link})`), []);
+  }
 });
 
 test('every approval claim adopters read links to what it proves', () => {

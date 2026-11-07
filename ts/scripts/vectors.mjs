@@ -2037,4 +2037,5 @@ const requests = [
 out('requests', requests);
 out('approval', (await import('./approval-vectors.mjs')).approval);
 out('job-calls', (await import('./job-call-vectors.mjs')).jobCalls);
+out('pending', (await import('./pending-vectors.mjs')).pending);
 console.log('vectors written');

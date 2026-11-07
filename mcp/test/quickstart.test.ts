@@ -235,7 +235,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       const { codes } = r.structuredContent as { codes: { code: string }[] };
 
       expect(r.isError).toBe(true);
-      expect(textOf(r)).toContain('yea approve <code>');
+      expect(textOf(r)).toContain('yea approve <id>');
       expect(codes).toHaveLength(1);
       expect(codes[0].code).toMatch(/^pc1\./);
       expect(existsSync(f.report)).toBe(true);
@@ -257,8 +257,10 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       expect(r.isError).toBe(true);
       expect(r.structuredContent).toMatchObject({ codes: [] });
       expect(textOf(r)).toContain(
-        'No consent can be accepted: YEA_PRINCIPAL_PUB is not set.',
+        'No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one.',
       );
+      // It names a command that makes no key: the agent could run one that does itself.
+      expect(textOf(r)).not.toMatch(/--with-principal|yea init/);
       expect(existsSync(f.report)).toBe(true);
     });
   },

@@ -140,7 +140,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
       const r = await conn.call({ amount: '5' }, 'charge');
 
       expect(r.isError).toBe(true);
-      expect(textOf(r)).toMatch(/yea approve <code>/);
+      expect(textOf(r)).toMatch(/yea approve <id>/);
 
       const { codes } = r.structuredContent as { codes: { code: string }[] };
 

@@ -220,18 +220,22 @@ Some clients don't support form elicitation. For them, a call that needs approva
 [1] Delete docs/report.pdf
   - delete file/docs/report.pdf
   risk: medium · undo: never
-Ask the user to run `yea approve <code>` in their terminal, then call again.
+Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.
+  [1] yea approve k7m2x9qa4b
+If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:
   code for [1]: pc1.eyJjYXBhYmlsaXR5Ijoi…
 ```
 
 `yea approve <code>` shows the plan, has the person type its phrase, and signs a one-time consent for that exact plan with the principal key. It saves the consent in the store the server reads (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`). When the model calls again with the same input, the call runs once.
+
+On the server's own account, the person needn't copy the code out of the chat: the server also writes it to its store's `pending/` under the short id, so `yea approve <id>` finds it, and `yea approve` alone lists what's pending. That's a convenience for trying it on one machine, not a stronger approval: an agent that runs as you could run `yea approve` too ([what an approval proves](/guide/security#what-an-approval-proves)). A store that isn't a `FileStore` gets no ids, and the result asks for the whole code. Either way, the person runs it in a terminal outside the chat: a client's own shell, such as Claude Code's `!`, has no terminal, and `yea approve` refuses there.
 
 So `yea approve` needs both the principal key and the server's store. In the one-account setup, both are on your account: that's the case our tests cover, and it's best effort, since an agent that runs as you can reach the key. With the key on another OS user or device, `yea approve` can't answer the code yet ([today's status](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 **Why the pinned key matters here:** the server accepts only consents signed by the pinned principal key. Without one it can't accept any, so it gives no codes and says why:
 
 ```text
-No consent can be accepted: YEA_PRINCIPAL_PUB is not set.
+No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one.
 ```
 
 The same happens on a server whose store is in memory (the default over HTTP), because `yea approve` can't reach it.

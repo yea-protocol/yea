@@ -26,7 +26,8 @@ The MCP client sees one tool per remote capability, named for it (`shop_order`,
   auto-commit.
 - Otherwise the call returns the proposals and a consent code for each. The person approves
   one with `yea approve <code>` (where the principal key is), then hands the signed consent
-  back, and the next identical call commits it.
+  back, and the next identical call commits it. On one machine, `yea approve <id>` takes a
+  short id instead, and nothing is handed back (step 6).
 - It never asks in the client and never signs. An approval given inside the chat client is form
   tier, whichever key signs it afterwards (SPEC-approval §9; decision 4).
 
@@ -196,10 +197,30 @@ process, not in the server factory (`serveStdio` calls the factory more than onc
      consent code. The code is `consentCode`, with a `ConsentRequest` built from the proposal
      (`proposal`, `hash`, `service`, `capability`, `summary`, `expires` = the proposal's
      `expires`) and that principal, plus the proposal as detail and the agent's public key as
-     `agent`, so `yea approve` elsewhere signs to the right key. The message says: *Ask the
-     user to run `yea approve <code>` where their principal key is, then paste the printed
-     consent back to you and call `yea_consent` with it, then call this tool again.* (`yea
-     approve` asks y/N for protocol proposals; it doesn't ask for a phrase.)
+     `agent`, so `yea approve` elsewhere signs to the right key. (`yea approve` asks y/N for
+     protocol proposals; it doesn't ask for a phrase.)
+   - **A short id for each code.** The bridge writes each code to a pending file in its home,
+     `<home>/pending/<id>`, in SPEC-approval's format and lifecycle (§6, Short ids). It
+     removes an entry's files when it drops, replaces or commits the entry, and a proposal's
+     file when the proposal loses its code (under 2 minutes left). Each file's second line names
+     the process that wrote it. Every client the person installs runs its own bridge with the
+     same home, so at start-up a bridge removes only the files whose process has ended, since
+     no one holds their proposals (decision 3). A running bridge's files stay.
+   - **The message** says, with `<id>` and `<code>` literally, then a line per proposal:
+
+     ```
+     Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments; on this machine nothing needs pasting back.
+       [p_1] yea approve k7m2x9qa4b
+     If their principal key is on another machine, they run `yea approve <code> --to <agent key>` there instead, then paste the printed consent back to you: pass it to `yea_consent`, and call this tool again.
+       code for [p_1]: pc1.…
+     ```
+
+     `<agent key>` is the agent's public key, from the code. If any file can't be written, the
+     first line names `<code>` instead, and the id lines are left out. On one machine, `yea
+     approve` saves the consent where the bridge reads it, so nothing goes back through the
+     model. That's the one-machine trial, form tier (SPEC-approval §6, Short ids, and
+     [§9](SPEC-approval.md#what-an-approval-proves)); the recommended setup keeps the principal
+     key on another device, with `--to` and the paste-back.
    - A result that returns proposals for approval isn't `isError`: nothing ran, the first line
      says so, and the model may still commit one within the grant with `proposal`. The no-grants
      and many-principals results are `isError`.
@@ -265,13 +286,22 @@ one exact proposal at one service, and still needs the agent key's proof.
     sha256), so the person checks it and passes it deliberately. The fingerprint is shown
     again next to the proposal before the y/N.
 
-  After the y/N, it prints the signed consent on stdout, to paste back to the agent (which
-  hands it to `yea_consent`), and saves it in `~/.yea/consents` only when this machine's agent
-  key is the one it's issued to.
+  The consent's `exp` is the earlier of the code's and the proposal's `expires` (the same, in
+  a code a service issued), uncapped, unlike a job consent's (SPEC-approval §6): SPEC.md §4.4
+  commits a proposal no grant authorized only with a consent whose `exp` is the proposal's.
+  When that's more than an hour away, the last line before the y/N says so: `⚠ this approval
+  stays valid until <time>, <duration> from now`, with the time escaped like all service text.
+
+  After the y/N, it prints the signed consent on stdout, and saves it in `~/.yea/consents` only
+  when this machine's agent key is the one it's issued to. Then it says what's next: when it
+  saved the consent, that nothing needs pasting back and the agent can call the tool again;
+  otherwise, to paste the consent back to the agent (which hands it to `yea_consent`).
 
   `agent` changes no bytes SPEC.md pins, since codes are a tooling format and decoders ignore
   unknown fields. Python's protocol code builder mirrors it, and a protocol-code vector is
   added.
+- **`yea approve <id>`** reads a pending file the bridge wrote (SPEC-approval §6, Short ids),
+  then goes on exactly as for the code it holds.
 - **`yea install`.** The config it writes (`npx -y @yea-protocol/cli mcp <urls>`) doesn't
   change. The tool names do, so these are updated:
   - `plugins/yea/skills/yea/SKILL.md`;
@@ -326,6 +356,10 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   delegated or extra-caveat grant, another principal's or another holder's grant, one for no
   pending proposal, an expired one, and an overwrite of a valid consent;
 - `yea approve` requires `--to` when a code's `agent` differs from the local agent key;
+- pending files: one per code, named in the result; the same id again on a re-call; removed
+  when the entry commits, drops or is replaced, and when a proposal loses its code; an ended
+  bridge's removed at start-up, a running one's left alone; `yea approve <id>` on one
+  machine plus the same call commits, with nothing passed back through the model;
 - security:
   - the model can't approve by any argument;
   - a call carrying an approval state is refused, and nothing in the bridge can sign;

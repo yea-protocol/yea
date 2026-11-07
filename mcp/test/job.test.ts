@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequestStateCodec } from '@modelcontextprotocol/server';
-import { exact, quantity } from '@yea-protocol/sdk';
+import { type ApprovalStore, exact, quantity } from '@yea-protocol/sdk';
+import { pendingCodesOf } from '@yea-protocol/sdk/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   approve,
@@ -262,20 +263,37 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit', 'legacy-http'])(
       const r = await conn.call(ch1);
 
       expect(r.isError).toBe(true);
-      expect(textOf(r)).toMatch(
-        /Ask the user to run `yea approve <code>` in their terminal, then call again/,
-      );
       expect(w.applied).toEqual([]);
 
-      const { codes } = r.structuredContent as { codes: { code: string }[] };
+      const { codes } = r.structuredContent as {
+        codes: { code: string; id: string }[];
+      };
 
       expect(codes).toHaveLength(1);
+      expect(textOf(r)).toContain(
+        [
+          'Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.',
+          `  [1] yea approve ${codes[0].id}`,
+          "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:",
+          `  code for [1]: ${codes[0].code}`,
+        ].join('\n'),
+      );
 
-      const j = await approve(w, codes[0].code);
+      // Called again before approval, it names the same id: the one passed on still works.
+      const again = (await conn.call(ch1)).structuredContent as {
+        codes: { id: string }[];
+      };
+
+      expect(again.codes[0].id).toBe(codes[0].id);
+
+      // `yea approve <id>`: the code comes from the store's pending file.
+      const pending = pendingCodesOf(w.store);
+      const j = await approve(w, pending?.read(codes[0].id) ?? '');
 
       expect(j.phrase).toBe('ch_1');
       expect((await conn.call(ch1)).isError).toBeFalsy();
       expect(w.applied).toEqual(['ch_1']);
+      expect(pending?.read(codes[0].id)).toBeNull();
 
       const third = await conn.call(ch1);
 
@@ -534,8 +552,8 @@ describe('a pinned principal key', () => {
     const r = await conn.call(ch1);
 
     expect(r.isError).toBe(true);
-    expect(textOf(r)).toMatch(
-      /No consent can be accepted: YEA_PRINCIPAL_PUB is not set/,
+    expect(textOf(r)).toContain(
+      'No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one.',
     );
     expect(w.applied).toEqual([]);
   });
@@ -620,6 +638,43 @@ describe('after apply() the action has happened, whatever fails next', () => {
   });
 });
 
+describe('a store that isn’t a FileStore', () => {
+  it('gets codes worded for the whole code, and no ids or pending files (SPEC-approval §6)', async () => {
+    const h = await world();
+    // A custom store (Redis, say), here over a FileStore's data: no FileStore's brand, so no files.
+    const methods = [
+      'consumeOnce',
+      'putReceipt',
+      'getReceipt',
+      'claimUndo',
+      'releaseUndo',
+      'markUndone',
+      'reserve',
+      'settle',
+      'release',
+      'used',
+      'putConsent',
+      'getConsent',
+    ] as const;
+    const store = Object.fromEntries(
+      methods.map((m) => [m, h.store[m].bind(h.store)]),
+    ) as unknown as ApprovalStore;
+    const w = await world({ store });
+    const r = await (await connect('2026-no-elicit', refundServer(w))).call(
+      ch1,
+    );
+    const { codes } = r.structuredContent as { codes: object[] };
+
+    expect(codes).toHaveLength(1);
+    expect(codes[0]).not.toHaveProperty('id');
+    expect(textOf(r)).toContain(
+      'Ask the user to run `yea approve <code>` in a terminal outside this chat, then call this tool again with the same arguments.\n  code for [1]: pc1.',
+    );
+    expect(textOf(r)).not.toContain('<id>');
+    expect(existsSync(join(h.storeDir, 'pending'))).toBe(false);
+  });
+});
+
 describe('HTTP on the default MemoryStore', () => {
   it('gives no consent codes, since yea approve can’t reach it, and says why', async () => {
     const w = await world({
@@ -655,7 +710,7 @@ describe('the era decides where the capabilities come from', () => {
     });
 
     expect(r.isError).toBe(true);
-    expect(textOf(r)).toMatch(/yea approve <code>/);
+    expect(textOf(r)).toMatch(/yea approve <id>/);
     expect((r.structuredContent as { codes: unknown[] }).codes).toHaveLength(1);
   });
 });

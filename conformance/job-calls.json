@@ -2407,7 +2407,7 @@
               "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
             ],
             "codes": [],
-            "unavailable": "YEA_PRINCIPAL_PUB is not set"
+            "unavailable": "no principal key is pinned (YEA_PRINCIPAL_PUB is not set): run `yea doctor` in a terminal outside this chat; it says how to pin one"
           },
           "planned": true,
           "after": {

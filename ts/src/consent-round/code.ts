@@ -10,6 +10,7 @@ import type { Approver, ConsentAsk } from '../consent-round.js';
 import { sha256 } from '../crypto.js';
 import { fmtTime } from '../lens.js';
 import { printable } from '../text.js';
+import { unixNow } from '../util.js';
 import { checkConsentRequest, consentFrom, consentLines } from './check.js';
 import { grantMismatch } from './grant.js';
 
@@ -42,13 +43,63 @@ async function recipientOf(
   };
 }
 
-/** The ask for a consent code, or why it can't be approved. */
-async function askForCode(o: {
+/** A consent valid for longer than this, in seconds, gets a warning before the y/N: an hour. */
+const LONG_CONSENT = 3600;
+
+/** Whole days, hours and minutes, in seconds, largest first. */
+const UNITS = [
+  ['d', 86400],
+  ['h', 3600],
+  ['m', 60],
+] as const;
+
+/** A span of `s` seconds for a person to read: its two largest units that aren't 0, as `23h 59m`. */
+function roughly(s: number): string {
+  const parts: string[] = [];
+  let rest = s;
+
+  for (const [unit, size] of UNITS) {
+    if (rest >= size) {
+      parts.push(`${Math.floor(rest / size)}${unit}`);
+      rest %= size;
+    }
+  }
+
+  return parts.slice(0, 2).join(' ');
+}
+
+/**
+ * The warning before the y/N when the consent stays valid for over `LONG_CONSENT`: it expires with
+ * its proposal, so a service that keeps a proposal open for long keeps the consent valid as long.
+ */
+function longConsentLines(expires: number, now: number): string[] {
+  const left = expires - now;
+
+  return left > LONG_CONSENT
+    ? [
+        '',
+        `⚠ this approval stays valid until ${printable(fmtTime(expires))}, ${roughly(left)} from now`,
+      ]
+    : [];
+}
+
+/** What approving a code needs: the code, whose it must be, and where it's being approved. */
+interface CodeApproval {
   code: string;
+  /** The principal's public key: the code must name it. */
   principal: string;
   localAgent: string | null;
   to?: string;
-}): Promise<ConsentAsk | Refusal> {
+  /** The time, in seconds; now by default. */
+  now?: number;
+}
+
+/**
+ * The ask for a consent code, or why it can't be approved. The consent expires with the code and
+ * its proposal: SPEC.md §4.4 commits a proposal no grant authorized only with a consent whose `exp`
+ * is the proposal's, so it isn't capped, and a long one is flagged before the y/N (SPEC-bridge).
+ */
+async function askForCode(o: CodeApproval): Promise<ConsentAsk | Refusal> {
   let c: ReturnType<typeof decodeConsentCode>;
 
   try {
@@ -90,6 +141,7 @@ async function askForCode(o: {
       ...consentLines(c, c.detail),
       `  consent issued to agent: ${agent.key} (fingerprint ${await keyFingerprint(agent.key)})`,
       `  approval expires: ${fmtTime(request.expires)}`,
+      ...longConsentLines(request.expires, o.now ?? unixNow()),
     ],
     reason: '',
   };
@@ -100,15 +152,9 @@ async function askForCode(o: {
  * (SPEC-bridge), ask the approver, and check the grant it signs. A code the approver hands on
  * again, or declines, is not approved.
  */
-export async function approveCode(o: {
-  code: string;
-  principal: string;
-  localAgent: string | null;
-  to?: string;
-  approver: Approver;
-}): Promise<
-  { ok: true; grant: string; agent: string; hash: string } | Refusal
-> {
+export async function approveCode(
+  o: CodeApproval & { approver: Approver },
+): Promise<{ ok: true; grant: string; agent: string; hash: string } | Refusal> {
   const ask = await askForCode(o);
 
   if ('ok' in ask) {

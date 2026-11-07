@@ -3,8 +3,8 @@
  * bridge's "never sign a consent that doesn't match the proposal shown", moved here from
  * ts/test/security.test.ts.
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   b64u,
@@ -319,6 +319,26 @@ describe('bridge security', () => {
       const text = readFileSync(f, 'utf8');
 
       expect(text, f).not.toMatch(SIGNS);
+    }
+  });
+
+  it('a pending file is the code and nothing else: never a seed (SPEC-approval §6)', async () => {
+    const k = await keys();
+    const { conn } = await bridged(k);
+    const { codes } = proposalsOf(await conn.call(BIG_ORDER, 'shop_order'));
+    const dir = join(k.home, 'pending');
+    const files = readdirSync(dir).map((f) =>
+      readFileSync(join(dir, f), 'utf8'),
+    );
+
+    // The code, then the process that wrote it: nothing `yea approve` reads but the code.
+    expect(files.sort()).toEqual(
+      codes.map((c) => `${c.code}\n{"pid":${process.pid}}\n`).sort(),
+    );
+
+    for (const text of files) {
+      expect(text).not.toContain(k.agent.seed);
+      expect(text).not.toContain(k.principal.seed);
     }
   });
 
