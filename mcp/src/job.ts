@@ -1,8 +1,9 @@
 /**
  * `job()`: register a tool that returns plans instead of acting (SPEC-mcp-ts
- * `approvals.job`). Its config, then the registration.
+ * `approvals.job`). Its config and the rules that close it, then the registration.
  */
 import type {
+  Icon,
   McpServer,
   RegisteredTool,
   ServerContext,
@@ -16,13 +17,31 @@ import type {
   Risk,
 } from '@yea-protocol/sdk';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
+import {
+  aBoolean,
+  aFunction,
+  aPlainObject,
+  aRisk,
+  arrayOf,
+  aString,
+  nested,
+  oneOf,
+  type Rule,
+  refused,
+  required,
+  strings,
+} from './options.js';
 import { jobAnnotations, jobMeta } from './result.js';
 import { previewSchema, takePreview } from './schema.js';
+import { isObject, type Obj } from './util.js';
 
 export interface JobConfig<S extends StandardSchemaWithJSON> {
   title?: string;
   description?: string;
   annotations?: ToolAnnotations;
+  icons?: Icon[];
+  /** The tool's own `_meta`; YEA's keys are merged over it, and win. */
+  _meta?: Record<string, unknown>;
   inputSchema: S;
   /** The tool's default plan risk; a plan's own `risk` wins. Default `medium`. */
   risk?: Risk;
@@ -51,6 +70,53 @@ export interface JobConfig<S extends StandardSchemaWithJSON> {
   ): string;
 }
 
+/** A Standard Schema: an object, or a function as ArkType's types are, with a `~standard` object. */
+const isStandardSchema = (v: unknown) =>
+  (typeof v === 'object' || typeof v === 'function') &&
+  v !== null &&
+  isObject((v as Obj)['~standard']);
+
+/** One icon, as the SDK's `Icon` takes it: a client rejects the whole `tools/list` over a bad one. */
+const ICON = {
+  src: required(aString),
+  mimeType: aString,
+  sizes: strings,
+  theme: oneOf('light', 'dark'),
+} satisfies Record<keyof Icon, Rule>;
+
+/** `registerTool`'s annotations, each of its type. */
+const ANNOTATIONS = {
+  title: aString,
+  readOnlyHint: aBoolean,
+  destructiveHint: aBoolean,
+  idempotentHint: aBoolean,
+  openWorldHint: aBoolean,
+} satisfies Record<keyof ToolAnnotations, Rule>;
+
+/**
+ * One rule per key of `JobConfig` (SPEC-mcp-ts, "Closed options"). `outputSchema` is refused:
+ * what a job returns is YEA's, so a schema for the tool's own results would never hold.
+ */
+export const JOB_CONFIG = {
+  title: aString,
+  description: aString,
+  annotations: nested(ANNOTATIONS),
+  icons: arrayOf('an array of icons', nested(ICON)),
+  _meta: aPlainObject,
+  inputSchema: required({ is: 'a Standard Schema', ok: isStandardSchema }),
+  risk: aRisk,
+  requireInteraction: aBoolean,
+  plan: required(aFunction),
+  revert: aFunction,
+  confirmWith: aFunction,
+  outputSchema: refused(
+    "a job's results are YEA's (plans, receipts and refusals), not the tool's",
+  ),
+} satisfies Record<
+  keyof JobConfig<StandardSchemaWithJSON> | 'outputSchema',
+  Rule
+>;
+
 /** Register `name` on `server` as a job tool (SPEC-mcp-ts `approvals.job`). */
 export function registerJob<S extends StandardSchemaWithJSON>(
   y: Yea,
@@ -78,11 +144,15 @@ export function registerJob<S extends StandardSchemaWithJSON>(
         : { description: config.description }),
       inputSchema: schema,
       annotations: jobAnnotations(config.annotations),
-      _meta: jobMeta(
-        config.risk,
-        config.revert !== undefined,
-        config.requireInteraction ?? y.requireInteraction,
-      ),
+      ...(config.icons === undefined ? {} : { icons: config.icons }),
+      _meta: {
+        ...config._meta,
+        ...jobMeta(
+          config.risk,
+          config.revert !== undefined,
+          config.requireInteraction ?? y.requireInteraction,
+        ),
+      },
     },
     (args: unknown, ctx: ServerContext) => {
       const { input, preview } = takePreview(args);

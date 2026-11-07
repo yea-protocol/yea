@@ -259,7 +259,12 @@ one exact proposal at one service, and still needs the agent key's proof.
 
 - **Code.** The bridge becomes `mcp/src/bridge.ts`, exported as `@yea-protocol/mcp/bridge`,
   with `bridge(clients, options)` returning a server factory. Its options are `tools`,
-  `budget`, `home`, `consents`, `tighten`, `requireInteraction` and `now`. `home` is the agent's home directory
+  `budget`, `home`, `consents`, `tighten`, `requireInteraction` and `now`, closed as mcp-ts's
+  are (SPEC-mcp-ts, "Closed options"): an unknown key, or a value not of its type (a `tools`
+  other than `auto`, `generic` or `per-capability`, a `budget` that isn't a whole number ≥ 1)
+  throws a `TypeError` naming it, before any service is greeted. `tighten` takes only `deny`:
+  every approval through the bridge is already out of band (`yea approve`), so `outOfBand`,
+  which the bridge couldn't honour, is refused rather than ignored. `home` is the agent's home directory
   (default `YEA_HOME`, else `~/.yea`), resolved once when `bridge()` is called: `policy.json`
   is re-read from it on every call, and the default `consents` store is its `consents`
   directory (`homeConsents(home)`). The principal key is never read from it, so two bridges
@@ -373,7 +378,10 @@ clients from `@yea-protocol/mcp`'s tests (2026, 2025 through the shim, and no el
   - a consent for one proposal never commits another;
   - a state replayed after use commits nothing;
   - a proposal that fails its hash check is never shown or signed;
-  - a hostile service's names and summaries can't shadow utility tools or forge lines.
+  - a hostile service's names and summaries can't shadow utility tools or forge lines;
+  - a `tighten` option it can't read (a bad `deny`, an unknown key, a Map or an un-awaited
+    Promise) or can't honour (`outOfBand`) refuses start-up, before any service is greeted
+    (#368).
 
 ## Boundaries
 

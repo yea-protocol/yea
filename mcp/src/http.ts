@@ -18,6 +18,14 @@ import {
   type ServerContext,
   validateHostHeader,
 } from '@modelcontextprotocol/server';
+import {
+  aBoolean,
+  aString,
+  checkOptions,
+  type Rule,
+  required,
+  whole,
+} from './options.js';
 
 /** The largest request body served by default: 1 MiB, the same cap as a YEA frame. */
 export const MAX_BODY = 1 << 20;
@@ -37,6 +45,24 @@ export interface HttpAppOptions extends HttpAuth {
   /** The largest request body the MCP handler reads (default MAX_BODY); over it, 413. */
   maxBody?: number;
 }
+
+/** `httpGate` reads these two, and takes the rest of `httpApp`'s options, so one object serves both. */
+export type HttpGateOptions = Pick<HttpAppOptions, 'token' | 'loopback'> &
+  Partial<HttpAppOptions>;
+
+/**
+ * One rule per key of `HttpAppOptions` (SPEC-mcp-ts, "Closed options"). `loopback` above all:
+ * missing or misspelt, the Host and Origin checks would be off without a word.
+ */
+const APP_OPTIONS = {
+  token: required(aString),
+  sub: required(aString),
+  loopback: required(aBoolean),
+  clientId: aString,
+  maxBody: whole(0),
+} satisfies Record<keyof HttpAppOptions, Rule>;
+
+const GATE_OPTIONS = { ...APP_OPTIONS, sub: aString };
 
 /** The HTTP settings from the environment; throws, saying what's missing. */
 export function httpAuthFrom(env: NodeJS.ProcessEnv = process.env): HttpAuth {
@@ -110,16 +136,10 @@ const unauthorized = () =>
 const foreign = (req: Request) =>
   misdirected(req) ?? originValidationResponse(req, localhostAllowedOrigins());
 
-/**
- * The checks before anything else: on loopback the Host header (against DNS rebinding: 421) and
- * the Origin header (a browser page elsewhere: 403), then the bearer token, compared in constant
- * time (401). Undefined lets the request through. `httpApp` runs it on every request; pass it to
- * `serveHttp` too, so it runs before the body is read.
- */
-export function httpGate(
-  o: Pick<HttpAppOptions, 'token' | 'loopback'>,
-): (req: Request) => Response | undefined {
-  return (req) => {
+/** The gate over options already checked. */
+const gateFor =
+  (o: Pick<HttpAppOptions, 'token' | 'loopback'>) =>
+  (req: Request): Response | undefined => {
     const refused = o.loopback ? foreign(req) : undefined;
 
     if (refused) {
@@ -131,6 +151,19 @@ export function httpGate(
 
     return token && sameToken(token, o.token) ? undefined : unauthorized();
   };
+
+/**
+ * The checks before anything else: on loopback the Host header (against DNS rebinding: 421) and
+ * the Origin header (a browser page elsewhere: 403), then the bearer token, compared in constant
+ * time (401). Undefined lets the request through. `httpApp` runs it on every request; pass it to
+ * `serveHttp` too, so it runs before the body is read.
+ */
+export function httpGate(
+  o: HttpGateOptions,
+): (req: Request) => Response | undefined {
+  checkOptions('httpGate()', o, GATE_OPTIONS);
+
+  return gateFor(o);
 }
 
 /**
@@ -141,7 +174,9 @@ export function httpApp(
   factory: () => McpServer,
   o: HttpAppOptions,
 ): (req: Request) => Promise<Response> {
-  const gate = httpGate(o);
+  checkOptions('httpApp()', o, APP_OPTIONS);
+
+  const gate = gateFor(o);
   const handler = createMcpHandler(factory, {
     maxRequestBodySize: o.maxBody ?? MAX_BODY,
   });

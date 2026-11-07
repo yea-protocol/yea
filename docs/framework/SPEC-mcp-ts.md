@@ -72,14 +72,16 @@ while keys, store and codec live in the one `yea()` context.
 | `serverKey` | `<home>/server/<name>.key` | The server's Ed25519 seed, created on first run, mode `0600`, in a `0700` directory: written to a temp file and linked into place (which fails if the key exists, like `O_EXCL`), so a concurrent reader never sees an empty key. It is opened with `O_NOFOLLOW` (and `O_NONBLOCK`, so a FIFO can't block the open) and checked on the open file: a symlink, anything but a regular file, a file over 64 KiB, a file another user owns, or one readable by others is refused, and so is a key directory another user owns or others can write. Where the platform has no owners or mode bits to check (Windows), the file is read with a warning on stderr. `yea service-id <name>` reads the key under the same rules. Its public key is the service id, and the holder of policy and consent grants. |
 | `principal` | `readPinnedKey()` (`YEA_PRINCIPAL_PUB`) | The pinned principal public key (`ed25519:…`). Passed as an option, it's taken as the author's code gives it, without the file check. If it's missing or refused, nothing auto-runs and no consent is accepted, so every job asks or fails closed: the consent-code result then carries no codes and says why. |
 | `policy` | `YEA_POLICY` | The signed policy grant: a value starting with `pg1.` is the token, anything else is a path to one. Re-read on every call, so a new grant applies without a restart. |
-| `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `readTightening`: `deny` is the union of both, and `outOfBand` the lower (stricter) of the two. A `policy.json` that can't be read, isn't a JSON object, or has a bad `deny` or `outOfBand` refuses every job call and says why: its `deny` can't be known. Unknown fields only warn. |
+| `tighten` | `{}` | Unsigned tightening, merged with `<home>/policy.json` through `readTightening`: `deny` is the union of both, and `outOfBand` the lower (stricter) of the two. The two are read by different rules. The option is code, checked once at start-up: an unknown key or a bad value is a start-up refusal (Closed options, below). The file is the person's, re-read on every call: one that can't be read, isn't a JSON object, or has a bad `deny` or `outOfBand` refuses every job call and says why, since its `deny` can't be known, and an unknown field in it only warns. |
 | `codec` | created from `stateKey` | An existing `createRequestStateCodec` result, for a server that already uses one. |
 | `stateKey` | random per process | The ≥ 32-byte codec key. A shared key only makes sense with a shared store (see below). |
 | `sub` | stdio: `() => ''`; HTTP: required | Who is calling. Used for the state binding and for undo. |
-| `requireInteraction` | `false` | Mark every tool that acts (job, guarded and `undo`) with Claude Code's prompt-on-every-call key, under Results. A `job()`'s own setting wins for that tool, and one that's on marks `undo` too. |
+| `requireInteraction` | `false` | Mark every tool that acts (job, guarded and `undo`) with Claude Code's prompt-on-every-call key, under Results. A `job()`'s or `guard()`'s own setting wins for that tool, and one that's on marks `undo` too. |
 
 **Start-up refusals.** `yea()` throws, so nothing is served, when:
 
+- an option is unknown, a required one is missing, or one isn't of its type (Closed options,
+  below), `tighten`'s keys included; this is checked first, before the key file is created;
 - `transport: 'http'` has no `sub` function;
 - a `stateKey` is passed with a `MemoryStore`, because several processes would each consume
   the same nonce once;
@@ -124,13 +126,18 @@ Registers a job tool. `config`:
 
 | Field | Meaning |
 |---|---|
-| `title`, `description`, `annotations` | As in `registerTool`. Annotation defaults are under Results. |
+| `title`, `description`, `annotations`, `icons` | As in `registerTool`. Annotation defaults are under Results. Each icon is closed as the SDK's `Icon` (`src`, and optional `mimeType`, `sizes` and `theme`): a client rejects the whole `tools/list` over one bad icon, so `job()` refuses it instead. |
+| `_meta` | Optional. The tool's own `_meta`. YEA's keys (under Results) are merged over it, and win. |
 | `inputSchema` | A Standard Schema that exposes JSON Schema (`~standard.jsonSchema`): zod ≥ 4.2, ArkType, Valibot, or `fromJsonSchema`. Its root must be a plain object without a `preview` field, or `job()` throws. Inputs may hold no non-integer numbers (SPEC-approval §1). |
 | `risk` | The tool's default plan risk. A plan's own `risk` wins; the default is `medium`. |
 | `requireInteraction` | Optional. `yea()`'s `requireInteraction`, for this tool alone. On, it also marks the server's `undo`, whenever `undo` is registered. |
 | `plan(input, ctx)` | Returns `JobPlan[]`, a `clarify(...)` question, or throws. It **must not change anything**: it runs on preview, on every retry, and again under the legacy shim. |
 | `revert({ input, planHash, result }, ctx)` | Optional. With it, plans whose `undoWindow` is a positive integer are undoable (SPEC-approval §1). |
 | `confirmWith(plan, input)` | Optional. The phrase the person types; `approve` if it's absent or empty. It must be typeable: printable text of at most 64 characters with only plain spaces inside (SPEC-approval §3), or the call fails as a tool error. It must depend only on the plan and the input: a consent binds it. |
+
+`registerTool`'s `outputSchema` is refused: what a job returns is YEA's (plans, receipts and
+refusals), so a schema for the tool's own results would never hold. Its other fields
+(`scopeChallenge`) are unknown keys, and refused like any other (Closed options, below).
 
 `JobPlan` is the SDK core's: `summary`, `effects`, `uses?`, `risk?`, `undoWindow?`, `data?`
 and `apply()`. `apply` runs at most once per approval, and only after the plan is allowed.
@@ -156,7 +163,8 @@ Turns a tool that's already registered into a job, without rewriting it. `tool` 
 `RegisteredTool` that `registerTool` returned, and `server` the `McpServer` it's registered
 on. `config` has `describe(input)`, which returns `{ summary, effects, uses?, risk?,
 undoWindow? }`, plus the optional `risk` (the tool's default plan risk and its `_meta` risk, as
-in `job()`), `revert` and `confirmWith`.
+in `job()`), `requireInteraction` (as in `job()`: `yea()`'s, for this tool alone, and on, it marks
+the server's `undo` too), `revert` and `confirmWith`.
 
 `guard` needs the server as well as the tool: a `RegisteredTool` doesn't carry its name, and
 the name is what plans hash, `deny` lists and `can` caveats match. The server is also where the
@@ -223,6 +231,7 @@ Bun, Deno and Workers with `nodejs_compat` have); `./http/node` has the Node ser
   (`Invalid Host: …`, `Invalid Origin: …`, `Invalid Origin header: …`). Then
   `Authorization: Bearer <token>`, compared in constant time (401). Off loopback, Host and Origin
   are left alone. It returns the refusal, or undefined to let the request through.
+  It takes `httpApp`'s options too, so one object can serve both.
 - `httpApp(factory, { token, sub, loopback, clientId?, maxBody? })`: a fetch handler that runs
   `httpGate` on every request, then `createMcpHandler` with `authInfo`
   `{ clientId (default 'yea-http'), extra: { sub } }`. The MCP handler reads at most `maxBody`
@@ -233,7 +242,8 @@ Bun, Deno and Workers with `nodejs_compat` have); `./http/node` has the Node ser
   `YEA_SUB`; throws, naming what's missing.
 - `MAX_BODY`: the default cap, 1 MiB, the same as a YEA frame.
 - `serveHttp(app, { port, host, gate?, maxBody?, requestTimeout?, maxConnections? })` from
-  `./http/node`: the app on Node, through the SDK's `serveFetch` (`@yea-protocol/sdk/node`).
+  `./http/node`: the app on Node, through the SDK's `serveFetch` (`@yea-protocol/sdk/node`),
+  which gets those options by name, never the object as given.
   Pass `gate: httpGate(...)` with the app's token, so a request without it is refused before its
   body is read. Request headers reach the app, because Streamable HTTP needs them (Authorization,
   Accept, Content-Type, `MCP-Protocol-Version`, `Mcp-Session-Id`, `Mcp-Method`, `Mcp-Name`,
@@ -266,6 +276,49 @@ worst case is about `2 × maxBody × maxConnections`.
 declared Content-Length over it and stops reading once past it), which `httpApp` sets to
 `maxBody`. Before this front end, the connector streamed the body into the MCP handler with no
 cap of its own, relying on that 4 MiB default.
+
+### Closed options
+
+Every options object an author passes is closed, nested ones included (AGENTS.md rule 3: unknown
+input fails closed). An unknown key, a missing required key, or a value not of its documented
+type (an unlisted enum value, such as a `risk` or a `transport`, included) throws a `TypeError`
+before anything is registered, served or written: `yea()` before the key file is created,
+`job()` and `guard()` before the tool is touched, `bridge()` before a service is greeted, and
+`serveHttp` before it listens. The error names the key, by its path when nested, and what it
+takes:
+
+```
+yea(): unknown option "requireInteractio"; known: name, transport, home, …
+yea(): tighten.deny must be an array of strings
+job(): icons[0].theme must be 'light' or 'dark'
+httpApp(): loopback is required: true or false
+```
+
+A key set to `undefined` counts as absent, so spreading a config with optional keys left
+undefined is fine, but an unknown key is refused whatever its value. The options, and each
+object nested in them (`tighten`, `annotations`, `_meta`, an icon), must be plain objects: a
+literal, or one made by `Object.create(null)`. A Map, an un-awaited Promise or a class instance
+is refused, because the check reads a key through the prototype and the code that applies a
+rule may read own keys only (`readTightening` does), so the two would see different rules. A
+JavaScript author, or one spreading a config built at run time, can't believe a protection is
+on when a typo left it off.
+
+The accepted keys (required ones in bold):
+
+| Function | Keys |
+|---|---|
+| `yea(options)` | **`name`**, **`transport`**, `home`, `store`, `singleProcess`, `serverKey`, `principal`, `policy`, `tighten`, `codec`, `stateKey`, `sub`, `requireInteraction` |
+| `yea({ tighten })` | `deny` (an array of strings), `outOfBand` (a risk) |
+| `approvals.job(server, name, config)` | `title`, `description`, `annotations`, `icons`, `_meta`, **`inputSchema`**, `risk`, `requireInteraction`, **`plan`**, `revert`, `confirmWith` |
+| `job({ annotations })` | `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
+| `job({ icons })` | each icon: **`src`**, `mimeType`, `sizes` (an array of strings), `theme` (light or dark) |
+| `approvals.guard(server, tool, config)` | **`describe`**, `risk`, `requireInteraction`, `revert`, `confirmWith` |
+| `httpApp(factory, options)` | **`token`**, **`sub`**, **`loopback`**, `clientId`, `maxBody` |
+| `httpGate(options)` | **`token`**, `sub`, **`loopback`**, `clientId`, `maxBody` |
+| `serveHttp(app, options)` | **`port`**, **`host`**, `maxBody`, `gate`, `requestTimeout`, `maxConnections` |
+
+`bridge()`'s are in SPEC-bridge ("Package and compatibility"). `mcp/test/options.test.ts`
+checks each list here against the code's.
 
 ## How a call runs
 
@@ -492,11 +545,15 @@ can't elicit. For each:
 - `undo` works within the window, and refuses after it, for another `sub`, and for a receipt
   from another server sharing the store;
 - the listing carries Claude Code's prompt key on exactly the job, guarded and `undo` tools,
-  and on no read, only with `requireInteraction`; a `job()`'s own setting wins for that tool,
-  and one that's on marks `undo` too, before or after `undo` is registered;
+  and on no read, only with `requireInteraction`; a `job()`'s or `guard()`'s own setting wins
+  for that tool, and one that's on marks `undo` too, before or after `undo` is registered;
 - `guard` wraps an existing tool. The original callback runs only once approved, its result
   and `outputSchema` pass through, and a failed update leaves the tool disabled;
 - the start-up and per-call refusals listed under `yea()`, and no codes on a `MemoryStore`;
+- closed options (`mcp/test/options.test.ts`): each function refuses an unknown key, a missing
+  required one, a value not of its type and options that aren't a plain object, naming it,
+  before it registers, writes or serves anything, and its known keys are this spec's; an icon
+  the SDK's `Icon` doesn't take is refused, so `tools/list` still works;
 - the start-up line, once, on stderr;
 - two servers in one process with different `home`s read their own `policy.json` deny lists
   and keep their own default stores; without `home`, `yea()` reads `YEA_HOME` once, at
@@ -528,7 +585,11 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a `requestState` the codec didn't verify is refused;
 - a verified state without our `yea` key, a state from another job on the same server, and an
   HTTP state replayed by another `sub` (through the codec's bind, and through `checkState` when
-  an author's codec doesn't bind `sub`) run nothing.
+  an author's codec doesn't bind `sub`) run nothing;
+- a `tighten` option that can't be read, or isn't a plain object (a Map, an un-awaited
+  Promise, a class with a `deny` getter), refuses start-up, rather than dropping the rule (#368);
+- `httpApp` and `httpGate` refuse a `loopback` that's missing, misspelt or not a boolean, so the
+  Host and Origin checks are never silently off (#368).
 
 ## Boundaries
 

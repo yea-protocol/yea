@@ -21,6 +21,19 @@ import { PendingProposals } from './bridge/pending.js';
 import type { Bridge } from './bridge/state.js';
 import { buildTools, errorOf, utilityTools } from './bridge/tools.js';
 import type { ToolMode, ToolSpec } from './bridge/types.js';
+import {
+  aBoolean,
+  aFunction,
+  aString,
+  checkOptions,
+  nested,
+  oneOf,
+  type Rule,
+  refused,
+  strings,
+  whole,
+  withMethods,
+} from './options.js';
 import { interactionMeta } from './result.js';
 import type { Obj } from './util.js';
 
@@ -41,7 +54,10 @@ export interface BridgeOptions {
   home?: string;
   /** Where consents are kept. Default: the home's `consents` directory. */
   consents?: ConsentStore;
-  /** Unsigned tightening, merged with the home's `policy.json`; only `deny` applies. */
+  /**
+   * Unsigned tightening, merged with the home's `policy.json`. Only `deny`: every approval through
+   * the bridge is already out of band (`yea approve`), so `outOfBand` is refused.
+   */
   tighten?: { deny?: string[] };
   /**
    * Mark the tools that change things (intents and `yea_undo`) with
@@ -52,6 +68,22 @@ export interface BridgeOptions {
   /** The clock, in seconds. For tests. */
   now?: () => number;
 }
+
+/** One rule per key of `BridgeOptions` (SPEC-bridge, "Package and compatibility"). */
+const BRIDGE_OPTIONS = {
+  tools: oneOf('auto', 'generic', 'per-capability'),
+  budget: whole(1),
+  home: aString,
+  consents: withMethods('a ConsentStore', ['get', 'put']),
+  tighten: nested({
+    deny: strings,
+    outOfBand: refused(
+      'every bridge approval is already out of band (yea approve); only deny applies',
+    ),
+  }),
+  requireInteraction: aBoolean,
+  now: aFunction,
+} satisfies Record<keyof BridgeOptions, Rule>;
 
 /** A service's client, and the URL to name it by in messages. */
 export type BridgeService = Client | { client: Client; url: string };
@@ -94,14 +126,16 @@ const asEntry = (s: BridgeService, i: number) =>
   s instanceof Client ? { client: s, url: `service #${i + 1}` } : s;
 
 /**
- * Greet the services and build their tools, once per process. Refuses to start if two services
- * claim one id. The returned factory makes a server per call (`serveStdio` and
+ * Greet the services and build their tools, once per process. Refuses to start, before greeting
+ * anyone, for options it doesn't take, and after, if two services claim one id. The returned factory makes a server per call (`serveStdio` and
  * `createMcpHandler` call it more than once); the pending proposals live here, shared by all.
  */
 export async function bridge(
   services: BridgeService[],
   o: BridgeOptions = {},
 ): Promise<BridgeFactory> {
+  checkOptions('bridge()', o, BRIDGE_OPTIONS);
+
   const mode = o.tools ?? 'auto';
   // The one place the home is resolved; everything below is handed it.
   const dir = o.home ?? home();
