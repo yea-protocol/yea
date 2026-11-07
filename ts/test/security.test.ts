@@ -35,6 +35,7 @@ import {
 } from '../src/ask.js';
 import { grantCovers } from '../src/client/grant-scope.js';
 import { approveCode, NO_DETAIL } from '../src/consent-round.js';
+import { saveGrant } from '../src/home.js';
 import * as P from '../src/index.js';
 import {
   checkKeyFile,
@@ -2235,6 +2236,17 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
       );
       const ended = spawnSync(process.execPath, ['-e', '']).pid ?? 0;
       const stopped = bridge.put(await proto('p_2'), now, { pid: ended });
+      // Approved on the bridge's path: the consent saved in the home under the proposal's hash.
+      const savedCode = await proto('p_3');
+      const saved = bridge.put(savedCode, now, { pid: process.pid });
+
+      saveGrant(
+        'pg1.example',
+        'consents',
+        P.decodeConsentCode(savedCode).hash,
+        home,
+      );
+
       // A summary padded with whitespace, then too long to show whole.
       const longCode = await jobCodeAt(
         now,
@@ -2268,6 +2280,7 @@ describe('yea approve <id> (SPEC-approval §6, Short ids)', () => {
         expect(lineOf(stopped)[0]).toMatch(
           / · its bridge has stopped: call the tool again$/,
         );
+        expect(lineOf(saved)[0]).toMatch(/ · approved, waiting for the agent$/);
 
         // One line, its whitespace collapsed and its summary cut to 80 code points.
         expect(lineOf(long)).toHaveLength(1);
