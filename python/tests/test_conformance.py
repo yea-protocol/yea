@@ -51,8 +51,10 @@ def test_estimate(case):
 
 @pytest.mark.parametrize("case", cases("printable", "text"))
 def test_printable(case):
-    """A consent screen escapes the same code points on both sides (security.test.ts [A8])."""
+    """A consent screen escapes the same code points on both sides (security.test.ts [A8]), and
+    escaping is idempotent, since it's applied over text already escaped (SPEC-approval §3)."""
     assert printable(case["text"]) == case["printable"]
+    assert printable(case["printable"]) == case["printable"]
 
 
 @pytest.mark.parametrize("case", cases("requests"))

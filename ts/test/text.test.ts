@@ -45,6 +45,11 @@ describe('printable', () => {
     expect(printable('\u2764\ufe0f \u2800')).toBe('\u2764\ufe0f \u2800');
     expect(printable('\tcafé 東京 😀')).toBe('\tcafé 東京 😀');
   });
+
+  it('keeps backslashes, so a literal escape stays as typed (SPEC-approval §3)', () => {
+    expect(printable('a\\b')).toBe('a\\b');
+    expect(printable('\\u{200b}')).toBe('\\u{200b}');
+  });
 });
 
 describe('jsonPrintable', () => {
