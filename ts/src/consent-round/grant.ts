@@ -46,13 +46,12 @@ function shapeMismatch(
 
 /**
  * Why `token` can't commit `p` as a consent to request `k` for `agent`, or null if it can: its
- * shape first, then its signature, through the same grant check a service runs, at `now` (the
- * system's clock by default).
+ * shape first, then its signature, through the same grant check a service runs, at `now`.
  */
 export async function grantMismatch(
   token: string,
   o: { request: ConsentRequest; proposal: Proposal; agent: string },
-  now?: number,
+  now: number,
 ): Promise<string | null> {
   const k = o.request;
   const why = shapeMismatch(token, k, o.agent);

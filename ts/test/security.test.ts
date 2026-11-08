@@ -1280,7 +1280,7 @@ describe('approval security (SPEC-approval)', () => {
   });
 
   it('[A30] yea approve refuses an expired protocol consent code before showing or asking, from the second it expires (#370)', async () => {
-    // An hour ahead: a consent that is approved has its grant checked against the real clock.
+    // The clock given decides, for both expiry checks and the grant's (#383).
     const at = P.unixNow() + 3600;
     const code = await protocolCode({
       principal: B.public,
@@ -2274,7 +2274,7 @@ function expiredWhy(expires: number, at: number) {
 
 /** Why the consent round refuses a consent request that expired at `expires`, when it's `at`. */
 function requestExpiredWhy(expires: number, at: number) {
-  return `this consent request expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine`;
+  return `this consent request expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Commit again for a fresh one`;
 }
 
 /** A job code for a plan the person can't confirm without a terminal. */
@@ -3095,27 +3095,123 @@ describe('consent requests (SPEC.md §6.6)', () => {
     expect(out.kind === 'reply' && out.consent).toMatch(/^pg1\./);
   });
 
-  // #383: the round asked for a consent request it never compared with the clock, and refused one
-  // that expired while the person read only through the grant check, as "grant has expired".
-  it('[C12] an expired consent request is refused before anyone is asked, from the second it expires (#383)', async () => {
-    const before = await round({ now: (p) => p.expires - 1, answer: yes });
+  /**
+   * What one run of an entry point to the ask step did: when its consent expires, whether anyone
+   * was asked, why it refused (null if it didn't), and whether the consent was used: handed out
+   * by `yea approve`, kept or sent by the live round.
+   */
+  interface AskRun {
+    expires: number;
+    asked: boolean;
+    why: string | null;
+    used: boolean;
+  }
 
-    expect(before.asks).toHaveLength(1);
-    expect(before.out.kind === 'reply' && before.out.reply.kind).toBe(
-      'RECEIPT',
+  /**
+   * A clock for one run: it reads `expires + before` until the person answers, and `expires +
+   * after` from then on. `gone` puts `expires` 10 seconds ago by this machine's clock; otherwise
+   * it's ahead.
+   */
+  interface AskClock {
+    before: number;
+    after: number;
+    gone?: true;
+  }
+
+  /** `yea approve` of a code whose consent expires in an hour, or 10 seconds ago (`gone`). */
+  async function approveRun(c: AskClock): Promise<AskRun> {
+    const expires = P.unixNow() + (c.gone ? -10 : 3600);
+    let t = expires + c.before;
+    const { r, asked } = await approveProtocol(
+      await protocolCode({ principal: B.public, agent: agent.public, expires }),
+      () => t,
+      () => {
+        t = expires + c.after;
+      },
     );
 
-    const at = await round({ now: (p) => p.expires, answer: yes });
+    return { expires, asked, why: r.ok ? null : r.why, used: r.ok };
+  }
 
-    expect(at.out).toMatchObject({
-      kind: 'refused',
-      why: requestExpiredWhy(at.p.expires, at.p.expires),
-      expired: true,
+  /** The live round for the pay service's proposal; `gone`, with a request that expired 10 seconds ago. */
+  async function roundRun(c: AskClock): Promise<AskRun> {
+    const gone = P.unixNow() - 10;
+    const put = vi.fn();
+    let shift = c.before;
+    const { out, asks, commits, p } = await round({
+      lie: c.gone ? () => patched({ expires: gone }) : undefined,
+      now: (p) => (c.gone ? gone : p.expires) + shift,
+      answer: (a) => {
+        shift = c.after;
+
+        return yes(a);
+      },
+      consents: { get: () => null, put },
     });
-    expect(at.asks).toEqual([]);
-    expect(at.commits).toHaveLength(1);
 
-    // A request that expires before its proposal is refused at its own, earlier expiry.
+    return {
+      expires: c.gone ? gone : p.expires,
+      asked: asks.length > 0,
+      why: out.kind === 'refused' ? out.why : null,
+      used: put.mock.calls.length > 0 || commits.length > 1,
+    };
+  }
+
+  // #383: the live round asked for a consent request it never compared with the clock, and
+  // `yea approve` had its own copy of the ask. Both now ask through one step, which reads the
+  // clock it's given before asking, after the answer, and for the grant check. Each row runs on
+  // both, and each says it in its own words: `yea approve` as #370 did, the round of a request.
+  const ASK_ENTRIES = [
+    { entry: 'yea approve', run: approveRun, expired: expiredWhy },
+    { entry: 'the live round', run: roundRun, expired: requestExpiredWhy },
+  ];
+  const CLOCK_ROWS = [
+    {
+      ids: ['A30', 'C12'],
+      clock: { before: -1, after: -1 },
+      want: 'asks at expires - 1, and the consent is used',
+      asked: true,
+      refused: false,
+    },
+    {
+      ids: ['A30', 'C12'],
+      clock: { before: 0, after: 0 },
+      want: 'refuses at expires without asking',
+      asked: false,
+      refused: true,
+    },
+    {
+      ids: ['A32', 'C13'],
+      clock: { before: -1, after: 0 },
+      want: 'refuses unused an answer given once the clock crossed expires',
+      asked: true,
+      refused: true,
+    },
+    {
+      ids: ['A36', 'C13'],
+      clock: { before: -10, after: -10, gone: true as const },
+      want: "checks the grant by the same clock, not this machine's",
+      asked: true,
+      refused: false,
+    },
+  ];
+
+  it.each(
+    ASK_ENTRIES.flatMap((e, i) =>
+      CLOCK_ROWS.map((row) => ({ ...e, ...row, id: row.ids[i] })),
+    ),
+  )('[$id] $entry $want (#383)', async (row) => {
+    const r = await row.run(row.clock);
+
+    expect(r).toEqual({
+      expires: r.expires,
+      asked: row.asked,
+      why: row.refused ? row.expired(r.expires, r.expires) : null,
+      used: !row.refused,
+    });
+  });
+
+  it('[C12] a request that expires before its proposal is refused from its own expiry; one that also names something else, for that first (#383)', async () => {
     const early = await round({
       lie: (p) => patched({ expires: p.expires - 60 }),
       now: (p) => p.expires - 1,
@@ -3125,10 +3221,9 @@ describe('consent requests (SPEC.md §6.6)', () => {
     expect(early.out).toMatchObject({
       kind: 'refused',
       why: requestExpiredWhy(early.p.expires - 60, early.p.expires - 1),
+      expired: { expires: early.p.expires - 60, now: early.p.expires - 1 },
     });
     expect(early.asks).toEqual([]);
-
-    // One that also names something else is refused for that first, in [C1]'s words.
     expect(
       await refusal({
         lie: () => patched({ service: 'other', expires: 1 }),
@@ -3137,46 +3232,8 @@ describe('consent requests (SPEC.md §6.6)', () => {
     ).toBe('the consent request names another service');
   });
 
-  it('[C13] a consent that expires while the person reads is refused unused: not kept, not sent (#383)', async () => {
-    const put = vi.fn();
-    let answered = false;
-    const { out, asks, commits, p } = await round({
-      now: (p) => (answered ? p.expires : p.expires - 1),
-      answer: async (a) => {
-        const signed = await yes(a);
-
-        answered = true;
-
-        return signed;
-      },
-      consents: { get: () => null, put },
-    });
-
-    expect(asks).toHaveLength(1);
-    expect(out).toMatchObject({
-      kind: 'refused',
-      why: requestExpiredWhy(p.expires, p.expires),
-      expired: true,
-    });
-    expect(commits).toHaveLength(1);
-    expect(put).not.toHaveBeenCalled();
-
-    // One clock decides: the grant is checked by the round's clock, which still has the consent
-    // valid here, though this machine's has it expired. It's sent; the service judges it.
-    const late = P.unixNow() - 10;
-    const sent = await round({
-      lie: () => patched({ expires: late }),
-      now: () => late - 10,
-      answer: yes,
-    });
-
-    expect(sent.asks).toHaveLength(1);
-    expect(sent.commits).toHaveLength(2);
-    expect(sent.out.kind).toBe('reply');
-  });
-
   it.skipIf(!existsSync(CLI))(
-    '[C14] yea do says the consent request expired and to run it again, and asks no one (#383)',
+    '[C14] yea do says the consent request expired and to commit again, and asks no one (#383)',
     async () => {
       const home = mkdtempSync(join(tmpdir(), 'yea-do-'));
 
@@ -3224,7 +3281,7 @@ describe('consent requests (SPEC.md §6.6)', () => {
         expect(r.status).toBe(1);
         expect(r.stderr).toMatch(
           new RegExp(
-            `✗ this consent request expired at ${fmtTime(gone)}; it is \\S+ on this machine\\. Run the command again for a fresh proposal\\n`,
+            `✗ this consent request expired at ${fmtTime(gone)}; it is \\S+ on this machine\\. Commit again for a fresh one\\n`,
           ),
         );
         expect(r.stderr).not.toContain('not signing');

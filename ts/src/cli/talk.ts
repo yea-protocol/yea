@@ -293,7 +293,7 @@ async function commitChosen(c: Client, rl: Interface, chosen: Proposal) {
   if (out.kind === 'refused') {
     die(
       out.expired
-        ? `✗ ${out.why}. Run the command again for a fresh proposal`
+        ? `✗ ${out.why}`
         : `✗ the service's consent request can't be signed (${out.why}); not signing`,
     );
   }
