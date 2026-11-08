@@ -9,11 +9,11 @@ import { checkMode, failure, redactKeys } from './errors.js';
 export type { Stripe };
 
 /**
- * The version this connector is tested against, and the one stripe 23.0 pins. Typed as the
+ * The version this connector is tested against, and the one stripe 23.1 pins. Typed as the
  * SDK's latest, so an SDK that moves to another version fails the build rather than changing
  * what's sent. Periods live on subscription items since basil.
  */
-export const STRIPE_VERSION: Stripe.LatestApiVersion = '2026-09-30.endive';
+export const STRIPE_VERSION: Stripe.LatestApiVersion = '2026-10-28.endive';
 
 export interface StripeOptions {
   /** A secret (`sk_…`) or restricted (`rk_…`) key. */

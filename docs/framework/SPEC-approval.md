@@ -202,7 +202,10 @@ authors list the safest common choice first, as the service-design guide already
 
 **Reading the unsigned part.** Unknown fields and anything that would loosen (removing a
 default, raising `outOfBand` above `high`) are ignored with a warning on stderr, and the valid
-tightenings still apply. A file that isn't valid JSON is ignored the same way.
+tightenings still apply. A file that isn't valid JSON is ignored the same way. The MCP adapters
+are stricter, since a dropped `deny` would let a tool run (SPEC-mcp-ts, SPEC-mcp-py): a
+`policy.json` they can't read refuses every job call, and a `tighten` option they can't read
+refuses start-up.
 
 **The floor.** Unsigned rules are best effort: an agent that can write `~/.yea` can delete a
 `deny` entry. Deleting the file only returns the server to its defaults. So what holds without

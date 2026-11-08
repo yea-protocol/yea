@@ -7,121 +7,131 @@
 
 ### HTTP was built for browsers. YEA is built for agents.
 
-**Your Explicit Approval: the open protocol for AI agents acting on behalf of people.**<br>
-Agents state an intent. Services reply with proposals whose effects are listed up front.
-The human's signed policy decides what can go ahead without asking, and reversible
-commits come with an undo window.
+**Your Explicit Approval: the open protocol for AI agents acting on behalf of people.**
 
 [![CI](https://github.com/yea-protocol/yea/actions/workflows/ci.yml/badge.svg)](https://github.com/yea-protocol/yea/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@yea-protocol/sdk?color=FFB224&label=npm)](https://www.npmjs.com/package/@yea-protocol/sdk)
-[![PyPI](https://img.shields.io/pypi/v/yea-sdk?color=FFB224&label=pypi)](https://pypi.org/project/yea-sdk/)
 ![spec](https://img.shields.io/badge/spec-v1%20draft-0B0D12)
 ![deps](https://img.shields.io/badge/runtime%20deps-0-2BD9A5)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+<!-- TODO(#319): restore the npm and PyPI badges once the packages are published.
+[![npm](https://img.shields.io/npm/v/@yea-protocol/sdk?color=FFB224&label=npm)](https://www.npmjs.com/package/@yea-protocol/sdk)
+[![PyPI](https://img.shields.io/pypi/v/yea-sdk?color=FFB224&label=pypi)](https://pypi.org/project/yea-sdk/)
+-->
 
 **Works with** Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI, VS Code, Windsurf and any MCP client, through the bridge. [What each client supports →](#client-support)
 
 **[Try it in your browser](https://yea-protocol.github.io/yea/playground)** · [Why YEA](docs/why.md) · [Docs](https://yea-protocol.github.io/yea/) · [Spec](SPEC.md) · [Quickstart](#quickstart) · [Use from Claude Code](#use-it-from-claude-code-today) · [Benchmark](#numbers) · [Design](docs/design.md)
 
-<img src="docs/demo.svg" alt="YEA demo: an agent reschedules a meeting, undoes it, browses a menu within a token budget, and places an order that needs the human's consent" width="880">
-
 </div>
 
 ---
 
-The web gave humans pages and gave code APIs. Agents got neither. Today an agent does real
-work by stitching CRUD endpoints together. It reads JSON that it pays for by the token,
-and it changes things with no standard way to see the effects first, undo them, or prove
-that the human allowed *this* action at *this* price. Its credentials are scoped to
-resources, not to amounts, risk or a specific action. MCP made those endpoints easy to
-plug in, but it kept the endpoint shape.
+**Guard a risky tool in your MCP server with one call.** Before the tool runs, your server
+sends the client its plan as a form (MCP form elicitation), and the tool runs only when the form
+comes back with the right phrase typed in. Why not just have the model ask the user first?
 
-**YEA goes back to the protocol layer.** It's an application protocol with its own
-verbs, reply kinds, errors, authorization model and a canonical text format for models.
-It's a peer of HTTP, not a wrapper around it.
+- **The server enforces it.** The tool doesn't run until the client returns the form, and
+  nothing the model passes to the tool counts as approval.
+- **The plan is the server's.** Your code computes its summary and effects from the call's
+  input, and the approval is bound to them by hash, not to the model's account of the call.
+- **It fails closed.** If the client can't show forms, or the phrase is wrong three times,
+  the tool doesn't run.
 
+A form proves only what the client attests: a hook, an auto-reviewer or a script can answer
+one. Plans that need a signature go at `risk: 'high'`, which replaces the form with a consent
+code for the person to sign with `yea approve`, outside the chat
+([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
+
+> **Unreleased:** nothing is on npm or PyPI yet, so the installs and `npx` commands in this
+> README fail for now. Until the release, install from the repo, as the guide's first step
+> shows for [TypeScript](https://yea-protocol.github.io/yea/guide/mcp-typescript#1-install)
+> and [Python](https://yea-protocol.github.io/yea/guide/mcp-python#1-install).
+
+**Which package?** `@yea-protocol/mcp` (Python: `yea-mcp`) guards your MCP server's tools, as
+below. `@yea-protocol/sdk` (`yea-sdk`) builds YEA services and the agents that call them
+([quickstart](#quickstart)). `@yea-protocol/cli` is the `yea` command and the bridge, `yea mcp`.
+
+```sh
+npm i @yea-protocol/mcp @yea-protocol/sdk @modelcontextprotocol/server zod@4 tsx
 ```
-agent ──INTENT "move my 1:1 with Ana to Thursday"────────────────▶ service
-      ◀─PROPOSALS [p1] ~ event/e2.start 14:00 → Thu 15:00 · undo 1d · free
-agent ──COMMIT p1 + grant (signed by the human's key)───────────▶
-      ◀─RECEIPT ✓ moved · undo until Fri 15:00
-agent ──UNDO r1 (the human changed their mind)──────────────────▶
-      ◀─RECEIPT ↶ undid r1
+
+<!-- snippet: examples/guard-quickstart.ts#quickstart -->
+```ts
+import { pathToFileURL } from 'node:url';
+import { McpServer } from '@modelcontextprotocol/server';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
+import { type Approvals, yea } from '@yea-protocol/mcp';
+import * as z from 'zod';
+
+export function createServer(approvals: Approvals): McpServer {
+  const info = { name: 'mail', version: '1.0.0' };
+  const server = new McpServer(info, approvals.serverOptions());
+  // Your tool, registered as usual. This one only logs.
+  const sendEmail = server.registerTool(
+    'send_email',
+    {
+      description: 'Send an email',
+      inputSchema: z.object({ to: z.string(), subject: z.string() }),
+    },
+    ({ to, subject }) => {
+      console.error(`email ${to}: ${subject}`); // stdout is the MCP transport
+
+      return { content: [{ type: 'text', text: `sent to ${to}` }] };
+    },
+  );
+
+  // One call: now it shows its plan and waits for approval before it runs.
+  approvals.guard(server, sendEmail, {
+    describe: (input) => ({
+      summary: `Email ${String(input.to)}: ${String(input.subject)}`,
+      effects: [{ op: 'send', target: String(input.to) }],
+    }),
+    confirmWith: (_plan, input) => String(input.to), // type the recipient
+  });
+
+  return server;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const approvals = yea({ name: 'mail', transport: 'stdio' }); // once per process
+
+  serveStdio(() => createServer(approvals));
+}
 ```
+
+Save it as `server.ts`, and in that folder add it to Claude Code with
+`claude mcp add mail -- npx tsx server.ts`. Then ask Claude to email ana@example.com about the
+Q3 report. Before anything is sent, Claude Code shows the plan, such as
+*Email ana@example.com: Q3 report*, and a field that says *Type "ana@example.com" to approve*.
+It needs no keys, policy or account to set up. The same server in Python is
+[`guard_quickstart.py`](python/mcp/examples/guard_quickstart.py).
 
 ## Get started
 
 | I want to… | Do this |
 |---|---|
-| **I have an MCP server** | [Guard a risky tool](#add-it-to-your-mcp-server) with one call: before it runs, the server sends its plan to the client as a form that asks for a typed phrase (MCP form elicitation), or, once a principal key is pinned (guide step 5), returns a consent code when the client can't show forms ([what each proves](docs/framework/SPEC-approval.md#what-an-approval-proves)). TypeScript, unreleased: install from the repo ([guide](https://yea-protocol.github.io/yea/guide/mcp-typescript)) |
+| **I have an MCP server** | Start from the server above, then [guard your own tools](#guard-your-own-tools). The guide, in [TypeScript](https://yea-protocol.github.io/yea/guide/mcp-typescript) or [Python](https://yea-protocol.github.io/yea/guide/mcp-python), adds undo, a signed policy that lets undoable plans run on their own, and consent codes for clients that can't show forms |
 | **See it work with a real model** (30 s) | `npx @yea-protocol/cli test-drive` runs Claude through a booking and a purchase that needs *your* approval, with the tools `yea mcp` serves. Needs an Anthropic API key. No key? Use `npx @yea-protocol/cli demo` or the [browser playground](https://yea-protocol.github.io/yea/playground) |
 | **Give my AI tool safe actions** | In Claude Code: `/plugin marketplace add yea-protocol/yea` then `/plugin install yea@yea`. Anywhere else: `npx @yea-protocol/cli install` (auto-detects Claude Code, Cursor, Codex, Gemini, VS Code, Windsurf and Claude Desktop). Then [add services](#use-it-from-claude-code-today) or [wrap an API](#wrap-any-rest-api-in-one-command): `yea openapi --preset github` |
-| **Make my service agent-ready** | [Build a service](#build-a-service) in ~30 lines of TypeScript or Python, or wrap your existing OpenAPI spec. [From REST to YEA](https://yea-protocol.github.io/yea/guide/service-design) translates a Stripe-style API step by step, with full code |
+| **Make my service agent-ready** | [Build a service](#build-a-service) in TypeScript or Python, or wrap your existing OpenAPI spec. [From REST to YEA](https://yea-protocol.github.io/yea/guide/service-design) translates a Stripe-style API step by step, with full code |
 | **Implement the protocol** | Read the [spec](SPEC.md) and pass the [conformance vectors](conformance). Go and Rust ports are welcome |
 
-## Add it to your MCP server
+## Guard your own tools
 
-> **Unreleased:** `@yea-protocol/mcp` isn't on npm yet. Install it from the repo, as the
-> [guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) shows.
+`guard()` wraps a tool you already have. `describe` returns the plan for a call's input, and
+`confirmWith` picks the phrase to type: a file's name, a branch, a recipient. The guide
+([TypeScript](https://yea-protocol.github.io/yea/guide/mcp-typescript),
+[Python](https://yea-protocol.github.io/yea/guide/mcp-python)) guards a `delete_file` tool, then
+adds undo, a signed policy that lets undoable plans run on their own, and consent codes for
+clients that can't show forms. Its whole server is
+[`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts), tested in CI like the one above.
 
-Guard a tool you already have. Before it runs, the server sends its plan to the client as a
-form, and only an answer that types the file's name approves it. Nothing the model passes to
-the tool approves it, and the form needs no keys, policy or account to set up. A form is only
-as trustworthy as the client that draws it, though: hooks, auto-reviewers and scripts can
-answer one, so a form approval is a convenience, not proof that a person acted
-([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
-Clients that can't show forms get a consent code for `yea approve` instead, once a principal
-key is pinned (guide step 5); until then they get a message saying no consent can be
-accepted. Our tests drive both paths with the MCP SDK's own client; see
-[client support](#client-support) for named apps.
-
-<!-- snippet: examples/mcp-quickstart.ts#guard -->
-```ts
-/** Your existing tool, registered as usual, then guarded. */
-function addDeleteFile(server: McpServer, approvals: Approvals, root: string) {
-  const deleteFile = server.registerTool(
-    'delete_file',
-    {
-      description: 'Delete a file for good',
-      inputSchema: z.object({ path: z.string() }),
-    },
-    async ({ path }) => {
-      await rm(await fileInside(root, path));
-
-      return { content: [{ type: 'text', text: `deleted ${path}` }] };
-    },
-  );
-
-  // One call: now it shows its plan and waits for approval before it runs.
-  approvals.guard(server, deleteFile, {
-    describe: async (input) => {
-      await fileInside(root, String(input.path)); // refuse before anyone is asked
-
-      return {
-        summary: `Delete ${String(input.path)}`,
-        effects: [{ op: 'delete', target: `file/${String(input.path)}` }],
-      };
-    },
-    // The phrase to type is the file's name.
-    confirmWith: (_plan, input) => basename(String(input.path)),
-  });
-}
-```
-
-Call it from your server factory, with `approvals` from
-`yea({ name: 'files', transport: 'stdio' })`, created once per process. `fileInside()` keeps
-paths to files in one folder; it's in the guide. From there, the
-[guide](https://yea-protocol.github.io/yea/guide/mcp-typescript) adds undo, a signed policy
-that lets undoable jobs run on their own, and consent codes for clients that can't ask. The
-whole server is [`examples/mcp-quickstart.ts`](examples/mcp-quickstart.ts).
-
-This delete can't be undone, yet it's approved in the form: a guarded tool's risk is `medium`
-unless you say otherwise. Pass `risk: 'high'` to `guard()` to make it need a consent signed
-with `yea approve` instead, at the cost of a pinned principal key (guide step 5) and a
-`yea approve` for each delete. Today that's best effort too: `yea approve` has to run on the
-server's account, since a key on another OS user
-([#358](https://github.com/yea-protocol/yea/issues/358)) or device
-([#328](https://github.com/yea-protocol/yea/issues/328)) can't save the consent yet
+A guarded tool's plans are at risk `medium` unless you say otherwise, and a `medium` plan is
+approved in the form even when it can't be undone. A plan at `risk: 'high'` (returned by
+`describe`, or passed to `guard()` as the default) never is: it gets a consent code for
+`yea approve` instead, which needs the public half of the person's key, the *principal key*,
+pinned on the server (guide step 5). Where `yea approve` runs decides what the consent proves,
+and not every setup works yet
 ([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 ### Client support
@@ -168,6 +178,33 @@ we ran v2.1.317 on both of its MCP runtimes. ³ Codex: its `approval_policy` (`n
 its auto-reviewer can answer one is unconfirmed (third-party)
 ([who can answer a form](https://yea-protocol.github.io/yea/guide/integrations#who-can-answer-a-form)).
 
+## The protocol
+
+The guard is built on YEA, a protocol for AI agents acting on behalf of people. Agents state
+an intent. Services reply with proposals whose effects are listed up front. The human's signed
+policy decides what can go ahead without asking, and reversible commits come with an undo
+window.
+
+The web gave humans pages and gave code APIs. Agents got neither. Today an agent does real
+work by stitching CRUD endpoints together. It reads JSON that it pays for by the token,
+and it changes things with no standard way to see the effects first, undo them, or prove
+that the human allowed *this* action at *this* price. Its credentials are scoped to
+resources, not to amounts, risk or a specific action. MCP made those endpoints easy to
+plug in, but it kept the endpoint shape.
+
+**YEA goes back to the protocol layer.** It's an application protocol with its own
+verbs, reply kinds, errors, authorization model and a canonical text format for models.
+It's a peer of HTTP, not a wrapper around it.
+
+```
+agent ──INTENT "move my 1:1 with Ana to Thursday"────────────────▶ service
+      ◀─PROPOSALS [p1] ~ event/e2.start 14:00 → Thu 15:00 · undo 1d · free
+agent ──COMMIT p1 + grant (signed by the human's key)───────────▶
+      ◀─RECEIPT ✓ moved · undo until Fri 15:00
+agent ──UNDO r1 (the human changed their mind)──────────────────▶
+      ◀─RECEIPT ↶ undid r1
+```
+
 ## What changes
 
 | The agent-era problem | What YEA does |
@@ -199,6 +236,10 @@ its auto-reviewer can answer one is unconfirmed (third-party)
 | **Not a sandbox.** | It constrains what an agent may ask services to do, not what code it runs on your machine. |
 
 ## See it
+
+<div align="center">
+<img src="docs/demo.svg" alt="YEA demo: an agent reschedules a meeting, undoes it, browses a menu within a token budget, and places an order that needs the human's consent" width="880">
+</div>
 
 `npm run demo` runs this over real TCP sockets. Everything under `│` is exactly what the
 model reads. The human's taps are simulated in code. Excerpt from
@@ -399,53 +440,31 @@ uv add yea-sdk             # Python ≥ 3.10 (or: pip install yea-sdk)
 
 ### Build a service
 
-```ts
-import { service, update, send, clarify } from "@yea-protocol/sdk";
-import { listen } from "@yea-protocol/sdk/node";
+A service declares what an agent may ask and what it may intend. For each intent, `plan` returns
+proposals: a summary, the effects, an `apply` that runs only on `COMMIT` and at most once, and a
+`revert` with an undo window when the change can be undone. Params are validated against the
+compact schema automatically, and typos get fixes like ``rename `dya` to `day` ``. Budgets,
+`EXPAND`, idempotent commits, replay protection, grant verification, spend accounting and
+consent are all handled for you.
 
-const cal = service({ id: "cal.example.com", name: "Calendar", summary: "Move meetings.", trust: [PRINCIPAL_KEY] })
-  .ask("calendar.agenda", {
-    summary: "Upcoming events",
-    params: { "day?": "date" },
-    run: ({ params }) => db.events(params.day),
-  })
-  .intent("calendar.reschedule", {
-    summary: "Move a meeting",
-    params: { event: "string — id or title", to: "datetime" },
-    plan: ({ params }) => {
-      const matches = db.find(params.event);
-      if (matches.length > 1) return clarify("Which one?", matches.map((e) => ({ label: e.title, params: { event: e.id } })));
-      const e = matches[0], before = e.start;
-      return {
-        summary: `Move "${e.title}" to ${params.to}`,
-        effects: [update(`event/${e.id}`, "start", before, params.to), send(e.owner, "updated invite")],
-        apply: () => db.move(e.id, params.to),   // runs only on COMMIT, at most once
-        revert: () => db.move(e.id, before),     // present, so the proposal is undoable
-        undoWindow: 86400,
-      };
-    },
-  });
-
-await listen(cal); // yea://127.0.0.1:7447, or serveHttp(cal) / fetchHandler(cal) for Workers, Bun and Deno
-```
-
-Params are validated against the compact schema automatically, and typos get fixes like
-``rename `dya` to `day` ``. Budgets, `EXPAND`, idempotent commits, replay protection,
-grant verification, spend accounting and consent are all handled for you.
+The example calendar is a whole service, tested in CI:
+[`calendar.ts`](ts/src/examples/calendar.ts) declares its capabilities, and
+[`calendar/plans.ts`](ts/src/examples/calendar/plans.ts) is what each intent proposes. In
+Python, it's [`calendar_example.py`](python/examples/calendar_example.py). `listen(service)`
+from `@yea-protocol/sdk/node` serves one on `yea://127.0.0.1:7447`, and `serveHttp` or
+`fetchHandler` serve it over HTTP, for Workers, Bun and Deno.
+[Build a service](https://yea-protocol.github.io/yea/guide/build-a-service) walks through one.
 
 Have a REST API already? [From REST to YEA](https://yea-protocol.github.io/yea/guide/service-design) maps each REST concept
 to YEA and translates a Stripe-backed billing API step by step, with the full code.
 
 ### Act as an agent
 
-```ts
-import { connect } from "@yea-protocol/sdk/node";
-
-const cal = await connect("yea://cal.example.com", { key: AGENT_SEED, grants: [GRANT] });
-const r = await cal.intent("calendar.reschedule", { event: "Ana", to: "2026-09-24T15:00:00Z" }, { auto: true });
-console.log(r.lens); // ← give this to your model
-if (r.kind === "PROPOSALS") await cal.commit(r.proposals[0]);
-```
+An agent connects with its own key and the grants its person signed
+(`connect(url, { key, grants })`), states an intent (`intent(capability, params, { auto: true })`),
+gives the reply's `lens` to its model, and commits the proposal it picks (`commit(proposal)`).
+The SDK's [service tests](ts/test/service.test.ts) drive the example calendar this way, and
+[Intents and proposals](https://yea-protocol.github.io/yea/guide/intents) explains each reply.
 
 Python has the same concepts in snake_case (`issue_grant`, `consent_grant`, `lens`, `connect`), with decorators and a `Plan` dataclass instead of chaining. The CLI and MCP bridge are TypeScript-only. See [python/README.md](python/README.md).
 

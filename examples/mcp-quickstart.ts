@@ -1,7 +1,7 @@
 /**
  * A small `files` MCP server with YEA approval: the example in the "Add YEA to your MCP server"
- * guide (site/guide/mcp-typescript.md). The guide shows its regions in order (the README copies
- * `guard`), and mcp/test/quickstart.test.ts drives them with in-memory clients.
+ * guide (site/guide/mcp-typescript.md). The guide shows its regions in order, and
+ * mcp/test/quickstart.test.ts drives them with in-memory clients.
  *
  *   FILES_ROOT=~/yea-scratch npx tsx examples/mcp-quickstart.ts     # or, on Node 22.18+: node …
  */

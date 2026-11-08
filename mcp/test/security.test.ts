@@ -21,6 +21,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Allowed } from '../../ts/test/imports.js';
 import { watchKeys } from '../../ts/test/key-watch.js';
+import { httpApp, httpGate } from '../src/http.js';
 import { stricter } from '../src/policy.js';
 import { type AnswerStep, accept } from './harness.js';
 import {
@@ -663,6 +664,73 @@ describe('a policy file that can not be read', () => {
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(/policy.json is not valid JSON/);
     expect(w.applied).toEqual([]);
+  });
+});
+
+// AGENTS.md rule 3 (#368): an option is set in code, so a malformed one is a mistake to stop at
+// start-up. A stderr line from a stdio server is seen by no one.
+describe('options that would leave a protection off', () => {
+  it('[M18] a tighten option that cannot be read refuses start-up, instead of dropping the rule', async () => {
+    for (const tighten of [
+      { deny: 'refund' },
+      { deny: ['refund', 1] },
+      { dney: ['refund'] },
+      { outOfBand: 'hgh' },
+      ['refund'],
+      null,
+    ]) {
+      await expect(
+        world({ tighten } as never),
+        JSON.stringify(tighten),
+      ).rejects.toThrow(TypeError);
+    }
+
+    // The well-formed rule is applied: refund never runs.
+    const w = await world({ tighten: { deny: ['refund'] } });
+
+    await grantPolicy(w);
+
+    const r = await (await connect('2026', refundServer(w))).call(ch1);
+
+    expect(textOf(r)).toMatch(/never allows refund/);
+    expect(w.applied).toEqual([]);
+  });
+
+  it('[M19] httpApp and httpGate refuse a loopback that is missing, misspelt or not a boolean, so the Host and Origin checks are never silently off', () => {
+    const token = 't'.repeat(40);
+    const factory = () => new McpServer({ name: 'x', version: '1' });
+
+    for (const o of [
+      { token, sub: 'me' },
+      { token, sub: 'me', loopBack: true },
+      { token, sub: 'me', loopback: 'true' },
+      { token, sub: 'me', loopback: 1 },
+    ]) {
+      expect(() => httpApp(factory, o as never), JSON.stringify(o)).toThrow(
+        TypeError,
+      );
+      expect(() => httpGate(o as never), JSON.stringify(o)).toThrow(TypeError);
+    }
+  });
+
+  it('[M20] a tighten that is not a plain object refuses start-up: its deny would be read as empty', async () => {
+    const rule = { deny: ['refund'] };
+    // A getter on the prototype: the check would see deny, readTightening (own keys) wouldn't.
+    const Tighten = class {
+      get deny() {
+        return ['refund'];
+      }
+    };
+
+    for (const tighten of [
+      new Map(Object.entries(rule)),
+      Promise.resolve(rule),
+      new Tighten(),
+    ]) {
+      await expect(world({ tighten } as never)).rejects.toThrow(
+        'yea(): tighten must be a plain object',
+      );
+    }
   });
 });
 

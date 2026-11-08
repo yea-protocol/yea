@@ -18,7 +18,7 @@ mkdir -p ~/yea-pkgs && npm pack -w @yea-protocol/sdk -w @yea-protocol/mcp --pack
 
 cd ~/your-server
 npm i ~/yea-pkgs/yea-protocol-sdk-0.1.0.tgz ~/yea-pkgs/yea-protocol-mcp-0.1.0.tgz \
-  @modelcontextprotocol/server zod
+  @modelcontextprotocol/server zod@4
 ```
 
 Steps 5 and 6 also use the `yea` command. From the clone: `alias yea="node $HOME/yea/cli/bin/yea.js"`.
@@ -50,6 +50,8 @@ Then check `FILES_ROOT` (the server refuses to start with a message saying what 
 
 <<< ../../examples/mcp-quickstart.ts#start
 
+`yea()`, `job()` and `guard()` check their options when called: a misspelt one, or one of the wrong type, such as `requireInteraction: 'true'`, stops the server with a message naming it and the options there are, so a typo can't leave a protection off.
+
 ::: details Show the full file
 <<< ../../examples/mcp-quickstart.ts
 :::
@@ -70,7 +72,7 @@ Then, in **Claude Code**, from your server's folder:
 claude mcp add files -e FILES_ROOT="$HOME/yea-scratch" -- npx tsx server.ts
 ```
 
-Node 22.18 or later can run TypeScript directly, so `node server.ts` works in place of `npx tsx server.ts`.
+Node 22.18 or later can run TypeScript directly, so `node server.ts` works in place of `npx tsx server.ts` when your `package.json` has `"type": "module"`. `npm init` writes `"type": "commonjs"`, and then Node stops at the file's first `import`.
 
 ::: details Cursor and VS Code
 **Cursor**, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
