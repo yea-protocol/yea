@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { keyPair } from '../crypto.js';
 import {
   delegateGrant,
+  endOf,
   inspectGrant,
   isPublicKey,
   issueGrant,
@@ -24,6 +25,7 @@ import {
   UsageError,
   type Values,
 } from './command.js';
+import { periodLines } from './periods.js';
 import { die } from './shared.js';
 
 export const cmdInit = command({
@@ -131,7 +133,7 @@ export const cmdGrant = command({
     'Sign a grant from your principal key to an agent: your policy. Saved and used automatically.',
   usage: 'grant [flags]',
   flags: GRANT_FLAGS,
-  example: 'yea grant --exp 24h --total spend=100.00USD --risk low',
+  example: 'yea grant --exp 90d --total spend=500.00USD/7d --risk low',
   run: (_args, o) => grant(o),
 });
 
@@ -148,9 +150,15 @@ async function grant(o: Values<typeof GRANT_FLAGS>) {
     saveGrant(token, 'grants', info.id.slice(0, 16));
   }
 
+  const root = info.blocks[0];
+  const shown = [
+    lean({ caveats: root.caveats }),
+    ...periodLines(root, endOf(info.blocks)),
+  ];
+
   console.log(token);
   console.error(
-    `\ngrant ${info.id.slice(0, 16)} → ${to}\n${lean({ caveats: info.blocks[0].caveats })}${o.to ? '' : `\nsaved to ${home()}/grants`}`,
+    `\ngrant ${info.id.slice(0, 16)} → ${to}\n${shown.join('\n')}${o.to ? '' : `\nsaved to ${home()}/grants`}`,
   );
 }
 
@@ -231,6 +239,11 @@ export const cmdInspect = command({
 
 async function inspect(rest: string[]) {
   const info = await inspectGrant(positional(rest, 0, 'token'));
+  const end = endOf(info.blocks);
+  // A total with `every`, as the person should read it: its periods, their end, its worst case.
+  const periods = info.blocks.flatMap((b, i) =>
+    periodLines(b, end).map((line) => `  block ${i}: ${line}`),
+  );
 
   console.log(
     lean({
@@ -244,4 +257,8 @@ async function inspect(rest: string[]) {
       })),
     }),
   );
+
+  if (periods.length) {
+    console.log(`periods:\n${periods.join('\n')}`);
+  }
 }

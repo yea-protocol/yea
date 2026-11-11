@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMMANDS } from '../src/cli/commands.js';
+import { decodeGrant } from '../src/grants.js';
+import { fmtTime } from '../src/lens.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const HOME = mkdtempSync(join(tmpdir(), 'yea-cli-'));
@@ -33,6 +35,8 @@ function yea(
 }
 
 const STACK = /^\s+at /m;
+/** A well-formed public key, for flags that need one. */
+const KEY = 'ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q';
 
 /** Run every row's `yea …args` at once, each with its expected message. */
 const runAll = (rows: [string[], string][]) =>
@@ -242,6 +246,31 @@ describe.concurrent('usage errors', () => {
       [['grant', '--to', 'notakey'], 'bad --to "notakey": not a public key'],
       [['grant', '--to='], 'bad --to "": not a public key'],
       [['delegate', 'pg1.x', '--to', 'notakey'], 'bad --to "notakey"'],
+      // #405: whatever follows a --total's `/` is a period, or it is refused, never a unit.
+      [
+        ['grant', '--total', 'buy=500USD/week', '--exp', '90d'],
+        'bad period "week" in --total buy=500USD/week \\(use e.g. 24h, 7d\\)',
+      ],
+      [
+        ['grant', '--total', 'buy=500USD/7days', '--exp', '90d'],
+        'bad period "7days"',
+      ],
+      [
+        ['grant', '--total', 'buy=500USD/0d', '--exp', '90d'],
+        'bad period "0d"',
+      ],
+      [
+        ['grant', '--each', 'buy=100USD/1d'],
+        '--each buy=100USD/1d: each takes no period',
+      ],
+      [
+        ['grant', '--total', 'buy=500USD/7d'],
+        '--total buy=500USD/7d needs --exp',
+      ],
+      [
+        ['delegate', 'pg1.x', '--to', KEY, '--total', 'buy=5/1d'],
+        '--total buy=5/1d needs --exp',
+      ],
       [
         ['install', '--target', 'nope'],
         "unknown target nope for 'install'\ntargets: ",
@@ -337,5 +366,55 @@ describe.concurrent('usage errors', () => {
     expect(r.status).toBe(2);
     expect(r.err).toMatch(STACK);
     expect(r.err).toContain("yea: unknown option --foo for 'init'");
+  });
+});
+
+// #405: `yea grant` issues a total that counts per period, and it and `yea inspect` say what
+// that allows in all (SPEC §6.3, §11).
+describe('yea grant and yea inspect with a period', () => {
+  it('signs one nbf at 00:00 UTC today, and prints the periods, their end and the worst case', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-period-'));
+    const env = { YEA_HOME: home, YEA_PRINCIPAL_HOME: '' };
+
+    expect((await yea(['init'], env)).status).toBe(0);
+
+    const g = await yea(
+      [
+        'grant',
+        '--to',
+        KEY,
+        '--can',
+        'buy',
+        '--each',
+        'buy=100USD',
+        '--total',
+        'buy=500USD/7d',
+        '--exp',
+        '90d',
+      ],
+      env,
+    );
+    const caveats = decodeGrant(g.out.trim())[0].p.caveats;
+    const exp = Number(caveats.find((c) => 'exp' in c)?.exp);
+    const nbf = Number(caveats.find((c) => 'nbf' in c)?.nbf);
+    const line = `buy: 500 USD every 7d from ${fmtTime(nbf)} until ${fmtTime(exp)}, at most 6500 USD`;
+
+    expect(g.status, g.err).toBe(0);
+    expect(caveats).toEqual([
+      { can: ['buy'] },
+      { exp },
+      { each: { of: 'buy', max: 100, unit: 'USD' } },
+      { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
+      { nbf },
+    ]);
+    // 00:00 UTC of the day it was issued: at most a day before 90 days ahead of exp.
+    expect(nbf % 86_400).toBe(0);
+    expect(exp - 90 * 86_400 - nbf).toBeGreaterThanOrEqual(0);
+    expect(exp - 90 * 86_400 - nbf).toBeLessThan(86_400);
+    expect(g.err).toContain(`\n${line}\n`);
+
+    const i = await yea(['inspect', g.out.trim()], env);
+
+    expect(i.out).toContain(`periods:\n  block 0: ${line}\n`);
   });
 });
