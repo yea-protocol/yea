@@ -2,7 +2,7 @@
  * The Python half of the dry run: build yea-sdk and yea-mcp as release.yml
  * does, install the wheels into a fresh venv, import both, run `twine check`
  * on everything PyPI would get, and, given a tag, check that no sdist's README
- * says "Unreleased".
+ * says the package is unreleased.
  */
 import { readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -25,17 +25,21 @@ function filesIn(dir, pattern) {
     .map((name) => join(dir, name));
 }
 
-/** Throws when an sdist in `dist` has a README that says "Unreleased". */
-function checkBanners(dist) {
-  const problems = filesIn(dist, /\.tar\.gz$/).flatMap((sdist) => {
+/**
+ * A line for each sdist in `dist` whose README, given a `tag`, still says the
+ * package is unreleased. An sdist without a README never gets this far: the
+ * build or `twine check --strict` fails first.
+ */
+export function sdistProblems(dist, tag) {
+  if (!tag) {
+    return [];
+  }
+
+  return filesIn(dist, /\.tar\.gz$/).flatMap((sdist) => {
     const stem = basename(sdist, '.tar.gz');
 
     return unreleasedReadme(stem, sdist, `${stem}/README.md`);
   });
-
-  if (problems.length > 0) {
-    throw new Error(problems.join('\n'));
-  }
 }
 
 /**
@@ -59,7 +63,9 @@ export function checkPython(root, work, tag) {
   sh(python, ['-I', '-c', 'import yea, yea_mcp']);
   sh('uvx', [TWINE, 'check', '--strict', ...filesIn(dist, /\.(whl|gz)$/)]);
 
-  if (tag) {
-    checkBanners(dist);
+  const problems = sdistProblems(dist, tag);
+
+  if (problems.length > 0) {
+    throw new Error(problems.join('\n'));
   }
 }

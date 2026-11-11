@@ -2,7 +2,8 @@
  * The CLI's quickstart (examples/cli-quickstart.sh, shown in cli/README.md) runs as written:
  * with this checkout's `yea` on PATH, as `npm i -g` puts it, and an empty home where Claude
  * Code is installed, `yea demo`, `yea install` and `yea doctor` each succeed, and the bridge is
- * set up in Claude Code.
+ * set up in Claude Code. It lives in mcp/test, not cli/, because `yea doctor` starts the bridge
+ * this package builds.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

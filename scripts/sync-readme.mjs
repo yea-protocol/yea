@@ -15,21 +15,31 @@ const isImg = (u) => /\.(svg|png|jpe?g|gif)$/i.test(u);
 const abs = (u) =>
   isRel(u) ? (isImg(u) ? RAW : BLOB) + u.replace(/^\.\//, '') : u;
 const LINK = /\]\(([^)\s]+)\)/g;
-const SRC = /(src|srcset)="([^"]+)"/g;
+/** A reference definition, `[label]: url` (`[^1]: …` is a footnote, not one). */
+const REF = /^( {0,3}\[(?!\^)[^\]]+\]:[ \t]*<?)([^\s>]+)/gm;
+/** An HTML attribute that holds a URL: an image's source, an anchor's target. */
+const ATTR = /(src|srcset|href)="([^"]+)"/g;
 
 /** The SDK's npm README: the root README under `root`, with absolute links. */
 export function syncedReadme(root) {
   return readFileSync(join(root, 'README.md'), 'utf8')
     .replace(LINK, (_, u) => `](${abs(u)})`)
-    .replace(SRC, (_, a, u) => `${a}="${abs(u)}"`);
+    .replace(REF, (_, head, u) => `${head}${abs(u)}`)
+    .replace(ATTR, (_, a, u) => `${a}="${abs(u)}"`);
+}
+
+/** Every link and image source in `md`, in each syntax `syncedReadme` rewrites. */
+export function links(md) {
+  return [
+    ...[...md.matchAll(LINK)].map((m) => m[1]),
+    ...[...md.matchAll(REF)].map((m) => m[2]),
+    ...[...md.matchAll(ATTR)].map((m) => m[2]),
+  ];
 }
 
 /** The links and image sources in `md` that npm and PyPI can't follow: the ones `abs` rewrites. */
 export function relativeLinks(md) {
-  const links = [...md.matchAll(LINK)].map((m) => m[1]);
-  const sources = [...md.matchAll(SRC)].map((m) => m[2]);
-
-  return [...links, ...sources].filter((u) => abs(u) !== u);
+  return links(md).filter((u) => abs(u) !== u);
 }
 
 /** True when ts/README.md under `root` is the synced root README. */

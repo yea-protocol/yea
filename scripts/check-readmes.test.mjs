@@ -1,8 +1,9 @@
 /**
  * Tests for check-readmes.mjs: the repo's READMEs pass, every published package but the SDK has
  * a page, a snippet must match its region (`// #region` or Python's `# region`), every code
- * block must be pinned, and a package page must install its package, link its guide and SPEC
- * absolutely, and have no relative link.
+ * block must be pinned however its fence is spelled, a broken marker is a problem line, and a
+ * package page must install its package outside comments and banners, link its own guide and
+ * SPEC absolutely, and have no relative link in any syntax.
  */
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -41,28 +42,61 @@ const PY = [
 const pinned = (code) =>
   `# x\n\n<!-- snippet: ex.py#hello -->\n\`\`\`python\n${code}\n\`\`\`\n`;
 
-/** A package page that passes, with `extra` appended. */
+/** The package the page fixtures are for: its name, its guide and its SPEC. */
+const X = {
+  name: '@yea-protocol/x',
+  guide: 'x',
+  spec: 'docs/framework/SPEC-x.md',
+};
+
+/** A package page for X that passes, with `extra` appended. */
 const page = (extra = '') =>
   [
     '```sh',
     'npm i @yea-protocol/x zod@4',
     '```',
     '[Guide](https://yea-protocol.github.io/yea/guide/x) ·',
-    '[spec](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-x.md)',
+    '[spec](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-x.md#jobs)',
     extra,
   ].join('\n');
+
+/** X's page with `install` as its only shell block's text. */
+const installing = (install) =>
+  page().replace('npm i @yea-protocol/x zod@4', install);
 
 test("the repo's READMEs pass", () => {
   assert.deepEqual(readmeProblems(ROOT), []);
 });
 
 test('every published package but the SDK has a page, named for what it installs', () => {
+  const page = (readme, name, guide, spec) => ({ readme, name, guide, spec });
+
   assert.deepEqual(packageReadmes(ROOT), [
-    { readme: 'cli/README.md', name: '@yea-protocol/cli' },
-    { readme: 'mcp/README.md', name: '@yea-protocol/mcp' },
-    { readme: 'connectors/stripe/README.md', name: '@yea-protocol/stripe' },
-    { readme: 'python/README.md', name: 'yea-sdk' },
-    { readme: 'python/mcp/README.md', name: 'yea-mcp' },
+    page(
+      'cli/README.md',
+      '@yea-protocol/cli',
+      'integrations',
+      'docs/framework/SPEC-bridge.md',
+    ),
+    page(
+      'mcp/README.md',
+      '@yea-protocol/mcp',
+      'mcp-typescript',
+      'docs/framework/SPEC-mcp-ts.md',
+    ),
+    page(
+      'connectors/stripe/README.md',
+      '@yea-protocol/stripe',
+      'stripe',
+      'docs/framework/SPEC-connector-stripe.md',
+    ),
+    page('python/README.md', 'yea-sdk', 'python', 'SPEC.md'),
+    page(
+      'python/mcp/README.md',
+      'yea-mcp',
+      'mcp-python',
+      'docs/framework/SPEC-mcp-py.md',
+    ),
   ]);
 });
 
@@ -76,7 +110,7 @@ test('a region is read with its comment style: # in Python and shell, // elsewhe
   assert.equal(region(root, 'ex.py', 'hello'), 'def hello():\n    print("hi")');
   assert.equal(region(root, 'ex.sh', 'run'), 'yea demo');
   assert.equal(region(root, 'ex.ts', 'a'), 'const a = 1;');
-  assert.throws(() => region(root, 'ex.ts', 'b'), /ex\.ts has no region b/);
+  assert.equal(region(root, 'ex.ts', 'b'), undefined);
 });
 
 test('a snippet that drifts from its region fails', () => {
@@ -109,25 +143,183 @@ test('a code block without a marker fails, and so does a README with none', () =
   ]);
 });
 
-test('a package page installs its package and links its guide and SPEC absolutely', () => {
-  assert.deepEqual(pageProblems('R.md', '@yea-protocol/x', page()), []);
-  assert.deepEqual(pageProblems('R.md', '@yea-protocol/x-tra', page()), [
-    'R.md: no shell block that installs @yea-protocol/x-tra',
+test('a code block is found however its fence is spelled', () => {
+  const root = repoWith({ 'ex.py': PY });
+  const before = pinned('def hello():\n    print("hi")');
+  const blocks = [
+    ['```python3\nx()\n```', 9],
+    ['```Python\nx()\n```', 9],
+    ['```\nx()\n```', 9],
+    ['~~~ts\nx()\n~~~', 9],
+    ['```ts title=x\nx()\n```', 9],
+    ['- step\n\n  ```ts\n  x()\n  ```', 11],
+    ['> ```ts\n> x()\n> ```', 9],
+  ];
+
+  for (const [block, line] of blocks) {
+    assert.deepEqual(
+      snippetProblems(root, 'R.md', `${before}\n${block}\n`),
+      [
+        `R.md: the code block at line ${line} has no snippet marker; copy it from a tested file`,
+      ],
+      block,
+    );
+  }
+});
+
+test("only shell, config, output and diagram blocks needn't be pinned", () => {
+  const root = repoWith({ 'ex.py': PY });
+  const before = pinned('def hello():\n    print("hi")');
+  const exempt = [
+    '```sh',
+    '```JSON',
+    '```text no-lens',
+    '```mermaid',
+    '```toml',
+  ];
+
+  for (const fence of exempt) {
+    assert.deepEqual(
+      snippetProblems(root, 'R.md', `${before}\n${fence}\nx\n\`\`\`\n`),
+      [],
+      fence,
+    );
+  }
+
+  assert.equal(
+    snippetProblems(root, 'R.md', `${before}\n\`\`\`rb\nx\n\`\`\`\n`).length,
+    1,
+  );
+});
+
+test('a pinned block may sit under a list item', () => {
+  const root = repoWith({ 'ex.py': PY });
+  const md = [
+    '- step',
+    '',
+    '  <!-- snippet: ex.py#hello -->',
+    '  ```python',
+    '  def hello():',
+    '      print("hi")',
+    '  ```',
+  ].join('\n');
+
+  assert.deepEqual(snippetProblems(root, 'R.md', md), []);
+});
+
+test('a marker naming a missing region or file, or with no block after it, is one line', () => {
+  const root = repoWith({ 'ex.py': PY });
+  const marked = (target, after = '```python\nx\n```') =>
+    `# x\n<!-- snippet: ${target} -->\n${after}\n`;
+
+  assert.deepEqual(snippetProblems(root, 'R.md', marked('ex.py#gone')), [
+    'R.md: the marker at line 2 names ex.py#gone, but ex.py has no region gone',
   ]);
+  assert.deepEqual(snippetProblems(root, 'R.md', marked('no.py#hello')), [
+    'R.md: the marker at line 2 names no.py#hello, but there is no no.py',
+  ]);
+  assert.deepEqual(snippetProblems(root, 'R.md', marked('ex.py#hello', 'x')), [
+    "R.md: the marker at line 2 isn't followed by a code block",
+  ]);
+});
+
+test('a package page installs its package and links its guide and SPEC absolutely', () => {
+  assert.deepEqual(pageProblems('R.md', X, page()), []);
   assert.deepEqual(
-    pageProblems('R.md', 'yea-mcp', "```sh\nuv add 'yea-mcp[fastmcp]'\n```"),
+    pageProblems('R.md', { ...X, name: '@yea-protocol/x-tra' }, page()),
+    ['R.md: no shell block that installs @yea-protocol/x-tra'],
+  );
+  assert.deepEqual(
+    pageProblems(
+      'R.md',
+      { ...X, name: 'yea-mcp' },
+      "```sh\nuv add 'yea-mcp[fastmcp]'\n```",
+    ),
     [
-      'R.md: no absolute link to its guide (https://yea-protocol.github.io/yea/guide/…)',
-      'R.md: no absolute link to its SPEC (https://github.com/yea-protocol/yea/blob/main/…SPEC….md)',
+      'R.md: no absolute link to its guide (https://yea-protocol.github.io/yea/guide/x)',
+      'R.md: no absolute link to its SPEC (https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-x.md)',
     ],
   );
 });
 
-test('a package page has no relative link: npm and PyPI cannot follow one', () => {
-  const extra = '[mcp](../../mcp) [risk](#risk) <img src="./logo.svg">';
+test("a link to another package's guide or SPEC isn't its own", () => {
+  const md = page()
+    .replace('/guide/x)', '/guide/stripe)')
+    .replace('SPEC-x.md#jobs', 'SPEC-connector-stripe.md');
 
-  assert.deepEqual(pageProblems('R.md', '@yea-protocol/x', page(extra)), [
-    "R.md: a relative link npm and PyPI can't follow: ../../mcp",
-    "R.md: a relative link npm and PyPI can't follow: ./logo.svg",
+  assert.deepEqual(pageProblems('R.md', X, md), [
+    'R.md: no absolute link to its guide (https://yea-protocol.github.io/yea/guide/x)',
+    'R.md: no absolute link to its SPEC (https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-x.md)',
   ]);
+});
+
+test('a package with no guide and SPEC on record fails until it gets them', () => {
+  assert.deepEqual(pageProblems('R.md', { name: '@yea-protocol/x' }, page()), [
+    'R.md: no guide and SPEC on record for @yea-protocol/x; add them to LINKS in scripts/check-readmes.mjs',
+  ]);
+});
+
+test('an install in a comment or in a quoted banner block is not the install line', () => {
+  const none = ['R.md: no shell block that installs @yea-protocol/x'];
+
+  assert.deepEqual(
+    pageProblems('R.md', X, installing('# npm i @yea-protocol/x  (soon)')),
+    none,
+  );
+  assert.deepEqual(
+    pageProblems(
+      'R.md',
+      X,
+      `${installing('true')}\n> \`\`\`sh\n> npm i @yea-protocol/x\n> \`\`\`\n`,
+    ),
+    none,
+  );
+  assert.deepEqual(
+    pageProblems('R.md', X, installing('npm i @yea-protocol/x # the bridge')),
+    [],
+  );
+  assert.deepEqual(
+    pageProblems(
+      'R.md',
+      X,
+      page()
+        .replace('```sh\n', '- a\n\n  ```sh\n  ')
+        .replace('4\n```', '4\n  ```'),
+    ),
+    [],
+  );
+});
+
+test('a package page has no relative link, in any syntax: npm and PyPI cannot follow one', () => {
+  const extra = [
+    '[mcp](../../mcp) [risk](#risk) <img src="./logo.svg">',
+    '<a href="../cli">cli</a> [spec][s] and a note[^1]',
+    '',
+    '[s]: docs/SPEC.md',
+    '[^1]: a footnote, not a link',
+    '[g]: https://yea-protocol.github.io/yea/guide/x',
+  ].join('\n');
+
+  assert.deepEqual(pageProblems('R.md', X, page(extra)), [
+    "R.md: a relative link npm and PyPI can't follow: ../../mcp",
+    "R.md: a relative link npm and PyPI can't follow: docs/SPEC.md",
+    "R.md: a relative link npm and PyPI can't follow: ./logo.svg",
+    "R.md: a relative link npm and PyPI can't follow: ../cli",
+  ]);
+});
+
+test('a reference-style link to its guide counts', () => {
+  const md = page().replace(
+    '[Guide](https://yea-protocol.github.io/yea/guide/x) ·',
+    '[Guide][g]\n\n[g]: https://yea-protocol.github.io/yea/guide/x',
+  );
+
+  assert.deepEqual(pageProblems('R.md', X, md), []);
+});
+
+test('a line with backticks after the fence is inline code, not a fence', () => {
+  const root = repoWith({ 'ex.py': PY });
+  const md = `${pinned('def hello():\n    print("hi")')}\n\`\`\`ts\`\`\` is how to name it.\n`;
+
+  assert.deepEqual(snippetProblems(root, 'R.md', md), []);
 });

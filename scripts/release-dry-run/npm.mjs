@@ -2,9 +2,9 @@
  * The npm half of the dry run: the packages a release publishes (every
  * workspace that isn't private, each named in release.yml), packed; each
  * tarball holds everything its `files` folders do, and a README that, given a
- * tag, doesn't say "Unreleased"; then installed into an empty project as an
- * adopter would, and run: every export of the libraries loads, every bin
- * answers `--help`, and `yea mcp` answers `initialize`.
+ * tag, doesn't say the package is unreleased; then installed into an empty
+ * project as an adopter would, and run: every export of the libraries loads,
+ * every bin answers `--help`, and `yea mcp` answers `initialize`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -75,26 +75,30 @@ async function checkMcp(app, home) {
 }
 
 /**
- * Throws when a package in `packages` isn't released, a pack lacks a file or
- * a README, or, given a `tag`, a packed README still says "Unreleased".
+ * A line for each reason `packs`, the tarballs of `packages` from the repo at
+ * `root`, can't be released: a package release.yml leaves out, a file or a
+ * README a tarball lacks, or, given a `tag`, a packed README that still says
+ * the package is unreleased. A tarball without a README is named once, as
+ * that, not as an error reading it.
  */
-function checkPacked(root, packages, packs, tag) {
+export function packedProblems(root, packages, packs, tag) {
   const workflow = readFileSync(
     join(root, '.github', 'workflows', 'release.yml'),
     'utf8',
   );
+  const readmes = packs.filter(({ paths }) => paths.includes('README.md'));
   const banners = tag
-    ? packs.flatMap(({ name, tarball }) =>
+    ? readmes.flatMap(({ name, tarball }) =>
         unreleasedReadme(name, tarball, 'package/README.md'),
       )
     : [];
 
-  fail([
+  return [
     ...unreleased(workflow, packages),
     ...packs.flatMap(({ dir, paths }) => unpackedFiles(join(root, dir), paths)),
     ...missingReadmes(packs),
     ...banners,
-  ]);
+  ];
 }
 
 /**
@@ -111,7 +115,7 @@ export async function checkNpm(root, work, tag) {
 
   const packs = pack(root, packages, dist);
 
-  checkPacked(root, packages, packs, tag);
+  fail(packedProblems(root, packages, packs, tag));
   install(
     app,
     packs.map(({ tarball }) => tarball),

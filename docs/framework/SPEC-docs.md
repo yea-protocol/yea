@@ -148,7 +148,7 @@ The README's first screen is for someone who builds MCP servers (#324); the prot
   the "Unreleased" banner, which says to install from the repo. The release removes the banner,
   the regions' notices and the badges' comment before the tag (#319): a published version's npm
   and PyPI pages can't change, so the dry run, given the tag, fails while any packed README still
-  says "Unreleased".
+  says the package is unreleased ("Unreleased", "Pre-release", "isn't on npm" and the like).
 - **ts/README.md** stays synced from it (`scripts/sync-readme.mjs`), so the SDK's npm page is this
   README; it has no page of its own (§6).
 
@@ -238,11 +238,12 @@ Every other package we publish has a README that is its npm or PyPI page (#323):
     so it skips on Node 20).
 - **Drift checks** in CI:
   - every README's snippets against the examples' regions (`scripts/check-readmes.mjs`), for the
-    README and each package page: a code block is a pinned region or isn't there, and a package
-    page also installs its package, links its guide and SPEC absolutely and has no relative
-    link;
+    README and each package page: a code block (any fence, indented or quoted, in any language
+    but shell, config, output or a diagram) is a pinned region or isn't there, and a package
+    page also installs its package outside a comment or a banner, links its own guide and SPEC
+    absolutely and has no relative link in any syntax;
   - the release dry run: every npm tarball carries a README, and, given a tag, no packed README
-    (npm's or an sdist's) says "Unreleased";
+    (npm's or an sdist's) says the package is unreleased;
   - the install and run lines adopters follow (`site/test/instructions.test.mjs`): zod pinned
     to 4, `node server.ts` only with `"type": "module"`, the README's quickstart installing what
     it imports and runs, and a page promising code only when the README region it includes has

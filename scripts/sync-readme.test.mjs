@@ -1,6 +1,6 @@
 /**
- * Tests for sync-readme.mjs: the SDK's npm README is in sync today, links
- * become absolute, and an edited copy counts as drift.
+ * Tests for sync-readme.mjs: the SDK's npm README is in sync today, links in
+ * every syntax become absolute, and an edited copy counts as drift.
  */
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -34,6 +34,26 @@ test('relative links and images become absolute', () => {
     syncedReadme(root),
     '[spec](https://github.com/yea-protocol/yea/blob/main/SPEC.md) ' +
       '<img src="https://raw.githubusercontent.com/yea-protocol/yea/main/site/logo.svg">',
+  );
+});
+
+test('reference definitions and anchors become absolute; a footnote stays as it is', () => {
+  const readme = [
+    '[spec][s] <a href="docs/why.md">why</a> and a note[^1]',
+    '',
+    '[s]: SPEC.md',
+    '[^1]: see the spec',
+  ].join('\n');
+  const blob = 'https://github.com/yea-protocol/yea/blob/main/';
+
+  assert.equal(
+    syncedReadme(repoWith(readme, '')),
+    [
+      `[spec][s] <a href="${blob}docs/why.md">why</a> and a note[^1]`,
+      '',
+      `[s]: ${blob}SPEC.md`,
+      '[^1]: see the spec',
+    ].join('\n'),
   );
 });
 

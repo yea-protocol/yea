@@ -7,10 +7,6 @@ and approves one plan at a time with a consent the person signs in their termina
 chat (`yea approve`). What a signed consent proves depends on where the key lives
 ([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
-```sh
-npm i -g @yea-protocol/cli
-```
-
 > **Unreleased:** `@yea-protocol/cli` isn't on npm yet, so this install fails for now. Until
 > the release, build a clone and run `node cli/bin/yea.js` there in place of `yea`:
 >
@@ -18,6 +14,10 @@ npm i -g @yea-protocol/cli
 > git clone https://github.com/yea-protocol/yea && cd yea
 > npm ci && npm run build
 > ```
+
+```sh
+npm i -g @yea-protocol/cli
+```
 
 <!-- snippet: examples/cli-quickstart.sh#quickstart -->
 ```sh

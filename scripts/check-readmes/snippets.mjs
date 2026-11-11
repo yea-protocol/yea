@@ -1,10 +1,12 @@
 /**
  * A README's pinned snippets. GitHub, npm and PyPI can't include files, so a README copies
  * code; a `<!-- snippet: path#region -->` line marks the fenced block after it as a copy of
- * that region, extracted the way VitePress's `<<<` does, and the copy must match.
+ * that region, extracted the way VitePress's `<<<` does, and the copy must match. Any other
+ * block must be shell, config, output or a diagram.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { fences } from './fences.mjs';
 
 const MARKER = /^<!-- snippet: (\S+)#([\w-]+) -->$/;
 
@@ -12,8 +14,22 @@ const MARKER = /^<!-- snippet: (\S+)#([\w-]+) -->$/;
 const HASH_REGION = /^# ?(region|endregion) ([\w-]+)$/;
 const SLASH_REGION = /^\/\/ ?#?(region|endregion) ([\w-]+)$/;
 
-/** The fences whose code must come from a tested file: install and config lines needn't. */
-const CODE = /^```(ts|tsx|typescript|js|mjs|javascript|py|python)\b/;
+/**
+ * The languages a block needn't come from a tested file in: install lines, config, output and
+ * diagrams. Any other language, or none, is code, so a new one fails until it's added here.
+ */
+const NOT_CODE = new Set([
+  'sh',
+  'bash',
+  'shell',
+  'console',
+  'json',
+  'jsonc',
+  'toml',
+  'yaml',
+  'text',
+  'mermaid',
+]);
 
 /** The marker pattern for `file`, by its extension. */
 function regionMarker(file) {
@@ -37,7 +53,7 @@ function dedent(lines) {
 
 /**
  * The lines of region `name` in `file` under `root`, without region markers, dedented
- * (VitePress's rules).
+ * (VitePress's rules), or undefined when the file has no such region.
  */
 export function region(root, file, name) {
   const lines = readFileSync(join(root, file), 'utf8').split('\n');
@@ -48,7 +64,7 @@ export function region(root, file, name) {
   );
 
   if (start < 0 || end < 0) {
-    throw new Error(`${file} has no region ${name}`);
+    return undefined;
   }
 
   return dedent(
@@ -56,61 +72,79 @@ export function region(root, file, name) {
   );
 }
 
-/** The code of the fenced block that opens on line `from` of `lines`. */
-function fenced(lines, from) {
-  const open = lines.findIndex((l, i) => i >= from && l.startsWith('```'));
-  const close = lines.findIndex((l, i) => i > open && l.startsWith('```'));
-
-  if (open !== from || close < 0) {
-    throw new Error(
-      `line ${from}: a snippet marker must be followed by a code block`,
-    );
-  }
-
-  return lines.slice(open + 1, close).join('\n');
-}
-
-/** Each marked snippet in `md`: where it says it came from, and the fenced code after it. */
+/**
+ * Each snippet marker in `md`: its line (from 1), the file and region it names, and the code of
+ * the block right after it (undefined when there's none).
+ */
 export function snippets(md) {
-  const lines = md.split('\n');
+  const blocks = fences(md);
 
-  return [...lines.entries()].flatMap(([i, line]) => {
+  return md.split('\n').flatMap((line, i) => {
     const m = MARKER.exec(line.trim());
 
-    return m ? [{ file: m[1], name: m[2], code: fenced(lines, i + 1) }] : [];
+    if (m === null) {
+      return [];
+    }
+
+    const code = blocks.find((b) => b.line === i + 1)?.code;
+
+    return [{ line: i + 1, file: m[1], name: m[2], code }];
   });
 }
 
 /** The opening line of each code block in `md` that no snippet marker pins. */
 function unpinnedCode(md) {
   const lines = md.split('\n');
-  const opens = lines.flatMap((line, i) => (CODE.test(line) ? [i] : []));
 
-  return opens
-    .filter((i) => !MARKER.test(lines[i - 1]?.trim() ?? ''))
-    .map((i) => `line ${i + 1}`);
+  return fences(md)
+    .filter(({ lang }) => !NOT_CODE.has(lang))
+    .filter(({ line }) => !MARKER.test(lines[line - 1]?.trim() ?? ''))
+    .map(({ line }) => `line ${line + 1}`);
+}
+
+/** A line, if one is due, saying why a snippet in the README `readme` doesn't match its region. */
+function snippetProblem(root, readme, { line, file, name, code }) {
+  const marker = `${readme}: the marker at line ${line}`;
+
+  if (code === undefined) {
+    return [`${marker} isn't followed by a code block`];
+  }
+
+  if (!existsSync(join(root, file))) {
+    return [`${marker} names ${file}#${name}, but there is no ${file}`];
+  }
+
+  const text = region(root, file, name);
+
+  if (text === undefined) {
+    return [
+      `${marker} names ${file}#${name}, but ${file} has no region ${name}`,
+    ];
+  }
+
+  return text === code
+    ? []
+    : [
+        `${readme}: the snippet from ${file}#${name} differs from the file. Copy the region again.`,
+      ];
 }
 
 /**
- * A line for each way the README `name`, whose text is `md`, breaks the snippet rules under
- * `root`: a snippet that differs from its region, a code block no marker pins, or no snippet.
+ * A line for each way the README `readme`, whose text is `md`, breaks the snippet rules under
+ * `root`: a marker that names nothing or pins no block, a snippet that differs from its region,
+ * a code block no marker pins, or no snippet.
  */
-export function snippetProblems(root, name, md) {
+export function snippetProblems(root, readme, md) {
   const found = snippets(md);
-  const drifted = found
-    .filter((s) => s.code !== region(root, s.file, s.name))
-    .map(
-      (s) =>
-        `${name}: the snippet from ${s.file}#${s.name} differs from the file. Copy the region again.`,
-    );
+  const broken = found.flatMap((s) => snippetProblem(root, readme, s));
   const unpinned = unpinnedCode(md).map(
     (at) =>
-      `${name}: the code block at ${at} has no snippet marker; copy it from a tested file`,
+      `${readme}: the code block at ${at} has no snippet marker; copy it from a tested file`,
   );
   const none =
     found.length === 0
-      ? [`${name}: no snippet markers found; pin one from a tested file`]
+      ? [`${readme}: no snippet markers found; pin one from a tested file`]
       : [];
 
-  return [...drifted, ...unpinned, ...none];
+  return [...broken, ...unpinned, ...none];
 }

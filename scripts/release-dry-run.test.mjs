@@ -3,9 +3,10 @@
  * `exports` path or a missing `exports` fails the exports check, a file left
  * out of a tarball fails the tarball check, a bin that fails or prints no help
  * fails the bin check, release.yml must publish every package that isn't
- * private, a tarball needs a README and a packed README can't say
- * "Unreleased", and the `initialize` probe tells a server that answers from
- * one that errs, exits or hangs.
+ * private, a tarball needs a README and, given a tag, a packed README (npm's
+ * or an sdist's) can't say it's unreleased however it's worded, and the
+ * `initialize` probe tells a server that answers from one that errs, exits or
+ * hangs.
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -23,7 +24,9 @@ import { fileURLToPath } from 'node:url';
 import { binProblems, binsOf } from './release-dry-run/bins.mjs';
 import { exportProblems } from './release-dry-run/exports.mjs';
 import { initialize } from './release-dry-run/mcp-initialize.mjs';
+import { packedProblems } from './release-dry-run/npm.mjs';
 import { publishedPackages, unreleased } from './release-dry-run/packages.mjs';
+import { sdistProblems } from './release-dry-run/python.mjs';
 import { missingReadmes, unreleasedReadme } from './release-dry-run/readme.mjs';
 import { unpackedFiles } from './release-dry-run/tarball.mjs';
 
@@ -60,10 +63,13 @@ function workspaceWith(files) {
   return dir;
 }
 
-/** An archive at a temp folder holding `files` (path to text), made with tar as npm and uv do. */
-function archiveWith(files) {
+/**
+ * An archive at a temp folder holding `files` (path to text), made with tar as npm and uv do,
+ * named `name`.
+ */
+function archiveWith(files, name = 'packed.tgz') {
   const dir = mkdtempSync(join(tmpdir(), 'yea-archive-'));
-  const archive = join(dir, 'packed.tgz');
+  const archive = join(dir, name);
 
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(dir, 'src', dirname(path)), { recursive: true });
@@ -109,6 +115,47 @@ function server(body) {
     `require('readline').createInterface({ input: process.stdin })
       .on('line', (line) => { const req = JSON.parse(line); ${body} });`,
   ];
+}
+
+/** The banner line the packed READMEs carry before a release. */
+const BANNER = '> **Unreleased:** not on npm yet.';
+
+/** What an unreleased README's line in a check says. */
+const SAYS = "its README still says it isn't released";
+
+/**
+ * A repo whose release.yml packs and publishes @yea-protocol/a, from a/, and
+ * a's pack, whose README is `readme` (none if undefined).
+ */
+function packedRepo(readme) {
+  const root = mkdtempSync(join(tmpdir(), 'yea-packed-'));
+  const files = { 'package/dist/index.js': '' };
+
+  mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+  mkdirSync(join(root, 'a', 'dist'), { recursive: true });
+  writeFileSync(
+    join(root, '.github', 'workflows', 'release.yml'),
+    'npm pack -w @yea-protocol/a\nnpm publish npm-dist/yea-protocol-a-*.tgz\n',
+  );
+  writeFileSync(
+    join(root, 'a', 'package.json'),
+    JSON.stringify({ name: '@yea-protocol/a', files: ['dist'] }),
+  );
+  writeFileSync(join(root, 'a', 'dist', 'index.js'), '');
+
+  if (readme !== undefined) {
+    files['package/README.md'] = readme;
+  }
+
+  const paths = Object.keys(files).map((p) => p.replace('package/', ''));
+  const pack = {
+    name: '@yea-protocol/a',
+    dir: 'a',
+    tarball: archiveWith(files),
+    paths: [...paths, 'package.json'],
+  };
+
+  return { root, packages: [{ name: pack.name, dir: 'a' }], packs: [pack] };
 }
 
 const REPLY =
@@ -183,12 +230,29 @@ test('a tarball without a README is named', () => {
 
 test('a packed README that says Unreleased fails, naming its lines', () => {
   const archive = archiveWith({
-    'package/README.md': '# a\n\n> **Unreleased:** not on npm yet.\n',
+    'package/README.md': `# a\n\n${BANNER}\n`,
     'package/index.js': '',
   });
 
   assert.deepEqual(unreleasedReadme('a', archive, 'package/README.md'), [
-    'a: its README says "Unreleased" (line 3); take the banners out before the tag',
+    `a: ${SAYS} (line 3); take the banners out before the tag`,
+  ]);
+});
+
+test('a packed README that says it is unreleased in other words fails too', () => {
+  const lines = [
+    '> **UNRELEASED:** soon.',
+    'Still unreleased.',
+    '> **Pre-release:** nothing on npm yet.',
+    '> **Not yet released.**',
+    "`yea-x` isn't on PyPI yet.",
+    'The SDKs aren’t on npm or PyPI yet.',
+    'Released under Apache-2.0; see the release notes.',
+  ];
+  const archive = archiveWith({ 'package/README.md': lines.join('\n') });
+
+  assert.deepEqual(unreleasedReadme('a', archive, 'package/README.md'), [
+    `a: ${SAYS} (line 1, 2, 3, 4, 5, 6); take the banners out before the tag`,
   ]);
 });
 
@@ -199,6 +263,55 @@ test('a packed README without the banner passes, in an sdist too', () => {
     unreleasedReadme('yea_x-0.1.0', archive, 'yea_x-0.1.0/README.md'),
     [],
   );
+});
+
+test('given a tag, the npm step fails on a packed README with the banner', () => {
+  const { root, packages, packs } = packedRepo(`# a\n${BANNER}\n`);
+
+  assert.deepEqual(packedProblems(root, packages, packs, 'v0.1.0'), [
+    `@yea-protocol/a: ${SAYS} (line 2); take the banners out before the tag`,
+  ]);
+  assert.deepEqual(packedProblems(root, packages, packs, undefined), []);
+});
+
+test('the npm step names a tarball without a README, with or without a tag', () => {
+  const { root, packages, packs } = packedRepo(undefined);
+  const missing = ['@yea-protocol/a: the tarball has no README.md'];
+
+  assert.deepEqual(packedProblems(root, packages, packs, 'v0.1.0'), missing);
+  assert.deepEqual(packedProblems(root, packages, packs, undefined), missing);
+});
+
+test('the npm step lists every problem at once', () => {
+  const { root, packs } = packedRepo(`${BANNER}\n`);
+  const packages = [
+    { name: '@yea-protocol/a', dir: 'a' },
+    { name: '@yea-protocol/new', dir: 'new' },
+  ];
+
+  writeFileSync(join(root, 'a', 'dist', 'more.js'), '');
+
+  assert.deepEqual(packedProblems(root, packages, packs, 'v0.1.0'), [
+    "release.yml doesn't pack @yea-protocol/new",
+    "release.yml doesn't publish @yea-protocol/new",
+    "@yea-protocol/a: dist/more.js isn't in the tarball",
+    `@yea-protocol/a: ${SAYS} (line 1); take the banners out before the tag`,
+  ]);
+});
+
+test('given a tag, the Python step fails on an sdist whose README has the banner', () => {
+  const sdist = archiveWith(
+    { 'yea_x-0.1.0/README.md': `# yea-x\n${BANNER}\n` },
+    'yea_x-0.1.0.tar.gz',
+  );
+  const dist = dirname(sdist);
+
+  writeFileSync(join(dist, 'yea_x-0.1.0-py3-none-any.whl'), '');
+
+  assert.deepEqual(sdistProblems(dist, 'v0.1.0'), [
+    `yea_x-0.1.0: ${SAYS} (line 2); take the banners out before the tag`,
+  ]);
+  assert.deepEqual(sdistProblems(dist, undefined), []);
 });
 
 test('a bin that prints its usage line passes', () => {
