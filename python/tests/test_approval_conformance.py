@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from conftest import CONFORMANCE, load_vectors
+from conftest import CONFORMANCE, ledger_key, ledger_key_json, load_vectors, used_at
 
 from yea import Plan, decode_grant, key_from_seed
 from yea.approval import (
@@ -13,7 +13,6 @@ from yea.approval import (
 )
 from yea.job_call import JobTool, hash_plans
 from yea.store import FileStore, LedgerKey, MemoryStore
-from yea.uses import value
 
 PATH = CONFORMANCE / "approval.json"
 DATA = load_vectors("approval")
@@ -72,10 +71,8 @@ def test_plan_hash(case):
 
 @pytest.mark.parametrize("case", cases("decide"))
 def test_decide(case):
-    used = {of: value(q) for of, q in case["used"].items()}
-
     def used_of(k: LedgerKey) -> int:
-        return used.get(k.of, 0)
+        return used_at(case["used"], k)
 
     d = decide([to_hashed(p) for p in case["plans"]], to_policy(case["policy"]), used_of, case["now"])
     want = case["expect"]
@@ -83,7 +80,7 @@ def test_decide(case):
     assert d.why == want.get("why")
     if d.kind == "run":
         assert d.plan.plan_hash == want["planHash"]
-        got = [{"key": {"block": k.block, "of": k.of}, "amount": str(a), "max": str(m)} for k, a, m in d.reserve]
+        got = [{"key": ledger_key_json(k), "amount": str(a), "max": str(m)} for k, a, m in d.reserve]
         assert got == want["reserve"]
 
 
@@ -140,7 +137,7 @@ async def _file_op(s: FileStore, o: dict):
     """One ``fileStore.ops`` step, by its TS name; ``settle`` settles the reservation it made."""
     a = o["args"]
     if o["op"] == "reserve":
-        r = await s.reserve(LedgerKey(a[0]["block"], a[0]["of"]), a[1], a[2])
+        r = await s.reserve(ledger_key(a[0]), a[1], a[2])
         if o.get("settle") and r:
             await s.settle(r)
         return r

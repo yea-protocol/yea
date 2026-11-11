@@ -748,7 +748,7 @@ def test_spent_reads_ahead_the_policy_totals():
         p = policy({"can": ["*"]}, {"total": {"of": "emails", "max": 3}})
         (bid, _), = p.totals
         await s.reserve(LedgerKey(bid, "emails"), 2 * 10**18, 3 * 10**18)
-        amounts = await spent(s, p)
+        amounts = await spent(s, p, NOW)
         h = hashed(p=plan(uses={"emails": quantity(2)}))
         assert decide([h], p, lambda k: amounts.get(k, 0), NOW).kind == "ask"
 

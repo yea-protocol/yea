@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..grants import Grant, total_keys
 from ..store import ApprovalStore, LedgerKey, Reservation
 from .policy import Policy
 
@@ -23,10 +24,13 @@ async def reserve_all(store: ApprovalStore, wanted: tuple[tuple[LedgerKey, int, 
     return held
 
 
-async def spent(store: ApprovalStore, policy: Policy) -> dict[LedgerKey, int]:
-    """Read ahead what ``decide`` needs from the store: the used amount for each policy total.
-    Pass ``lambda k: amounts.get(k, 0)`` as its ``used``."""
-    return {LedgerKey(bid, lim["of"]): await store.used(LedgerKey(bid, lim["of"])) for bid, lim in policy.totals}
+async def spent(store: ApprovalStore, policy: Policy, now: int) -> dict[LedgerKey, int]:
+    """Read ahead what ``decide`` needs from the store at ``now``: the used amount for each policy
+    total, in the period it counts in then. Pass ``lambda k: amounts.get(k, 0)`` as its ``used``,
+    and the same ``now``."""
+    g = policy.grant
+    keys = total_keys(g.blocks, g.block_ids, now) if isinstance(g, Grant) else []
+    return {k: await store.used(k) for k in keys}
 
 
 async def settle_all(store: ApprovalStore, held: list[Reservation]) -> None:

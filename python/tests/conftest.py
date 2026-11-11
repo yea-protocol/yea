@@ -48,3 +48,25 @@ def load_vectors(name: str):
         READ.setdefault(name, set())
         return Sections(name, data)
     return data
+
+
+def ledger_key(d: dict):
+    """A vector's ledger key, ``{block, of, period?: {every, start}}``, as a ``LedgerKey``."""
+    from yea.grants import LedgerKey, Period
+
+    p = d.get("period")
+    return LedgerKey(d["block"], d["of"], Period(p["every"], p["start"]) if p else None)
+
+
+def ledger_key_json(k) -> dict:
+    """A ``LedgerKey`` as the vectors write it, in the TS reference's key order."""
+    return {"block": k.block, "of": k.of, **({"period": k.period._asdict()} if k.period else {})}
+
+
+def used_at(used: dict, k) -> int:
+    """The exact amount a vector's ``used`` holds for key ``k``, written as FileStore lays the ledger
+    out: ``{"spend": q}``, or ``{"spend@604800": {"1789776000": q}}`` for one period of a total."""
+    from yea.uses import value
+
+    q = used.get(f"{k.of}@{k.period.every}", {}).get(str(k.period.start)) if k.period else used.get(k.of)
+    return value(q) if q else 0

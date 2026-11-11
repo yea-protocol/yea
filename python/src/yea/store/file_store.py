@@ -31,6 +31,7 @@ class FileStore:
         undo/<receipt id>.claim, .done  O_EXCL markers
         receipts/<receipt id>.json      the job receipt, plain JSON (not byte-pinned: results may hold floats)
         ledger/<block>/<of>.json        {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
+        ledger/<block>/<of>@<every>/<start>.json   the same, for one period of a total with every
         consents/<planHash>             the pg1. consent grant
     """
 
@@ -72,8 +73,12 @@ class FileStore:
         _create_excl(self.root / "undo" / f"{_receipt_id(id)}.done")
 
     def _ledger_path(self, k: LedgerKey) -> Path:
+        """``ledger/<block>/<of>.json``, or for one period, ``ledger/<block>/<of>@<every>/<start>.json``."""
         k = _key(k)
-        return self.root / "ledger" / k.block / f"{k.of}.json"
+        block = self.root / "ledger" / k.block
+        if k.period is None:
+            return block / f"{k.of}.json"
+        return block / f"{k.of}@{k.period.every}" / f"{k.period.start}.json"
 
     async def _update(self, k: LedgerKey, change: Any) -> Any:
         """Read, change and write one ledger file under its lock. ``change(ledger)`` returns the

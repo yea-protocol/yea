@@ -8,8 +8,9 @@ from typing import Any
 
 from .._json import compact
 from ..risk import exceeds, is_risk
-from ..uses import fmt_quantity, is_limit, is_uses, limit_value, same_unit, value
+from ..uses import is_limit, is_total, is_uses, limit_value, same_unit, value
 from .context import GrantContext
+from .periods import fmt_limit, ledger_key, starts_again
 from .token import _safe_int
 
 RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
@@ -36,10 +37,13 @@ class Denial:
     hard: bool
 
 
-def limit_denial(name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int = 0) -> Denial | None:
+def limit_denial(
+    name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int = 0, after: str = ""
+) -> Denial | None:
     """Why an ``each`` or ``total`` limit fails for a proposal, or None if it holds. A present
     but malformed ``uses`` (including null) is hard. ``already`` is the exact value committed
-    or reserved under the block (``total`` only)."""
+    or reserved against the total's ledger key, and ``after`` what a refusal over it adds, such as
+    when its next period starts (``total`` only)."""
     if "uses" not in proposal:
         return None
     uses = proposal["uses"]
@@ -51,11 +55,11 @@ def limit_denial(name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any
         return None  # limits bind only what is reported
     if not same_unit(q, limit):
         return Denial(f"{of} is in {q.get('unit') or 'no unit'}, but the limit is in {limit.get('unit') or 'no unit'}", hard=False)
-    shown = fmt_quantity({"amount": limit["max"], **{k: limit[k] for k in ("scale", "unit") if k in limit}})
+    shown = fmt_limit(limit)
     if name == "each" and value(q) > limit_value(limit):
         return Denial(f"{of} over the per-commit limit of {shown}", hard=False)
     if name == "total" and already + value(q) > limit_value(limit):
-        return Denial(f"{of} would pass the total limit of {shown}", hard=False)
+        return Denial(f"{of} would pass the total limit of {shown}{after}", hard=False)
     return None
 
 
@@ -66,7 +70,7 @@ def _str_list(v: Any) -> bool:
 _WELL_FORMED = {
     "svc": _str_list, "verbs": _str_list, "can": _str_list,
     "exp": _safe_int, "nbf": _safe_int,
-    "each": is_limit, "total": is_limit,
+    "each": is_limit, "total": is_total,
     "risk": lambda v: isinstance(v, str) and v in RISK_ORDER,
     "only": lambda v: isinstance(v, str),
 }
@@ -81,27 +85,59 @@ def well_formed(caveat: Any) -> bool:
     return check is not None and check(arg)
 
 
-def check_caveat(caveat: Any, bid: str, ctx: GrantContext) -> bool:
+@dataclass(frozen=True)
+class BlockFacts:
+    """What a caveat needs from the rest of its grant: its block's one ``nbf``, which a periodic
+    ``total`` counts from, and the grant's earliest ``exp``, which ends its periods (SPEC §6.3).
+    None means there isn't one."""
+
+    anchor: int | None = None
+    end: int | None = None
+
+
+def check_caveat(caveat: Any, bid: str, ctx: GrantContext, facts: BlockFacts = BlockFacts()) -> bool:
     """True iff one caveat is satisfied. Unknown or malformed caveats fail closed."""
-    return caveat_denial(caveat, bid, ctx) is None
+    return caveat_denial(caveat, bid, ctx, facts) is None
 
 
-def caveat_denial(caveat: Any, bid: str, ctx: GrantContext) -> Denial | None:
-    """Why one caveat fails, or None when it is satisfied. Unknown or malformed caveats fail hard."""
+def caveat_denial(caveat: Any, bid: str, ctx: GrantContext, facts: BlockFacts = BlockFacts()) -> Denial | None:
+    """Why one caveat fails, or None when it is satisfied. Unknown or malformed caveats fail hard,
+    as does a periodic ``total`` that ``facts`` give no anchor or no end, on every verb."""
     if not isinstance(caveat, dict) or len(caveat) != 1 or next(iter(caveat)) not in _WELL_FORMED:
         kind = "malformed" if not isinstance(caveat, dict) else "unknown"
         return Denial(f"{kind} caveat {compact(caveat)}", hard=True)
     if not well_formed(caveat):
         return Denial(f"malformed caveat {compact(caveat)}", hard=True)
     (name, arg), = caveat.items()
+    if name == "total" and "every" in arg and (why := _unperiodic(facts)):
+        return Denial(why, hard=True)
     if name in COMMIT_ONLY and ctx.verb != "COMMIT":
         return None  # known, and ignored outside COMMIT (§6.3)
     if name == "risk" and not is_risk((ctx.proposal or {}).get("risk")):
         return Denial("unknown risk on the proposal", hard=True)  # a ceiling can't judge it (§6.3)
-    if name in LIMITS:
-        return limit_denial(name, arg, ctx.proposal or {}, int(ctx.used.get((bid, arg["of"]), 0)))
+    if name == "total":
+        return _total_denial(arg, bid, ctx, facts)
+    if name == "each":
+        return limit_denial(name, arg, ctx.proposal or {})
     why = _denial(name, arg, ctx)
     return Denial(why, hard=name not in CONSENT_CAVEATS) if why else None
+
+
+def _unperiodic(facts: BlockFacts) -> str | None:
+    """Why a ``total`` with ``every`` can't count in periods in this grant (§6.3): its block hasn't
+    exactly one ``nbf`` to count them from, or the grant has no ``exp`` to end them."""
+    if facts.anchor is None:
+        return "a total with every needs exactly one nbf in its block"
+    return "a total with every needs an exp in the grant" if facts.end is None else None
+
+
+def _total_denial(limit: Mapping[str, Any], bid: str, ctx: GrantContext, facts: BlockFacts) -> Denial | None:
+    """Why a well-formed ``total`` fails a COMMIT at ``ctx.now``, counted in its period if it has one."""
+    key = ledger_key(bid, limit, facts.anchor, ctx.now)
+    if key is None:
+        return None  # before the block's nbf, which denies the request; this counts nothing
+    after = starts_again(key.period, facts.end)
+    return limit_denial("total", limit, ctx.proposal or {}, int(ctx.used.get(key, 0)), after)
 
 
 def _denial(name: str, arg: Any, ctx: GrantContext) -> str | None:

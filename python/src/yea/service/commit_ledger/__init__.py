@@ -25,6 +25,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ...errors import YeaError, fix
+from ...grants import TotalLimit
 from ...store import Reservation
 from ...undo_window import is_undo_window
 from ..plan import CommitCtx
@@ -41,7 +42,6 @@ from .records import (
     Records,
     StoredProposal,
     StoredReceipt,
-    TotalLimit,
     Undo,
     Used,
     receipt_for,
@@ -115,7 +115,7 @@ class CommitLedger:
             # Grant evaluation just read this same usage, so this fails closed only if the two disagree.
             raise YeaError(
                 "consent_required",
-                f"{r.of} would pass a total limit (other commits are in flight); your principal must approve this exact proposal",
+                f"{r.key.of} would pass a total limit (other commits are in flight); your principal must approve this exact proposal",
                 consent=consent_request(self._id, proposal, admitted.iss),
             )
         return await outcome(self._start(req.stored, admitted.iss, r, Answer(req.id, emit)), "commit")

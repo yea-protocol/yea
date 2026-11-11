@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..grants import RISK_ORDER, Grant, block_id, decode_grant
-from ..uses import is_limit, limit_value
+from ..uses import is_total, limit_value
 
 DEFAULT_OUT_OF_BAND = "high"
 
@@ -51,7 +51,8 @@ class Policy:
     server_key: str | None = None
     deny: tuple[str, ...] = ()
     out_of_band: str = DEFAULT_OUT_OF_BAND
-    totals: tuple[tuple[str, dict], ...] = field(default=())  # (block id, limit), one per block and measure
+    # (block id, limit): one per block, measure and ``every``, the smallest when a block repeats one
+    totals: tuple[tuple[str, dict], ...] = field(default=())
 
 
 def load_policy(grant: str | Grant | None, server_key: str, principal_key: str | None, tightening: Tightening) -> Policy:
@@ -73,14 +74,15 @@ def load_policy(grant: str | Grant | None, server_key: str, principal_key: str |
 
 
 def _smallest_totals(g: Grant) -> tuple[tuple[str, dict], ...]:
-    """One ``total`` per block and measure; when a block repeats one, the smallest max applies."""
-    best: dict[tuple[str, str], dict] = {}
+    """One ``total`` per block, measure and ``every``; when a block repeats one, the smallest max
+    applies. Totals with a different ``every`` count in different periods, so each is kept."""
+    best: dict[tuple[str, str, int | None], dict] = {}
     for b in g.blocks:
         bid = block_id(b)
         for c in b["p"]["caveats"]:
-            if isinstance(c, dict) and len(c) == 1 and is_limit(c.get("total")):
+            if isinstance(c, dict) and len(c) == 1 and is_total(c.get("total")):
                 lim = c["total"]  # a malformed one is skipped here; the grant check refuses it
-                key = (bid, lim.get("of"))
+                key = (bid, lim["of"], lim.get("every"))
                 if key not in best or limit_value(lim) < limit_value(best[key]):
                     best[key] = lim
-    return tuple((bid, lim) for (bid, _), lim in best.items())
+    return tuple((key[0], lim) for key, lim in best.items())

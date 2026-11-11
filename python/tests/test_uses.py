@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from yea import Client, GrantContext, Plan, Service, create, fmt_quantity, issue_grant, key_from_seed, lens, local, quantity, spend, verify_grant
+from yea.grants import LedgerKey
 from yea.uses import MAX_AMOUNT, fmt_uses, is_limit, is_uses, value
 
 ALICE = key_from_seed(bytes(32))
@@ -90,7 +91,7 @@ def test_each_and_total_reasons():
     total = {"total": {"of": "emails", "max": 20}}
     g = issue_grant(ALICE, AGENT.public, [total], iat=NOW)
     ctx = GrantContext("svc", "COMMIT", "mail.send", NOW, {"hash": "H", "risk": "low", "uses": {"emails": quantity(1)}},
-                       {(g.id, "emails"): value(quantity(20))})
+                       {LedgerKey(g.id, "emails"): value(quantity(20))})
     r = verify_grant(g, [ALICE.public], AGENT.public, ctx)
     assert r.code == "consent_required" and "emails would pass the total limit of 20" in r.message
 

@@ -14,7 +14,7 @@ async def first_round(r: Round) -> Outcome:
     stored = await consent_for(r.plans, r.store, call.policy, call.now, r.phrase_for)
     if stored.plan is not None:
         return Outcome("run", plan=stored.plan, how="approved")
-    amounts = await spent(r.store, call.policy)
+    amounts = await spent(r.store, call.policy, call.now)
     d = decide(r.plans, call.policy, lambda k: amounts.get(k, 0), call.now)
     if d.kind == "run" and d.plan is not None:
         # Reserved after deciding, all or nothing: a limit another call filled since asks instead.

@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from yea import YeaError, create, quantity
+from yea import GrantContext, YeaError, create, quantity, verify_grant
 from yea.service.commit_ledger import Admit, Admitted, Commit, CommitLedger, StoredProposal, TotalLimit, Used
 from yea.service.plan import Plan
 from yea.store import LedgerKey
@@ -59,7 +59,20 @@ class TotalGrant:
         q = proposal.get("uses", {}).get("spend")
         if q and used.get(self.KEY, 0) + value(q) > self.max:
             return YeaError("consent_required", "spend would pass the total limit")
-        return Admitted(self.iss, [TotalLimit(self.KEY.block, self.KEY.of, self.max)])
+        return Admitted(self.iss, [TotalLimit(self.KEY, self.max)])
+
+
+def grant_admit(grant: Any, holder: str, trusted: str, at: Callable[[], int]) -> Admit:
+    """Grant evaluation as a service runs it, with the limits (verified_request/identity.py): the real
+    check of ``grant``, held by ``holder`` and issued by ``trusted``, at the time ``at`` gives."""
+
+    def admit(proposal: dict, used: Used) -> Admitted | YeaError:
+        checked = {k: proposal[k] for k in ("hash", "risk", "uses") if k in proposal}
+        ctx = GrantContext("pay", "COMMIT", proposal["capability"], at(), checked, used)
+        v = verify_grant(grant, [trusted], holder, ctx)
+        return Admitted(v.principal or "", v.totals) if v.ok else YeaError(v.code or "forbidden", v.reason)
+
+    return admit
 
 
 def commit_of(stored: StoredProposal, admit: Admit, principal: str = "alice") -> Commit:

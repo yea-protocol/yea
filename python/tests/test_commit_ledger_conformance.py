@@ -18,10 +18,11 @@ from conftest import CONFORMANCE, load_vectors
 
 from yea import YeaError
 from yea.service.commit_ledger import Admitted, TotalLimit
+from yea.store import LedgerKey
 
 DATA = load_vectors("commit-ledger")
 pytestmark = pytest.mark.skipif(DATA is None, reason=f"{CONFORMANCE / 'commit-ledger.json'} missing")
-TOTAL = TotalLimit("b_1", "spend", 10**18)  # 100 cents, exact at scale 18
+TOTAL = TotalLimit(LedgerKey("b_1", "spend"), 10**18)  # 100 cents, exact at scale 18
 
 
 def _cases():

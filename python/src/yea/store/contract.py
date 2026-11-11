@@ -5,20 +5,15 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, Protocol
+from typing import Any, Protocol
 
 from .._json import b64url_encode
+from ..grants import LedgerKey, Period
 
 RECEIPT_ID = re.compile(r"r_[A-Za-z0-9_-]{8,32}")
 _B64URL = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MEASURE = re.compile(r"[a-z][a-z0-9_.\-]{0,63}")
-
-
-class LedgerKey(NamedTuple):
-    """A policy grant block id and a measure."""
-
-    block: str
-    of: str
+_SAFE = 2**53 - 1
 
 
 @dataclass(frozen=True)
@@ -61,7 +56,14 @@ def _receipt_id(v: Any) -> str:
 def _key(k: LedgerKey) -> LedgerKey:
     if not (isinstance(k.block, str) and _B64URL.fullmatch(k.block) and isinstance(k.of, str) and _MEASURE.fullmatch(k.of)):
         raise StoreError(f"bad ledger key {k!r}")
+    if k.period is not None and not _period(k.period):
+        raise StoreError(f"bad ledger key {k!r}")
     return k
+
+
+def _period(p: Period) -> bool:
+    """A period's length is a positive safe integer, and its start a safe integer."""
+    return (type(p.every) is int and 0 < p.every <= _SAFE) and (type(p.start) is int and -_SAFE <= p.start <= _SAFE)
 
 
 def _plan_hash(v: Any) -> str:

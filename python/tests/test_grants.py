@@ -4,6 +4,7 @@ from yea import (
     GrantContext, consent_code, quantity, consent_grant, decode_consent_code, decode_grant, issue_grant, key_from_seed, sign_proof, verify_grant, verify_proof,
 )
 from yea._json import b64url_decode, b64url_encode
+from yea.grants import LedgerKey
 from yea.keys import KeyPair
 from yea.uses import value
 
@@ -104,10 +105,10 @@ def test_caveats(caveat, kw, code):
 def test_spend_is_per_block():
     g = issue_grant(ALICE, AGENT.public, [{"total": {"of": "spend", "max": 1000, "scale": 2, "unit": "USD"}}], iat=NOW)
     bid = g.block_ids[0]
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={(bid, "spend"): cents(500)})).ok
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={(bid, "spend"): cents(501)})).code == "consent_required"
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={("other", "spend"): cents(10_000)})).ok
-    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={(bid, "emails"): cents(10_000)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={LedgerKey(bid, "spend"): cents(500)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={LedgerKey(bid, "spend"): cents(501)})).code == "consent_required"
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={LedgerKey("other", "spend"): cents(10_000)})).ok
+    assert verify_grant(g, [ALICE.public], AGENT.public, ctx(used={LedgerKey(bid, "emails"): cents(10_000)})).ok
 
 
 def test_mixed_consent_and_forbidden_is_forbidden():

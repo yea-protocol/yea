@@ -2,6 +2,7 @@
 names the TS id it mirrors."""
 
 import asyncio
+import base64
 import json
 import socket
 import time
@@ -10,7 +11,7 @@ import urllib.request
 from types import SimpleNamespace
 
 import pytest
-from commit_ledger_fixture import LedgerFixture, TotalGrant, code_of, commit_of
+from commit_ledger_fixture import LedgerFixture, TotalGrant, code_of, commit_of, grant_admit
 
 from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
@@ -19,6 +20,7 @@ from yea import (
 from yea._json import MAX_SAFE_INT, b64url_encode
 from yea.approval import Policy, Tightening, load_policy, reserve_all
 from yea.errors import YeaError
+from yea.grants import Period
 from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
 from yea.keys import sign_proof
 from yea.service.commit_ledger import Admitted, TotalLimit
@@ -912,7 +914,7 @@ def test_h2_concurrent_commits_cant_overshoot_a_spend_cap():
         assert isinstance(rb, YeaError) and rb.code == "consent_required"
 
         def blind(proposal, used):
-            return Admitted("alice", [TotalLimit("b_1", "spend", grant.max)])
+            return Admitted("alice", [TotalLimit(LedgerKey("b_1", "spend"), grant.max)])
 
         with pytest.raises(YeaError) as e:
             await f.ledger.commit(commit_of(b, blind), _no_events)
@@ -1119,3 +1121,158 @@ def test_an_emit_that_raises_never_fails_a_commit_or_undo_so_neither_runs_twice(
     assert run(svc.handle(undo, hung_up))["receipt"]["undoes"] == rid
     assert run(svc.handle(undo))["replay"] is True and refunded == [60]
 
+
+
+# #405: a ``total`` with ``every`` counts in fixed periods from its block's one ``nbf`` (SPEC §6.3).
+# A wrong key lets a cap go unenforced, so each way the key could slip is pinned here. Mirrors
+# "a total that counts in periods (#405)" in ts/test/security.test.ts.
+
+DAY = 86_400
+WEEK = 7 * DAY
+T0 = 1_790_000_000  # the commit ledger fixture's clock starts here
+SUB = key_from_seed(bytes([3]) * 32)
+
+
+def _usd(cents, every=None):
+    return {"of": "spend", "max": cents, "scale": 2, "unit": "USD", **({} if every is None else {"every": every})}
+
+
+def _policy(*caveats):
+    return issue_grant(PRINCIPAL, AGENT.public, list(caveats), iat=T0)
+
+
+def _check(grant, now=T0, verb="COMMIT", holder=AGENT.public, used=None):
+    proposal = {"hash": "h", "risk": "low", "uses": {"spend": quantity(100, scale=2, unit="USD")}}
+    return verify_grant(grant, [PRINCIPAL.public], holder, GrantContext("pay", verb, "pay.send", now, proposal, used or {}))
+
+
+def _code(v):
+    return "ok" if v.ok else v.code
+
+
+def _admit(grant, at):
+    return grant_admit(grant, AGENT.public, PRINCIPAL.public, at)
+
+
+def test_405_a_malformed_every_or_every_on_each_fails_closed_on_every_verb():
+    bad = [{"total": {**_usd(100), "every": every}} for every in (0, -1, "7d", True, None, [], {})]
+    bad.append({"each": _usd(100, WEEK)})
+    for c in bad:
+        g = _policy(c, {"nbf": T0 - DAY}, {"exp": T0 + WEEK})
+        for verb in ("ASK", "COMMIT"):
+            assert _code(_check(g, verb=verb)) == "forbidden", (verb, c)
+
+
+def test_405_an_every_with_no_canonical_form_makes_the_grant_unauthorized():
+    g = _policy({"total": _usd(100, WEEK)}, {"nbf": T0 - DAY}, {"exp": T0 + WEEK}).encode()
+    text = base64.urlsafe_b64decode(g[4:] + "=" * (-len(g[4:]) % 4)).decode()
+    for to in ("1.5", "9007199254740992", "6.048e5", "604800.0"):
+        respelled = text.replace(f'"every":{WEEK}', f'"every":{to}')
+        assert f'"every":{to}' in respelled
+        v = _check("pg1." + b64url_encode(respelled.encode()), verb="ASK")
+        assert (v.code, v.reason.split(":")[0]) == ("unauthorized", "malformed grant"), to
+
+
+def test_405_a_block_with_a_periodic_total_needs_exactly_one_nbf_of_its_own_on_every_verb():
+    total, exp = {"total": _usd(100, WEEK)}, {"exp": T0 + WEEK}
+    none = _policy(total, exp)
+    two = _policy(total, {"nbf": T0 - DAY}, {"nbf": T0 - 2 * DAY}, exp)
+    # A holder can append an nbf, but it isn't the root block's own: the root's total still fails.
+    appended = delegate_grant(none, AGENT, SUB.public, [{"nbf": T0 - DAY}])
+    for verb in ("ASK", "COMMIT"):
+        assert _code(_check(none, verb=verb)) == "forbidden"
+        assert _code(_check(two, verb=verb)) == "forbidden"
+        assert _code(_check(appended, verb=verb, holder=SUB.public)) == "forbidden"
+    # Two nbf caveats in a block without a periodic total are as valid as they were.
+    assert _code(_check(_policy({"nbf": T0 - DAY}, {"nbf": T0 - 2 * DAY}), verb="ASK")) == "ok"
+
+
+def test_405_a_grant_with_a_periodic_total_needs_an_exp_in_any_block_on_every_verb():
+    endless = _policy({"total": _usd(100, WEEK)}, {"nbf": T0 - DAY})
+    ended = delegate_grant(endless, AGENT, SUB.public, [{"exp": T0 + WEEK}])
+    for verb in ("ASK", "COMMIT"):
+        assert _code(_check(endless, verb=verb)) == "forbidden"
+        assert _code(_check(ended, verb=verb, holder=SUB.public)) == "ok"
+
+
+def test_405_a_delegation_blocks_nbf_never_moves_the_roots_periods():
+    nbf = T0 - 8 * DAY  # T0 is in the root's second week, which starts at nbf + WEEK
+    root = _policy({"total": _usd(50000, WEEK)}, {"nbf": nbf}, {"exp": nbf + 10 * WEEK})
+    week1 = LedgerKey(root.id, "spend", Period(WEEK, nbf + WEEK))
+    # An nbf two days in moves nothing: anchored there, T0 would be in a fresh first week.
+    later = delegate_grant(root, AGENT, SUB.public, [{"nbf": nbf + 2 * DAY}])
+    full = {week1: 50000 * 10**16}
+    assert _code(_check(later, holder=SUB.public, used=full)) == "consent_required"
+    # A delegation's own periodic total counts under its own id, from its own nbf.
+    own = delegate_grant(root, AGENT, SUB.public, [{"total": _usd(10000, DAY)}, {"nbf": nbf + 2 * DAY + 3600}])
+    v = _check(own, holder=SUB.public)
+    assert [t.key for t in v.totals] == [week1, LedgerKey(own.block_ids[1], "spend", Period(DAY, nbf + 7 * DAY + 3600))]
+
+
+def test_405_100_a_day_and_500_a_week_in_one_block_the_sixth_day_asks_and_the_next_week_runs():
+    f = LedgerFixture()
+    g = _policy({"total": _usd(10000, DAY)}, {"total": _usd(50000, WEEK)}, {"nbf": T0}, {"exp": T0 + 4 * WEEK})
+    admit = _admit(g, lambda: f.t)
+
+    def commit(cents):
+        return run(code_of(f.ledger.commit(commit_of(f.propose(cents), admit), _no_events)))
+
+    for day in range(5):
+        assert commit(10000) == "ok", day
+        assert commit(1) == "consent_required", day
+        f.advance(DAY)
+    # Each day has room, but the week has had its 500.
+    with pytest.raises(YeaError, match="the total limit of 500.00 USD every 7d"):
+        run(f.ledger.commit(commit_of(f.propose(10000), admit), _no_events))
+    f.advance(2 * DAY)
+    assert commit(10000) == "ok"
+
+
+def test_405_500_a_week_and_1000_in_all_the_third_week_asks():
+    f = LedgerFixture()
+    g = _policy({"total": _usd(50000, WEEK)}, {"total": _usd(100000)}, {"nbf": T0}, {"exp": T0 + 10 * WEEK})
+    admit = _admit(g, lambda: f.t)
+
+    def commit():
+        return f.ledger.commit(commit_of(f.propose(50000), admit), _no_events)
+
+    assert run(commit())["kind"] == "RECEIPT"
+    f.advance(WEEK)
+    assert run(commit())["kind"] == "RECEIPT"
+    f.advance(WEEK)
+    with pytest.raises(YeaError) as e:
+        run(commit())
+    assert e.value.message == "spend would pass the total limit of 1000.00 USD"
+
+
+def test_405_the_clock_crossing_a_boundary_between_admit_and_reserve_lands_in_the_period_checked():
+    f = LedgerFixture()
+    g = _policy({"total": _usd(50000, WEEK)}, {"nbf": T0 + 1 - WEEK}, {"exp": T0 + 4 * WEEK})  # a week ending at T0 + 1
+    admit = _admit(g, lambda: f.t)
+
+    def crossing(proposal, used):
+        admitted = admit(proposal, used)
+        f.advance(2)
+        return admitted
+
+    assert run(f.ledger.commit(commit_of(f.propose(50000), crossing), _no_events))["kind"] == "RECEIPT"
+    # The new week is empty, and the old one, checked at T0, is full.
+    assert run(f.ledger.commit(commit_of(f.propose(50000), admit), _no_events))["kind"] == "RECEIPT"
+    last_week = _admit(g, lambda: T0)
+    assert run(code_of(f.ledger.commit(commit_of(f.propose(1), last_week), _no_events))) == "consent_required"
+
+
+def test_405_a_reservation_released_after_the_boundary_frees_its_own_period_only(caplog):
+    f = LedgerFixture()
+    g = _policy({"total": _usd(50000, WEEK)}, {"nbf": T0 + 1 - WEEK}, {"exp": T0 + 4 * WEEK})
+
+    def apply(_ctx):
+        f.advance(2)
+        raise RuntimeError("card network down")
+
+    failed = run(f.ledger.commit(commit_of(f.propose(50000, apply=apply), _admit(g, lambda: f.t)), _no_events))
+    assert failed["kind"] == "ERROR" and failed["code"] == "internal"
+    # Released from the week it was taken in: that week has its 500 back, and the new one too.
+    last_week = _admit(g, lambda: T0)
+    assert run(f.ledger.commit(commit_of(f.propose(50000), last_week), _no_events))["kind"] == "RECEIPT"
+    assert run(f.ledger.commit(commit_of(f.propose(50000), _admit(g, lambda: f.t)), _no_events))["kind"] == "RECEIPT"

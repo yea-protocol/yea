@@ -20,6 +20,7 @@ from yea.service.commit_ledger import Admitted, Answer, AutoReplay, CommitLedger
 from yea.service.replies import reply_frame
 from yea.service.undo import on_undo
 from yea.service.verified_request import VerifiedCommit, VerifiedUndo
+from yea.store import LedgerKey
 
 DAY = 86_400
 
@@ -118,7 +119,7 @@ def test_counts_a_limit_a_block_repeats_once_under_its_smallest_max():
         f = LedgerFixture()
 
         def admit(proposal, used):
-            return Admitted("alice", [TotalLimit("b_1", "spend", TotalGrant(c).max) for c in (100, 50, 70)])
+            return Admitted("alice", [TotalLimit(LedgerKey("b_1", "spend"), TotalGrant(c).max) for c in (100, 50, 70)])
 
         assert await code_of(f.ledger.commit(commit_of(f.propose(60), admit), no_events)) == "consent_required"
         assert await code_of(f.ledger.commit(commit_of(f.propose(50), admit), no_events)) == "ok"
@@ -346,7 +347,7 @@ def test_leaves_a_proposal_when_its_reservation_finds_no_room_though_grant_evalu
         await f.ledger.commit(commit_of(f.propose(60), grant.admit), no_events)
 
         def blind(proposal, used):
-            return Admitted("alice", [TotalLimit("b_1", "spend", grant.max)])
+            return Admitted("alice", [TotalLimit(LedgerKey("b_1", "spend"), grant.max)])
 
         b = f.propose(60, apply=lambda c: applied.append(1), revert=lambda c: None)
         assert await f.ledger.auto_commit(b, blind, ANSWER) is None and applied == []
