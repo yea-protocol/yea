@@ -363,7 +363,9 @@ absent, clients render Lens locally (§9).
   `seconds` is a positive integer of at most 2^52, so the commit time plus the window (a
   receipt's `until`) is still an integer (§10). A service MUST NOT send any other `window`:
   an action with no such window is irreversible, so its `undo` is `null`. A client MUST treat
-  any other `undo` as `null`.
+  any other `undo` as `null`. A proposal gets an undo window only if `UNDO` within it will
+  revert the effects. A reversal that a third party can refuse, such as cancelling an order
+  that may fill first, isn't an undo: that proposal's `undo` is `null`.
 - `expires`: unix seconds after which the proposal cannot be committed. Services SHOULD use whole minutes (the reference implementation rounds up: `ceil(t/60)*60`).
 - `hash`: `b64url(sha256(canonical(proposal without "hash" and "data")))` (§10). The hash binds everything a human is shown: summary, effects, uses, risk, undo and expiry. Numbers inside hashed fields MUST be integers.
 - `data`: OPTIONAL extra structured detail. It is not covered by the hash and MUST NOT describe effects.

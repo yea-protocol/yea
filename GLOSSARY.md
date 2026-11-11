@@ -60,6 +60,12 @@ The running amount used against each `total` limit, by grant block and measure, 
 settled and reserved amounts. The commit ledger keeps one; a job's store keeps another.
 _Avoid_: used map, spend tracker
 
+**Undo window**:
+The fixed time after a commit, carried on its receipt, during which `UNDO` will revert it. A
+reversal that can fail, such as cancelling an order that may fill first, is not an undo and has
+no undo window (SPEC.md §5.1).
+_Avoid_: cancel window, grace period
+
 ### The agent side
 
 **Consent round**:
