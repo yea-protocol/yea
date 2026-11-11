@@ -56,9 +56,17 @@ and whether a proposal's `each`, `risk` and `total` limits admit it.
 _Avoid_: commit store, service state
 
 **Usage ledger**:
-The running amount used against each `total` limit, by grant block and measure, counting both
-settled and reserved amounts. The commit ledger keeps one; a job's store keeps another.
+The running amount used against each `total` limit, by grant block and measure, and by period
+for a `total` with `every`, counting both settled and reserved amounts. The commit ledger keeps
+one; a job's store keeps another.
 _Avoid_: used map, spend tracker
+
+**Period**:
+The fixed span a `total` with `every` counts over: `every` seconds, counted from the `nbf` of
+its block, so two services with the same grant and clock agree on it. Each period allows the
+`total`'s `max` of commits that run without asking, so `every` seconds that straddle a boundary
+can see twice that (SPEC.md §6.3).
+_Avoid_: window (that's the undo window's), rolling window, calendar period
 
 **Undo window**:
 The fixed time after a commit, carried on its receipt, during which `UNDO` will revert it. A

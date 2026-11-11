@@ -431,9 +431,12 @@ malformed, MUST fail closed** as a hard (`forbidden`) failure. Well-formed value
 `svc`, `verbs` and `can` take arrays of strings; `exp` and `nbf` take integers;
 `each` and `total` take a **limit** `{"of": name, "max": int, "scale"?: int, "unit"?: string}`,
 where `of` is a measure name and `max`, `scale` and `unit` follow the quantity rules of
-§5.1; `risk` takes one of `low`, `medium` or `high`; `only` takes a string. For example, `{"svc": "a.example"}` (a string,
-not a list) and `{"risk": "extreme"}` both fail. A caveat with no canonical form, such as
-`{"exp": 1.5}`, is different: it makes its block malformed (§6.2), so the grant is `unauthorized`.
+§5.1, and a `total`'s limit may also hold `"every": int`, a positive integer of seconds
+(below, *Periods*); `risk` takes one of `low`, `medium` or `high`; `only` takes a string. For example, `{"svc": "a.example"}` (a string,
+not a list) and `{"risk": "extreme"}` both fail, and so does an `every` of `0`, `-1`, `"7d"`,
+`true`, `null`, a list or an object, or any `every` on `each`. A caveat with no canonical form,
+such as `{"exp": 1.5}` or an `every` of `1.5` or 2^53, is different: it makes its block
+malformed (§6.2), so the grant is `unauthorized`.
 
 | Caveat | Satisfied when |
 |---|---|
@@ -443,7 +446,7 @@ not a list) and `{"risk": "extreme"}` both fail. A caveat with no canonical form
 | `{"exp": int}` | now < exp |
 | `{"nbf": int}` | now ≥ nbf |
 | `{"each": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and its value ≤ the limit's value |
-| `{"total": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and the values committed or reserved under *this block's id* for `of`, plus this one, ≤ the limit's value |
+| `{"total": limit}` | `COMMIT` only: the proposal's `uses` has no entry named `of`, or that quantity's unit matches and the values committed or reserved under *this block's id* for `of` (in the current period, for a limit with `every`), plus this one, ≤ the limit's value |
 | `{"risk": level}` | `COMMIT` only: the proposal risk ≤ level (`low` < `medium` < `high`). A proposal risk that is none of these fails closed as a hard (`forbidden`) failure. |
 | `{"only": proposalHash}` | `COMMIT` only: the proposal hash equals it |
 
@@ -466,11 +469,41 @@ For `UNDO`, `can` is checked against the capability of the receipt being undone.
 - **Limits bind only what is reported.** A proposal that doesn't report `of` passes. The
   service is trusted to report `uses` truthfully and completely, as it is for `effects`.
 
+**Periods.** A `total` whose limit has `every` counts in fixed **periods** of `every` seconds,
+counted from the `nbf` of the block that holds it: period *k* covers
+[`nbf` + *k*·`every`, `nbf` + (*k*+1)·`every`), and a `COMMIT` at time `now` counts in period
+*k* = floor((`now` − `nbf`) / `every`). There are no calendars, time zones or rolling windows.
+
+- **One anchor.** A block that holds a `total` with `every` MUST hold exactly one `nbf`
+  caveat. With none, or more than one, that `total` fails closed as a hard (`forbidden`)
+  failure, on every verb. Only the block's own `nbf` anchors its periods: another block's
+  `nbf` never moves them.
+- **An end.** A grant with a `total` with `every` MUST carry an `exp` caveat in some block.
+  Without one, that `total` fails closed as a hard (`forbidden`) failure, on every verb: a
+  period's `max` is allowed again in every period, so the allowance needs an end (§11).
+- **Exact arithmetic.** `now` − `nbf` can pass 2^53, so *k* MUST be computed in exact
+  integers, with floor division, never in floating point. A period's start, `nbf` +
+  *k*·`every`, lies between `nbf` and `now`, so it is always a safe integer. Before `nbf`, the
+  grant fails its `nbf` caveat and the `total` counts nothing.
+- **What it allows.** The commits of one period that count against the `total` add up to at
+  most `max`. Periods are fixed, so `every` seconds that straddle a boundary can see up to
+  2 × `max`. A commit made with the principal's consent counts against no `total` of this
+  grant (§6.6), and an undone one still counts.
+- **The refusal.** A service that refuses a `COMMIT` over a `total` with `every` SHOULD say
+  when the next period starts, if that is a time Lens can show (§9.2) and before the grant's
+  earliest `exp`: `buy would pass the total limit of 500.00 USD every 7d (starts again
+  2026-11-17T00:00Z)`. It is worked out from the grant and the clock alone.
+
 The service MUST **reserve** the proposal's quantity against every `total` caveat of the
-authorizing grant, keyed by the block id and `of`, atomically with the check and before
-executing, so that concurrent or overlapping commits can't together exceed a limit. A
-reservation is released if execution fails. Totals are not reduced on `UNDO` in v1
-(conservative).
+authorizing grant, atomically with the check and before executing, so that concurrent or
+overlapping commits can't together exceed a limit. A reservation is keyed by the block id and
+`of`, and for a limit with `every`, also by `every` and the start of the period the commit
+counts in. A block's `total` caveats that share a key share one reservation, under the
+smallest `max`; caveats with different `every`, such as "100 a day" and "500 a week" on one
+measure, each keep their own. The period is worked out once per commit, from one reading of
+the clock, and the check, the reservation and its release or settlement all use it, so an
+amount counts in the period it was checked against. A reservation is released if execution
+fails. Totals are not reduced on `UNDO` in v1 (conservative).
 
 ### 6.4 Verification
 
@@ -667,6 +700,9 @@ and conforming implementations still agree byte for byte.
   the point (none when `scale` is 0), then a space and the unit if it has one. There is no
   sign and no digit grouping. `{amount: 2290, scale: 2, unit: "USD"}` renders `22.90 USD`,
   `{amount: 5, scale: 3}` renders `0.005`, and `{amount: 1}` renders `1`.
+- A limit (§6.3) renders as the quantity of its `max`, `scale` and `unit`, then, when it has
+  `every`, ` every ` and the period as a duration: `{of: "buy", max: 50000, scale: 2, unit:
+  "USD", every: 604800}` renders `500.00 USD every 7d`.
 
 **Malformed values.** These fields render a fixed way when malformed (the wrong type or out of
 range):
@@ -803,6 +839,10 @@ shown among its members, and no more lines.
 - Proposal hashes bind consent to exact effects; a service cannot swap in different effects after approval.
 - `each` and `total` limit only what a service reports in `uses`. They bound an honest
   service's usage; they don't protect against a service that under-reports.
+- A `total` with `every` renews: it allows its `max` again in every period until the grant
+  expires, so it needs an `exp` (§6.3). Tooling SHOULD show the person the worst case, `max`
+  times the number of periods that start before `exp`, ceil((`exp` − `nbf`) / `every`): for
+  example, `500.00 USD every 7d until 2027-02-08T00:00Z, at most 6500.00 USD`.
 - `ASK` and `INTENT` are side-effect free, so agents can explore freely and safely.
 - Replay protection: proofs are time-bound and `COMMIT` is idempotent.
 - `auto` proofs bind the frame id, not the params (floats have no canonical form), so an

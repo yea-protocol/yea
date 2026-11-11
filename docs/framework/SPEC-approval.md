@@ -142,8 +142,10 @@ caveats are the protocol's own, and only it can make anything run without asking
   { can: ['reschedule', 'delete_branch'] },               // tools that may run without asking
   { risk: 'low' },                                         // plans above this ask
   { each: { of: 'spend', max: 2500, scale: 2, unit: 'USD' } }, // any single plan using more asks
-  { total: { of: 'emails', max: 20 } },                    // for the grant's lifetime
-  { exp: 1790000000 },                                     // the policy ends
+  { total: { of: 'emails', max: 20, every: 86400 } },      // 20 a day, in days from nbf
+  { total: { of: 'spend', max: 50000, scale: 2, unit: 'USD' } }, // 500 USD for the grant's lifetime
+  { nbf: 1789776000 },                                     // the days start at 00:00 UTC
+  { exp: 1790380800 },                                     // the policy ends
 ]
 ```
 
@@ -169,8 +171,9 @@ A plan runs without asking only when **all** of these hold:
    exactly, values compare exactly, a plan that doesn't report a measure passes).
 
 A policy of `can: ['reschedule']` and `risk: 'low'` lets an agent move meetings on its own and
-asks about everything else. A `total` runs for the grant's lifetime, not a rolling window: for
-"20 emails a day", issue a grant that expires in a day.
+asks about everything else. A `total` counts for the grant's lifetime unless it has `every`:
+for "20 emails a day", give it `every: 86400`. Its periods are fixed, counted from its block's
+one `nbf`, not a rolling window, and a grant with one needs an `exp` (SPEC.md §6.3).
 
 **Only undoable plans run without asking.** This is the protocol's rule (SPEC.md §4.3.1, "if,
 and only if" the proposal is undoable), and the framework can't be looser than the protocol.
@@ -325,8 +328,13 @@ On retry:
 
 **Totals are reserved, not added afterwards.** An auto-run whose plan reports a measure that a
 `total` limits calls `store.reserve(...)` **before** `apply()`, for every `total` in every
-block of the policy grant. There is one reservation per block and measure; when a block
-repeats a `total` on the same measure, the smallest `max` applies. Reservations are all or
+block of the policy grant. There is one reservation per ledger key: the block and measure,
+and for a `total` with `every`, its `every` and the start of the current period (SPEC.md §6.3).
+When a block repeats a `total` on one measure with the same `every`, or with none, the smallest
+`max` applies; totals with different `every`, such as 100 a day and 500 a week, each reserve.
+The period is worked out once, when the policy decides, from the call's `now`, and the
+reservation, its settle and its release all use it, so an amount counts in the period that was
+checked even when the clock crosses into the next one meanwhile. Reservations are all or
 nothing: if any would pass its limit, the ones already made are released and the call asks
 instead of running. It `settle`s them all on success and `release`s them all on failure. Two concurrent calls can't overshoot a limit,
 and a crash never under-counts.
@@ -537,7 +545,10 @@ interface ApprovalStore {
   getConsent(planHash: string): Promise<string | null>;              // a signed pg1. consent grant
 }
 
-type LedgerKey = { block: string; of: string };  // a policy grant block id and a measure
+type LedgerKey = {                                // a policy grant block id and a measure,
+  block: string; of: string;                        // and for a total with `every`, its period:
+  period?: { every: number; start: number };        // its length and its start (SPEC.md §6.3)
+};
 type Reservation = { key: LedgerKey; amount: bigint; id: string };
 type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus what undo needs
   service: string; tool: string; input: unknown; planHash: string; sub: string;
@@ -545,7 +556,8 @@ type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus wha
 ```
 
 Amounts are the SDK core's `exact()` values: integers at scale 18. What `decide` reads is
-`used(k)`: the settled plus reserved amount for a block and measure.
+`used(k)`: the settled plus reserved amount for a block and measure, in a period when the key
+has one.
 
 **Store selection.** Stdio servers use `FileStore` by default, because `yea approve` and undo
 across restarts need it. HTTP servers use `MemoryStore` by default, and one with a `total`
@@ -561,12 +573,13 @@ consumed/<b64url(sha256(id))>        empty marker, created with O_EXCL; holds ex
 undo/<receipt id>.claim, .done       markers, created with O_EXCL; the claim holds a random token and stays after done
 receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
+ledger/<block>/<of>@<every>/<start>.json   the same, for one period of a total with `every`
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
 pending/<id>                         a consent code waiting for `yea approve <id>` (§6, Short ids)
 ```
 
 Ledger files are `{"settled": "<decimal>", "reserved": {"<v_ id>": "<decimal>"}}`, updated under
-an exclusive lock file (`<of>.lock` beside them, `O_EXCL`, retried every 10 ms for up to 2 s,
+an exclusive lock file (`<of>.lock` or `<start>.lock` beside them, `O_EXCL`, retried every 10 ms for up to 2 s,
 then a store error). The lock holds a random token: its holder re-checks the token before and
 after writing, deletes the lock only if it still holds it, and reports a store error (nothing
 runs) if the token changed. A lock older than 30 s is stale: a waiter reads its token, renames
