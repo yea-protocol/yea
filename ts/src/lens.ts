@@ -8,7 +8,12 @@ export { MAX_APPROVAL_DEPTH, tooDeepToApprove } from './lens/depth.js';
 
 export { est } from './lens/estimate.js';
 
-export { effectLine, fmtDuration, fmtTime } from './lens/format.js';
+export {
+  effectLine,
+  fmtDuration,
+  fmtTime,
+  isLensTime,
+} from './lens/format.js';
 
 export { lean, scalar } from './lens/notation.js';
 

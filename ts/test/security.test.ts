@@ -51,15 +51,17 @@ import {
   serveFetch,
   serveHttp,
 } from '../src/node.js';
-import { CommitLedger } from '../src/service/commit-ledger.js';
+import { type Admit, CommitLedger } from '../src/service/commit-ledger.js';
 import {
   type Verifier,
   verifyRequest,
 } from '../src/service/verified-request.js';
 import { printable } from '../src/text.js';
 import {
+  codeOf,
   commitOf,
   deferred,
+  grantAdmit,
   ledgerFixture,
   totalGrant,
 } from './commit-ledger-fixture.js';
@@ -5502,5 +5504,317 @@ describe('an undo window is a positive integer, or there is none (#83)', async (
 
       expect(lines, String(w)).toContain('undo: never');
     }
+  });
+});
+
+// #405: a `total` with `every` counts in fixed periods from its block's one `nbf` (SPEC §6.3).
+// A wrong key lets a cap go unenforced, so each way the key could slip is pinned here.
+describe('a total that counts in periods (#405)', () => {
+  const DAY = 86_400;
+  const WEEK = 7 * DAY;
+  const T0 = 1_790_000_000; // the commit ledger fixture's clock starts here
+  const noEvents = () => undefined;
+  const keys = { holder: agent.public, trusted: principal.public };
+  const usd = (cents: number, every?: number) => ({
+    of: 'spend',
+    max: cents,
+    scale: 2,
+    unit: 'USD',
+    ...(every === undefined ? {} : { every }),
+  });
+  const policy = (caveats: unknown[]) =>
+    P.issueGrant({
+      principal,
+      to: agent.public,
+      iat: T0,
+      caveats: caveats as P.Caveat[],
+    });
+  const check = (
+    grant: string,
+    opts: {
+      now?: number;
+      verb?: P.Verb;
+      holder?: string;
+      used?: Map<string, bigint>;
+    } = {},
+  ) =>
+    P.checkGrant(grant, {
+      service: 'pay',
+      verb: opts.verb ?? 'COMMIT',
+      capability: 'pay.send',
+      now: opts.now ?? T0,
+      proposal: {
+        hash: 'h',
+        uses: { spend: P.quantity(100, { scale: 2, unit: 'USD' }) },
+        risk: 'low',
+      },
+      trusted: [principal.public],
+      proofKey: opts.holder ?? agent.public,
+      used: (k) => opts.used?.get(P.ledgerId(k)) ?? 0n,
+    });
+  const codeOn = async (grant: string, verb: P.Verb) => {
+    const r = await check(grant, { verb });
+
+    return r.ok ? 'ok' : r.code;
+  };
+
+  it('a malformed every, or every on each, fails closed on every verb', async () => {
+    const bad: unknown[] = [0, -1, '7d', true, null, [], {}].map((every) => ({
+      total: { ...usd(100), every },
+    }));
+
+    bad.push({ each: usd(100, WEEK) });
+
+    for (const c of bad) {
+      const grant = await policy([c, { nbf: T0 - DAY }, { exp: T0 + WEEK }]);
+
+      for (const verb of ['ASK', 'COMMIT'] as const) {
+        expect(await codeOn(grant, verb), `${verb} ${JSON.stringify(c)}`).toBe(
+          'forbidden',
+        );
+      }
+    }
+  });
+
+  it('an every with no canonical form makes the grant unauthorized', async () => {
+    const grant = await policy([
+      { total: usd(100, WEEK) },
+      { nbf: T0 - DAY },
+      { exp: T0 + WEEK },
+    ]);
+    const text = Buffer.from(grant.slice(4), 'base64url').toString();
+
+    for (const to of ['1.5', '9007199254740992', '6.048e5', '604800.0']) {
+      const respelled = text.replace(`"every":${WEEK}`, `"every":${to}`);
+      const token = `pg1.${P.b64u(new TextEncoder().encode(respelled))}`;
+
+      const r = await check(token, { verb: 'ASK' });
+
+      expect(respelled, to).toContain(`"every":${to}`);
+      // Refused as it is decoded, before its signature is even checked.
+      expect(!r.ok && [r.code, r.reason.split(':')[0]], to).toEqual([
+        'unauthorized',
+        'malformed grant',
+      ]);
+    }
+  });
+
+  it('a block with a periodic total needs exactly one nbf of its own, on every verb', async () => {
+    const total = { total: usd(100, WEEK) };
+    const exp = { exp: T0 + WEEK };
+    const none = await policy([total, exp]);
+    const two = await policy([
+      total,
+      { nbf: T0 - DAY },
+      { nbf: T0 - 2 * DAY },
+      exp,
+    ]);
+    // A holder can append an nbf, but it isn't the root block's own: the root's total still fails.
+    const appended = await P.delegateGrant(none, {
+      holder: agent,
+      to: otherAgent.public,
+      caveats: [{ nbf: T0 - DAY }],
+    });
+
+    for (const verb of ['ASK', 'COMMIT'] as const) {
+      expect(await codeOn(none, verb), verb).toBe('forbidden');
+      expect(await codeOn(two, verb), verb).toBe('forbidden');
+
+      const r = await check(appended, { verb, holder: otherAgent.public });
+
+      expect(r.ok ? 'ok' : r.code, verb).toBe('forbidden');
+    }
+
+    // Two nbf caveats in a block without a periodic total are as valid as they were.
+    expect(
+      await codeOn(
+        await policy([{ nbf: T0 - DAY }, { nbf: T0 - 2 * DAY }]),
+        'ASK',
+      ),
+    ).toBe('ok');
+  });
+
+  it('a grant with a periodic total needs an exp, in any block, on every verb', async () => {
+    const endless = await policy([
+      { total: usd(100, WEEK) },
+      { nbf: T0 - DAY },
+    ]);
+    const ended = await P.delegateGrant(endless, {
+      holder: agent,
+      to: otherAgent.public,
+      caveats: [{ exp: T0 + WEEK }],
+    });
+
+    for (const verb of ['ASK', 'COMMIT'] as const) {
+      expect(await codeOn(endless, verb), verb).toBe('forbidden');
+
+      const r = await check(ended, { verb, holder: otherAgent.public });
+
+      expect(r.ok ? 'ok' : r.code, verb).toBe('ok');
+    }
+  });
+
+  it("a delegation block's nbf never moves the root's periods", async () => {
+    const nbf = T0 - 8 * DAY; // T0 is in the root's second week, which starts at nbf + WEEK
+    const root = await policy([
+      { total: usd(50000, WEEK) },
+      { nbf },
+      { exp: nbf + 10 * WEEK },
+    ]);
+    const rootId = await P.sha256(P.decodeGrant(root)[0].s);
+    const week1 = {
+      block: rootId,
+      of: 'spend',
+      period: { every: WEEK, start: nbf + WEEK },
+    };
+    const full = new Map([[P.ledgerId(week1), 50000n * 10n ** 16n]]);
+    // An nbf two days in moves nothing: anchored there, T0 would be in a fresh first week.
+    const later = await P.delegateGrant(root, {
+      holder: agent,
+      to: otherAgent.public,
+      caveats: [{ nbf: nbf + 2 * DAY }],
+    });
+    const r = await check(later, { holder: otherAgent.public, used: full });
+
+    expect(r.ok ? 'ok' : r.code).toBe('consent_required');
+
+    // A delegation's own periodic total counts under its own id, from its own nbf.
+    const own = await P.delegateGrant(root, {
+      holder: agent,
+      to: otherAgent.public,
+      caveats: [{ total: usd(10000, DAY) }, { nbf: nbf + 2 * DAY + 3600 }],
+    });
+    const ownId = await P.sha256(P.decodeGrant(own)[1].s);
+    const ok = await check(own, { holder: otherAgent.public });
+
+    expect(ok.ok && ok.totals.map((t) => t.key)).toEqual([
+      week1,
+      {
+        block: ownId,
+        of: 'spend',
+        period: { every: DAY, start: nbf + 7 * DAY + 3600 },
+      },
+    ]);
+  });
+
+  it('100 a day and 500 a week in one block: the sixth day asks, and the next week runs', async () => {
+    const { ledger, propose, now, advance } = ledgerFixture();
+    const grant = await policy([
+      { total: usd(10000, DAY) },
+      { total: usd(50000, WEEK) },
+      { nbf: T0 },
+      { exp: T0 + 4 * WEEK },
+    ]);
+    const admit = grantAdmit(grant, keys, now);
+    const commit = (cents: number) =>
+      codeOf(ledger.commit(commitOf(propose(cents), admit), noEvents));
+
+    for (let day = 0; day < 5; day++) {
+      expect(await commit(10000), `day ${day}`).toBe('ok');
+      expect(await commit(1), `day ${day}, one cent more`).toBe(
+        'consent_required',
+      );
+      advance(DAY);
+    }
+
+    // Each day has room, but the week has had its 500.
+    await expect(
+      ledger.commit(commitOf(propose(10000), admit), noEvents),
+    ).rejects.toThrow('the total limit of 500.00 USD every 7d');
+
+    advance(2 * DAY);
+
+    expect(await commit(10000)).toBe('ok');
+  });
+
+  it('500 a week and 1000 in all: the third week asks', async () => {
+    const { ledger, propose, now, advance } = ledgerFixture();
+    const grant = await policy([
+      { total: usd(50000, WEEK) },
+      { total: usd(100000) },
+      { nbf: T0 },
+      { exp: T0 + 10 * WEEK },
+    ]);
+    const admit = grantAdmit(grant, keys, now);
+    const commit = () =>
+      ledger.commit(commitOf(propose(50000), admit), noEvents);
+
+    expect((await commit()).kind).toBe('RECEIPT');
+    advance(WEEK);
+    expect((await commit()).kind).toBe('RECEIPT');
+    advance(WEEK);
+    await expect(commit()).rejects.toThrow(
+      /^spend would pass the total limit of 1000\.00 USD$/,
+    );
+  });
+
+  it('the clock crossing a boundary between admit and reserve: the amount lands in the period checked', async () => {
+    const { ledger, propose, now, advance } = ledgerFixture();
+    // A week that ends one second after T0.
+    const grant = await policy([
+      { total: usd(50000, WEEK) },
+      { nbf: T0 + 1 - WEEK },
+      { exp: T0 + 4 * WEEK },
+    ]);
+    const admit = grantAdmit(grant, keys, now);
+    const crossing: Admit = async (proposal, used) => {
+      const admitted = await admit(proposal, used);
+
+      advance(2);
+
+      return admitted;
+    };
+
+    expect(
+      (await ledger.commit(commitOf(propose(50000), crossing), noEvents)).kind,
+    ).toBe('RECEIPT');
+
+    // The new week is empty, and the old one, checked at T0, is full.
+    expect(
+      (await ledger.commit(commitOf(propose(50000), admit), noEvents)).kind,
+    ).toBe('RECEIPT');
+
+    const lastWeek = grantAdmit(grant, keys, () => T0);
+
+    expect(
+      await codeOf(ledger.commit(commitOf(propose(1), lastWeek), noEvents)),
+    ).toBe('consent_required');
+  });
+
+  it('a reservation released after the boundary frees its own period only', async () => {
+    const { ledger, propose, now, advance } = ledgerFixture();
+    const grant = await policy([
+      { total: usd(50000, WEEK) },
+      { nbf: T0 + 1 - WEEK },
+      { exp: T0 + 4 * WEEK },
+    ]);
+    const failing = propose(50000, {
+      apply: () => {
+        advance(2);
+
+        throw new Error('card network down');
+      },
+    });
+    const failed = await ledger.commit(
+      commitOf(failing, grantAdmit(grant, keys, now)),
+      noEvents,
+    );
+
+    expect(failed.kind === 'ERROR' && failed.code).toBe('internal');
+
+    // Released from the week it was taken in: that week has its 500 back, and the new one too.
+    const lastWeek = grantAdmit(grant, keys, () => T0);
+
+    expect(
+      (await ledger.commit(commitOf(propose(50000), lastWeek), noEvents)).kind,
+    ).toBe('RECEIPT');
+    expect(
+      (
+        await ledger.commit(
+          commitOf(propose(50000), grantAdmit(grant, keys, now)),
+          noEvents,
+        )
+      ).kind,
+    ).toBe('RECEIPT');
   });
 });

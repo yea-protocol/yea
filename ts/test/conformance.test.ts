@@ -34,6 +34,22 @@ import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
 
+/**
+ * One ledger entry's usage in a vector's `used`, written as FileStore lays the ledger out:
+ * `{"spend": q}` for a total, `{"spend@604800": {"1789776000": q}}` for one period of one.
+ */
+function usedAt(used: unknown, k: P.LedgerKey): P.Quantity {
+  const at = (v: unknown, name: string | number): unknown =>
+    v && typeof v === 'object'
+      ? (v as Record<string, unknown>)[name]
+      : undefined;
+  const q = k.period
+    ? at(at(used, `${k.of}@${k.period.every}`), k.period.start)
+    : at(used, k.of);
+
+  return (q as P.Quantity | undefined) ?? { amount: 0 };
+}
+
 /** Each vector file this runner loaded, with the top-level sections it read (none for a list). */
 const read = new Map<string, Set<string>>();
 
@@ -81,9 +97,15 @@ function signer(grant: unknown): string | null {
 }
 
 function ledgerKey(k: unknown): P.LedgerKey {
-  const { block, of } = Object(k);
+  const { block, of, period } = Object(k);
+  const key = { block: String(block), of: String(of) };
 
-  return { block: String(block), of: String(of) };
+  return period
+    ? {
+        ...key,
+        period: { every: Number(period.every), start: Number(period.start) },
+      }
+    : key;
 }
 
 /** A vector file; reading an object's sections is recorded, so an unread one fails below. */
@@ -167,12 +189,21 @@ describe('conformance vectors', () => {
         ...ctx,
         trusted: c.trusted,
         proofKey: c.proofKey,
-        used: (id: string, of: string) =>
-          P.exact(used?.[id]?.[of] ?? { amount: 0 }),
+        used: (k: P.LedgerKey) => P.exact(usedAt(used?.[k.block], k)),
       });
 
+      // `totals` (the period a COMMIT counts in) and `reason` are pinned where a case has them.
+      const shown = got.ok
+        ? {
+            ok: true,
+            totals: got.totals.map((t) => ({ key: t.key, max: String(t.max) })),
+          }
+        : { ok: false, code: got.code, reason: got.reason };
+
       expect(
-        got.ok ? { ok: true } : { ok: false, code: got.code },
+        Object.fromEntries(
+          Object.entries(shown).filter(([k]) => k in c.expect),
+        ),
         c.name,
       ).toEqual(c.expect);
     }
@@ -303,8 +334,7 @@ describe('conformance vectors', () => {
     }
 
     for (const c of v.decide) {
-      const used = (k: P.LedgerKey) =>
-        c.used[k.of] ? P.exact(c.used[k.of]) : 0n;
+      const used = (k: P.LedgerKey) => P.exact(usedAt(c.used, k));
       const d = await decide(await rehashAll(c.plans), c.policy, used, c.now);
       const got = {
         kind: d.kind,

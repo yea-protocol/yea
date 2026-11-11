@@ -4,14 +4,11 @@
  * consents from `yea approve`. `MemoryStore` is here; `FileStore` is in the Node entry.
  */
 import { randomId } from './crypto.js';
+import type { LedgerKey } from './grants.js';
 import type { Receipt } from './types.js';
 import { unixNow } from './util.js';
 
-/** A `total` limit's ledger entry: a policy grant block id and a measure name. */
-export interface LedgerKey {
-  block: string;
-  of: string;
-}
+export type { LedgerKey } from './grants.js';
 
 /** An amount held against a `total` until the job settles or fails. */
 export interface Reservation {
@@ -53,8 +50,12 @@ export interface ApprovalStore {
   getConsent(planHash: string): Promise<string | null>;
 }
 
-/** Keys a ledger entry by its block and measure (a block id never contains a space). */
-export const ledgerId = (k: LedgerKey) => `${k.block} ${k.of}`;
+/**
+ * Keys a ledger entry by its block and measure, and its period's length and start when it has
+ * one (a block id and a measure name never contain a space).
+ */
+export const ledgerId = ({ block, of, period }: LedgerKey) =>
+  period ? `${block} ${of} ${period.every} ${period.start}` : `${block} ${of}`;
 
 /** An undo claimed but never finished (the process died) can be claimed again after this. */
 const STALE_CLAIM_MS = 600_000;

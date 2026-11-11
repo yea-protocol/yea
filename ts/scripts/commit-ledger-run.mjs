@@ -11,7 +11,7 @@
  */
 
 const T0 = 1790000000;
-const TOTAL = { id: 'b_1', of: 'spend', max: 10n ** 18n }; // 100 cents, exact at scale 18
+const TOTAL = { key: { block: 'b_1', of: 'spend' }, max: 10n ** 18n }; // 100 cents, exact at scale 18
 
 /** A COMMIT's outcome as the vectors record it. */
 const outcomeOf = (out) =>

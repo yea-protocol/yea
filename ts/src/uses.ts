@@ -21,6 +21,8 @@ export interface Limit {
   max: number;
   scale?: number;
   unit?: string;
+  /** `total` only: count in periods of this many seconds, from the block's `nbf` (SPEC §6.3). */
+  every?: number;
 }
 
 const MAX_SCALE = 18;
@@ -60,6 +62,7 @@ export function isUses(v: unknown): v is Uses {
   );
 }
 
+/** An `each` limit: `{of, max, scale?, unit?}`, with no `every`. */
 export function isLimit(v: unknown): v is Limit {
   return (
     isObject(v) &&
@@ -68,6 +71,21 @@ export function isLimit(v: unknown): v is Limit {
     isAmount(v.max) &&
     isScale(v.scale) &&
     isUnit(v.unit)
+  );
+}
+
+/** A `total` limit: an `each` limit, or one with `every`, a positive safe integer of seconds. */
+export function isTotal(v: unknown): v is Limit {
+  if (!isObject(v)) {
+    return false;
+  }
+
+  const { every, ...limit } = v;
+
+  return (
+    isLimit(limit) &&
+    (every === undefined ||
+      (Number.isSafeInteger(every) && (every as number) > 0))
   );
 }
 

@@ -8,6 +8,7 @@ import {
   malformed,
 } from './caveat-rules.js';
 import type { CheckContext, TotalLimit } from './context.js';
+import { anchorOf, endOf, ledgerKey } from './periods.js';
 import { type Block, blockId, type Caveat } from './token.js';
 
 interface CaveatFailure {
@@ -56,12 +57,11 @@ function evaluateCaveat(c: unknown, env: CaveatEnv, out: CaveatResults) {
     (CONSENTABLE.has(k) ? out.soft : out.hard).push({ c: c as Caveat, why });
   } else if (k === 'total' && env.ctx.verb === 'COMMIT') {
     const l = v as Limit;
+    const key = ledgerKey(env.blockId, l, env.anchor, env.t);
 
-    out.totals.push({
-      id: env.blockId,
-      of: l.of,
-      max: exact({ amount: l.max, scale: l.scale }),
-    });
+    if (key) {
+      out.totals.push({ key, max: exact({ amount: l.max, scale: l.scale }) });
+    }
   }
 }
 
@@ -72,10 +72,12 @@ export async function evaluateCaveats(
 ): Promise<CaveatResults> {
   const t = ctx.now ?? unixNow();
   const p = ctx.verb === 'COMMIT' ? ctx.proposal : undefined;
+  const end = endOf(blocks.map((b) => b.p));
   const out: CaveatResults = { hard: [], soft: [], totals: [] };
 
   for (const b of blocks) {
-    const env = { ctx, t, p, blockId: await blockId(b) };
+    const anchor = anchorOf(b.p);
+    const env = { ctx, t, p, blockId: await blockId(b), anchor, end };
     const caveats: unknown[] = b.p.caveats; // decoded but not yet validated
 
     for (const c of caveats) {

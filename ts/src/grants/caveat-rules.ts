@@ -1,10 +1,12 @@
 /** The rule for each known caveat (SPEC §6.3): the shape its value must have, when it denies a request, and whether a principal may consent past it. */
+import { fmtTime } from '../lens.js';
 import { exceeds, isRisk } from '../risk.js';
 import type { Risk, Verb } from '../types.js';
-import { isLimit, isUses, type Limit } from '../uses.js';
+import { isLimit, isTotal, isUses, type Limit } from '../uses.js';
 import { isStringList } from '../util.js';
-import type { CheckContext } from './context.js';
+import type { CheckContext, Period } from './context.js';
 import { overLimit } from './limits.js';
+import { ledgerKey, nextStart } from './periods.js';
 
 export const CONSENTABLE = new Set(['each', 'total', 'risk']);
 
@@ -16,7 +18,7 @@ const VALID_CAVEAT: Record<string, (v: unknown) => boolean> = {
   exp: Number.isSafeInteger,
   nbf: Number.isSafeInteger,
   each: isLimit,
-  total: isLimit,
+  total: isTotal,
   risk: isRisk,
   only: (v) => typeof v === 'string',
 };
@@ -41,6 +43,14 @@ export function malformed(
     return 'unknown risk on the proposal';
   }
 
+  if (k === 'total' && (v as Limit).every !== undefined) {
+    const why = unperiodic(env);
+
+    if (why) {
+      return why;
+    }
+  }
+
   // A limit can't be judged against a malformed `uses` (SPEC §6.3), so that fails closed too.
   const isLimitCaveat = k === 'each' || k === 'total';
 
@@ -48,6 +58,25 @@ export function malformed(
   return isLimitCaveat && p && p.uses !== undefined && !isUses(p.uses)
     ? 'malformed uses on the proposal'
     : null;
+}
+
+/**
+ * Why a `total` with `every` can't count in periods in this grant (SPEC §6.3), on any verb: its
+ * block hasn't exactly one `nbf` to count them from, or the grant has no `exp` to end them.
+ */
+function unperiodic({ anchor, end }: CaveatEnv): string | null {
+  if (anchor === null) {
+    return 'a total with every needs exactly one nbf in its block';
+  }
+
+  return end === null ? 'a total with every needs an exp in the grant' : null;
+}
+
+/** ` (starts again …)`, when the period after `p` starts before the grant ends; else nothing. */
+function startsAgain(p: Period | undefined, end: number | null): string {
+  const next = p ? nextStart(p, end) : null;
+
+  return next === null ? '' : ` (starts again ${fmtTime(next)})`;
 }
 
 function matchCapability(pattern: string, cap: string): boolean {
@@ -61,10 +90,15 @@ function matchCapability(pattern: string, cap: string): boolean {
 /** What a caveat is checked against: the request, the time, and the block it sits in. */
 export interface CaveatEnv {
   ctx: CheckContext;
+  /** The time, read once per check: every period the check works out comes from it. */
   t: number;
   /** The proposal, for COMMIT only. */
   p: CheckContext['proposal'];
   blockId: string;
+  /** The block's one `nbf`, which its periodic totals count from; null if it hasn't one. */
+  anchor: number | null;
+  /** The grant's earliest `exp`; null if it has none. */
+  end: number | null;
 }
 
 /**
@@ -88,15 +122,23 @@ const CAVEAT_CHECKS: Record<
   exp: (v, { t }) => (t < (v as number) ? null : 'grant has expired'),
   nbf: (v, { t }) => (t >= (v as number) ? null : 'grant is not valid yet'),
   each: (v, { p }) =>
-    overLimit(p, v as Limit, 0n, 'over the per-commit limit of'),
-  total: (v, { ctx, p, blockId }) => {
+    overLimit(p, v as Limit, 0n, (l) => `over the per-commit limit of ${l}`),
+  total: (v, env) => {
     const l = v as Limit;
+    const key = ledgerKey(env.blockId, l, env.anchor, env.t);
+
+    // Before the block's `nbf`, that caveat denies the request, and this one counts nothing.
+    if (!key) {
+      return null;
+    }
+
+    const again = startsAgain(key.period, env.end);
 
     return overLimit(
-      p,
+      env.p,
       l,
-      ctx.used?.(blockId, l.of) ?? 0n,
-      'would pass the total limit of',
+      env.ctx.used?.(key) ?? 0n,
+      (shown) => `would pass the total limit of ${shown}${again}`,
     );
   },
   // `v` is a known risk: malformed() rejects any other ceiling before this runs.

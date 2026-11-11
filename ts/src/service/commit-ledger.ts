@@ -127,7 +127,7 @@ export class CommitLedger {
     if ('over' in r) {
       throw new YeaError(
         'consent_required',
-        `${r.over.of} would pass a total limit (other commits are in flight); your principal must approve this exact proposal`,
+        `${r.over.key.of} would pass a total limit (other commits are in flight); your principal must approve this exact proposal`,
         { consent: consentRequest(proposal, this.svc.id, admitted.iss) },
       );
     }

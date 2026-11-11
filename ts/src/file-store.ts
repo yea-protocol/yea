@@ -15,6 +15,7 @@ import {
 } from './file-store/files.js';
 import { acquire } from './file-store/lock.js';
 import { PendingCodes } from './file-store/pending.js';
+import type { Period } from './grants.js';
 import { home } from './home.js';
 import type {
   ApprovalStore,
@@ -171,13 +172,17 @@ export class FileStore implements ApprovalStore {
     return join(this.root, 'consents', safeName(planHash));
   }
 
-  private ledgerPath(key: LedgerKey, ext: 'json' | 'lock') {
-    return join(
-      this.root,
-      'ledger',
-      safeName(key.block),
-      `${safeName(key.of)}.${ext}`,
-    );
+  /** `ledger/<block>/<of>.json`, or for one period, `ledger/<block>/<of>@<every>/<start>.json`. */
+  private ledgerPath({ block, of, period }: LedgerKey, ext: 'json' | 'lock') {
+    const dir = join(this.root, 'ledger', safeName(block));
+
+    if (!period) {
+      return join(dir, `${safeName(of)}.${ext}`);
+    }
+
+    const [every, start] = periodNames(period);
+
+    return join(dir, `${safeName(of)}@${every}`, `${start}.${ext}`);
   }
 
   private readLedger(key: LedgerKey): LedgerFile {
@@ -245,6 +250,19 @@ export function pendingCodesOf(s: unknown): PendingCodes | null {
   return f?.yeaStore === 'file' && typeof f.root === 'string'
     ? new PendingCodes(join(f.root, 'pending'))
     : null;
+}
+
+/** A period's length and start as store names: safe integers, the length positive, or refused. */
+function periodNames({ every, start }: Period): [string, string] {
+  if (
+    !(Number.isSafeInteger(every) && every > 0 && Number.isSafeInteger(start))
+  ) {
+    throw new Error(
+      `refusing a ledger period of ${every} seconds from ${start}`,
+    );
+  }
+
+  return [String(every), String(start)];
 }
 
 /** Names are b64url ids, receipt ids or measure names; anything else is refused. */

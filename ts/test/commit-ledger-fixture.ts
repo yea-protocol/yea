@@ -39,6 +39,7 @@ export function ledgerFixture(opts: Partial<ServiceOptions> = {}) {
 
   return {
     ledger,
+    now: () => t,
     advance: (seconds: number) => {
       t += seconds;
     },
@@ -88,11 +89,42 @@ export function totalGrant(maxCents: number, iss = 'alice') {
 
       return q && used(key) + exact(q) > max
         ? new P.YeaError('consent_required', 'spend would pass the total limit')
-        : { iss, totals: [{ id: key.block, of: key.of, max }] };
+        : { iss, totals: [{ key, max }] };
     },
   };
 
   return grant;
+}
+
+/**
+ * Grant evaluation as a service runs it, with the limits (verified-request/grants.ts): the real
+ * check of `grant`, held by `holder` and issued by `trusted`, at the time `at` gives.
+ */
+export function grantAdmit(
+  grant: string,
+  keys: { holder: string; trusted: string },
+  at: () => number,
+): Admit {
+  return async (proposal, used) => {
+    const r = await P.checkGrant(grant, {
+      service: 'pay',
+      verb: 'COMMIT',
+      capability: proposal.capability,
+      now: at(),
+      proposal: {
+        hash: proposal.hash,
+        uses: proposal.uses,
+        risk: proposal.risk,
+      },
+      trusted: [keys.trusted],
+      proofKey: keys.holder,
+      used,
+    });
+
+    return r.ok
+      ? { iss: r.iss, totals: r.totals }
+      : new P.YeaError(r.code, r.reason);
+  };
 }
 
 /** A COMMIT of `stored` by `principal`'s agent, under `admit`. */

@@ -24,6 +24,7 @@ import {
 } from '../dist/ask.js';
 import * as P from '../dist/index.js';
 import { FileStore } from '../dist/node.js';
+import { usedAt } from './used-at.mjs';
 
 const seed = (n) => P.b64u(new Uint8Array(32).fill(n));
 const now = 1790000000;
@@ -404,6 +405,33 @@ const grants = {
   garbage: 'pg1.bm9wZQ',
 };
 const repeatedId = await P.sha256(P.decodeGrant(grants.repeated)[0].s);
+// Totals that count per day and per week (SPEC.md §6.3), from an nbf an hour before `now`.
+const DAY = 86400;
+const today = now - 3600;
+const periodic = (nonce, totals) =>
+  policyFor(nonce, [
+    { can: ['send_email'] },
+    ...totals.map((total) => ({ total })),
+    { nbf: today },
+    { exp: now + 7 * DAY },
+  ]);
+const perDay = (max) => ({ of: 'emails', max, every: DAY });
+const daily = await periodic('pol10', [perDay(3)]);
+const dayAndWeek = await periodic('pol11', [
+  perDay(3),
+  { of: 'emails', max: 10, every: 7 * DAY },
+]);
+const twoDaily = await periodic('pol12', [perDay(3), perDay(2)]);
+const [dailyId, dayAndWeekId, twoDailyId] = await Promise.all(
+  [daily, dayAndWeek, twoDaily].map((g) => P.sha256(P.decodeGrant(g)[0].s)),
+);
+const emailsOn = (block, every, start) => ({
+  block,
+  of: 'emails',
+  period: { every, start },
+});
+const oneEmail = '1000000000000000000';
+const emails = (n) => `${n}000000000000000000`;
 const base = {
   grant: policyGrant,
   principal: principal.public,
@@ -642,18 +670,97 @@ const decideCases = [
     {},
     { kind: 'ask' },
   ],
+  [
+    'a periodic total with room runs and reserves in its period',
+    ['emailUndoable'],
+    { grant: daily },
+    { [`emails@${DAY}`]: { [today]: { amount: 2 } } },
+    {
+      kind: 'run',
+      planHash: 'emailUndoable',
+      reserve: [
+        {
+          key: emailsOn(dailyId, DAY, today),
+          amount: oneEmail,
+          max: emails(3),
+        },
+      ],
+    },
+  ],
+  [
+    'a full period asks, and says when the next one starts',
+    ['emailUndoable'],
+    { grant: daily },
+    { [`emails@${DAY}`]: { [today]: { amount: 3 } } },
+    {
+      kind: 'ask',
+      why: 'emails would pass the total limit of 3 every 1d (starts again 2026-09-22T13:13:20Z)',
+    },
+  ],
+  [
+    'the next period runs, though the last one is full',
+    ['emailUndoable'],
+    { grant: daily },
+    { [`emails@${DAY}`]: { [today]: { amount: 3 } } },
+    {
+      kind: 'run',
+      planHash: 'emailUndoable',
+      reserve: [
+        {
+          key: emailsOn(dailyId, DAY, today + DAY),
+          amount: oneEmail,
+          max: emails(3),
+        },
+      ],
+    },
+    today + DAY,
+  ],
+  [
+    'a total per day and one per week on one measure each reserve',
+    ['emailUndoable'],
+    { grant: dayAndWeek },
+    {},
+    {
+      kind: 'run',
+      planHash: 'emailUndoable',
+      reserve: [
+        {
+          key: emailsOn(dayAndWeekId, DAY, today),
+          amount: oneEmail,
+          max: emails(3),
+        },
+        {
+          key: emailsOn(dayAndWeekId, 7 * DAY, today),
+          amount: oneEmail,
+          max: emails(10),
+        },
+      ],
+    },
+  ],
+  [
+    'two totals per day on one measure reserve once, under the smallest max',
+    ['emailUndoable'],
+    { grant: twoDaily },
+    {},
+    {
+      kind: 'run',
+      planHash: 'emailUndoable',
+      reserve: [
+        {
+          key: emailsOn(twoDailyId, DAY, today),
+          amount: oneEmail,
+          max: emails(2),
+        },
+      ],
+    },
+  ],
 ];
 const decideOut = [];
 
 for (const [name, keys, policyChange, used, want, at = now] of decideCases) {
   const hps = await Promise.all(keys.map(hashed));
   const policy = { ...base, ...policyChange };
-  const d = await decide(
-    hps,
-    policy,
-    (k) => (used[k.of] ? P.exact(used[k.of]) : 0n),
-    at,
-  );
+  const d = await decide(hps, policy, (k) => P.exact(usedAt(used, k)), at);
   const got = {
     kind: d.kind,
     ...(d.why === undefined ? {} : { why: d.why }),
@@ -1415,12 +1522,15 @@ for (const [name, id, sub, at, want, first] of [
 const dir = mkdtempSync(join(tmpdir(), 'yea-store-'));
 const store = new FileStore(dir);
 const key = { block: blockId, of: 'emails' };
+const periodKey = { ...key, period: { every: DAY, start: today } };
 // Replayed by both runners: `expect` is the result when present; `settle` settles the reservation.
 const fileOps = [
   { op: 'consumeOnce', args: ['n_1', now + 600], expect: true },
   { op: 'consumeOnce', args: ['n_1', now + 600], expect: false },
   { op: 'reserve', args: [key, 5, 10], settle: true },
   { op: 'reserve', args: [key, 6, 10], expect: null },
+  { op: 'reserve', args: [periodKey, 2, 3], settle: true },
+  { op: 'reserve', args: [periodKey, 2, 3], expect: null },
   { op: 'putConsent', args: [refundHp.planHash, 'pg1.example'] },
   { op: 'claimUndo', args: ['r_AAAAAAAAAAAA'], expect: true },
   { op: 'markUndone', args: ['r_AAAAAAAAAAAA'] },

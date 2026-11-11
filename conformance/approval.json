@@ -1663,6 +1663,307 @@
         "kind": "ask",
         "why": "malformed caveat {\"total\":{\"max\":-1,\"of\":\"emails\"}}"
       }
+    },
+    {
+      "name": "a periodic total with room runs and reserves in its period",
+      "plans": [
+        {
+          "tool": "send_email",
+          "revert": true,
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7ImV2ZXJ5Ijo4NjQwMCwibWF4IjozLCJvZiI6ImVtYWlscyJ9fSx7Im5iZiI6MTc4OTk5NjQwMH0seyJleHAiOjE3OTA2MDQ4MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDEwIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJpU0taT3AwYjFldG9TYzhwNmJEOGxkeDJlQ0o3UkpHdlhaQ2VQdU16cEhMaFVKNDEySHlSenJkNTljVHdPclR5TTdLbFU2Uk8ta3JVak93YzZhNURDQSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails@86400": {
+          "1789996400": {
+            "amount": 2
+          }
+        }
+      },
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+        "reserve": [
+          {
+            "key": {
+              "block": "3ElaRAR5oe1NYytIpmAuPZHxZSow4G0an9UIzNV1nT0",
+              "of": "emails",
+              "period": {
+                "every": 86400,
+                "start": 1789996400
+              }
+            },
+            "amount": "1000000000000000000",
+            "max": "3000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a full period asks, and says when the next one starts",
+      "plans": [
+        {
+          "tool": "send_email",
+          "revert": true,
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7ImV2ZXJ5Ijo4NjQwMCwibWF4IjozLCJvZiI6ImVtYWlscyJ9fSx7Im5iZiI6MTc4OTk5NjQwMH0seyJleHAiOjE3OTA2MDQ4MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDEwIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJpU0taT3AwYjFldG9TYzhwNmJEOGxkeDJlQ0o3UkpHdlhaQ2VQdU16cEhMaFVKNDEySHlSenJkNTljVHdPclR5TTdLbFU2Uk8ta3JVak93YzZhNURDQSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails@86400": {
+          "1789996400": {
+            "amount": 3
+          }
+        }
+      },
+      "now": 1790000000,
+      "expect": {
+        "kind": "ask",
+        "why": "emails would pass the total limit of 3 every 1d (starts again 2026-09-22T13:13:20Z)"
+      }
+    },
+    {
+      "name": "the next period runs, though the last one is full",
+      "plans": [
+        {
+          "tool": "send_email",
+          "revert": true,
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7ImV2ZXJ5Ijo4NjQwMCwibWF4IjozLCJvZiI6ImVtYWlscyJ9fSx7Im5iZiI6MTc4OTk5NjQwMH0seyJleHAiOjE3OTA2MDQ4MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDEwIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJpU0taT3AwYjFldG9TYzhwNmJEOGxkeDJlQ0o3UkpHdlhaQ2VQdU16cEhMaFVKNDEySHlSenJkNTljVHdPclR5TTdLbFU2Uk8ta3JVak93YzZhNURDQSJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {
+        "emails@86400": {
+          "1789996400": {
+            "amount": 3
+          }
+        }
+      },
+      "now": 1790082800,
+      "expect": {
+        "kind": "run",
+        "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+        "reserve": [
+          {
+            "key": {
+              "block": "3ElaRAR5oe1NYytIpmAuPZHxZSow4G0an9UIzNV1nT0",
+              "of": "emails",
+              "period": {
+                "every": 86400,
+                "start": 1790082800
+              }
+            },
+            "amount": "1000000000000000000",
+            "max": "3000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a total per day and one per week on one measure each reserve",
+      "plans": [
+        {
+          "tool": "send_email",
+          "revert": true,
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7ImV2ZXJ5Ijo4NjQwMCwibWF4IjozLCJvZiI6ImVtYWlscyJ9fSx7InRvdGFsIjp7ImV2ZXJ5Ijo2MDQ4MDAsIm1heCI6MTAsIm9mIjoiZW1haWxzIn19LHsibmJmIjoxNzg5OTk2NDAwfSx7ImV4cCI6MTc5MDYwNDgwMH1dLCJpYXQiOjE3OTAwMDAwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoicG9sMTEiLCJzdWIiOiJlZDI1NTE5OmJub2MzU213dDRfUk92VEZXWV92OU84cWx4WnVQS2J5NVB2OHpZQlFXX0UifSwicyI6IndneUd6SEVnYTRYZFJIS08xOUNiVGZrMkNtMnZ4QkRwaXN5b1hlajNZLUcxMTFydzR1N2owd0Zrb3FSSy1uTkFYRUIwVmVDTHFTbUg5ajBEZEtqSURBIn1d",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+        "reserve": [
+          {
+            "key": {
+              "block": "1ByPhWTh8RDY12w-dNi0rgXCAuWs5OhJEf24HI4di-o",
+              "of": "emails",
+              "period": {
+                "every": 86400,
+                "start": 1789996400
+              }
+            },
+            "amount": "1000000000000000000",
+            "max": "3000000000000000000"
+          },
+          {
+            "key": {
+              "block": "1ByPhWTh8RDY12w-dNi0rgXCAuWs5OhJEf24HI4di-o",
+              "of": "emails",
+              "period": {
+                "every": 604800,
+                "start": 1789996400
+              }
+            },
+            "amount": "1000000000000000000",
+            "max": "10000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "two totals per day on one measure reserve once, under the smallest max",
+      "plans": [
+        {
+          "tool": "send_email",
+          "revert": true,
+          "plan": {
+            "summary": "Schedule the notes email",
+            "effects": [
+              {
+                "op": "create",
+                "target": "scheduled/1"
+              }
+            ],
+            "uses": {
+              "emails": {
+                "amount": 1
+              }
+            },
+            "risk": "low",
+            "undoWindow": 600
+          },
+          "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+          "risk": "low",
+          "undoable": true
+        }
+      ],
+      "policy": {
+        "grant": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJjYW4iOlsic2VuZF9lbWFpbCJdfSx7InRvdGFsIjp7ImV2ZXJ5Ijo4NjQwMCwibWF4IjozLCJvZiI6ImVtYWlscyJ9fSx7InRvdGFsIjp7ImV2ZXJ5Ijo4NjQwMCwibWF4IjoyLCJvZiI6ImVtYWlscyJ9fSx7Im5iZiI6MTc4OTk5NjQwMH0seyJleHAiOjE3OTA2MDQ4MDB9XSwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6InBvbDEyIiwic3ViIjoiZWQyNTUxOTpibm9jM1Ntd3Q0X1JPdlRGV1lfdjlPOHFseFp1UEtieTVQdjh6WUJRV19FIn0sInMiOiJLX1EyaUdqc0FVMXZseVdRS0pHUjNTa2h0TWI5YVlyNzMxQWtmcDlVTkhZM08yVFFTdEpXOFE0MGI5b0RTaDl5TUVwQ3J3RTNsU084eWxZVV9peTdBZyJ9XQ",
+        "principal": "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "server": "ed25519:bnoc3Smwt4_ROvTFWY_v9O8qlxZuPKby5Pv8zYBQW_E",
+        "deny": [
+          "delete_customer"
+        ],
+        "outOfBand": "high"
+      },
+      "used": {},
+      "now": 1790000000,
+      "expect": {
+        "kind": "run",
+        "planHash": "DTQA-hhneGyFs0oCc3XreUFG6GUMIEtfhCyOUubtK-4",
+        "reserve": [
+          {
+            "key": {
+              "block": "21uQiUUJxRD668jYNOjG3hLzlrRdNOPDGt4wy_EWZ8g",
+              "of": "emails",
+              "period": {
+                "every": 86400,
+                "start": 1789996400
+              }
+            },
+            "amount": "1000000000000000000",
+            "max": "2000000000000000000"
+          }
+        ]
+      }
     }
   ],
   "phrases": [
@@ -4157,6 +4458,38 @@
         "expect": null
       },
       {
+        "op": "reserve",
+        "args": [
+          {
+            "block": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
+            "of": "emails",
+            "period": {
+              "every": 86400,
+              "start": 1789996400
+            }
+          },
+          2,
+          3
+        ],
+        "settle": true
+      },
+      {
+        "op": "reserve",
+        "args": [
+          {
+            "block": "cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8",
+            "of": "emails",
+            "period": {
+              "every": 86400,
+              "start": 1789996400
+            }
+          },
+          2,
+          3
+        ],
+        "expect": null
+      },
+      {
         "op": "putConsent",
         "args": [
           "UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4",
@@ -4188,6 +4521,7 @@
       "consents/UPpWLxQccC5Ckj_gj9dkvb7ourHaoPykuHRm8x5CPy4": "pg1.example",
       "consumed/WDKSoRuiQ4FKzxcrRUH-G1gXsfj5_6UGiyP1fzmW1Ac": "1790000600",
       "ledger/cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8/emails.json": "{\"settled\":\"5\",\"reserved\":{}}",
+      "ledger/cRvyVuFSDvFmXVGvMAOrJKqGojW7kvN7LxHuUbdNQG8/emails@86400/1789996400.json": "{\"settled\":\"2\",\"reserved\":{}}",
       "undo/r_AAAAAAAAAAAA.claim": "*",
       "undo/r_AAAAAAAAAAAA.done": ""
     }

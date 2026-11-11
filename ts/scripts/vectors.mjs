@@ -1,6 +1,7 @@
 /** Generates ../conformance/*.json from the reference implementation. Deterministic. */
 import { writeFileSync } from 'node:fs';
 import * as P from '../dist/index.js';
+import { usedAt } from './used-at.mjs';
 
 // `ascii`: every other character as a \u escape, so a file of invisible characters shows them.
 const out = (name, v, { ascii = false } = {}) => {
@@ -446,6 +447,405 @@ const c = (proposal, extra = {}) => ({
   proposal,
   ...extra,
 });
+// Periods (SPEC §6.3): a `total` with `every` counts in fixed periods from its block's one `nbf`.
+// `used` is written as FileStore lays the ledger out: `{block: {"spend@604800": {start: q}}}`.
+// `expect.totals` pins the period a COMMIT counts in, and `expect.reason` the refusal's words.
+const DAY = 86400;
+const WEEK = 7 * DAY;
+const anchor = 1789776000; // 2026-09-19T00:00Z, two and a half days before `now`
+const MAX_SAFE = 2 ** 53 - 1;
+const usd = (cents, every) => ({
+  of: 'spend',
+  max: cents,
+  scale: 2,
+  unit: 'USD',
+  ...(every === undefined ? {} : { every }),
+});
+const periodic = (nonce, caveats) =>
+  P.issueGrant({
+    principal,
+    to: agent.public,
+    iat: anchor,
+    nonce,
+    caveats: [{ svc: ['shop.example'] }, ...caveats],
+  });
+const idOf = async (token, i = 0) => P.sha256(P.decodeGrant(token)[i].s);
+const spent = (cents) => ({ amount: cents, scale: 2, unit: 'USD' });
+/** `used` holding `cents` in the period of `every` starting at `start`, under block `id`. */
+const inPeriod = (id, start, cents, every = WEEK) => ({
+  [id]: { [`spend@${every}`]: { [start]: spent(cents) } },
+});
+const buy = (at, extra = {}) => ({ ...c(commit(2000), extra), now: at });
+const asksAt = (at) => ({ ...ask, now: at });
+/** A `totals` entry: where a COMMIT counts, and its ceiling in exact units. */
+const countsIn = (block, cents, period) => ({
+  key: { block, of: 'spend', ...(period ? { period } : {}) },
+  max: String(P.exact({ amount: cents, scale: 2 })),
+});
+const weekly = await periodic('n30', [
+  { total: usd(50000, WEEK) },
+  { nbf: anchor },
+  { exp: anchor + 13 * WEEK },
+]);
+const weeklyId = await idOf(weekly);
+const endsSoon = await periodic('n31', [
+  { total: usd(50000, WEEK) },
+  { nbf: anchor },
+  { exp: anchor + WEEK + 3600 },
+]);
+const dayAndWeek = await periodic('n32', [
+  { total: usd(10000, DAY) },
+  { total: usd(50000, WEEK) },
+  { nbf: anchor },
+  { exp: anchor + 4 * WEEK },
+]);
+const dayAndWeekId = await idOf(dayAndWeek);
+const weekAndAll = await periodic('n33', [
+  { total: usd(50000, WEEK) },
+  { total: usd(100000) },
+  { nbf: anchor },
+  { exp: anchor + 13 * WEEK },
+]);
+const plainNbf = await periodic('n34', [{ nbf: now }]);
+const withEvery = (nonce, every, extra = []) =>
+  periodic(nonce, [
+    { total: { ...usd(50000), every } },
+    { nbf: anchor },
+    { exp: anchor + WEEK },
+    ...extra,
+  ]);
+const badEvery = [
+  ['0', 0],
+  ['negative', -1],
+  ['a string', '7d'],
+  ['a boolean', true],
+  ['null', null],
+  ['a list', []],
+  ['an object', {}],
+];
+const noNbf = await periodic('n35', [
+  { total: usd(50000, WEEK) },
+  { exp: anchor + WEEK },
+]);
+const twoNbf = await periodic('n36', [
+  { total: usd(50000, WEEK) },
+  { nbf: anchor },
+  { nbf: anchor + DAY },
+  { exp: anchor + 2 * WEEK },
+]);
+const noExp = await periodic('n37', [
+  { total: usd(50000, WEEK) },
+  { nbf: anchor },
+]);
+const laterNbf = await P.delegateGrant(weekly, {
+  holder: agent,
+  to: sub.public,
+  iat: anchor + 2 * DAY,
+  caveats: [{ nbf: anchor + 2 * DAY }],
+});
+const nbfElsewhere = await P.delegateGrant(noNbf, {
+  holder: agent,
+  to: sub.public,
+  iat: anchor,
+  caveats: [{ nbf: anchor }],
+});
+const ownPeriods = await P.delegateGrant(weekly, {
+  holder: agent,
+  to: sub.public,
+  iat: anchor + 2 * DAY,
+  caveats: [{ total: usd(10000, DAY) }, { nbf: anchor + 2 * DAY + 3600 }],
+});
+const farBack = -MAX_SAFE;
+const fromFarBack = (nonce, every) =>
+  periodic(nonce, [
+    { total: usd(50000, every) },
+    { nbf: farBack },
+    { exp: now + WEEK },
+  ]);
+const daily = await fromFarBack('n38', 1);
+const sevens = await fromFarBack('n39', 7);
+const longest = await periodic('n40', [
+  { total: usd(50000, MAX_SAFE) },
+  { nbf: anchor },
+  { exp: anchor + 13 * WEEK },
+]);
+const longestId = await idOf(longest);
+const weekToken = await periodic('n41', [
+  { total: usd(50000, WEEK) },
+  { nbf: anchor },
+  { exp: anchor + WEEK },
+]);
+const forbidden = { ok: false, code: 'forbidden' };
+const refused = (reason) => ({ ...forbidden, reason });
+const NO_ANCHOR = 'a total with every needs exactly one nbf in its block';
+const NO_END = 'a total with every needs an exp in the grant';
+const asks = (reason) => ({ ok: false, code: 'consent_required', reason });
+const weekFull =
+  'spend would pass the total limit of 500.00 USD every 7d (starts again 2026-09-26T00:00Z)';
+const periodCases = [
+  [
+    'periods: a commit with room counts in the period it is in',
+    weekly,
+    agent.public,
+    buy(now, { used: inPeriod(weeklyId, anchor, 48000) }),
+    {
+      ok: true,
+      totals: [countsIn(weeklyId, 50000, { every: WEEK, start: anchor })],
+    },
+  ],
+  [
+    'periods: a full period asks, and says when the next one starts',
+    weekly,
+    agent.public,
+    buy(now, { used: inPeriod(weeklyId, anchor, 48001) }),
+    asks(weekFull),
+  ],
+  [
+    'periods: what a lifetime total holds counts in no period',
+    weekly,
+    agent.public,
+    buy(now, { used: { [weeklyId]: { spend: spent(50000) } } }),
+    { ok: true },
+  ],
+  [
+    'periods: the last second of a period is in it',
+    weekly,
+    agent.public,
+    buy(anchor + WEEK - 1, { used: inPeriod(weeklyId, anchor, 49000) }),
+    asks(weekFull),
+  ],
+  [
+    'periods: nbf + every starts the next period, where the last one counts nothing',
+    weekly,
+    agent.public,
+    buy(anchor + WEEK, { used: inPeriod(weeklyId, anchor, 50000) }),
+    {
+      ok: true,
+      totals: [
+        countsIn(weeklyId, 50000, { every: WEEK, start: anchor + WEEK }),
+      ],
+    },
+  ],
+  [
+    'periods: before nbf the grant is not valid yet, and the total counts nothing',
+    weekly,
+    agent.public,
+    buy(anchor - 1),
+    { ok: false, code: 'forbidden', reason: 'grant is not valid yet' },
+  ],
+  [
+    'periods: the next start is left out when the grant ends first',
+    endsSoon,
+    agent.public,
+    buy(anchor + WEEK + 60, {
+      used: inPeriod(await idOf(endsSoon), anchor + WEEK, 50000),
+    }),
+    asks('spend would pass the total limit of 500.00 USD every 7d'),
+  ],
+  ['nbf: valid from nbf on', plainNbf, agent.public, asksAt(now), { ok: true }],
+  [
+    'nbf: not valid a second before',
+    plainNbf,
+    agent.public,
+    asksAt(now - 1),
+    { ok: false, code: 'forbidden', reason: 'grant is not valid yet' },
+  ],
+  [
+    'periods: 100 a day and 500 a week in one block count apart',
+    dayAndWeek,
+    agent.public,
+    buy(anchor + DAY + 60),
+    {
+      ok: true,
+      totals: [
+        countsIn(dayAndWeekId, 10000, { every: DAY, start: anchor + DAY }),
+        countsIn(dayAndWeekId, 50000, { every: WEEK, start: anchor }),
+      ],
+    },
+  ],
+  [
+    'periods: 100 a day and 500 a week, the sixth day asks',
+    dayAndWeek,
+    agent.public,
+    buy(anchor + 5 * DAY + 60, {
+      used: inPeriod(dayAndWeekId, anchor, 50000),
+    }),
+    asks(weekFull),
+  ],
+  [
+    'periods: 500 a week and 1000 in all, the third week asks',
+    weekAndAll,
+    agent.public,
+    buy(anchor + 2 * WEEK + 60, {
+      used: { [await idOf(weekAndAll)]: { spend: spent(100000) } },
+    }),
+    asks('spend would pass the total limit of 1000.00 USD'),
+  ],
+  [
+    'periods: a block with no nbf fails closed',
+    noNbf,
+    agent.public,
+    ask,
+    refused(NO_ANCHOR),
+  ],
+  [
+    'periods: a block with nbf twice fails closed',
+    twoNbf,
+    agent.public,
+    ask,
+    refused(NO_ANCHOR),
+  ],
+  [
+    'periods: an nbf in another block is not the anchor',
+    nbfElsewhere,
+    sub.public,
+    ask,
+    refused(NO_ANCHOR),
+  ],
+  [
+    'periods: a grant with no exp fails closed',
+    noExp,
+    agent.public,
+    ask,
+    refused(NO_END),
+  ],
+  [
+    'periods: a grant with no exp fails closed on COMMIT too',
+    noExp,
+    agent.public,
+    buy(now),
+    refused(NO_END),
+  ],
+  [
+    "periods: a delegation's nbf doesn't move the root's periods",
+    laterNbf,
+    sub.public,
+    buy(anchor + 8 * DAY),
+    {
+      ok: true,
+      totals: [
+        countsIn(weeklyId, 50000, { every: WEEK, start: anchor + WEEK }),
+      ],
+    },
+  ],
+  [
+    "periods: a delegation's nbf doesn't empty the root's full period",
+    laterNbf,
+    sub.public,
+    buy(anchor + 8 * DAY, { used: inPeriod(weeklyId, anchor + WEEK, 49000) }),
+    asks(
+      'spend would pass the total limit of 500.00 USD every 7d (starts again 2026-10-03T00:00Z)',
+    ),
+  ],
+  [
+    "periods: a delegation's own periodic total counts from its own nbf",
+    ownPeriods,
+    sub.public,
+    buy(anchor + 8 * DAY),
+    {
+      ok: true,
+      totals: [
+        countsIn(weeklyId, 50000, { every: WEEK, start: anchor + WEEK }),
+        countsIn(await idOf(ownPeriods, 1), 10000, {
+          every: DAY,
+          start: anchor + 7 * DAY + 3600,
+        }),
+      ],
+    },
+  ],
+  ...(await Promise.all(
+    badEvery.map(async ([name, every], i) => [
+      `periods: an every that is ${name} fails closed`,
+      await withEvery(`n5${i}`, every),
+      agent.public,
+      ask,
+      i === 0
+        ? refused(
+            'malformed caveat {"total":{"every":0,"max":50000,"of":"spend","scale":2,"unit":"USD"}}',
+          )
+        : forbidden,
+    ]),
+  )),
+  [
+    'periods: every on each fails closed',
+    await periodic('n42', [
+      { each: usd(50000, WEEK) },
+      { nbf: anchor },
+      { exp: anchor + WEEK },
+    ]),
+    agent.public,
+    ask,
+    forbidden,
+  ],
+  [
+    'periods: every 1 from nbf −(2^53−1): exact integers',
+    daily,
+    agent.public,
+    buy(now),
+    {
+      ok: true,
+      totals: [countsIn(await idOf(daily), 50000, { every: 1, start: now })],
+    },
+  ],
+  [
+    'periods: every 7 from nbf −(2^53−1): exact integers, not floating point',
+    sevens,
+    agent.public,
+    buy(now),
+    {
+      ok: true,
+      totals: [
+        countsIn(await idOf(sevens), 50000, { every: 7, start: now - 1 }),
+      ],
+    },
+  ],
+  [
+    'periods: every 2^53−1, whose next start no Lens time can show',
+    longest,
+    agent.public,
+    buy(now, { used: inPeriod(longestId, anchor, 50000, MAX_SAFE) }),
+    asks(
+      'spend would pass the total limit of 500.00 USD every 9007199254740991s',
+    ),
+  ],
+  [
+    'periods: every 2^53−1 counts from nbf',
+    longest,
+    agent.public,
+    buy(now),
+    {
+      ok: true,
+      totals: [countsIn(longestId, 50000, { every: MAX_SAFE, start: anchor })],
+    },
+  ],
+];
+// An every with no canonical form makes its block malformed: unauthorized, as §6.2 says.
+const unauthorizedEvery = await Promise.all([
+  malformed(
+    'periods: an every of 1.5 has no canonical form',
+    rootWith({
+      caveats: [
+        { total: usd(50000, 1.5) },
+        { nbf: anchor },
+        { exp: anchor + WEEK },
+      ],
+    }),
+  ),
+  malformed(
+    'periods: an every of 2^53 has no canonical form',
+    rootWith({
+      caveats: [
+        { total: usd(50000, 2 ** 53) },
+        { nbf: anchor },
+        { exp: anchor + WEEK },
+      ],
+    }),
+  ),
+  malformed(
+    'periods: an every written with an exponent',
+    respelled(weekToken, `"every":${WEEK}`, '"every":6.048e5'),
+  ),
+]);
 const cases = [
   [
     'root: ask ok',
@@ -995,6 +1395,8 @@ const cases = [
     { ok: false, code: 'unauthorized' },
   ],
   ...malformedCases,
+  ...periodCases,
+  ...unauthorizedEvery,
 ];
 const gcases = [];
 
@@ -1004,9 +1406,25 @@ for (const [name, token, proofKey, c, expect] of cases) {
     ...ctx,
     trusted,
     proofKey,
-    used: (id, of) => P.exact(used?.[id]?.[of] ?? { amount: 0 }),
+    used: (k) => P.exact(usedAt(used?.[k.block], k)),
   });
-  const actual = got.ok ? { ok: true } : { ok: false, code: got.code };
+  const actual = got.ok
+    ? {
+        ok: true,
+        ...(expect.totals
+          ? {
+              totals: got.totals.map((t) => ({
+                key: t.key,
+                max: String(t.max),
+              })),
+            }
+          : {}),
+      }
+    : {
+        ok: false,
+        code: got.code,
+        ...(expect.reason === undefined ? {} : { reason: got.reason }),
+      };
 
   if (JSON.stringify(actual) !== JSON.stringify(expect)) {
     throw new Error(

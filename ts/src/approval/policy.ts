@@ -1,9 +1,9 @@
 /** The policy decision (SPEC-approval §2, §5): whether a job call runs, asks, or is refused. */
-import { checkGrant } from '../grants.js';
+import { checkGrant, totalKeys } from '../grants.js';
 import { atLeast } from '../risk.js';
-import type { LedgerKey } from '../store.js';
+import { type LedgerKey, ledgerId } from '../store.js';
 import type { Risk } from '../types.js';
-import { isLimit } from '../uses.js';
+import { unixNow } from '../util.js';
 import { blocksOf, caveatOf } from './grant-blocks.js';
 import type { HashedPlan } from './plans.js';
 import { type ReserveFor, reservationsFor } from './reservations.js';
@@ -60,13 +60,14 @@ export function ruledOut(
 
 /**
  * What a job call should do with these plans under this policy (SPEC-approval §2, §5).
- * Only `plans[0]` is ever run without asking.
+ * Only `plans[0]` is ever run without asking. The clock is read once, so the usage read ahead,
+ * the grant check and the reservations it returns all count in the same periods.
  */
 export async function decide(
   plans: HashedPlan[],
   policy: Policy,
   used: (k: LedgerKey) => bigint | Promise<bigint>,
-  now?: number,
+  now: number = unixNow(),
 ): Promise<Decision> {
   const first = plans[0];
 
@@ -87,32 +88,30 @@ export async function decide(
   return allowedToRun(first, policy, used, now);
 }
 
-/** What the grant's `total` limits have used so far, read ahead so the check stays synchronous. */
+/**
+ * What the grant's `total` limits have used so far at `now`, in the periods the check will
+ * count in, read ahead so the check stays synchronous. By ledger id.
+ */
 async function usedByTotals(
   blocks: { id: string; caveats: unknown[] }[],
   used: (k: LedgerKey) => bigint | Promise<bigint>,
+  now: number,
 ): Promise<Map<string, bigint>> {
   const out = new Map<string, bigint>();
 
-  for (const b of blocks) {
-    for (const c of b.caveats) {
-      const l = caveatOf(c, 'total');
-
-      if (isLimit(l)) {
-        out.set(`${b.id} ${l.of}`, await used({ block: b.id, of: l.of }));
-      }
-    }
+  for (const k of totalKeys(blocks, now)) {
+    out.set(ledgerId(k), await used(k));
   }
 
   return out;
 }
 
-/** Whether the signed policy grant lets this plan run as a COMMIT at this server. */
+/** Whether the signed policy grant lets this plan run as a COMMIT at this server at `now`. */
 async function allowedToRun(
   hp: HashedPlan,
   policy: Policy,
   used: (k: LedgerKey) => bigint | Promise<bigint>,
-  now?: number,
+  now: number,
 ): Promise<Decision> {
   if (!policy.grant) {
     return {
@@ -135,17 +134,17 @@ async function allowedToRun(
   }
 
   const sofar = blocks
-    ? await usedByTotals(blocks, used)
+    ? await usedByTotals(blocks, used, now)
     : new Map<string, bigint>();
   const check = await checkGrant(policy.grant, {
     service: policy.server,
     verb: 'COMMIT',
     capability: hp.tool,
-    ...(now === undefined ? {} : { now }),
+    now,
     proposal: { hash: hp.planHash, uses: hp.plan.uses, risk: hp.risk },
     trusted: [policy.principal],
     proofKey: policy.server,
-    used: (block, of) => sofar.get(`${block} ${of}`) ?? 0n,
+    used: (k) => sofar.get(ledgerId(k)) ?? 0n,
   });
 
   if (!check.ok) {
