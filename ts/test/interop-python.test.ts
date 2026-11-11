@@ -130,6 +130,67 @@ describe.skipIf(!ready)('interop: TS client → Python service', async () => {
     });
   }
 
+  // #405: the Python service reads a TS grant's periodic total as TS does: one anchored at its
+  // block's nbf, with an exp, authorizes; one without an nbf fails closed on every verb.
+  it('a periodic total authorizes with its one nbf and an exp, and fails closed without the nbf', async () => {
+    const midnight = Math.floor(Date.now() / 86_400_000) * 86_400;
+    const weekly = (anchor: P.Caveat[]) =>
+      P.issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [
+          { svc: ['calendar.example'] },
+          {
+            total: {
+              of: 'spend',
+              max: 50000,
+              scale: 2,
+              unit: 'USD',
+              every: 604_800,
+            },
+          },
+          ...anchor,
+          { exp: midnight + 30 * 86_400 },
+        ],
+      });
+    const c = await connect(urls[0], {
+      key: agent.seed,
+      grants: [await weekly([{ nbf: midnight }])],
+    });
+    const p = await c.intent('calendar.reschedule', {
+      event: 'e4',
+      day: '2031-03-07',
+    });
+
+    if (p.kind !== 'PROPOSALS') {
+      throw new Error(p.lens);
+    }
+
+    expect((await c.commit(p.proposals[0])).kind).toBe('RECEIPT');
+    c.close();
+
+    const unanchored = await connect(urls[0], {
+      key: agent.seed,
+      grants: [await weekly([])],
+    });
+    const q = await unanchored.intent('calendar.reschedule', {
+      event: 'e5',
+      day: '2031-03-08',
+    });
+
+    if (q.kind !== 'PROPOSALS') {
+      throw new Error(q.lens);
+    }
+
+    const r = await unanchored.commit(q.proposals[0]);
+
+    expect(r.kind === 'ERROR' && [r.code, r.message], r.lens).toEqual([
+      'forbidden',
+      expect.stringContaining('a total with every needs exactly one nbf'),
+    ]);
+    unanchored.close();
+  });
+
   // #287: a grant that doesn't authorize the INTENT leaves it with no principal.
   it('a COMMIT-only grant never auto-commits, and a plain COMMIT needs consent', async () => {
     const grant = await P.issueGrant({
