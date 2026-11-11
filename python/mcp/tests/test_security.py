@@ -138,8 +138,8 @@ def _tampered(s: str) -> str:
 
 _STRANGER = key_from_seed(bytes([9]) * 32)
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
-_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, the code they were "
-            "given may have been altered")
+_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, this server may have "
+            "restarted since or not be the one that asked, or the code they were given may have been altered")
 
 
 def _variant(code: dict, by=PRINCIPAL, to: str | None = None, svc: str | None = None, can: str | None = None,

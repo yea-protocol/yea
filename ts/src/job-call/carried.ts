@@ -22,7 +22,7 @@ const WHY = {
   notSigned:
     "it isn't signed by the pinned principal for this tool at this server",
   noPlan:
-    'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered',
+    'it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered',
   used: 'it was already used',
 } as const;
 

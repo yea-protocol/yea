@@ -1935,6 +1935,58 @@ describe('approval security (SPEC-approval)', () => {
     );
   });
 
+  it("[A19] a consent code that binds no store, or one that isn't a store id, is refused, even rehashed (#358)", async () => {
+    const [hp] = await P.hashPlans({ name: 'delete_branch' }, {}, [
+      {
+        summary: 'Delete branch old-nav',
+        effects: [],
+        risk: 'low',
+        apply: () => null,
+      },
+    ]);
+    const codeFor = (store: string) =>
+      jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: 'old-nav',
+        store,
+        now,
+      });
+    const good = P.decodeConsentCode(await codeFor(STORE)) as unknown as {
+      detail: Record<string, unknown>;
+    };
+    /** The code binding `store` (none when undefined), rehashed to match, as a forger would. */
+    const binding = async (store: string | undefined) => {
+      const { store: _ours, ...detail } = good.detail;
+      const bound = store === undefined ? {} : { store };
+      const hash = await P.sha256(
+        P.canonical({ plan: hp.planHash, phrase: 'old-nav', ...bound }),
+      );
+
+      return `pc1.${P.b64u(
+        new TextEncoder().encode(
+          P.canonical({ ...good, hash, detail: { ...detail, ...bound } }),
+        ),
+      )}`;
+    };
+    const notIds = ['', 'x'.repeat(21), 'x'.repeat(36), `${STORE}\n`];
+
+    // With no store, the hash binds the plan and phrase only, as before the store binding: a
+    // consent signed for it would run once in every store with the server's key.
+    for (const store of [undefined, ...notIds]) {
+      await expect(P.readJobConsent(await binding(store), now)).rejects.toThrow(
+        'not a job consent code',
+      );
+    }
+
+    // Nor does a server make one.
+    for (const store of [undefined, ...notIds]) {
+      await expect(codeFor(store as string)).rejects.toThrow('not a store id');
+    }
+  });
+
   it('[A20] a phrase over 64 characters is refused, counted in code points (#141)', async () => {
     expect(checkedPhrase('x'.repeat(64))).toBe('x'.repeat(64));
     expect(() => checkedPhrase('x'.repeat(65))).toThrow(
@@ -2076,7 +2128,7 @@ describe('approval security (SPEC-approval)', () => {
     const notSigned =
       "it isn't signed by the pinned principal for this tool at this server";
     const noPlan =
-      'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered';
+      'it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered';
     const refusedFor = (why: string) => ({
       kind: 'consent-codes',
       why: `the consent passed as yea_consent can't be used: ${why}`,
@@ -2189,6 +2241,47 @@ describe('approval security (SPEC-approval)', () => {
         refusedFor(noPlan),
       );
       expect(twin.ran).toEqual([]);
+    });
+
+    it("runs nothing and issues no code when the store's id isn't a store id, even with a storeless consent", async () => {
+      // A custom store whose storeId() gives no id would issue codes that bind no store, as
+      // before the store binding, and accept a consent that binds none: once in every such store.
+      const storeless = await P.issueGrant({
+        principal: B,
+        to: A.public,
+        iat: now,
+        caveats: [
+          { svc: [A.public] },
+          { verbs: ['COMMIT'] },
+          { can: ['refund'] },
+          {
+            only: await P.sha256(
+              P.canonical({ plan: refundHp.planHash, phrase: 'approve' }),
+            ),
+          },
+          { exp: now + 600 },
+        ],
+      });
+
+      for (const id of [undefined, '', 'x'.repeat(21), 'x'.repeat(36)]) {
+        const store = new P.MemoryStore({ id: STORE });
+
+        store.storeId = () => Promise.resolve(id as string);
+
+        const carried = carrying(storeless);
+        const bare = carrying(storeless);
+        // No consent and no policy: the call would otherwise ask, with codes.
+        const { consent: _none, ...plain } = bare.call;
+        const asked = { ...plain, policy: { ...plain.policy, grant: null } };
+
+        for (const call of [carried.call, asked]) {
+          await expect(P.jobCall(call, store)).rejects.toThrow(
+            "this store's storeId() isn't a store id",
+          );
+        }
+
+        expect([...carried.ran, ...bare.ran]).toEqual([]);
+      }
     });
 
     it('counts for nothing without a pinned principal', async () => {

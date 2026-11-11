@@ -5,14 +5,30 @@
  */
 import { join } from 'node:path';
 import { isStoreId, newStoreId } from '../store.js';
-import { createWhole, readRegular } from './files.js';
+import { createWhole, NotRegularFile, readRegular } from './files.js';
 
 const idPath = (root: string) => join(root, 'id');
+
+/**
+ * The text at `path`, or null if there's none. A file it won't read is a store error naming the
+ * path; an fs error already names it, and keeps its code for `yea approve` to report.
+ */
+function readIdFile(path: string): string | null {
+  try {
+    return readRegular(path);
+  } catch (e) {
+    if (e instanceof NotRegularFile) {
+      throw new Error(`can't read the store id at ${path}: ${e.message}`);
+    }
+
+    throw e;
+  }
+}
 
 /** The id of the store at `root`, or null if none has been made; a store error if it isn't one. */
 export function readStoreId(root: string): string | null {
   const path = idPath(root);
-  const text = readRegular(path);
+  const text = readIdFile(path);
 
   if (text !== null && !isStoreId(text)) {
     throw new Error(

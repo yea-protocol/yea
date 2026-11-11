@@ -13,8 +13,8 @@ from .outcome import Outcome, Round
 _NOT_CONSENT = "it isn't a consent from yea approve"
 _EXPIRED = "it has expired"
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
-_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, the code they were "
-            "given may have been altered")
+_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, this server may have "
+            "restarted since or not be the one that asked, or the code they were given may have been altered")
 _USED = "it was already used"
 
 

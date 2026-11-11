@@ -2607,7 +2607,7 @@
           "outcome": {
             "kind": "ask",
             "form": {
-              "message": "Approval needed: the consent passed as yea_consent can't be used: it approves none of these plans; if the person approved this exact request, the code they were given may have been altered.\n\n[1] Give Chen 30.00 USD of store credit\n  + create credit — 30.00 USD\n  risk: low · undo: 1m\n  to approve, type: approve",
+              "message": "Approval needed: the consent passed as yea_consent can't be used: it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered.\n\n[1] Give Chen 30.00 USD of store credit\n  + create credit — 30.00 USD\n  risk: low · undo: 1m\n  to approve, type: approve",
               "requestedSchema": {
                 "type": "object",
                 "properties": {
@@ -2701,7 +2701,7 @@
           },
           "outcome": {
             "kind": "consent-codes",
-            "why": "the consent passed as yea_consent can't be used: it approves none of these plans; if the person approved this exact request, the code they were given may have been altered",
+            "why": "the consent passed as yea_consent can't be used: it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered",
             "plans": [
               "SpWX3JhI2PAxjNcdRUzJvR6T53hkzIe1_Ck-A4RAx44"
             ],
@@ -2772,7 +2772,7 @@
           "outcome": {
             "kind": "ask",
             "form": {
-              "message": "Approval needed: the consent passed as yea_consent can't be used: it approves none of these plans; if the person approved this exact request, the code they were given may have been altered.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
+              "message": "Approval needed: the consent passed as yea_consent can't be used: it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered.\n\n[1] Refund 30.00 USD to Chen\n  + create refund — 30.00 USD to card ••42\n  uses: spend 30.00 USD · risk: low · undo: 1m\n  to approve, type: approve",
               "requestedSchema": {
                 "type": "object",
                 "properties": {

@@ -45,7 +45,7 @@ export const CONSENT_TTL = 600;
 /**
  * A job's consent code: the unsigned pc1. consent request, carrying the whole plan, its phrase
  * and the server's store id to re-check. `proposal` is the plan hash; `hash` is the consent hash,
- * which binds the phrase and the store.
+ * which binds the phrase and the store. It throws unless `store` is a store id.
  */
 export async function jobConsentCode(o: {
   server: string;
@@ -57,6 +57,10 @@ export async function jobConsentCode(o: {
   now: number;
   ttl?: number;
 }): Promise<string> {
+  if (!isStoreId(o.store)) {
+    throw new Error(`not a store id: ${JSON.stringify(o.store)}`);
+  }
+
   const detail = {
     job: planPreimage(o.input, o.hp),
     phrase: checkedPhrase(o.phrase),

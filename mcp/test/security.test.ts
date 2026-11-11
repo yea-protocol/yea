@@ -75,7 +75,7 @@ function consentVariant(
 
 /** Why a consent on the call that binds no plan here runs nothing (SPEC-approval §6). */
 const NO_PLAN =
-  'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered';
+  'it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered';
 
 /** Consent codes from a call a client can't answer. */
 async function codesFor(conn: Awaited<ReturnType<typeof connect>>, args = ch1) {

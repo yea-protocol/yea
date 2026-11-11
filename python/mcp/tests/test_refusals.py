@@ -29,6 +29,11 @@ def test_start_up_refusals(tmp_path):
         yea(home=tmp_path, name="s", transport="http", sub=lambda r: "me", server_key=key)
     with pytest.raises(ValueError, match="name must match"):
         yea(home=tmp_path, name="Bad Name", transport="stdio", server_key=key)
+
+    class NoId(FileStore):  # a custom store written before store ids (SPEC-approval decision 9)
+        store_id = None
+    with pytest.raises(TypeError, match=r"store must be an ApprovalStore, with store_id\(\)"):
+        yea(home=tmp_path, name="s", transport="stdio", store=NoId(tmp_path / "st"), server_key=key)
     loose = tmp_path / "loose.key"
     loose.write_text("A" * 43 + "\n")
     os.chmod(loose, 0o644)

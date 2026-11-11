@@ -18,15 +18,15 @@ from yea import (
     Client, GrantContext, Plan, Service, consent_grant, create, decode_grant, delegate_grant, issue_grant, key_from_seed,
     lens, local, serve_http, verify_grant,
 )
-from yea._json import MAX_SAFE_INT, b64url_encode
-from yea.approval import Policy, Tightening, consent_hash_of, load_policy, reserve_all
+from yea._json import MAX_SAFE_INT, b64url_encode, canonical, sha256_b64url
+from yea.approval import Policy, Tightening, consent_hash_of, job_consent_code, load_policy, reserve_all
 from yea.errors import YeaError
 from yea.grants import Grant
 from yea.job_call import JobCall, JobTool, Outcome, Retry, hash_plans, job_call
 from yea.keys import sign_proof
 from yea.service.commit_ledger import Admitted, TotalLimit
 from yea.service.verified_request import VerifiedIntent, verify_request
-from yea.store import FileStore, LedgerKey, MemoryStore
+from yea.store import FileStore, LedgerKey, MemoryStore, StoreError
 from yea.uses import quantity
 
 PRINCIPAL = key_from_seed(bytes([1]) * 32)
@@ -208,8 +208,8 @@ _REFUND_HASH = hash_plans(_REFUND_TOOL, {"who": "Chen"}, [_REFUND])[0].plan_hash
 # A policy that would run the refund without asking.
 _RUNS_REFUNDS = issue_grant(PRINCIPAL, CONSENT_SERVER.public, [{"can": ["refund"]}, {"risk": "low"}, {"exp": NOW + 3600}]).encode()
 _NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
-_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, the code they were "
-            "given may have been altered")
+_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, this server may have "
+            "restarted since or not be the one that asked, or the code they were given may have been altered")
 
 
 def _store() -> MemoryStore:
@@ -304,6 +304,46 @@ def test_a22_a_consent_consumed_in_one_store_runs_nothing_in_another_with_the_sa
         assert _refused_for(_NO_PLAN)(await job_call(_carrying(token), MemoryStore()))
 
     run(go())
+
+
+class _IdStore(MemoryStore):
+    """A custom store whose ``store_id()`` gives ``id``, whatever it is."""
+    def __init__(self, id):
+        super().__init__(store_id=CONSENT_STORE)
+        self._bad = id
+
+    async def store_id(self):
+        return self._bad
+
+
+_NOT_IDS = [None, "", "x" * 21, "x" * 36]
+
+
+@pytest.mark.parametrize("bad", _NOT_IDS, ids=["None", "empty", "21 characters", "36 characters"])
+def test_a22_a_store_whose_id_isnt_one_runs_nothing_and_issues_no_code_even_with_a_storeless_consent(bad):
+    """A custom store whose ``store_id()`` gives no id would issue codes that bind no store, as before
+    the store binding, and accept a consent that binds none: once in every such store."""
+    ran = []
+    refund = Plan(_REFUND.summary, [], apply=lambda c: ran.append(c), risk="low", undo_window=60)
+    storeless = issue_grant(PRINCIPAL, CONSENT_SERVER.public, [
+        {"svc": [CONSENT_SERVER.public]}, {"verbs": ["COMMIT"]}, {"can": ["refund"]},
+        {"only": sha256_b64url(canonical({"plan": _REFUND_HASH, "phrase": "approve"}).encode())}, {"exp": NOW + 600},
+    ], iat=NOW).encode()
+    carried = _carrying(storeless, plans=(refund,))
+    # No consent and no policy: the call would otherwise ask, with codes.
+    asked = JobCall(carried.tool, carried.input, carried.plan, "", NOW,
+                    Policy(None, PRINCIPAL.public, CONSENT_SERVER.public), False)
+    for call in (carried, asked):
+        with pytest.raises(StoreError, match=r"this store's store_id\(\) isn't a store id"):
+            run(job_call(call, _IdStore(bad)))
+    assert ran == []
+
+
+@pytest.mark.parametrize("bad", _NOT_IDS, ids=["None", "empty", "21 characters", "36 characters"])
+def test_a22_no_consent_code_binds_a_store_id_that_isnt_one(bad):
+    hp = hash_plans(_REFUND_TOOL, {"who": "Chen"}, [_REFUND])[0]
+    with pytest.raises(ValueError, match="not a store id"):
+        job_consent_code(CONSENT_SERVER.public, PRINCIPAL.public, {"who": "Chen"}, hp, "approve", bad, NOW)
 
 
 def test_a22_a_consent_on_the_call_counts_for_nothing_without_a_pinned_principal():

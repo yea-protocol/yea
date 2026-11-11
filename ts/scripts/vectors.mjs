@@ -444,7 +444,7 @@ const malformedCases = await Promise.all([
     'malformed caveat: nbf written as -0',
     respelled(rootWith({ caveats: [{ nbf: 0 }] }), '"nbf":0', '"nbf":-0'),
   ),
-  // Only UTF-8 itself is read (§6.1): a decoder that drops a BOM or turns a bad byte into U+FFFD
+  // Only UTF-8 itself is read (§6.2): a decoder that drops a BOM or turns a bad byte into U+FFFD
   // would read the signed text back out of bytes that aren't its encoding.
   malformed(
     'not UTF-8 as signed: a BOM before the JSON',

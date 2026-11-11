@@ -165,6 +165,7 @@ export {
   type JobReceipt,
   type LedgerKey,
   MemoryStore,
+  newStoreId,
   type Reservation,
 } from './store.js';
 

@@ -84,6 +84,10 @@ def _check_options(transport: str, sub: Any, store: ApprovalStore, single_proces
                          "would accept the same approval once")
     if transport == "http" and is_memory_store(store) and not single_process:
         raise ValueError("yea(): HTTP on a MemoryStore needs single_process=True, or pass a store every process shares")
+    if not callable(getattr(store, "store_id", None)):
+        # The method a store written before store ids lacks (SPEC-approval decision 9); mcp-ts checks
+        # every ApprovalStore method, as its closed options do.
+        raise TypeError("yea(): store must be an ApprovalStore, with store_id() (SPEC-approval §8)")
 
 
 def yea(*, name: str, transport: str, home: str | os.PathLike[str] | None = None, store: ApprovalStore | None = None,

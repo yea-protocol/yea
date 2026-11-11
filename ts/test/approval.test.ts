@@ -1,4 +1,5 @@
 import {
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -224,6 +225,16 @@ describe('a FileStore id (SPEC-approval §8)', () => {
       "doesn't hold a store id",
     );
     expect(readFileSync(join(root, 'id'), 'utf8')).toBe('not an id');
+  });
+
+  it("is a store error naming the file when it can't be read", async () => {
+    const root = tmp();
+    const path = join(root, 'id');
+
+    mkdirSync(path);
+    await expect(new FileStore(root).storeId()).rejects.toThrow(
+      `can't read the store id at ${path}: not a regular file`,
+    );
   });
 
   it('a MemoryStore takes a fixed id only if it is one', () => {

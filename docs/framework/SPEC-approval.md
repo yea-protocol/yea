@@ -542,7 +542,7 @@ consent codes) with the reason `the consent passed as yea_consent can't be used:
 | `it isn't a consent from yea approve` | it doesn't decode as a single-block grant with `only` and `exp`: a value mangled on the way lands here |
 | `it has expired` | the grant check fails and its `exp` is past |
 | `it isn't signed by the pinned principal for this tool at this server` | the grant check fails otherwise: forged, altered, or for another server or tool |
-| `it approves none of these plans; if the person approved this exact request, the code they were given may have been altered` | it passes, but binds no recomputed plan's consent hash: another plan, other input, a phrase that changed, an edited code, or another store's consent |
+| `it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered` | it passes, but binds no recomputed plan's consent hash: another plan, other input, a phrase that changed, an edited code, or another store's consent |
 | `it was already used` | its grant id was already consumed |
 
 A call whose handler returns no plans is refused before any consent is read, as it is without
@@ -619,7 +619,12 @@ store, and two stores never share one:
   `yea approve`, reads the same one. The first process that needs it writes a temp file and
   links it into place, so it's created once, and whole, whichever process wins. A file there
   that isn't a store id, or can't be read, is a store error, and nothing runs.
-- A custom store (Redis, SQL) keeps one id for everything that shares it.
+- A custom store (Redis, SQL) keeps one id for everything that shares it, made once with
+  `newStoreId()` (`new_store_id()` in Python) and kept with the rest of its data.
+
+The job call session reads the store's id once a round, before it reads a consent or issues a
+code. An id that isn't a store id is a store error there, so nothing runs and no code is issued:
+a consent that binds no store would run once in every store with the server's key.
 
 **Store selection.** Stdio servers use `FileStore` by default, because `yea approve` saves
 consents there and undo across restarts needs it. HTTP servers use `MemoryStore` by default,
@@ -792,7 +797,9 @@ The bridge's consent codes work the same way (SPEC-bridge, `yea_consent`).
   a shared state key, so the restarted server's new key refuses it.
 - **Servers that share a key but not a store** (a connector's stdio and HTTP sides, or one
   server listed twice in a client's config) each keep their own one-time markers. A consent
-  still runs in only one of them, the store it binds (§6). Totals are another matter: each
+  still runs in only one of them, the store it binds (§6). A copied store keeps its id, though:
+  a `FileStore` directory baked into an image or copied with a home would run a consent once
+  in each copy, so make a new store rather than copy one. Totals are another matter: each
   store keeps its own, which is why an HTTP server with a `total` limit refuses to start on a
   `MemoryStore` unless its author says it runs as a single process (SPEC-mcp-ts).
 - **Short consents.** Consent grants expire in 10 minutes by default, which bounds a replay
@@ -909,6 +916,8 @@ export function decide(
     falls through to the policy;
   - a consent consumed in one store runs nothing in another with the same server key, and a
     `MemoryStore` server's consent runs nothing after a restart;
+  - a store whose id isn't a store id runs nothing and issues no code, even for a consent that
+    binds no store, and `yea approve` refuses a code that binds none;
   - an unreadable consent in the store (a planted mode-0 file, a FIFO or a symlink) asks
     again, with no fs error in the result;
   - an irreversible plan never auto-runs, whatever the grant says, and neither does one whose

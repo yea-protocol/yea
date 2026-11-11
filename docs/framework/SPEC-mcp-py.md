@@ -75,7 +75,8 @@ assume it.
 **Start-up refusals.** `yea()` raises, so nothing is served, when `tighten` has an unknown key or
 a bad value (checked first, before the key file is created); `transport="http"` has no
 `sub`; a `state_key` is passed with a `MemoryStore`; HTTP runs on a `MemoryStore` without
-`single_process=True`; `name` is invalid; or the key file is unsafe.
+`single_process=True`; `store` has no `store_id()` (a `TypeError`, as `mcp-ts` refuses a store
+missing any `ApprovalStore` method); `name` is invalid; or the key file is unsafe.
 
 **Per-call refusals.** `sub` returning `""` on HTTP refuses the call. On stdio with a
 `MemoryStore` passed explicitly and without `single_process`, a policy with a `total` refuses

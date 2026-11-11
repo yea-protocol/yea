@@ -130,7 +130,7 @@ const carried = (why) =>
   `the consent passed as yea_consent can't be used: ${why}`;
 /** Why a consent on the call that binds no plan here runs nothing: its whole text (§6). */
 const noPlan = carried(
-  'it approves none of these plans; if the person approved this exact request, the code they were given may have been altered',
+  'it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered',
 );
 /** Another server's store, with the same server key: a second process, or a restarted one. */
 const otherStore = 'yea-conformance-store2';

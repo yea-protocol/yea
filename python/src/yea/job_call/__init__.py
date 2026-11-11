@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from ..approval import input_hash
 from ..approval.decision import denied_reason
-from ..store import ApprovalStore
+from ..store import ApprovalStore, StoreError, is_store_id
 from .answer import answer_round
 from .first import first_round
 from .approve_text import how_to_approve
@@ -40,5 +40,15 @@ async def job_call(call: JobCall, store: ApprovalStore, retry: Retry | None = No
         return planned
     if call.preview:
         return Outcome("preview", plans=planned)
-    r = Round(call, planned, store, await store.store_id(), phrase_of(call))
+    r = Round(call, planned, store, await _store_id(store), phrase_of(call))
     return await answer_round(r, retry) if retry is not None else await first_round(r)
+
+
+async def _store_id(store: ApprovalStore) -> str:
+    """The id of the store every consent this round binds (SPEC-approval §8). One that isn't a store
+    id is a store error, before a consent is read or a code issued: a consent that binds no store
+    would run once in every store with the server's key."""
+    found = await store.store_id()
+    if not is_store_id(found):
+        raise StoreError("this store's store_id() isn't a store id (22 b64url characters), so the store can't be used")
+    return found
