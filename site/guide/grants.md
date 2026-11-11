@@ -43,6 +43,23 @@ The first allows up to 25.00 USD per commit. The second allows 20 emails in all 
 - **Pair `each` with `total`.** A per-commit limit alone can be dodged by splitting a purchase. Services reserve against `total` atomically before executing, so concurrent commits can't exceed it together.
 - **Totals are counted per service.** A grant used at two services has two independent totals, so scope limits with `svc`.
 
+### A total per period: `every`
+
+A `total` can start again on a fixed period instead of counting for the grant's whole life. `every` is the period in seconds, counted from the `nbf` of the grant block that holds the total:
+
+```json
+{"total": {"of": "spend", "max": 50000, "scale": 2, "unit": "USD", "every": 604800}}
+{"nbf": 1789776000}
+{"exp": 1797552000}
+```
+
+That allows 500.00 USD of commits that run without asking in each 7-day period from `nbf` (here 00:00 UTC, so the periods start at midnight), until the grant expires. `yea grant --total spend=500USD/7d --exp 90d` issues it.
+
+- **Periods are fixed, not rolling.** Period *k* runs from `nbf + k × every` for `every` seconds, with no calendars or time zones, so 500 at the end of one period and 500 at the start of the next are both allowed.
+- **The block needs exactly one `nbf`, and the grant an `exp`.** Without them the total fails closed. The allowance comes back every period, so the most a grant allows is `max` times the periods that start before `exp`: `yea grant` and `yea inspect` print it (`500 USD every 7d from … until …, at most 6500 USD`).
+- **One measure can have a total per day and another per week.** Each counts on its own, so "100 a day and 500 a week" caps both.
+- **Approved and undone commits.** A commit the person approved counts against no total of the grant, and an undone one still counts.
+
 ## Proof of possession
 
 A leaked grant alone is useless. Every request that uses one also carries a proof, a signature by the holder's key over the service id, verb, target and a timestamp. Services reject proofs more than 300 seconds off.
