@@ -196,10 +196,10 @@ def test_a18_a_state_sent_again_runs_nothing_whatever_its_answer():
     run(go())
 
 
-# [A36] A consent on the call (``yea_consent``) is checked exactly as one from the store (#358).
-# The server key the a36/a37 calls run under (not the undo-window tests' SERVER, below).
+# [A38] A consent on the call (``yea_consent``) is checked exactly as one from the store (#358).
+# The server key the a38/a37 calls run under (not the undo-window tests' SERVER, below).
 CONSENT_SERVER = key_from_seed(bytes([6]) * 32)
-# The store the a36 consents bind (SPEC-approval §6); ``_store()`` has this id.
+# The store the a38 consents bind (SPEC-approval §6); ``_store()`` has this id.
 CONSENT_STORE = "yea-test-store-aaaaaaa"
 _REFUND = Plan("Refund 30.00 USD to Chen", [], apply=lambda c: None, risk="low", undo_window=60)
 _CREDIT = Plan("Give Chen store credit", [], apply=lambda c: None, risk="low", undo_window=60)
@@ -237,7 +237,7 @@ def _refused_for(why: str):
     return lambda o: (o.kind, o.why) == ("consent-codes", f"the consent passed as yea_consent can't be used: {why}")
 
 
-def test_a36_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refused():
+def test_a38_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refused():
     async def go():
         store, token = _store(), _consent()
         # The newline a terminal copy adds doesn't matter: the signature covers only the token.
@@ -248,7 +248,7 @@ def test_a36_a_consent_on_the_call_runs_its_plan_once_and_a_second_use_is_refuse
     run(go())
 
 
-def test_a36_once_used_on_the_call_a_stored_copy_of_the_consent_is_used_too():
+def test_a38_once_used_on_the_call_a_stored_copy_of_the_consent_is_used_too():
     async def go():
         store, token = _store(), _consent()
         assert (await job_call(_carrying(token), store)).how == "approved"
@@ -279,22 +279,22 @@ def _altered() -> str:
     ("empty", lambda: "", "it isn't a consent from yea approve", NOW),
     ("the policy grant", lambda: _RUNS_REFUNDS, "it isn't a consent from yea approve", NOW),
 ])
-def test_a36_a_bad_consent_on_the_call_runs_nothing_and_never_falls_through_to_the_policy(name, token, why, now):
+def test_a38_a_bad_consent_on_the_call_runs_nothing_and_never_falls_through_to_the_policy(name, token, why, now):
     """The policy alone would run the refund: a refused consent never falls through to it."""
     assert _refused_for(why)(run(job_call(_carrying(token(), now=now), _store()))), name
 
 
-def test_a36_a_consent_on_the_call_for_one_plan_doesnt_commit_another():
+def test_a38_a_consent_on_the_call_for_one_plan_doesnt_commit_another():
     o = run(job_call(_carrying(_consent(), plans=(_CREDIT,)), _store()))
     assert _refused_for(_NO_PLAN)(o)
 
 
-def test_a36_a_consent_on_the_call_signed_for_another_phrase_says_the_code_may_have_been_altered():
+def test_a38_a_consent_on_the_call_signed_for_another_phrase_says_the_code_may_have_been_altered():
     tool = JobTool("refund", revert=lambda r: None, confirm_with=lambda hp, input: "refund Chen")
     assert _refused_for(_NO_PLAN)(run(job_call(_carrying(_consent(), tool=tool), _store())))
 
 
-def test_a36_a_consent_consumed_in_one_store_runs_nothing_in_another_with_the_same_key():
+def test_a38_a_consent_consumed_in_one_store_runs_nothing_in_another_with_the_same_key():
     """Two servers with one key and their own stores (a connector's stdio and HTTP sides), or one
     server restarted on a MemoryStore: the consent binds the store it was issued for."""
     async def go():
@@ -320,7 +320,7 @@ _NOT_IDS = [None, "", "x" * 21, "x" * 36]
 
 
 @pytest.mark.parametrize("bad", _NOT_IDS, ids=["None", "empty", "21 characters", "36 characters"])
-def test_a36_a_store_whose_id_isnt_one_runs_nothing_and_issues_no_code_even_with_a_storeless_consent(bad):
+def test_a38_a_store_whose_id_isnt_one_runs_nothing_and_issues_no_code_even_with_a_storeless_consent(bad):
     """A custom store whose ``store_id()`` gives no id would issue codes that bind no store, as before
     the store binding, and accept a consent that binds none: once in every such store."""
     ran = []
@@ -340,13 +340,13 @@ def test_a36_a_store_whose_id_isnt_one_runs_nothing_and_issues_no_code_even_with
 
 
 @pytest.mark.parametrize("bad", _NOT_IDS, ids=["None", "empty", "21 characters", "36 characters"])
-def test_a36_no_consent_code_binds_a_store_id_that_isnt_one(bad):
+def test_a38_no_consent_code_binds_a_store_id_that_isnt_one(bad):
     hp = hash_plans(_REFUND_TOOL, {"who": "Chen"}, [_REFUND])[0]
     with pytest.raises(ValueError, match="not a store id"):
         job_consent_code(CONSENT_SERVER.public, PRINCIPAL.public, {"who": "Chen"}, hp, "approve", bad, NOW)
 
 
-def test_a36_a_consent_on_the_call_counts_for_nothing_without_a_pinned_principal():
+def test_a38_a_consent_on_the_call_counts_for_nothing_without_a_pinned_principal():
     o = run(job_call(_carrying(_consent(), principal=None, unpinned="YEA_PRINCIPAL_PUB is not set"), _store()))
     assert _refused_for("YEA_PRINCIPAL_PUB is not set")(o) and o.codes == []
 

@@ -2058,7 +2058,7 @@ describe('approval security (SPEC-approval)', () => {
     expect(performance.now() - start).toBeLessThan(500);
   });
 
-  describe('[A36] a consent on the call is checked exactly as one from the store (#358)', async () => {
+  describe('[A38] a consent on the call is checked exactly as one from the store (#358)', async () => {
     const refund = {
       summary: 'Refund 30.00 USD to Chen',
       effects: [],

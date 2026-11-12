@@ -602,7 +602,7 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a consent for one plan never runs another, from the store or as `yea_consent`;
 - a `yea_consent` that is forged, altered, expired, issued to another key, for another
   server or tool, or already used runs nothing, and the call asks without consulting the
-  policy ([M21], the same cases as the core's [A36]);
+  policy ([M21], the same cases as the core's [A38]);
 - a consent runs in one store only: a twin server with the same key and its own store runs
   it nothing ([M23]);
 - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
