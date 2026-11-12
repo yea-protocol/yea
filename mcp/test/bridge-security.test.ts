@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   b64u,
   type Caveat,
+  type ConsentRequest,
   consentGrant,
   decodeConsentCode,
   decodeGrant,
@@ -214,6 +215,134 @@ describe('bridge security', () => {
       capability: 'shop.tip',
       agent: k.agent.public,
       principal: k.principal.public,
+    });
+  });
+
+  // #383: the consent round refuses a consent request that has expired, where it used to hand
+  // the bridge `pending`. A service's request can expire before its proposal: the bridge's own
+  // code, built from the proposal, still approves it, and nothing sends the model round again
+  // for the same request.
+  describe('a consent request that has expired (#383)', () => {
+    const tip = { order: 'o1', usd: 50 };
+    /** A time in whole minutes as the bridge's lines show it, in UTC. */
+    const minute = (t: number) =>
+      `${new Date(t * 1000).toISOString().slice(0, 16)}Z`;
+    /** A minute ago, to the minute: when the service's consent request expired. */
+    const minuteAgo = () => Math.floor(unixNow() / 60) * 60 - 60;
+
+    /**
+     * The bridge over the shop at the clock `now()`, and a service whose consent request, in
+     * every `consent_required`, expired at `gone()`.
+     */
+    async function expiring(k: Keys, now: () => number, gone: () => number) {
+      const rec = recorded(shop({ trust: [k.principal.public] }), (f, r) =>
+        f.verb === 'COMMIT' && r.kind === 'ERROR' && r.consent
+          ? { ...r, consent: { ...r.consent, expires: gone() } }
+          : r,
+      );
+
+      return connect(
+        '2026',
+        await bridgeIn(k, [await agentClient(k, rec.t)], { now }),
+      );
+    }
+
+    it('with a proposal still approvable, the round refuses it, and the code from the proposal is offered and commits', async () => {
+      const k = await keys();
+      const gone = minuteAgo();
+      const now = gone + 60;
+      const conn = await expiring(
+        k,
+        () => now,
+        () => gone,
+      );
+      const [p] = proposalsOf(await conn.call(tip, 'shop_tip')).proposals;
+      const r = await conn.call({ ...tip, proposal: p.id }, 'shop_tip');
+      const [code] = proposalsOf(r).codes;
+
+      expect(textOf(r)).toContain(
+        `The service's consent request for [${p.id}] can't be approved (this consent request expired at ${minute(gone)}; it is ${minute(now)} on this machine); the code below is built from the proposal itself.`,
+      );
+      expect(textOf(r)).not.toMatch(/commit again|call the tool again/i);
+      expect(decodeConsentCode(code.code).expires).toBeGreaterThan(now);
+
+      await conn.call(
+        { token: await approveCode(k.principal, code.code) },
+        'yea_consent',
+      );
+
+      expect(textOf(await conn.call(tip, 'shop_tip'))).toContain(
+        `✓ ${p.summary}`,
+      );
+    });
+
+    it('with a proposal too close to expiry for a code, there is none, and the line says to call again', async () => {
+      const k = await keys();
+      let now = unixNow();
+      const conn = await expiring(
+        k,
+        () => now,
+        () => now - 60,
+      );
+      const [p] = proposalsOf(await conn.call(tip, 'shop_tip')).proposals;
+
+      // Under 2 minutes left, to the minute: still alive, but no longer approvable.
+      now = Math.ceil((p.expires - 119) / 60) * 60;
+
+      const r = await conn.call({ ...tip, proposal: p.id }, 'shop_tip');
+
+      expect(r.isError).toBe(true);
+      expect(proposalsOf(r).codes).toEqual([]);
+      expect(textOf(r)).not.toContain('pc1.');
+      expect(textOf(r)).toContain(
+        `The service's consent request for [${p.id}] can't be approved (this consent request expired at ${minute(now - 60)}; it is ${minute(now)} on this machine), and [${p.id}] expires too soon for a code: call this tool again for fresh proposals.`,
+      );
+    });
+
+    it('with a saved consent, the line about it is unchanged', async () => {
+      const k = await keys();
+      const gone = minuteAgo();
+      const now = gone + 60;
+      // The service answers a COMMIT that carries the consent with a request that has expired.
+      let request: ConsentRequest | undefined;
+      const rec = recorded(shop({ trust: [k.principal.public] }), (f, r) =>
+        f.verb === 'COMMIT' && request && (f.grants?.length ?? 0) > 1
+          ? {
+              yea: 1,
+              id: 's',
+              re: f.id,
+              kind: 'ERROR',
+              code: 'consent_required',
+              message: 'needs consent',
+              consent: { ...request, expires: gone },
+            }
+          : r,
+      );
+      const conn = await connect(
+        '2026',
+        await bridgeIn(k, [await agentClient(k, rec.t)], { now: () => now }),
+      );
+      const first = proposalsOf(await conn.call(tip, 'shop_tip'));
+      const [p] = first.proposals;
+      const {
+        detail: _d,
+        agent: _a,
+        ...k1
+      } = decodeConsentCode(first.codes[0].code);
+
+      request = k1;
+      await conn.call(
+        { token: await approveCode(k.principal, first.codes[0].code) },
+        'yea_consent',
+      );
+
+      const r = await conn.call(tip, 'shop_tip');
+
+      expect(rec.verbs('COMMIT')).toHaveLength(1);
+      expect(textOf(r)).toContain(
+        `The saved consent for [${p.id}] didn't commit it, so this call won't use it again; nothing was run. The user can approve its code again, or you can call again later for fresh proposals.`,
+      );
+      expect(textOf(r)).not.toContain("can't be approved");
     });
   });
 

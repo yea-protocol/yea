@@ -25,3 +25,44 @@ export const errno = (e: unknown): string | undefined =>
 /** A whole number above 0, as a frame's `budget` must be; anything else is undefined. */
 export const positiveInt = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
+
+/** An array, or an object `{}` or JSON makes: its prototype is `Object.prototype` or null. */
+function isPlain(v: unknown): v is object {
+  if (Array.isArray(v)) {
+    return true;
+  }
+
+  if (typeof v !== 'object' || v === null) {
+    return false;
+  }
+
+  const proto = Object.getPrototypeOf(v);
+
+  return proto === Object.prototype || proto === null;
+}
+
+/** `v` copied as `plainCopy` says, `within` the plain parts that hold it. */
+function copyWithin(v: unknown, within: Set<object>): unknown {
+  if (!isPlain(v) || within.has(v)) {
+    return v;
+  }
+
+  within.add(v);
+
+  const copy = Array.isArray(v)
+    ? v.map((x) => copyWithin(x, within))
+    : Object.fromEntries(
+        Object.entries(v).map(([k, x]) => [k, copyWithin(x, within)]),
+      );
+
+  within.delete(v);
+
+  return copy;
+}
+
+/**
+ * A deep copy of the arrays and plain objects in `v`, read through any proxy, such as a Vue
+ * `reactive` store's, which `structuredClone` refuses. Anything else, such as a class instance or
+ * a function, is kept as it is, and so is a part that holds itself.
+ */
+export const plainCopy = <T>(v: T): T => copyWithin(v, new Set()) as T;

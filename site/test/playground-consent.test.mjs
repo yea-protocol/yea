@@ -18,7 +18,7 @@ const skip =
 
 /**
  * A shop client whose COMMIT replies pass through `edit`, as a lying service's would, counting
- * its COMMITs; a proposal over its 10 USD limit, as the playground received it; the keys.
+ * its COMMITs; a proposal over its 10 USD limit, kept as the playground keeps it; the keys.
  */
 async function setup(edit = (r) => r) {
   const sdk = await import('../../ts/dist/index.js');
@@ -58,7 +58,15 @@ async function setup(edit = (r) => r) {
 
   assert.equal(r.kind, 'PROPOSALS');
 
-  const received = { ...r.proposals[0], service: 'shop' };
+  // Kept as the page keeps what the agent has seen: in a reactive store, so the round is handed
+  // the proposal behind Vue's proxies (#383).
+  const { reactive } = await import('vue');
+  const { emptySeen, remember } = await import(`${THEME}/seen.ts`);
+  const seen = reactive(emptySeen());
+
+  remember(seen, 'shop', r);
+
+  const received = seen.proposals.find((p) => p.id === r.proposals[0].id);
   const start = (proposal = received) =>
     check.startRound(sdk, { client, proposal, principal });
 
