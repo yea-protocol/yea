@@ -105,7 +105,7 @@ def check_job_consent(token: Any, p: HashedPlan, phrase: str, store: str, policy
     return ConsentCheck(True, id=g.id, exp=exp)
 
 
-def consent_expiry(token: Any) -> int | None:
+def job_consent_expiry(token: Any) -> int | None:
     """When a consent grant expires: its earliest ``exp``, read without checking anything else, or
     None if it isn't shaped like a consent. To tell an expired consent from a forged one when the
     grant check fails (§6)."""

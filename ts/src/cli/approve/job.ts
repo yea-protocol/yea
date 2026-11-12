@@ -56,9 +56,20 @@ export async function approveJob(p: KeyPair, code: string) {
     die('not approved');
   }
 
+  await signAndPrint(p, j, defaultFileStore());
+}
+
+/**
+ * Once the person typed the phrase: sign the consent, save it in `store` if that's where the
+ * server reads it, and print it alone on stdout, then on stderr whether it needs pasting back.
+ */
+export async function signAndPrint(
+  p: KeyPair,
+  j: JobConsent,
+  store: FileStore,
+) {
   // Signed at the time it's signed, so a consent that expired while the person typed is refused.
   const token = await orRefuse(() => signJobConsent(p, j));
-  const store = defaultFileStore();
   const saved = await saveConsent(store, j, token);
 
   // Printed to paste back when it isn't saved where the server reads: the tool takes it as

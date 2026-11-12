@@ -162,6 +162,24 @@ export function jobInputSchema(
   };
 }
 
+/**
+ * What `guard` wraps for a tool registered without a schema, which the SDK calls as `cb(ctx)`:
+ * any object, of which the tool takes nothing, so `describe` sees `{}`. Its JSON Schema is the
+ * SDK's own listing for such a tool.
+ */
+export const NO_INPUT: StandardSchemaWithJSON = {
+  '~standard': {
+    version: 1,
+    vendor: 'yea',
+    validate: (value) =>
+      isObject(value) ? { value: {} } : issue('arguments must be an object'),
+    jsonSchema: {
+      input: () => ({ type: 'object', properties: {} }),
+      output: () => ({ type: 'object', properties: {} }),
+    },
+  },
+};
+
 /** Split the wrapper's output into the author's input and the reserved arguments. */
 export function takeReserved(args: unknown): Reserved & { input: Obj } {
   if (!isObject(args)) {

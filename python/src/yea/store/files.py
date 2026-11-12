@@ -88,11 +88,17 @@ class NotRegularFile(OSError):
 
 
 def _read_regular(path: Path) -> str | None:
-    """The text of the regular file at ``path``, or None if there's none. It's opened without
+    """The text of the regular file at ``path``, or None if there's none, read by
+    ``_read_regular_bytes``; bytes that aren't UTF-8 are a ``UnicodeDecodeError``."""
+    data = _read_regular_bytes(path)
+    return None if data is None else data.decode("utf-8")
+
+
+def _read_regular_bytes(path: Path) -> bytes | None:
+    """The bytes of the regular file at ``path``, or None if there's none. It's opened without
     following a symlink and without blocking on a FIFO (O_NOFOLLOW, O_NONBLOCK), checked on the open
     file, and read to at most 64 KiB, as a server key is. An OS error (a symlink is ELOOP) is raised
-    as it is; anything else that isn't a regular file, or is longer, is a ``NotRegularFile``; bytes
-    that aren't UTF-8 are a ``UnicodeDecodeError``."""
+    as it is; anything else that isn't a regular file, or is longer, is a ``NotRegularFile``."""
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     except FileNotFoundError:
@@ -107,4 +113,4 @@ def _read_regular(path: Path) -> str | None:
                 raise NotRegularFile("over 64 KiB")
     finally:
         os.close(fd)
-    return data.decode("utf-8")
+    return data

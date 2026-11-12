@@ -9,8 +9,8 @@
 
 export {
   checkJobConsent,
-  consentExpiry,
   consentHashOf,
+  jobConsentExpiry,
   NOT_A_CONSENT,
   OTHER_PHRASE,
 } from './approval/job-consent.js';

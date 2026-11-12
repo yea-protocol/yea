@@ -188,9 +188,12 @@ replaces the handler:
 
 1. note whether the tool was enabled, then `tool.disable()`, so the original handler can't
    run in between;
-2. `tool.update({ callback, paramsSchema })` with the guarded callback and the wrapper schema
-   (a tool registered without a schema keeps the `cb(ctx)` form, and gets no `preview` or
-   `yea_consent`);
+2. `tool.update({ callback, paramsSchema })` with the guarded callback and the wrapper schema.
+   A tool registered without a schema gets the wrapper over no input: any object, of which the
+   tool takes nothing, so `describe` gets `{}`, and absent arguments count as `{}`. Its listing
+   is the SDK's `{ type: 'object', properties: {} }` plus `preview` and `yea_consent`, so it
+   takes both like every other job tool (SPEC-approval §6). The SDK then calls the guarded
+   callback with arguments, and the original is still called as `cb(ctx)`;
 3. if it was enabled, `tool.enable()`, only once the update succeeded. If anything throws,
    the tool stays disabled.
 
@@ -561,7 +564,10 @@ can't elicit. For each:
   and on no read, only with `requireInteraction`; a `job()`'s or `guard()`'s own setting wins
   for that tool, and one that's on marks `undo` too, before or after `undo` is registered;
 - `guard` wraps an existing tool. The original callback runs only once approved, its result
-  and `outputSchema` pass through, and a failed update leaves the tool disabled;
+  and `outputSchema` pass through, and a failed update leaves the tool disabled. A tool
+  registered without a schema is still called as `cb(ctx)`, with no arguments, `{}` or stray
+  ones, and `describe` gets `{}`; it lists and takes `preview`, and on a `MemoryStore` a
+  consent passed as `yea_consent` runs it once;
 - the start-up and per-call refusals listed under `yea()`;
 - closed options (`mcp/test/options.test.ts`): each function refuses an unknown key, a missing
   required one, a value not of its type and options that aren't a plain object, naming it,
@@ -596,9 +602,9 @@ Any fix that lands in the SDK core also gets its regression test in `ts/test/sec
 - a consent for one plan never runs another, from the store or as `yea_consent`;
 - a `yea_consent` that is forged, altered, expired, issued to another key, for another
   server or tool, or already used runs nothing, and the call asks without consulting the
-  policy ([M18], the same cases as the core's [A22]);
+  policy ([M21], the same cases as the core's [A36]);
 - a consent runs in one store only: a twin server with the same key and its own store runs
-  it nothing ([M20]);
+  it nothing ([M23]);
 - an unreadable consent in the store (a planted mode-0 file) asks again, with no fs error in
   the result;
 - a stored copy of the policy grant never counts as a consent;

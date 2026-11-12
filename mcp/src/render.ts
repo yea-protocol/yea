@@ -5,12 +5,12 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
-  type ApprovalCode,
   type Clarification,
   type HashedPlan,
   howToApprove,
   type JobReceipt,
   lean,
+  type PlanConsentCode,
   planLines,
   printable,
   shownPlan,
@@ -59,7 +59,7 @@ export function previewResult(
 export function consentResult(
   why: string,
   plans: HashedPlan[],
-  codes: ApprovalCode[],
+  codes: PlanConsentCode[],
   unavailable: string | null,
 ): CallToolResult {
   const tail = unavailable

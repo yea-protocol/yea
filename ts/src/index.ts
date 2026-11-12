@@ -116,7 +116,6 @@ export {
 export { fetchHandler } from './http.js';
 
 export {
-  type ApprovalCode,
   type ConsentCodes,
   type ConsentCodesOutcome,
   howToApprove,
@@ -125,6 +124,7 @@ export {
   type JobCallRetry,
   type JobTool,
   jobCall,
+  type PlanConsentCode,
 } from './job-call.js';
 
 export {

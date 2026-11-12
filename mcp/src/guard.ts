@@ -13,7 +13,12 @@ import type { Effect, HashedPlan, Risk, Uses } from '@yea-protocol/sdk';
 import { type JobDef, type RevertFn, runJob, type Yea } from './call.js';
 import { aBoolean, aFunction, aRisk, type Rule, required } from './options.js';
 import { jobAnnotations, jobMeta } from './result.js';
-import { jobInputSchema, type Reserved, takeReserved } from './schema.js';
+import {
+  jobInputSchema,
+  NO_INPUT,
+  type Reserved,
+  takeReserved,
+} from './schema.js';
 import { errorMessage, registryOf } from './util.js';
 
 /** What a guarded tool's `describe(input)` returns: a plan without `apply`. */
@@ -80,14 +85,13 @@ function guardedCallback(
     return runJob({ y, server, job, input, ctx }, reserved);
   };
 
-  // A tool registered without a schema is called as cb(ctx), and gets no preview or consent.
-  return original.withArgs
-    ? (args: unknown, ctx: ServerContext) => {
-        const { input, ...reserved } = takeReserved(args);
+  // Every guarded tool has the wrapper schema, so the SDK calls this as cb(args, ctx) even for a
+  // tool registered without one; `apply` still calls that tool's original as cb(ctx).
+  return (args: unknown, ctx: ServerContext) => {
+    const { input, ...reserved } = takeReserved(args);
 
-        return run(input, reserved, ctx);
-      }
-    : (ctx: ServerContext) => run({}, { preview: false }, ctx);
+    return run(input, reserved, ctx);
+  };
 }
 
 /**
@@ -144,9 +148,9 @@ export function guardTool(
 
   tool.update({
     callback: callback as never,
-    ...(tool.inputSchema
-      ? { paramsSchema: guardSchema(tool.inputSchema) }
-      : {}),
+    // A tool registered without a schema gets one over no input, so it takes preview and
+    // yea_consent too (SPEC-approval §6: every job tool does).
+    paramsSchema: guardSchema(tool.inputSchema ?? NO_INPUT),
     annotations: jobAnnotations(tool.annotations),
     _meta: {
       ...tool._meta,

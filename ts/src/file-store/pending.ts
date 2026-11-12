@@ -5,14 +5,13 @@
  * code isn't. The bridge adds a second line naming the process that wrote it, which only its
  * start-up cleanup and the listing read.
  */
-import { closeSync, fstatSync, readdirSync, rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonical } from '../canonical.js';
 import { consentExpiry, decodeConsentCode } from '../consent.js';
-import { openNoFollow, readCapped } from '../key-file.js';
 import type { ConsentRequest } from '../types.js';
 import { errno } from '../util.js';
-import { writeAtomic } from './files.js';
+import { NotRegularFile, readRegular, writeAtomic } from './files.js';
 
 /**
  * What a pending code says: the consent request it carries, and the agent it names, if any. Its
@@ -57,37 +56,30 @@ export const pendingFile = (code: string, issuer?: PendingIssuer) =>
   issuer ? `${code}\n${canonical({ pid: issuer.pid })}\n` : `${code}\n`;
 
 /**
- * The text of the pending file at `path`, or null if there is none. It's opened without
- * following a symlink, and only a regular file of at most 64 KiB is read.
+ * The text of the pending file at `path`, or null if there is none, read as `readRegular` reads
+ * one: a symlink, anything but a regular file, and a file over 64 KiB are refused.
  */
 function readPendingFile(path: string): string | null {
-  let fd: number;
-
   try {
-    fd = openNoFollow(path, 'pending file');
+    return readRegular(path);
   } catch (e) {
-    if (errno((e as Error).cause) === 'ENOENT') {
-      return null;
-    }
+    throw new Error(`refusing pending file: ${refusedWhy(path, e)}`, {
+      cause: e,
+    });
+  }
+}
 
-    throw e;
+/** Why `readRegular` refused a pending file, as the other private files say it. */
+function refusedWhy(path: string, e: unknown): string {
+  if (e instanceof NotRegularFile) {
+    return `${path} is ${e.tooBig ? 'larger than 64 KiB' : 'not a regular file'}`;
   }
 
-  try {
-    if (!fstatSync(fd).isFile()) {
-      throw new Error(`refusing pending file: ${path} is not a regular file`);
-    }
-
-    const text = readCapped(fd);
-
-    if (text === null) {
-      throw new Error(`refusing pending file: ${path} is larger than 64 KiB`);
-    }
-
-    return text;
-  } finally {
-    closeSync(fd);
+  if (errno(e) === 'ELOOP') {
+    return `${path} is a symlink`;
   }
+
+  return e instanceof Error ? e.message : String(e);
 }
 
 /** The code in a pending file's text: its first line. */

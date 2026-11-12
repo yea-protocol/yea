@@ -74,6 +74,38 @@ async def test_a_consent_passed_back_as_yea_consent_runs_the_original_once_which
     assert again.is_error and "it was already used" in text(again) and calls == ["old-nav"]
 
 
+async def test_a_tool_that_takes_no_arguments_takes_preview_and_yea_consent_and_runs_with_none(world):
+    calls, seen = [], []
+
+    @world.server.tool()
+    async def ping() -> str:
+        """Ping."""
+        calls.append("ping")
+        return "pong"
+
+    def describe(args):
+        seen.append(args)
+        return {"summary": "Ping", "effects": []}
+
+    world.approvals.guard(world.server, "ping", describe=describe)
+    async with world.client("auto") as c:  # can't ask
+        tools = {tl.name: tl for tl in (await c.list_tools()).tools}
+        pv = await c.call_tool("ping", {"preview": True})
+        asked = await c.call_tool("ping")
+        consent = printed_consent(asked.structured_content["codes"][0])
+        ran = await c.call_tool("ping", {"yea_consent": consent})
+        again = await c.call_tool("ping", {"yea_consent": consent})
+    async with world.client("auto", Person(["approve"])) as c:
+        asked_in_a_form = await c.call_tool("ping")
+    assert set(tools["ping"].input_schema["properties"]) == {"preview", "yea_consent"}
+    assert text(pv).startswith("preview: nothing was run") and "Ping" in text(pv)
+    assert asked.is_error and "`yea_consent` set to it" in text(asked)
+    assert not ran.is_error and text(ran) == "pong"
+    assert again.is_error and "it was already used" in text(again)
+    assert not asked_in_a_form.is_error and text(asked_in_a_form) == "pong"
+    assert calls == ["ping", "ping"] and seen and all(a == {} for a in seen)
+
+
 async def test_the_listing_advertises_preview_and_the_job_annotations(world):
     existing(world, [])
     async with world.client("auto") as c:

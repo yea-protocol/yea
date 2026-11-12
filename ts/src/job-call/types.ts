@@ -48,11 +48,21 @@ export interface JobCallRetry {
   answer: ApprovalAnswer;
 }
 
+/**
+ * A consent code for one plan, as a result names it: the plan's hash, the code, and its short id
+ * once its pending file is written.
+ */
+export interface PlanConsentCode {
+  planHash: string;
+  code: string;
+  id?: string;
+}
+
 /** Plans to approve outside the chat, with a consent code for each one that may be approved. */
 export interface ConsentCodes {
   why: string;
   plans: HashedPlan[];
-  codes: { planHash: string; code: string }[];
+  codes: PlanConsentCode[];
   /** Why no consent can be accepted here, so there are no codes; null when there are. */
   unavailable: string | null;
 }

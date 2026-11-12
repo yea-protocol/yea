@@ -448,7 +448,7 @@ alone, and approving works as before.
   id never starts with `-`, so the command line never reads one as a flag.
 - The directory is created `0700` and the file `0600`, written to a temp file and renamed (§8).
   If the store is ever shared with the principal's OS user
-  ([#358](https://github.com/yea-protocol/yea/issues/358)), `pending/` must stay readable by
+  ([#376](https://github.com/yea-protocol/yea/issues/376)), `pending/` must stay readable by
   that user.
 
 **The lifecycle.** A directory holds at most one file per service and proposal, the code's

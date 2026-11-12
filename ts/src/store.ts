@@ -60,7 +60,7 @@ export interface ApprovalStore {
 }
 
 /** A store id (SPEC-approval §8): 22 b64url characters, 16 random bytes. */
-export const STORE_ID = /^[A-Za-z0-9_-]{22}$/;
+const STORE_ID = /^[A-Za-z0-9_-]{22}$/;
 
 export const isStoreId = (s: unknown): s is string =>
   typeof s === 'string' && STORE_ID.test(s);

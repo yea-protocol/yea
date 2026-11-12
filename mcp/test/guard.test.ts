@@ -5,7 +5,7 @@ import {
   McpServer,
   type RegisteredTool,
 } from '@modelcontextprotocol/server';
-import { exact, quantity } from '@yea-protocol/sdk';
+import { exact, MemoryStore, quantity } from '@yea-protocol/sdk';
 import { describe, expect, it } from 'vitest';
 import * as z from 'zod';
 import type { GuardConfig } from '../src/index.js';
@@ -283,32 +283,108 @@ describe('guard failures', () => {
       /not registered on this server/,
     );
   });
+});
 
-  it('a tool without a schema keeps the cb(ctx) form', async () => {
-    const w = await world();
-    let pinged = 0;
-    const conn = await connect('2025', () => {
+/** A `ping` tool registered without a schema (so the SDK calls it as cb(ctx)), then guarded. */
+function pingServer(w: Pick<World, 'approvals'>, seen: unknown[]) {
+  const pinged: unknown[][] = [];
+
+  return {
+    pinged,
+    make: () => {
       const server = new McpServer(
         { name: 'b', version: '1' },
         w.approvals.serverOptions(),
       );
-      const tool = server.registerTool('ping', {}, () => {
-        pinged++;
+      const tool = server.registerTool('ping', {}, (...a: unknown[]) => {
+        pinged.push(a.map((x) => typeof x));
 
         return { content: [{ type: 'text', text: 'pong' }] };
       });
 
       w.approvals.guard(server, tool, {
-        describe: () => ({ summary: 'Ping', effects: [] }),
+        describe: (input) => {
+          seen.push(input);
+
+          return { summary: 'Ping', effects: [] };
+        },
       });
 
       return server;
-    });
+    },
+  };
+}
 
-    conn.answers.push({ action: 'accept', content: { confirm: 'approve' } });
+describe('guard on a tool registered without a schema', () => {
+  it('keeps the cb(ctx) form, with no arguments, {} or stray ones, which describe never sees', async () => {
+    const w = await world();
+    const seen: unknown[] = [];
+    const ping = pingServer(w, seen);
+    const conn = await connect('2025', ping.make);
+    const approved = {
+      action: 'accept',
+      content: { confirm: 'approve' },
+    } as const;
+
+    conn.answers.push(approved, approved, approved);
+    expect(textOf(await conn.raw({ name: 'ping' }))).toBe('pong');
     expect(textOf(await conn.call({}, 'ping'))).toBe('pong');
-    expect(pinged).toBe(1);
+    expect(textOf(await conn.call({ stray: 1 }, 'ping'))).toBe('pong');
+    expect(ping.pinged).toEqual([['object'], ['object'], ['object']]);
+    // describe runs on every call, and again once it's approved: each time on {}.
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(seen).toEqual(seen.map(() => ({})));
   });
+
+  it('takes preview: the plan is shown and nothing runs', async () => {
+    const w = await world();
+    const ping = pingServer(w, []);
+    const conn = await connect('2025', ping.make);
+    const r = await conn.call({ preview: true }, 'ping');
+
+    expect(textOf(r)).toMatch(/^preview: nothing was run/);
+    expect(textOf(r)).toContain('Ping');
+    expect(ping.pinged).toEqual([]);
+  });
+
+  it('lists preview and yea_consent', async () => {
+    const w = await world();
+    const conn = await connect('2025', pingServer(w, []).make);
+    const { tools } = await conn.client.listTools();
+    const tool = tools.find((t) => t.name === 'ping');
+
+    expect(tool?.inputSchema).toMatchObject({ type: 'object' });
+    expect(Object.keys(tool?.inputSchema.properties ?? {}).sort()).toEqual([
+      'preview',
+      'yea_consent',
+    ]);
+  });
+
+  it.each<Kind>(['2026-no-elicit', '2025-no-elicit'])(
+    'on a MemoryStore and a %s client, runs once on a pasted-back consent; a second use is refused (#358)',
+    async (kind) => {
+      const w = await world({ store: new MemoryStore() });
+      const ping = pingServer(w, []);
+      const conn = await connect(kind, ping.make);
+      const asked = await conn.call({}, 'ping');
+
+      expect(textOf(asked)).toMatch(/`yea_consent` set to it/);
+
+      const { codes } = asked.structuredContent as {
+        codes: { code: string }[];
+      };
+      const yea_consent = await printedConsent(w, codes[0].code);
+
+      expect(textOf(await conn.call({ yea_consent }, 'ping'))).toBe('pong');
+      expect(ping.pinged).toEqual([['object']]);
+
+      const again = await conn.call({ yea_consent }, 'ping');
+
+      expect(again.isError).toBe(true);
+      expect(textOf(again)).toMatch(/it was already used/);
+      expect(ping.pinged).toEqual([['object']]);
+    },
+  );
 });
 
 describe('guard refuses schemas it can’t carry preview and yea_consent on', () => {

@@ -1,6 +1,6 @@
 # Add YEA to your MCP server (Python)
 
-You have an MCP server, and one of its tools does something a person should see first: it deletes a file, sends an email, or moves money. This guide adds YEA to that tool. Before the tool runs, the server sends its plan to the person's client as a form, and only an answer that types the right phrase approves it; nothing the model passes to the tool does. A form is only as trustworthy as the client that draws it: the [security model](/guide/security#what-an-approval-proves) says what a form answer proves, when a tool should need a signed consent instead, and what must stay out of the agent's reach.
+You have an MCP server, and one of its tools does something a person should see first: it deletes a file, sends an email, or moves money. This guide adds YEA to that tool. Before the tool runs, the server sends its plan to the person's client as a form, and only an answer that types the right phrase approves it. Nothing the model passes to the tool does, except a consent the person signed with `yea approve`, which is checked as one from the store. A form is only as trustworthy as the client that draws it: the [security model](/guide/security#what-an-approval-proves) says what a form answer proves, when a tool should need a signed consent instead, and what must stay out of the agent's reach.
 
 Steps 1–3 give you that tool, and need no keys, no policy and no account. Steps 4–6 are separate, later steps: undo, letting safe things run on their own, and clients that can't ask.
 

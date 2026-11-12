@@ -52,7 +52,10 @@ import {
 
 const ch1 = { charge: 'ch_1' };
 
-/** The consent `yea approve` would print for `code`, signed by `w`'s principal, with a part changed. */
+/**
+ * The consent `yea approve` would print for `code`, signed by `w`'s principal, with a part
+ * changed.
+ */
 function consentVariant(
   w: { principal: KeyPair },
   code: string,
@@ -206,7 +209,7 @@ describe('MCP-side approval security', () => {
     expect(w.applied).toEqual(['ch_1']);
   });
 
-  it('[M18] a yea_consent that is forged, altered, expired, for another server, tool or plan, or used, runs nothing, even where the policy would (#358)', async () => {
+  it('[M21] a yea_consent that is forged, altered, expired, for another server, tool or plan, or used, runs nothing, even where the policy would (#358)', async () => {
     const w = await world();
     const conn = await connect('2025-no-elicit', refundServer(w));
     const [one] = await codesFor(conn, ch1);
@@ -266,7 +269,7 @@ describe('MCP-side approval security', () => {
     expect(w.applied).toEqual(['ch_1']);
   });
 
-  it('[M20] a consent runs in one store only: a twin server with the same key runs it nothing (#358)', async () => {
+  it('[M23] a consent runs in one store only: a twin server with the same key runs it nothing (#358)', async () => {
     // A connector's stdio and HTTP sides: one home, so one server key, but each its own store.
     const w = await world();
     const twin = {
@@ -295,7 +298,7 @@ describe('MCP-side approval security', () => {
   });
 
   it.skipIf(!process.getuid || process.getuid() === 0)(
-    '[M19] an unreadable consent in the store asks again, with no fs error in the result (#358)',
+    '[M22] an unreadable consent in the store asks again, with no fs error in the result (#358)',
     async () => {
       const w = await world();
       const conn = await connect('2025-no-elicit', refundServer(w));

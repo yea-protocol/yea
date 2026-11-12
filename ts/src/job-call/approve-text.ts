@@ -5,22 +5,20 @@
  * the call. The MCP SDKs render it under the plans; conformance/job-calls.json pins it.
  */
 
-/** A consent code as a result names it: with its short id, once its pending file is written. */
-export interface ApprovalCode {
-  planHash: string;
-  code: string;
-  id?: string;
-}
+import type { PlanConsentCode } from './types.js';
 
 const PASTE_BACK =
   'If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it.';
 
-/** The lines, with each code numbered by its plan's place in `planHashes`, as the plans are shown. */
+/**
+ * The lines, with each code numbered by its plan's place in `planHashes`, as the plans are
+ * shown.
+ */
 export function howToApprove(
   planHashes: readonly string[],
-  codes: readonly ApprovalCode[],
+  codes: readonly PlanConsentCode[],
 ): string[] {
-  const n = (c: ApprovalCode) => planHashes.indexOf(c.planHash) + 1;
+  const n = (c: PlanConsentCode) => planHashes.indexOf(c.planHash) + 1;
   const codeLines = codes.map((c) => `  code for [${n(c)}]: ${c.code}`);
 
   if (!codes.length || !codes.every((c) => c.id)) {

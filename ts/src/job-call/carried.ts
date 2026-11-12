@@ -6,8 +6,8 @@
  */
 import {
   checkJobConsent,
-  consentExpiry,
   type HashedPlan,
+  jobConsentExpiry,
   NOT_A_CONSENT,
   OTHER_PHRASE,
   stripPhraseEdge,
@@ -32,7 +32,7 @@ async function refusedWhy(token: string, why: string, now: number) {
     return WHY.notConsent;
   }
 
-  const exp = await consentExpiry(token);
+  const exp = await jobConsentExpiry(token);
 
   return exp !== null && exp <= now ? WHY.expired : WHY.notSigned;
 }

@@ -2058,13 +2058,13 @@ describe('approval security (SPEC-approval)', () => {
     expect(performance.now() - start).toBeLessThan(500);
   });
 
-  describe('[A22] a consent on the call is checked exactly as one from the store (#358)', async () => {
+  describe('[A36] a consent on the call is checked exactly as one from the store (#358)', async () => {
     const refund = {
       summary: 'Refund 30.00 USD to Chen',
       effects: [],
-      risk: 'low',
+      risk: 'low' as const,
       undoWindow: 60,
-    } as const;
+    };
     const credit = { ...refund, summary: 'Give Chen store credit' };
     const tool = { name: 'refund', revert: () => null };
     const input = { who: 'Chen' };
@@ -2302,7 +2302,7 @@ describe('approval security (SPEC-approval)', () => {
     });
   });
 
-  describe('[A23] an unreadable consent in the store asks again, with no fs error in the result (#358)', async () => {
+  describe('[A37] an unreadable consent in the store asks again, with no fs error in the result (#358)', async () => {
     const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
       { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
     ]);

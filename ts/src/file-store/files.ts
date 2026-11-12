@@ -94,7 +94,11 @@ export function readOrNull(path: string): string | null {
 }
 
 /** A file `readRegular` won't read: not a regular file, or too big. */
-export class NotRegularFile extends Error {}
+export class NotRegularFile extends Error {
+  constructor(readonly tooBig = false) {
+    super(tooBig ? 'over 64 KiB' : 'not a regular file');
+  }
+}
 
 /**
  * The text of the regular file at `path`, or null if there's none. It's opened without following
@@ -122,13 +126,13 @@ export function readRegular(path: string): string | null {
 
   try {
     if (!fstatSync(fd).isFile()) {
-      throw new NotRegularFile('not a regular file');
+      throw new NotRegularFile();
     }
 
     const text = readCapped(fd);
 
     if (text === null) {
-      throw new NotRegularFile('over 64 KiB');
+      throw new NotRegularFile(true);
     }
 
     return text;

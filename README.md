@@ -31,7 +31,8 @@ sends the client its plan as a form (MCP form elicitation), and the tool runs on
 comes back with the right phrase typed in. Why not just have the model ask the user first?
 
 - **The server enforces it.** The tool doesn't run until the client returns the form, and
-  nothing the model passes to the tool counts as approval.
+  nothing the model passes to the tool counts as approval, except a consent the person signed
+  with `yea approve`, which is checked as one from the store.
 - **The plan is the server's.** Your code computes its summary and effects from the call's
   input, and the approval is bound to them by hash, not to the model's account of the call.
 - **It fails closed.** If the client can't show forms, or the phrase is wrong three times,

@@ -517,7 +517,8 @@ that can't elicit. For each, on both `MCPServer` and FastMCP:
   through with the receipt in `_meta`, and an output-schema tool's own results are errors. The
   original never sees `preview` or `yea_consent`. An original that returns `is_error` writes
   no receipt and releases its reservations, and a tool with its own `preview` argument is
-  refused;
+  refused. A tool that takes no arguments lists and takes `preview` and `yea_consent`, and runs
+  when called with none;
 - a job whose input holds a pydantic model (with aliases), a `date` and an enum gets a stable
   plan hash, and one with `5.5` fails closed;
 - `token_subject` returns `""` for a token with no subject;
@@ -542,7 +543,7 @@ a denied tool never runs, even with a stored consent; a `high` plan is never off
 irreversible plan never auto-runs; a consent for one plan never runs another, from the store or
 as `yea_consent`; a `yea_consent` that is forged, altered, expired, issued to another key, for
 another server or tool, or already used runs nothing, and the call asks without consulting the
-policy (the same cases as the core's a22 tests); a consent runs in one store only, so a twin
+policy (the same cases as the core's a36 tests); a consent runs in one store only, so a twin
 server with the same key and its own store runs it nothing; an unreadable
 consent in the store (a planted mode-0 file) asks again, with no fs error in the result; a
 stored copy of the policy grant never counts as a consent; a `request_state` without our `yea` object is

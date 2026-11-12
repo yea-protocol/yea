@@ -152,7 +152,7 @@ def _variant(code: dict, by=PRINCIPAL, to: str | None = None, svc: str | None = 
 
 
 async def test_a_yea_consent_forged_altered_expired_for_another_server_tool_or_plan_or_used_runs_nothing(world):
-    """[M18] A consent on the call is checked exactly as one from the store, even where the policy
+    """[M21] A consent on the call is checked exactly as one from the store, even where the policy
     would run the plan by itself (#358)."""
     done = []
 
@@ -191,7 +191,7 @@ def _reschedules(ap, server, done: list) -> None:
 
 
 async def test_a_consent_runs_in_one_store_only_a_twin_server_with_the_same_key_runs_it_nothing(world, tmp_path):
-    """[M20] A connector's stdio and HTTP sides: one server key, but each its own store (#358)."""
+    """[M23] A connector's stdio and HTTP sides: one server key, but each its own store (#358)."""
     done, twin_done = [], []
     twin_ap = yea(name="billing", transport="stdio", home=tmp_path / "home", store=MemoryStore(),
                   server_key=tmp_path / "server.key", principal=PRINCIPAL.public, policy=str(world.policy))
@@ -210,7 +210,7 @@ async def test_a_consent_runs_in_one_store_only_a_twin_server_with_the_same_key_
 
 @pytest.mark.skipif(not hasattr(os, "getuid") or os.getuid() == 0, reason="needs a user that file modes apply to")
 async def test_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_the_result(world, capsys):
-    """[M19] What an agent with the store could plant: a file the server can't read (#358)."""
+    """[M22] What an agent with the store could plant: a file the server can't read (#358)."""
     done = []
     jobs(world, done)
     (h, _) = await plan_hashes(world, "refund", {"amount": 5})

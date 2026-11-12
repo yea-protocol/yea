@@ -5,7 +5,7 @@ and never falls through to a stored consent or the policy."""
 
 from __future__ import annotations
 
-from ..approval import NOT_A_CONSENT, OTHER_PHRASE, HashedPlan, check_job_consent, consent_expiry, strip_phrase_edge
+from ..approval import NOT_A_CONSENT, OTHER_PHRASE, HashedPlan, check_job_consent, job_consent_expiry, strip_phrase_edge
 from .ask import ask
 from .outcome import Outcome, Round
 
@@ -22,7 +22,7 @@ def _refused_why(token: str, why: str | None, now: int) -> str:
     """Why the grant check refused a consent: expired, or anything else it could be."""
     if why == NOT_A_CONSENT:
         return _NOT_CONSENT
-    exp = consent_expiry(token)
+    exp = job_consent_expiry(token)
     return _EXPIRED if exp is not None and exp <= now else _NOT_SIGNED
 
 

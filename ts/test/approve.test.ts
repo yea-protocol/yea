@@ -5,9 +5,13 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { shop } from '../../examples/shop.ts';
-import { jobApprovedLines, saveConsent } from '../src/cli/approve/job.js';
+import {
+  jobApprovedLines,
+  saveConsent,
+  signAndPrint,
+} from '../src/cli/approve/job.js';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
 
@@ -304,5 +308,78 @@ describe('yea approve, once a job consent is signed (#358)', () => {
       '✓ approved: a one-time consent for this plan only.',
       `It couldn't be saved in ${store.root} (${'failed' in saved ? saved.failed : ''}), so paste the consent above back into the chat: the agent passes it to the tool as yea_consent.`,
     ]);
+  });
+});
+
+describe('yea approve prints the consent it signs, alone on stdout (#358)', () => {
+  /** A refund on a MemoryStore server, from a client that can't ask: it gets consent codes. */
+  const refund = (server: P.KeyPair, consent?: string) =>
+    ({
+      tool: { name: 'refund' },
+      input: { who: 'Chen' },
+      plan: () => [
+        {
+          summary: 'Refund 30.00 USD to Chen',
+          effects: [],
+          risk: 'low',
+          apply: () => null,
+        },
+      ],
+      sub: '',
+      now: P.unixNow(),
+      policy: {
+        grant: null,
+        principal: principal.public,
+        server: server.public,
+        deny: [],
+        outOfBand: 'high',
+      },
+      canAsk: false,
+      ...(consent === undefined ? {} : { consent }),
+    }) satisfies P.JobCall;
+
+  /** What `signAndPrint` writes to stdout and stderr, line by line. */
+  async function printed(...a: Parameters<typeof signAndPrint>) {
+    const out = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      await signAndPrint(...a);
+
+      return {
+        out: out.mock.calls.map((c) => c.join(' ')),
+        err: err.mock.calls.map((c) => c.join(' ')).join('\n'),
+      };
+    } finally {
+      out.mockRestore();
+      err.mockRestore();
+    }
+  }
+
+  it('which the server that asked runs once, passed back as yea_consent, and refuses after', async () => {
+    const server = await P.keyPair();
+    const memory = new P.MemoryStore();
+    const asked = await P.jobCall(refund(server), memory);
+
+    if (asked.kind !== 'consent-codes') {
+      throw new Error(`expected consent codes, got ${asked.kind}`);
+    }
+
+    // The person's own store, which isn't the one the code binds.
+    const mine = new FileStore(mkdtempSync(join(tmpdir(), 'yea-store-')));
+    const j = await P.readJobConsent(asked.codes[0].code, P.unixNow());
+    const { out, err } = await printed(principal, j, mine);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatch(/^pg1\.\S+$/);
+    expect(err).toContain('paste the consent above back into the chat');
+    expect(await P.jobCall(refund(server, out[0]), memory)).toMatchObject({
+      kind: 'run',
+      how: 'approved',
+    });
+    expect(await P.jobCall(refund(server, out[0]), memory)).toMatchObject({
+      kind: 'consent-codes',
+      why: "the consent passed as yea_consent can't be used: it was already used",
+    });
   });
 });

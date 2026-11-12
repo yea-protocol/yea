@@ -62,7 +62,7 @@ function consentShape(
  * null if it isn't shaped like a consent. To tell an expired consent from a forged one when the
  * grant check fails (§6).
  */
-export async function consentExpiry(grant: string): Promise<number | null> {
+export async function jobConsentExpiry(grant: string): Promise<number | null> {
   return consentShape(await blocksOf(grant))?.exp ?? null;
 }
 
@@ -70,9 +70,9 @@ export async function consentExpiry(grant: string): Promise<number | null> {
  * Whether a consent, from the store or on the call, may run this plan (SPEC-approval §6): it
  * must be a consent grant for exactly this plan and `phrase`, the one the tool names now, in the
  * store whose id is `store` (`only` = their consent hash, and `exp` present), signed by the
- * pinned principal and issued to the server. A copied policy grant isn't shaped like a consent. One that is valid but binds
- * another hash is refused with `OTHER_PHRASE`, so the caller can say why. `id` is what to
- * consume it by, until `exp`.
+ * pinned principal and issued to the server. A copied policy grant isn't shaped like a consent.
+ * One that is valid but binds another hash is refused with `OTHER_PHRASE`, so the caller can say
+ * why. `id` is what to consume it by, until `exp`.
  */
 export async function checkJobConsent(
   grant: string,
