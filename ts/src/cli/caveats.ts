@@ -1,5 +1,6 @@
 /** The caveat flags of `yea grant` and `yea delegate`, and the caveats they ask for (SPEC §6.3). */
 import type { Caveat } from '../grants.js';
+import { PROOF_SKEW } from '../proof.js';
 import { isRisk, RISKS } from '../risk.js';
 import { isVerb, VERBS, type Verb } from '../types.js';
 import { isLimit, type Limit } from '../uses.js';
@@ -140,8 +141,16 @@ function total(s: string): Limit {
 }
 
 /**
+ * The `nbf` a total with a period counts from: 00:00 UTC on the day of `now` minus the proof
+ * skew, so a service whose clock is behind ours by as much as a proof allows already accepts it.
+ */
+const periodAnchor = (now: number) =>
+  Math.floor((now - PROOF_SKEW) / DAY) * DAY;
+
+/**
  * The `each` and `total` caveats the flags ask for. A total with a period counts from one `nbf`
- * in its block, 00:00 UTC today, so it needs `--exp` to end: its max comes back every period.
+ * in its block, 00:00 UTC today (or yesterday, in the first minutes of the day), so it needs
+ * `--exp` to end: its max comes back every period.
  */
 function limitCaveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
   const eaches = (o.each ?? []).map((s) => ({ each: each(s) }));
@@ -157,7 +166,7 @@ function limitCaveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
   return [
     ...eaches,
     ...totals.map((t) => ({ total: t.limit })),
-    ...(periodic ? [{ nbf: Math.floor(unixNow() / DAY) * DAY }] : []),
+    ...(periodic ? [{ nbf: periodAnchor(unixNow()) }] : []),
   ];
 }
 

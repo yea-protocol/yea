@@ -4,10 +4,11 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { caveats } from '../src/cli/caveats.js';
 import { COMMANDS } from '../src/cli/commands.js';
 import { keyPair } from '../src/crypto.js';
-import { decodeGrant, issueGrant } from '../src/grants.js';
+import { decodeGrant, delegateGrant, issueGrant } from '../src/grants.js';
 import { fmtTime } from '../src/lens.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
@@ -398,7 +399,9 @@ describe('yea grant and yea inspect with a period', () => {
     const caveats = decodeGrant(g.out.trim())[0].p.caveats;
     const exp = Number(caveats.find((c) => 'exp' in c)?.exp);
     const nbf = Number(caveats.find((c) => 'nbf' in c)?.nbf);
-    const line = `buy: 500 USD every 7d from ${fmtTime(nbf)} until ${fmtTime(exp)}, at most 6500 USD`;
+    // 13 weeks, or 14 when issued in the first 300 s of a UTC day (the nbf is then yesterday's).
+    const weeks = Math.ceil((exp - nbf) / 604_800);
+    const line = `buy: 500 USD every 7d from ${fmtTime(nbf)} until ${fmtTime(exp)}, at most ${500 * weeks} USD at each service`;
 
     expect(g.status, g.err).toBe(0);
     expect(caveats).toEqual([
@@ -408,15 +411,96 @@ describe('yea grant and yea inspect with a period', () => {
       { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
       { nbf },
     ]);
-    // 00:00 UTC of the day it was issued: at most a day before 90 days ahead of exp.
+    // 00:00 UTC of the day 300 s before it was issued: at most a day and 300 s before 90 days
+    // ahead of exp.
     expect(nbf % 86_400).toBe(0);
-    expect(exp - 90 * 86_400 - nbf).toBeGreaterThanOrEqual(0);
-    expect(exp - 90 * 86_400 - nbf).toBeLessThan(86_400);
+    expect(exp - 90 * 86_400 - nbf).toBeGreaterThanOrEqual(300);
+    expect(exp - 90 * 86_400 - nbf).toBeLessThan(86_400 + 300);
     expect(g.err).toContain(`\n${line}\n`);
 
     const i = await yea(['inspect', g.out.trim()], env);
 
     expect(i.out).toContain(`periods:\n  block 0: ${line}\n`);
+  });
+
+  it("anchors a period's nbf on the midnight at or before now − 300 s, which a slower service accepts", () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+
+    try {
+      const nbfAt = (iso: string) => {
+        vi.setSystemTime(new Date(iso));
+
+        const signed = caveats({ total: ['buy=500USD/7d'], exp: '90d' });
+
+        return signed.find((c) => 'nbf' in c);
+      };
+      const day = Date.parse('2026-11-12T00:00:00Z') / 1000;
+
+      // At 00:00:20 a service 300 s behind is still on the 11th: the period starts then.
+      expect(nbfAt('2026-11-12T00:00:20Z')).toEqual({ nbf: day - 86_400 });
+      expect(nbfAt('2026-11-12T00:05:00Z')).toEqual({ nbf: day });
+      expect(nbfAt('2026-11-12T23:59:59Z')).toEqual({ nbf: day });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says the worst case is per service, unless svc leaves one, and sums it over several', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-period-'));
+    const env = { YEA_HOME: home, YEA_PRINCIPAL_HOME: '' };
+
+    expect((await yea(['init'], env)).status).toBe(0);
+
+    const flags = ['--to', KEY, '--total', 'buy=500USD/7d', '--exp', '28d'];
+    const svc = (...ids: string[]) => ids.flatMap((id) => ['--svc', id]);
+    const [none, one, two] = await Promise.all(
+      [[], svc('a.example'), svc('a.example', 'b.example')].map((s) =>
+        yea(['grant', ...flags, ...s], env),
+      ),
+    );
+    const lastLine = (r: { err: string }) =>
+      r.err.split('\n').find((l) => l.startsWith('buy: '));
+    // Four weeks, or five when issued in the first 300 s of a UTC day.
+    const weeks = (r: { out: string }) => {
+      const c = decodeGrant(r.out.trim())[0].p.caveats;
+      const at = (k: string) => Number(c.find((x) => k in x)?.[k]);
+
+      return Math.ceil((at('exp') - at('nbf')) / 604_800);
+    };
+
+    expect(lastLine(none)).toMatch(
+      new RegExp(`, at most ${500 * weeks(none)} USD at each service$`),
+    );
+    expect(lastLine(one)).toMatch(
+      new RegExp(`, at most ${500 * weeks(one)} USD$`),
+    );
+    expect(lastLine(two)).toMatch(
+      new RegExp(
+        `, at most ${500 * weeks(two)} USD at each of its 2 services, ${1000 * weeks(two)} USD in all$`,
+      ),
+    );
+
+    // A delegation that narrows two services to one leaves one: across the chain, as a service checks.
+    const agent = await keyPair();
+    const root = await issueGrant({
+      principal: await keyPair(),
+      to: agent.public,
+      caveats: [
+        { svc: ['a.example', 'b.example'] },
+        { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
+        { nbf: 1_790_000_000 },
+        { exp: 1_790_000_000 + 604_800 },
+      ],
+    });
+    const narrowed = await delegateGrant(root, {
+      holder: agent,
+      to: KEY,
+      caveats: [{ svc: ['b.example', 'c.example'] }],
+    });
+
+    expect((await yea(['inspect', narrowed])).out).toContain(
+      ', at most 500 USD\n',
+    );
   });
 
   it('yea inspect works out a worst case past 2^53 exactly', async () => {
@@ -433,7 +517,7 @@ describe('yea grant and yea inspect with a period', () => {
     const i = await yea(['inspect', token]);
 
     // 2^53 − 1 + 1790000000 one-second periods; in floating point, one more.
-    expect(i.out).toContain(', at most 9007201044740991\n');
+    expect(i.out).toContain(', at most 9007201044740991 at each service\n');
   });
 
   it("yea delegate prints its block's periods, and yea inspect ends every block's at the earliest exp", async () => {
@@ -464,7 +548,7 @@ describe('yea grant and yea inspect with a period', () => {
     // The delegation's exp, a day out, is the grant's earliest: both blocks' periods end there.
     const until = caveat(1, 'exp');
     const days = Math.ceil((until - caveat(1, 'nbf')) / 86_400);
-    const own = `buy: 100 USD every 1d from ${fmtTime(caveat(1, 'nbf'))} until ${fmtTime(until)}, at most ${100 * days} USD`;
+    const own = `buy: 100 USD every 1d from ${fmtTime(caveat(1, 'nbf'))} until ${fmtTime(until)}, at most ${100 * days} USD at each service`;
 
     expect(d.status, d.err).toBe(0);
     expect(until).toBeLessThan(caveat(0, 'exp'));
@@ -473,7 +557,7 @@ describe('yea grant and yea inspect with a period', () => {
     const i = await yea(['inspect', d.out.trim()], env);
 
     expect(i.out).toContain(
-      `periods:\n  block 0: buy: 500 USD every 7d from ${fmtTime(caveat(0, 'nbf'))} until ${fmtTime(until)}, at most 500 USD\n  block 1: ${own}\n`,
+      `periods:\n  block 0: buy: 500 USD every 7d from ${fmtTime(caveat(0, 'nbf'))} until ${fmtTime(until)}, at most ${500 * Math.ceil((until - caveat(0, 'nbf')) / 604_800)} USD at each service\n  block 1: ${own}\n`,
     );
   });
 });
