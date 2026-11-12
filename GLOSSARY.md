@@ -64,8 +64,8 @@ _Avoid_: used map, spend tracker
 
 **Consent round**:
 What an agent does when a commit comes back `consent_required`: check that the service's request
-names the proposal the agent was shown, get the person's consent to that proposal, and commit
-once more with it.
+names the proposal the agent was shown and hasn't expired, get the person's consent to that
+proposal, and commit once more with it.
 _Avoid_: approval flow, consent loop
 
 **Approver**:

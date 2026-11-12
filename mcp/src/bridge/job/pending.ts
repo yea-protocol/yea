@@ -9,6 +9,7 @@ import {
   type Client,
   type ConsentStore,
   consentRound,
+  expiredWhy,
   outOfBand,
   type Proposal,
   printable,
@@ -18,12 +19,15 @@ import {
 } from '@yea-protocol/sdk';
 import { NOTHING_RAN, refused } from '../../result.js';
 import { checkConsent, consentId } from '../consent.js';
-import { replyResult } from '../lens.js';
+import { proposalView, replyResult } from '../lens.js';
 import { proposalsResult, receiptOutcome } from '../outcomes.js';
 import { approvable, type Pending } from '../pending.js';
 import { expiringNote } from '../proposals.js';
 import type { Bridge } from '../state.js';
 import type { JobCall } from '../types.js';
+
+/** A round's refusal. */
+type Refused = Extract<RoundOutcome, { kind: 'refused' }>;
 
 /** Errors after which the pending proposals are gone, so a fresh INTENT is the way on. */
 const STALE = new Set(['not_found', 'expired', 'conflict']);
@@ -130,6 +134,7 @@ async function commitPending(
     approver: outOfBand(),
     consents: o.consents,
     onEvent: (e) => events.push(untrustedLens(e)),
+    now: () => b.now(),
   });
   const r = out.reply;
 
@@ -157,9 +162,23 @@ async function commitPending(
 }
 
 /**
+ * Why the round refused the service's consent request. An expired one is told without the
+ * round's "commit again": the bridge's code doesn't depend on that request.
+ */
+function requestRefusal(out: Refused): string {
+  const e = out.expired;
+
+  return (e && expiredWhy('consent request', e.expires, e.now)) ?? out.why;
+}
+
+/**
  * A round that ended without a consent: the proposal and its code again. The code is the one
  * handed out with it, built from the proposal and the principal of the agent's grants, never
  * from the service's consent request (the round's code takes the principal from that request).
+ * So a request the round refused, for naming something else or for expiring before its proposal,
+ * doesn't stop the code: the line says why the request can't be approved, and that the code below
+ * is built from the proposal. A proposal too close to expiry for a code (`approvable`) gets none,
+ * and the line says to call again for fresh ones.
  */
 function needsConsent(
   b: Bridge,
@@ -171,17 +190,25 @@ function needsConsent(
     return replyResult(out.reply);
   }
 
-  const mismatch =
-    out.kind === 'refused'
-      ? [
-          `The service's consent request for [${printable(p.id)}] can't be approved (${out.why}); the code below is built from the proposal itself.`,
-        ]
-      : [];
+  const why = `${printable(out.reply.message)}: this needs the user's approval`;
+  const one = { ...entry, proposals: [p] };
 
-  return proposalsResult(
-    b,
-    { ...entry, proposals: [p] },
-    `${printable(out.reply.message)}: this needs the user's approval`,
-    mismatch,
-  );
+  if (out.kind === 'pending') {
+    return proposalsResult(b, one, why, []);
+  }
+
+  const id = printable(p.id);
+  const request = `The service's consent request for [${id}] can't be approved (${requestRefusal(out)})`;
+
+  return approvable(p, b.now())
+    ? proposalsResult(b, one, why, [
+        `${request}; the code below is built from the proposal itself.`,
+      ])
+    : refused(
+        why,
+        [
+          `${request}, and [${id}] expires too soon for a code: call this tool again for fresh proposals.`,
+        ],
+        { proposals: [proposalView(p)], codes: [] },
+      );
 }

@@ -1,5 +1,6 @@
 // The consent round (consent-round.ts) at its interface: its consent store, and how each answer
-// an approver can give ends it. Its security cases (C1–C5, C8–C11) are in security.test.ts.
+// an approver can give ends it. Its security cases (C1–C5, C8–C13, C15, C16) are in
+// security.test.ts.
 import { describe, expect, it } from 'vitest';
 import { shop } from '../../examples/shop.ts';
 import * as P from '../src/index.js';

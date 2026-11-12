@@ -71,6 +71,7 @@ export {
   consentGrant,
   consentRecipient,
   decodeConsentCode,
+  expiredWhy,
 } from './consent.js';
 
 export {

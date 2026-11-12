@@ -218,11 +218,9 @@ async function interactive(
 
       const chosen = await chooseProposal(rl, r.proposals);
 
-      if (!chosen) {
-        return;
+      if (chosen) {
+        await commitChosen(c, rl, chosen);
       }
-
-      await commitChosen(c, rl, chosen);
 
       return;
     }
@@ -294,7 +292,9 @@ async function commitChosen(c: Client, rl: Interface, chosen: Proposal) {
 
   if (out.kind === 'refused') {
     die(
-      `✗ the service's consent request can't be signed (${out.why}); not signing`,
+      out.expired
+        ? `✗ ${out.why}`
+        : `✗ the service's consent request can't be signed (${out.why}); not signing`,
     );
   }
 }
