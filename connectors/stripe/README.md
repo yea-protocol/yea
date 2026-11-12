@@ -2,26 +2,12 @@ Not affiliated with, endorsed by, or sponsored by Stripe, Inc. Stripe is a trade
 
 # @yea-protocol/stripe
 
-An MCP server for the Stripe API, built on [`@yea-protocol/mcp`](../../mcp). It gives an agent
-the jobs a support or finance person does, as tools that preview what they'll do, wait for
-your approval, and can be undone where Stripe allows it.
-
-| Tool | Kind | What it does |
-|---|---|---|
-| `customer` | read | Finds a customer by name, email or `cus_` id: their plan, renewal date, recent payments and what's refundable, in one call. |
-| `refund` | job | Refunds a payment: all of it, an estimate of what's unused of their subscription, or an amount. By default it's their latest successful payment, never an older one. It can't be undone, so it always asks. |
-| `cancel_subscription` | job | At period end (undoable until a day before it), or now (not undoable). |
-| `change_plan` | job | At renewal (undoable until a day before it), or now with proration (not undoable). |
-
-Each job returns its plans first: what changes, what money it spends, its risk and its undo
-window. In a client that shows forms, a plan is approved by typing its phrase: the amount for a
-refund, or the customer's email (their `cus_` id if they have no email) for a cancel or plan
-change. A form answer is only as trustworthy as the client that draws it
-([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)), which is why live mode's `high` plans never go to the form
-(see [Risk](#risk)). A client that can't show a form gets a consent code for `yea approve`
-instead. Every job also takes `"preview": true`, which shows the plans and does nothing.
-
-## Install
+**An MCP server for the Stripe API.** It gives an agent the jobs a support or finance person
+does (refunds, cancellations and plan changes) as tools that show their plan first, wait for
+approval, and can be undone where Stripe allows it. Built on
+[`@yea-protocol/mcp`](https://yea-protocol.github.io/yea/guide/mcp-typescript).
+[Docs](https://yea-protocol.github.io/yea/guide/stripe) ·
+[Spec](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-connector-stripe.md)
 
 > **Unreleased:** `@yea-protocol/stripe` isn't on npm yet, so `npx -y @yea-protocol/stripe` fails
 > for now. Until it's published, build it from a clone and use
@@ -32,7 +18,35 @@ instead. Every job also takes `"preview": true`, which shows the plans and does 
 > npm ci && npm run build
 > ```
 
-In your MCP client's config, with `yea-stripe` as the server's key:
+In Claude Code:
+
+```sh
+claude mcp add yea-stripe \
+  -e STRIPE_SECRET_KEY_FILE=/home/me/.config/yea/stripe.key \
+  -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
+  -- npx -y @yea-protocol/stripe
+```
+
+In a client that shows forms, a plan is approved in the client, by typing its phrase: the amount
+for a refund, or the customer's email (their `cus_` id if they have no email) for a cancel or
+plan change. A form answer is only as trustworthy as the client that draws it
+([what an approval proves](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#what-an-approval-proves)), which is why live mode's `high` plans never go to the form
+(see [Risk](#risk)): they need a consent code the person signs with `yea approve`, as does every
+plan in a client that can't show a form.
+
+| Tool | Kind | What it does |
+|---|---|---|
+| `customer` | read | Finds a customer by name, email or `cus_` id: their plan, renewal date, recent payments and what's refundable, in one call. |
+| `refund` | job | Refunds a payment: all of it, an estimate of what's unused of their subscription, or an amount. By default it's their latest successful payment, never an older one. It can't be undone, so it always asks. |
+| `cancel_subscription` | job | At period end (undoable until a day before it), or now (not undoable). |
+| `change_plan` | job | At renewal (undoable until a day before it), or now with proration (not undoable). |
+
+Each job returns its plans first: what changes, what money it spends, its risk and its undo
+window. Every job also takes `"preview": true`, which shows the plans and does nothing.
+
+## Install
+
+In any other MCP client's config, with `yea-stripe` as the server's key:
 
 ```json
 {
@@ -47,15 +61,6 @@ In your MCP client's config, with `yea-stripe` as the server's key:
     }
   }
 }
-```
-
-Or in Claude Code:
-
-```sh
-claude mcp add yea-stripe \
-  -e STRIPE_SECRET_KEY_FILE=/home/me/.config/yea/stripe.key \
-  -e YEA_PRINCIPAL_PUB=/etc/yea/principal.pub \
-  -- npx -y @yea-protocol/stripe
 ```
 
 Node 20 or later.
@@ -225,14 +230,16 @@ only "now": edit the schedule in the Stripe dashboard first.
 
 ## As a library
 
+<!-- snippet: examples/stripe-connector.ts#library -->
 ```ts
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { yea } from '@yea-protocol/mcp';
 import { stripeServer } from '@yea-protocol/stripe';
 
 const approvals = yea({ name: 'yea-stripe', transport: 'stdio' });
+const key = process.env.STRIPE_SECRET_KEY ?? '';
 
-serveStdio(stripeServer({ key: process.env.STRIPE_SECRET_KEY ?? '', approvals }));
+serveStdio(stripeServer({ key, approvals }));
 ```
 
 `@yea-protocol/stripe/api` is the Stripe client and readers on their own: the official SDK with
