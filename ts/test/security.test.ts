@@ -2272,9 +2272,17 @@ function expiredWhy(expires: number, at: number) {
   return `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Call the tool again for a fresh one`;
 }
 
-/** Why the consent round refuses a consent request that expired at `expires`, when it's `at`. */
+/**
+ * Why the consent round refuses a consent request that expired at `expires`, when it's `at` and
+ * its proposal hasn't expired.
+ */
 function requestExpiredWhy(expires: number, at: number) {
   return `this consent request expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Commit again for a fresh one`;
+}
+
+/** Why the consent round refuses a consent to a proposal that expired at `expires`, when it's `at`. */
+function proposalExpiredWhy(expires: number, at: number) {
+  return `this proposal expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Send INTENT again for a fresh proposal`;
 }
 
 /** A job code for a plan the person can't confirm without a terminal. */
@@ -3041,6 +3049,14 @@ describe('consent requests (SPEC.md §6.6)', () => {
         ],
       }),
     });
+    /** An approver that edits the ask it's handed, then signs it as edited, as `by`. */
+    const editing =
+      (edit: (a: P.ConsentAsk) => void, by = principal) =>
+      (a: P.ConsentAsk): Promise<P.ConsentAnswer> => {
+        edit(a);
+
+        return signed({ by })(a);
+      };
 
     for (const [answer, why] of [
       [signed({}, { hash: 'h_other' }), 'it consents to something other'],
@@ -3052,6 +3068,32 @@ describe('consent requests (SPEC.md §6.6)', () => {
       [signed({ by: other }), "it isn't signed by the request's principal"],
       [extra, 'it consents to something other'],
       [async () => ({ grant: 'pg1.nope' }), "it isn't a readable grant"],
+      // The approver's edits are to its own copy: the grant is checked against the ask as built.
+      [
+        editing((a) => {
+          a.request.hash = 'h_other';
+        }),
+        'it consents to something other',
+      ],
+      [
+        editing((a) => {
+          a.request.expires += 3600;
+        }),
+        'it consents to something other',
+      ],
+      [
+        editing((a) => {
+          a.agent = otherAgent.public;
+        }),
+        "it's issued to another key",
+      ],
+      [
+        editing((a) => {
+          a.request.principal = other.public;
+          a.request.hash = 'h_other';
+        }, other),
+        "it isn't signed by the request's principal",
+      ],
     ] as const) {
       const { out, commits } = await round({ answer, consents });
 
@@ -3077,6 +3119,23 @@ describe('consent requests (SPEC.md §6.6)', () => {
     const { out } = await round({ answer: forged, consents });
 
     expect(out.kind === 'refused' && out.why).toContain('its check failed');
+
+    // Pushing the expiry on, as the clock crosses it, doesn't keep the answer from being refused.
+    let shift = -1;
+    const late = await round({
+      now: (p) => p.expires + shift,
+      answer: editing((a) => {
+        shift = 0;
+        a.request.expires += 3600;
+      }),
+      consents,
+    });
+
+    expect(late.out).toMatchObject({
+      kind: 'refused',
+      why: proposalExpiredWhy(late.p.expires, late.p.expires),
+    });
+    expect(late.commits).toHaveLength(1);
     expect(kept).toEqual([]);
   });
 
@@ -3098,13 +3157,15 @@ describe('consent requests (SPEC.md §6.6)', () => {
   /**
    * What one run of an entry point to the ask step did: when its consent expires, whether anyone
    * was asked, why it refused (null if it didn't), and whether the consent was used: handed out
-   * by `yea approve`, kept or sent by the live round.
+   * by `yea approve`, kept or sent by the live round. The live round also says when a consent it
+   * refused as expired expired, and its clock then; `yea approve` says only why.
    */
   interface AskRun {
     expires: number;
     asked: boolean;
     why: string | null;
     used: boolean;
+    expired?: { expires: number; now: number };
   }
 
   /**
@@ -3154,16 +3215,28 @@ describe('consent requests (SPEC.md §6.6)', () => {
       asked: asks.length > 0,
       why: out.kind === 'refused' ? out.why : null,
       used: put.mock.calls.length > 0 || commits.length > 1,
+      expired: out.kind === 'refused' ? out.expired : undefined,
     };
   }
 
   // #383: the live round asked for a consent request it never compared with the clock, and
   // `yea approve` had its own copy of the ask. Both now ask through one step, which reads the
   // clock it's given before asking, after the answer, and for the grant check. Each row runs on
-  // both, and each says it in its own words: `yea approve` as #370 did, the round of a request.
+  // both, and each says it in its own words: `yea approve` as #370 did; the round of the pay
+  // service's proposal, since its request expires with it, as every conforming service's does.
   const ASK_ENTRIES = [
-    { entry: 'yea approve', run: approveRun, expired: expiredWhy },
-    { entry: 'the live round', run: roundRun, expired: requestExpiredWhy },
+    {
+      entry: 'yea approve',
+      run: approveRun,
+      expired: expiredWhy,
+      saysWhen: false,
+    },
+    {
+      entry: 'the live round',
+      run: roundRun,
+      expired: proposalExpiredWhy,
+      saysWhen: true,
+    },
   ];
   const CLOCK_ROWS = [
     {
@@ -3208,6 +3281,10 @@ describe('consent requests (SPEC.md §6.6)', () => {
       asked: row.asked,
       why: row.refused ? row.expired(r.expires, r.expires) : null,
       used: !row.refused,
+      expired:
+        row.refused && row.saysWhen
+          ? { expires: r.expires, now: r.expires }
+          : undefined,
     });
   });
 
@@ -3230,6 +3307,53 @@ describe('consent requests (SPEC.md §6.6)', () => {
         answer: yes,
       }),
     ).toBe('the consent request names another service');
+  });
+
+  // The round's next step depends on what ran out: committing again can't help once the proposal
+  // has expired, since the service refuses it, so only a request that ran out first is told to.
+  // Here the request expires a minute before its proposal; the clock reads `before` seconds from
+  // the proposal's expiry (`ends`) until the person answers, and `after` from then on.
+  it.each([
+    {
+      want: 'the request ran out while the person read: commit again',
+      before: -61,
+      after: -60,
+      asked: true,
+      why: (ends: number) => requestExpiredWhy(ends - 60, ends - 60),
+    },
+    {
+      want: 'both ran out before asking: send INTENT again',
+      before: 0,
+      after: 0,
+      asked: false,
+      why: (ends: number) => proposalExpiredWhy(ends, ends),
+    },
+    {
+      want: 'both ran out while the person read: send INTENT again',
+      before: -61,
+      after: 0,
+      asked: true,
+      why: (ends: number) => proposalExpiredWhy(ends, ends),
+    },
+  ])('[C15] the live round says what ran out: $want (#383)', async (row) => {
+    let shift = row.before;
+    const { out, asks, commits, p } = await round({
+      lie: (p) => patched({ expires: p.expires - 60 }),
+      now: (p) => p.expires + shift,
+      answer: (a) => {
+        shift = row.after;
+
+        return yes(a);
+      },
+    });
+
+    expect(out).toMatchObject({
+      kind: 'refused',
+      why: row.why(p.expires),
+      expired: { expires: p.expires - 60, now: p.expires + row.after },
+    });
+    expect(asks).toHaveLength(row.asked ? 1 : 0);
+    expect(commits).toHaveLength(1);
   });
 
   it.skipIf(!existsSync(CLI))(

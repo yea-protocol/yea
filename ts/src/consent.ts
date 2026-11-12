@@ -179,14 +179,14 @@ export function consentExpiry(c: {
     : c.expires;
 }
 
-/** What asked for a consent that has expired: a consent code, or a service's consent request. */
-export type ExpiredSubject = 'consent code' | 'consent request';
+/** What expired: a consent code, a service's consent request, or the proposal either is for. */
+export type ExpiredSubject = 'consent code' | 'consent request' | 'proposal';
 
 /**
- * Says, at `now`, that the consent a `subject` asks for, valid until `expires`, has expired, then
- * `next`, what to do about it; null while it's valid. It's expired from `expires` on, as an `exp`
- * caveat is (SPEC §6.3). Both times are shown, in UTC, so a person whose clock is wrong sees that
- * it's the clock, not the consent.
+ * Says, at `now`, that the `subject` valid until `expires` has expired, then `next`, what to do
+ * about it; null while it's valid. It's expired from `expires` on, as an `exp` caveat is (SPEC
+ * §6.3). Both times are shown, in UTC, so a person whose clock is wrong sees that it's the clock,
+ * not the consent.
  */
 export function expiredWhy(
   subject: ExpiredSubject,

@@ -58,7 +58,10 @@ export type ConsentAnswer =
   | { declined: true }
   | { pending: string };
 
-/** Asks for a consent; the round checks whatever grant comes back before it's used. */
+/**
+ * Asks for a consent, handed a copy of the ask; the round checks whatever grant comes back against
+ * its own before it's used.
+ */
 export type Approver = (ask: ConsentAsk) => Promise<ConsentAnswer>;
 
 /**
@@ -108,10 +111,20 @@ export interface RoundOptions {
   now?: () => number;
 }
 
-/** How the live round says why it refused; `yea approve` has its own words for a code. */
+/** What to do once the proposal has expired: a service refuses to commit it, so ask for another. */
+const AFTER_PROPOSAL = 'Send INTENT again for a fresh proposal';
+
+/** What to do once only the service's consent request has expired, its proposal still open. */
+const AFTER_REQUEST = 'Commit again for a fresh one';
+
+/**
+ * How the live round says why it refused; `yea approve` has its own words for a code. An expired
+ * consent is told by what ran out: the proposal, or else the request.
+ */
 const ROUND_WORDS: AskWords = {
-  expired: (expires, now) =>
-    expiredWhy('consent request', expires, now, 'Commit again for a fresh one'),
+  expired: (expires, now, proposal) =>
+    expiredWhy('proposal', proposal, now, AFTER_PROPOSAL) ??
+    expiredWhy('consent request', expires, now, AFTER_REQUEST),
   mismatch: (why) => why,
   unusable: (why) => `the consent the approver gave can't be used: ${why}`,
 };

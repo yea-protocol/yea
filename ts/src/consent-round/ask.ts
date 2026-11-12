@@ -3,7 +3,8 @@
  * service's consent request, and `yea approve`, for a consent code. It owns the order: check the
  * request against its proposal, refuse it if its consent has expired, build the ask, ask, refuse
  * an answer that comes back once the consent has expired, and check the grant. Both expiry
- * checks and the grant's are read by the one clock it's given.
+ * checks and the grant's are read by the one clock it's given. The approver is handed a copy of
+ * the ask, so the answer is checked against the ask as built, whatever the approver does to it.
  */
 import type { Approver, ConsentAsk } from '../consent-round.js';
 import type { ConsentRequest, Proposal } from '../types.js';
@@ -18,8 +19,11 @@ export interface Expiry {
 
 /** How an entry point says why the step refused, in its own words. */
 export interface AskWords {
-  /** Why a consent valid until `expires` is refused at `now`; null while it's valid. */
-  expired: (expires: number, now: number) => string | null;
+  /**
+   * Why a consent valid until `expires`, to a proposal valid until `proposal`, is refused at
+   * `now`; null while it's valid.
+   */
+  expired: (expires: number, now: number, proposal: number) => string | null;
   /** Why a request that doesn't name its proposal (`checkConsentRequest`'s reason) is refused. */
   mismatch: (why: string) => string;
   /** Why a grant the approver gave (`grantMismatch`'s reason) can't be used. */
@@ -64,17 +68,16 @@ export type Asked =
   | { kind: 'pending'; code: string }
   | Refused;
 
-/** The refusal of a consent to `request` that has expired at `now`, or null while it's valid. */
+/** The refusal of the consent `a` asks for if it has expired at `now`, or null while it's valid. */
 function expiry(
-  request: ConsentRequest,
+  a: Pick<ConsentAsk, 'request' | 'proposal'>,
   now: number,
   words: AskWords,
 ): Refused | null {
-  const why = words.expired(request.expires, now);
+  const { expires } = a.request;
+  const why = words.expired(expires, now, a.proposal.expires);
 
-  return why
-    ? { kind: 'refused', why, expired: { expires: request.expires, now } }
-    : null;
+  return why ? { kind: 'refused', why, expired: { expires, now } } : null;
 }
 
 /**
@@ -90,7 +93,7 @@ async function askFor(s: AskStep): Promise<ConsentAsk | Refused> {
 
   const request = consentFrom(s.request, s.proposal);
   const now = s.clock();
-  const expired = expiry(request, now, s.words);
+  const expired = expiry({ request, proposal: s.proposal }, now, s.words);
 
   if (expired) {
     return expired;
@@ -100,7 +103,7 @@ async function askFor(s: AskStep): Promise<ConsentAsk | Refused> {
 
   return 'why' in parts
     ? { kind: 'refused', why: parts.why }
-    : { request, proposal: s.proposal, ...parts };
+    : { ...parts, request, proposal: s.proposal };
 }
 
 /**
@@ -114,7 +117,7 @@ async function checkAnswer(
   s: AskStep,
 ): Promise<Asked> {
   const now = s.clock();
-  const expired = expiry(ask.request, now, s.words);
+  const expired = expiry(ask, now, s.words);
 
   if (expired) {
     return expired;
@@ -135,7 +138,7 @@ export async function askConsent(s: AskStep): Promise<Asked> {
     return ask;
   }
 
-  const a = await s.approver(ask);
+  const a = await s.approver(structuredClone(ask));
 
   if ('pending' in a) {
     return { kind: 'pending', code: a.pending };
