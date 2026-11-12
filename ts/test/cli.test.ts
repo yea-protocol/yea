@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMMANDS } from '../src/cli/commands.js';
-import { decodeGrant } from '../src/grants.js';
+import { keyPair } from '../src/crypto.js';
+import { decodeGrant, issueGrant } from '../src/grants.js';
 import { fmtTime } from '../src/lens.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
@@ -416,6 +417,23 @@ describe('yea grant and yea inspect with a period', () => {
     const i = await yea(['inspect', g.out.trim()], env);
 
     expect(i.out).toContain(`periods:\n  block 0: ${line}\n`);
+  });
+
+  it('yea inspect works out a worst case past 2^53 exactly', async () => {
+    const principal = await keyPair();
+    const token = await issueGrant({
+      principal,
+      to: KEY,
+      caveats: [
+        { total: { of: 'buy', max: 1, every: 1 } },
+        { nbf: -(2 ** 53 - 1) },
+        { exp: 1_790_000_000 },
+      ],
+    });
+    const i = await yea(['inspect', token]);
+
+    // 2^53 − 1 + 1790000000 one-second periods; in floating point, one more.
+    expect(i.out).toContain(', at most 9007201044740991\n');
   });
 
   it("yea delegate prints its block's periods, and yea inspect ends every block's at the earliest exp", async () => {
