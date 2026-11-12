@@ -4,10 +4,13 @@
  * request against its proposal, refuse it if its consent has expired, build the ask, ask, refuse
  * an answer that comes back once the consent has expired, and check the grant. Both expiry
  * checks and the grant's are read by the one clock it's given. The approver is handed a copy of
- * the ask, so the answer is checked against the ask as built, whatever the approver does to it.
+ * the ask in plain data: the answer is checked against the ask as built, whatever the approver
+ * does to its copy, and a proposal kept behind a proxy (a page's reactive store) can be asked
+ * about.
  */
 import type { Approver, ConsentAsk } from '../consent-round.js';
 import type { ConsentRequest, Proposal } from '../types.js';
+import { plainCopy } from '../util.js';
 import { checkConsentRequest, consentFrom } from './check.js';
 import { grantMismatch } from './grant.js';
 
@@ -20,10 +23,14 @@ export interface Expiry {
 /** How an entry point says why the step refused, in its own words. */
 export interface AskWords {
   /**
-   * Why a consent valid until `expires`, to a proposal valid until `proposal`, is refused at
-   * `now`; null while it's valid.
+   * Why a consent valid until `expires`, to a proposal valid until `proposalExpires`, is refused
+   * at `now`; null while it's valid.
    */
-  expired: (expires: number, now: number, proposal: number) => string | null;
+  expired: (
+    expires: number,
+    now: number,
+    proposalExpires: number,
+  ) => string | null;
   /** Why a request that doesn't name its proposal (`checkConsentRequest`'s reason) is refused. */
   mismatch: (why: string) => string;
   /** Why a grant the approver gave (`grantMismatch`'s reason) can't be used. */
@@ -33,6 +40,7 @@ export interface AskWords {
 /** The rest of an ask, besides the consent to sign and its proposal. */
 type AskParts = Pick<ConsentAsk, 'agent' | 'lines' | 'reason'>;
 
+/** What the ask step is given: the request to ask about, how to build the ask, and who answers. */
 export interface AskStep {
   /** The consent request, as the service sent it or the code carries it. */
   request: ConsentRequest;
@@ -138,7 +146,7 @@ export async function askConsent(s: AskStep): Promise<Asked> {
     return ask;
   }
 
-  const a = await s.approver(structuredClone(ask));
+  const a = await s.approver(plainCopy(ask));
 
   if ('pending' in a) {
     return { kind: 'pending', code: a.pending };

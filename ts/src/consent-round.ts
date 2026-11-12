@@ -122,8 +122,8 @@ const AFTER_REQUEST = 'Commit again for a fresh one';
  * consent is told by what ran out: the proposal, or else the request.
  */
 const ROUND_WORDS: AskWords = {
-  expired: (expires, now, proposal) =>
-    expiredWhy('proposal', proposal, now, AFTER_PROPOSAL) ??
+  expired: (expires, now, proposalExpires) =>
+    expiredWhy('proposal', proposalExpires, now, AFTER_PROPOSAL) ??
     expiredWhy('consent request', expires, now, AFTER_REQUEST),
   mismatch: (why) => why,
   unusable: (why) => `the consent the approver gave can't be used: ${why}`,

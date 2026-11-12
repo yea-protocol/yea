@@ -26,6 +26,9 @@ import { expiringNote } from '../proposals.js';
 import type { Bridge } from '../state.js';
 import type { JobCall } from '../types.js';
 
+/** A round's refusal. */
+type Refused = Extract<RoundOutcome, { kind: 'refused' }>;
+
 /** Errors after which the pending proposals are gone, so a fresh INTENT is the way on. */
 const STALE = new Set(['not_found', 'expired', 'conflict']);
 
@@ -157,9 +160,6 @@ async function commitPending(
 
   return needsConsent(b, entry, p, out);
 }
-
-/** A round's refusal. */
-type Refused = Extract<RoundOutcome, { kind: 'refused' }>;
 
 /**
  * Why the round refused the service's consent request. An expired one is told without the

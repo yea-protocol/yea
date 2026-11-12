@@ -3120,12 +3120,14 @@ describe('consent requests (SPEC.md §6.6)', () => {
 
     expect(out.kind === 'refused' && out.why).toContain('its check failed');
 
-    // Pushing the expiry on, as the clock crosses it, doesn't keep the answer from being refused.
-    let shift = -1;
+    // Pushing the request's expiry on, as the clock crosses it, doesn't keep the answer from being
+    // refused. The request expires a minute before its proposal, so its expiry is what decides.
+    let shift = -61;
     const late = await round({
+      lie: (p) => patched({ expires: p.expires - 60 }),
       now: (p) => p.expires + shift,
       answer: editing((a) => {
-        shift = 0;
+        shift = -60;
         a.request.expires += 3600;
       }),
       consents,
@@ -3133,7 +3135,7 @@ describe('consent requests (SPEC.md §6.6)', () => {
 
     expect(late.out).toMatchObject({
       kind: 'refused',
-      why: proposalExpiredWhy(late.p.expires, late.p.expires),
+      why: requestExpiredWhy(late.p.expires - 60, late.p.expires - 60),
     });
     expect(late.commits).toHaveLength(1);
     expect(kept).toEqual([]);
@@ -3152,6 +3154,43 @@ describe('consent requests (SPEC.md §6.6)', () => {
       out.kind === 'reply' && out.reply.kind === 'ERROR' && out.reply.code,
     ).toBe('consent_required');
     expect(out.kind === 'reply' && out.consent).toMatch(/^pg1\./);
+  });
+
+  /** `v` behind proxies all the way down, as a Vue `reactive` store hands out what it holds. */
+  function proxied<T>(v: T): T {
+    if (typeof v !== 'object' || v === null) {
+      return v;
+    }
+
+    return new Proxy(v, { get: (t, k) => proxied(Reflect.get(t, k)) });
+  }
+
+  // #383: the approver is handed a copy of the ask. `structuredClone` made it at first, and that
+  // throws on a proxy, which is how the docs site's playground holds the proposals it was sent.
+  it("[C16] the approver's copy of the ask is plain data: a proposal behind proxies is asked about and committed, and edits to the copy's proposal don't reach the COMMIT (#383)", async () => {
+    const behind = await round({ shown: proxied, answer: yes });
+
+    expect(behind.asks).toHaveLength(1);
+    expect(behind.commits).toHaveLength(2);
+    expect(behind.out.kind === 'reply' && behind.out.reply.kind).toBe(
+      'RECEIPT',
+    );
+
+    const edited = await round({
+      answer: (a) => {
+        a.proposal.id = 'p_other';
+        a.proposal.summary = 'something else';
+
+        return yes(a);
+      },
+    });
+    const reply = edited.out.kind === 'reply' ? edited.out.reply : null;
+
+    expect(reply?.kind === 'RECEIPT' && reply.receipt).toMatchObject({
+      proposal: edited.p.id,
+      summary: edited.p.summary,
+    });
+    expect(edited.p.id).not.toBe('p_other');
   });
 
   /**
