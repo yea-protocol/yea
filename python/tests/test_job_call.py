@@ -132,6 +132,17 @@ def test_a_weekly_total_asks_in_the_week_it_filled_runs_in_the_next_until_that_f
     asyncio.run(go())
 
 
+def test_a_clock_in_fractional_seconds_is_floored_the_run_counts_in_the_period_of_its_whole_second():
+    async def go():
+        store, policy = FileLike(), _weekly_policy()
+        # Half a second before the second week: floored, it is in the first; rounded, in the second.
+        o = await job_call(_buy(30000, WEEK0 + WEEK - 0.5, policy), store)
+        assert o.kind == "run"
+        assert [h.key for h in o.held] == [_week_of(policy, WEEK0)]
+
+    asyncio.run(go())
+
+
 def test_a_weekly_reservation_released_after_the_week_ends_frees_that_week_only():
     async def go():
         store, policy = FileLike(), _weekly_policy()

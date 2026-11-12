@@ -60,15 +60,16 @@ export function ruledOut(
 
 /**
  * What a job call should do with these plans under this policy (SPEC-approval §2, §5).
- * Only `plans[0]` is ever run without asking. The clock is read once, so the usage read ahead,
- * the grant check and the reservations it returns all count in the same periods.
+ * Only `plans[0]` is ever run without asking. The clock is read once, in whole seconds, so the
+ * usage read ahead, the grant check and the reservations it returns all count in the same periods.
  */
 export async function decide(
   plans: HashedPlan[],
   policy: Policy,
   used: (k: LedgerKey) => bigint | Promise<bigint>,
-  now: number = unixNow(),
+  clock: number = unixNow(),
 ): Promise<Decision> {
+  const now = Math.floor(clock);
   const first = plans[0];
 
   if (!first) {

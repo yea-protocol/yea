@@ -29,7 +29,9 @@ export class Service {
   constructor(opts: ServiceOptions) {
     this.id = opts.id;
 
-    const now = opts.now ?? unixNow;
+    const clock = opts.now ?? unixNow;
+    // Read in whole seconds, as every time in a grant is: a period's start is worked out from it.
+    const now = () => Math.floor(clock());
 
     this.state = {
       id: opts.id,

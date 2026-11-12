@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -34,17 +36,17 @@ def ruled_out(p: HashedPlan, policy: Policy) -> Decision | None:
     return None
 
 
-def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], int], now: int) -> Decision:
-    """What a job call should do with these plans under this policy, at ``now`` (a policy loaded
-    earlier still expires on time). Only ``plans[0]`` can run. Its reservations carry the periods
-    the check worked out at ``now``, so an amount counts in the period that was checked."""
+def decide(plans: list[HashedPlan], policy: Policy, used: Callable[[LedgerKey], int], now: float) -> Decision:
+    """What a job call should do with these plans under this policy, at ``now`` in whole seconds (a
+    policy loaded earlier still expires on time). Only ``plans[0]`` can run. Its reservations carry
+    the periods the check worked out at ``now``, so an amount counts in the period that was checked."""
     if not plans:
         return Decision("nothing")
     first = plans[0]
     out = ruled_out(first, policy)
     if out is not None:
         return out
-    checked = _check(first, policy, used, now)
+    checked = _check(first, policy, used, math.floor(now))
     if isinstance(checked, str):
         return Decision("ask", checked)
     return Decision("run", plan=first, reserve=_reservations(first, checked.totals))

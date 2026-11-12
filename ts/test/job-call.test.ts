@@ -204,6 +204,18 @@ describe('a policy with a weekly total', async () => {
     expect(await store.used(weekOf(nextWeek))).toBe(P.exact(usd(50000)));
   });
 
+  it('a clock in fractional seconds is floored: the run counts in the period of its whole second', async () => {
+    const store = fileLike();
+    // Half a second before the second week: floored, it is in the first; rounded, in the second.
+    const o = await P.jobCall(buy(30000, nbf + WEEK - 0.5), store);
+
+    if (o.kind !== 'run') {
+      throw new Error(o.kind);
+    }
+
+    expect(o.held.map((h) => h.key)).toEqual([weekOf(nbf)]);
+  });
+
   it('a reservation released after the week ends frees that week only', async () => {
     const store = fileLike();
     const o = await P.jobCall(buy(30000, nbf + WEEK - 1), store);
