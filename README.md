@@ -196,7 +196,7 @@ plug in, but it kept the endpoint shape.
 verbs, reply kinds, errors, authorization model and a canonical text format for models.
 It's a peer of HTTP, not a wrapper around it.
 
-```
+```text
 agent ──INTENT "move my 1:1 with Ana to Thursday"────────────────▶ service
       ◀─PROPOSALS [p1] ~ event/e2.start 14:00 → Thu 15:00 · undo 1d · free
 agent ──COMMIT p1 + grant (signed by the human's key)───────────▶
@@ -245,7 +245,7 @@ agent ──UNDO r1 (the human changed their mind)──────────
 model reads. The human's taps are simulated in code. Excerpt from
 [this run's full transcript](docs/demo-transcript.txt):
 
-```
+```text
 1. 👤 human delegates to the agent with a policy, not a password:
    │ services: calendar.example, shop.example
    │ risk ≤ low · ≤ 40.00 USD per action · ≤ 100.00 USD total · expires in 8h
