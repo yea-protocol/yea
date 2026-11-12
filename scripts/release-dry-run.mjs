@@ -6,8 +6,8 @@
  * npm README is synced, that server.json matches its schema, that the npm
  * tarballs install into an empty project and work, and that the Python wheels
  * install and import. Every tarball must carry a README, and given a tag, no
- * packed README (npm's or an sdist's) may still say "Unreleased". Run it after
- * `npm run build`; it needs uv for the Python half.
+ * packed README (npm's or an sdist's) may still say the package is unreleased.
+ * Run it after `npm run build`; it needs uv for the Python half.
  * Usage: release-dry-run.mjs [<tag>]
  */
 import { mkdtempSync, rmSync } from 'node:fs';

@@ -8,10 +8,21 @@ import { sh } from './shell.mjs';
 
 /**
  * A line saying the package isn't out, however it's worded ("Unreleased", "Pre-release", "not
- * yet released", "isn't on npm"): the claim that goes stale once the version is published.
+ * yet released", "isn't on npm", "until it's published"): the claim that goes stale once the
+ * version is published.
  */
-const BANNER =
-  /\bunreleased\b|\bnot yet released\b|\bpre-?release\b|(n['’]t|\bnot) on (npm|pypi)\b/i;
+const BANNER = new RegExp(
+  [
+    /\bunreleased\b/,
+    /\bnot yet released\b/,
+    /\bpre-?release\b/,
+    /(n['’]t|\bnot) on (npm|pypi)\b/,
+    /\b(once|until) (it|they)(['’]s|['’]re| is| are) published\b/,
+  ]
+    .map((re) => re.source)
+    .join('|'),
+  'i',
+);
 
 /** A line for each npm pack (`{ name, paths }`, as `npm pack --json` lists it) without a README. */
 export function missingReadmes(packs) {

@@ -6,7 +6,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { fences } from './fences.mjs';
+import { fences, linesOf } from '../code-blocks.mjs';
 
 const MARKER = /^<!-- snippet: (\S+)#([\w-]+) -->$/;
 
@@ -56,7 +56,7 @@ function dedent(lines) {
  * (VitePress's rules), or undefined when the file has no such region.
  */
 export function region(root, file, name) {
-  const lines = readFileSync(join(root, file), 'utf8').split('\n');
+  const lines = linesOf(readFileSync(join(root, file), 'utf8'));
   const marker = regionMarker(file);
   const start = lines.findIndex((l) => marks(l, marker, ['region', name]));
   const end = lines.findIndex(
@@ -79,7 +79,7 @@ export function region(root, file, name) {
 export function snippets(md) {
   const blocks = fences(md);
 
-  return md.split('\n').flatMap((line, i) => {
+  return linesOf(md).flatMap((line, i) => {
     const m = MARKER.exec(line.trim());
 
     if (m === null) {
@@ -94,7 +94,7 @@ export function snippets(md) {
 
 /** The opening line of each code block in `md` that no snippet marker pins. */
 function unpinnedCode(md) {
-  const lines = md.split('\n');
+  const lines = linesOf(md);
 
   return fences(md)
     .filter(({ lang }) => !NOT_CODE.has(lang))

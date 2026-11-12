@@ -1,6 +1,6 @@
 /**
  * The READMEs: the root README, and each package's, which is its npm or PyPI page (#323).
- * Every code block in them is a pinned copy of a tested file's region
+ * Every fenced code block in them is a pinned copy of a tested file's region
  * (check-readmes/snippets.mjs), and each package page installs its package and links its own
  * guide and its own SPEC absolutely (check-readmes/page.mjs). ts/README.md isn't checked here:
  * it's the root README, synced (sync-readme.mjs).
@@ -79,7 +79,7 @@ export function readmeProblems(root) {
 
     return [
       ...snippetProblems(root, readme, md),
-      ...pageProblems(readme, page, md),
+      ...pageProblems(root, readme, page, md),
     ];
   });
 

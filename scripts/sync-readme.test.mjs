@@ -1,6 +1,7 @@
 /**
  * Tests for sync-readme.mjs: the SDK's npm README is in sync today, links in
- * every syntax become absolute, and an edited copy counts as drift.
+ * each syntax it reads become absolute while code is copied as it is, and an
+ * edited copy counts as drift.
  */
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -54,6 +55,70 @@ test('reference definitions and anchors become absolute; a footnote stays as it 
       `[s]: ${blob}SPEC.md`,
       '[^1]: see the spec',
     ].join('\n'),
+  );
+});
+
+test('titles, quotes and a definition on two lines keep their shape', () => {
+  const readme = [
+    '[spec](SPEC.md "the spec") <a href=\'docs/why.md\'>why</a> <a href=LICENSE>l</a>',
+    '',
+    '> [s]: docs/a.md',
+    '[t]:',
+    '  docs/b.md "B"',
+    '[u]: <docs/c.md>',
+    '',
+    '[Note]: this is prose, not a definition',
+  ].join('\n');
+  const blob = 'https://github.com/yea-protocol/yea/blob/main/';
+
+  assert.equal(
+    syncedReadme(repoWith(readme, '')),
+    [
+      `[spec](${blob}SPEC.md "the spec") <a href='${blob}docs/why.md'>why</a> <a href=${blob}LICENSE>l</a>`,
+      '',
+      `> [s]: ${blob}docs/a.md`,
+      '[t]:',
+      `  ${blob}docs/b.md "B"`,
+      `[u]: <${blob}docs/c.md>`,
+      '',
+      '[Note]: this is prose, not a definition',
+    ].join('\n'),
+  );
+});
+
+test('code, fenced or indented, is copied as it is; the text around it is not', () => {
+  const code = [
+    '```ts',
+    'interface Args {',
+    '  [key: string]: unknown;',
+    '}',
+    'const tools = {',
+    '  [refund.name]: refund,',
+    '};',
+    'await handlers[name](args);',
+    '```',
+    '',
+    '    <a href="/pricing">pricing</a>',
+    '    [k]: v',
+    '',
+  ];
+  const text = (blob) => [
+    '- a step',
+    '',
+    `    [the spec](${blob}SPEC.md), indented as the step's text`,
+    '',
+    `[spec](${blob}SPEC.md)`,
+  ];
+  const blob = 'https://github.com/yea-protocol/yea/blob/main/';
+  const readme = [...code, ...text('')].join('\n');
+
+  assert.equal(
+    syncedReadme(repoWith(readme, '')),
+    [...code, ...text(blob)].join('\n'),
+  );
+  assert.equal(
+    syncedReadme(repoWith(readme.replaceAll('\n', '\r\n'), '')),
+    [...code, ...text(blob)].join('\r\n'),
   );
 });
 

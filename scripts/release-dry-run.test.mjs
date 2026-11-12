@@ -247,12 +247,17 @@ test('a packed README that says it is unreleased in other words fails too', () =
     '> **Not yet released.**',
     "`yea-x` isn't on PyPI yet.",
     'The SDKs aren’t on npm or PyPI yet.',
+    'Not on npm yet.',
+    'A prerelease build.',
+    "Once they're published, each SDK installs with one command:",
+    'The install fails until it’s published.',
     'Released under Apache-2.0; see the release notes.',
+    'A version, once published, can’t change.',
   ];
   const archive = archiveWith({ 'package/README.md': lines.join('\n') });
 
   assert.deepEqual(unreleasedReadme('a', archive, 'package/README.md'), [
-    `a: ${SAYS} (line 1, 2, 3, 4, 5, 6); take the banners out before the tag`,
+    `a: ${SAYS} (line 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); take the banners out before the tag`,
   ]);
 });
 

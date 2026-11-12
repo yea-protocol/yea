@@ -1,10 +1,12 @@
 /**
  * A package README as its npm or PyPI page (#323): it installs its package in a shell block,
- * links its own guide and its own SPEC with absolute URLs, and has no relative link, which npm
- * and PyPI can't follow.
+ * links its own guide and its own SPEC with absolute URLs (and both are in the repo), and has no
+ * relative link outside code, which npm and PyPI can't follow.
  */
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fences } from '../code-blocks.mjs';
 import { links, relativeLinks } from '../sync-readme.mjs';
-import { fences } from './fences.mjs';
 
 const GUIDES = 'https://yea-protocol.github.io/yea/guide/';
 const REPO = 'https://github.com/yea-protocol/yea/blob/main/';
@@ -55,11 +57,26 @@ function missingLinks(md, { guide, spec }) {
     .map(([what, url]) => `no absolute link to its ${what} (${url})`);
 }
 
+/** A line for each of the package's `guide` and `spec` that isn't under `root`: its link is dead. */
+function deadLinks(root, { guide, spec }) {
+  const targets = [
+    ['guide', `site/guide/${guide}.md`],
+    ['SPEC', spec],
+  ];
+
+  return targets
+    .filter(([, path]) => !existsSync(join(root, path)))
+    .map(
+      ([what, path]) =>
+        `its ${what}, ${path}, is missing; fix LINKS in scripts/check-readmes.mjs`,
+    );
+}
+
 /**
  * A line for each way the README `readme`, whose text is `md`, fails as the page of the package
- * `page`: its name, its guide's slug on the site, and its SPEC's path in the repo.
+ * `page` in the repo at `root`: its name, its guide's slug on the site, and its SPEC's path.
  */
-export function pageProblems(readme, page, md) {
+export function pageProblems(root, readme, page, md) {
   const { name, guide, spec } = page;
 
   if (guide === undefined || spec === undefined) {
@@ -75,7 +92,10 @@ export function pageProblems(readme, page, md) {
     (link) => `a relative link npm and PyPI can't follow: ${link}`,
   );
 
-  return [...install, ...missingLinks(md, page), ...relative].map(
-    (p) => `${readme}: ${p}`,
-  );
+  return [
+    ...install,
+    ...missingLinks(md, page),
+    ...deadLinks(root, page),
+    ...relative,
+  ].map((p) => `${readme}: ${p}`);
 }

@@ -148,7 +148,8 @@ The README's first screen is for someone who builds MCP servers (#324); the prot
   the "Unreleased" banner, which says to install from the repo. The release removes the banner,
   the regions' notices and the badges' comment before the tag (#319): a published version's npm
   and PyPI pages can't change, so the dry run, given the tag, fails while any packed README still
-  says the package is unreleased ("Unreleased", "Pre-release", "isn't on npm" and the like).
+  says the package is unreleased ("Unreleased", "Pre-release", "isn't on npm", "until it's
+  published" and the like).
 - **ts/README.md** stays synced from it (`scripts/sync-readme.mjs`), so the SDK's npm page is this
   README; it has no page of its own (§6).
 
@@ -238,10 +239,12 @@ Every other package we publish has a README that is its npm or PyPI page (#323):
     so it skips on Node 20).
 - **Drift checks** in CI:
   - every README's snippets against the examples' regions (`scripts/check-readmes.mjs`), for the
-    README and each package page: a code block (any fence, indented or quoted, in any language
-    but shell, config, output or a diagram) is a pinned region or isn't there, and a package
-    page also installs its package outside a comment or a banner, links its own guide and SPEC
-    absolutely and has no relative link in any syntax;
+    README and each package page: a fenced code block (backticks or tildes, under a list item
+    or in a quote, in any language but shell, config, output or a diagram) is a pinned region or
+    isn't there, and a package page also installs its package outside a comment or a banner,
+    links its own guide and SPEC absolutely (and both exist), and has no relative link outside
+    code (fenced or indented) in an inline link, a reference definition, or an HTML `src`,
+    `srcset` or `href`;
   - the release dry run: every npm tarball carries a README, and, given a tag, no packed README
     (npm's or an sdist's) says the package is unreleased;
   - the install and run lines adopters follow (`site/test/instructions.test.mjs`): zod pinned
