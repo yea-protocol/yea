@@ -477,6 +477,15 @@ const inPeriod = (id, start, cents, every = WEEK) => ({
 });
 const buy = (at, extra = {}) => ({ ...c(commit(2000), extra), now: at });
 const asksAt = (at) => ({ ...ask, now: at });
+/** A fail-closed case twice, on ASK and on a COMMIT: `forbidden`, with `reason` if it is given. */
+const onAskAndCommit = (name, token, reason, holder = agent.public) => {
+  const expect = reason === undefined ? forbidden : refused(reason);
+
+  return [
+    [name, token, holder, ask, expect],
+    [`${name} on COMMIT too`, token, holder, buy(now), expect],
+  ];
+};
 /** A `totals` entry: where a COMMIT counts, and its ceiling in exact units. */
 const countsIn = (block, cents, period) => ({
   key: { block, of: 'spend', ...(period ? { period } : {}) },
@@ -575,10 +584,59 @@ const weekToken = await periodic('n41', [
   { nbf: anchor },
   { exp: anchor + WEEK },
 ]);
+// An `exp` in a later block ends the grant sooner, but never meets the end rule: its holder wrote it.
+const laterExp = await P.delegateGrant(noExp, {
+  holder: agent,
+  to: sub.public,
+  iat: anchor,
+  caveats: [{ exp: MAX_SAFE }],
+});
+const ownLaterExp = await P.delegateGrant(noExp, {
+  holder: agent,
+  to: agent.public,
+  iat: anchor,
+  caveats: [{ exp: MAX_SAFE }],
+});
+// "starts again" names a time Lens can show: the last one is 9999-12-31T23:59:59Z (SPEC §9.2).
+const LAST_LENS_TIME = 253402300799;
+const toLastTime = LAST_LENS_TIME - anchor;
+const lastStart = (nonce, every) =>
+  periodic(nonce, [
+    { total: usd(50000, every) },
+    { nbf: anchor },
+    { exp: MAX_SAFE },
+  ]);
+const endsAtLastTime = await lastStart('n43', toLastTime);
+const endsPastLastTime = await lastStart('n44', toLastTime + 1);
+// "starts again" is left out when the grant's earliest `exp`, in any block, comes first.
+const twoExps = async (nonce, rootExp, delegationExp) =>
+  P.delegateGrant(
+    await periodic(nonce, [
+      { total: usd(50000, WEEK) },
+      { nbf: anchor },
+      { exp: rootExp },
+    ]),
+    {
+      holder: agent,
+      to: sub.public,
+      iat: anchor,
+      caveats: [{ exp: delegationExp }],
+    },
+  );
+const delegationEndsFirst = await twoExps(
+  'n45',
+  anchor + 13 * WEEK,
+  anchor + 5 * DAY,
+);
+const rootEndsFirst = await twoExps(
+  'n46',
+  anchor + 5 * DAY,
+  anchor + 13 * WEEK,
+);
 const forbidden = { ok: false, code: 'forbidden' };
 const refused = (reason) => ({ ...forbidden, reason });
 const NO_ANCHOR = 'a total with every needs exactly one nbf in its block';
-const NO_END = 'a total with every needs an exp in the grant';
+const NO_END = 'a total with every needs an exp in its block or an earlier one';
 const asks = (reason) => ({ ok: false, code: 'consent_required', reason });
 const weekFull =
   'spend would pass the total limit of 500.00 USD every 7d (starts again 2026-09-26T00:00Z)';
@@ -681,41 +739,34 @@ const periodCases = [
     }),
     asks('spend would pass the total limit of 1000.00 USD'),
   ],
-  [
+  ...onAskAndCommit(
     'periods: a block with no nbf fails closed',
     noNbf,
-    agent.public,
-    ask,
-    refused(NO_ANCHOR),
-  ],
-  [
+    NO_ANCHOR,
+  ),
+  ...onAskAndCommit(
     'periods: a block with nbf twice fails closed',
     twoNbf,
-    agent.public,
-    ask,
-    refused(NO_ANCHOR),
-  ],
-  [
+    NO_ANCHOR,
+  ),
+  ...onAskAndCommit(
     'periods: an nbf in another block is not the anchor',
     nbfElsewhere,
+    NO_ANCHOR,
     sub.public,
-    ask,
-    refused(NO_ANCHOR),
-  ],
-  [
-    'periods: a grant with no exp fails closed',
-    noExp,
-    agent.public,
-    ask,
-    refused(NO_END),
-  ],
-  [
-    'periods: a grant with no exp fails closed on COMMIT too',
-    noExp,
-    agent.public,
-    buy(now),
-    refused(NO_END),
-  ],
+  ),
+  ...onAskAndCommit('periods: a grant with no exp fails closed', noExp, NO_END),
+  ...onAskAndCommit(
+    'periods: an exp in a later block is not the end',
+    laterExp,
+    NO_END,
+    sub.public,
+  ),
+  ...onAskAndCommit(
+    'periods: an exp the holder adds for itself is not the end',
+    ownLaterExp,
+    NO_END,
+  ),
   [
     "periods: a delegation's nbf doesn't move the root's periods",
     laterNbf,
@@ -753,30 +804,27 @@ const periodCases = [
       ],
     },
   ],
-  ...(await Promise.all(
-    badEvery.map(async ([name, every], i) => [
-      `periods: an every that is ${name} fails closed`,
-      await withEvery(`n5${i}`, every),
-      agent.public,
-      ask,
-      i === 0
-        ? refused(
-            'malformed caveat {"total":{"every":0,"max":50000,"of":"spend","scale":2,"unit":"USD"}}',
-          )
-        : forbidden,
-    ]),
-  )),
-  [
+  ...(
+    await Promise.all(
+      badEvery.map(async ([name, every], i) =>
+        onAskAndCommit(
+          `periods: an every that is ${name} fails closed`,
+          await withEvery(`n5${i}`, every),
+          i === 0
+            ? 'malformed caveat {"total":{"every":0,"max":50000,"of":"spend","scale":2,"unit":"USD"}}'
+            : undefined,
+        ),
+      ),
+    )
+  ).flat(),
+  ...onAskAndCommit(
     'periods: every on each fails closed',
     await periodic('n42', [
       { each: usd(50000, WEEK) },
       { nbf: anchor },
       { exp: anchor + WEEK },
     ]),
-    agent.public,
-    ask,
-    forbidden,
-  ],
+  ),
   [
     'periods: every 1 from nbf −(2^53−1): exact integers',
     daily,
@@ -807,6 +855,47 @@ const periodCases = [
     asks(
       'spend would pass the total limit of 500.00 USD every 9007199254740991s',
     ),
+  ],
+  [
+    'periods: a next start of 9999-12-31T23:59:59Z, the last Lens time, is shown',
+    endsAtLastTime,
+    agent.public,
+    buy(now, {
+      used: inPeriod(await idOf(endsAtLastTime), anchor, 50000, toLastTime),
+    }),
+    asks(
+      `spend would pass the total limit of 500.00 USD every ${toLastTime}s (starts again 9999-12-31T23:59:59Z)`,
+    ),
+  ],
+  [
+    'periods: a next start a second past the last Lens time is left out',
+    endsPastLastTime,
+    agent.public,
+    buy(now, {
+      used: inPeriod(
+        await idOf(endsPastLastTime),
+        anchor,
+        50000,
+        toLastTime + 1,
+      ),
+    }),
+    asks('spend would pass the total limit of 500.00 USD every 2912182d'),
+  ],
+  [
+    "periods: a delegation's exp before the next start leaves it out",
+    delegationEndsFirst,
+    sub.public,
+    buy(now, {
+      used: inPeriod(await idOf(delegationEndsFirst), anchor, 50000),
+    }),
+    asks('spend would pass the total limit of 500.00 USD every 7d'),
+  ],
+  [
+    "periods: the root's exp before the next start leaves it out, under a later delegation exp",
+    rootEndsFirst,
+    sub.public,
+    buy(now, { used: inPeriod(await idOf(rootEndsFirst), anchor, 50000) }),
+    asks('spend would pass the total limit of 500.00 USD every 7d'),
   ],
   [
     'periods: every 2^53−1 counts from nbf',
@@ -844,6 +933,10 @@ const unauthorizedEvery = await Promise.all([
   malformed(
     'periods: an every written with an exponent',
     respelled(weekToken, `"every":${WEEK}`, '"every":6.048e5'),
+  ),
+  malformed(
+    'periods: an every written with a fraction part',
+    respelled(weekToken, `"every":${WEEK}`, `"every":${WEEK}.0`),
   ),
 ]);
 const cases = [

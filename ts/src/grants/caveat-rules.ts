@@ -43,7 +43,7 @@ export function malformed(
     return 'unknown risk on the proposal';
   }
 
-  if (k === 'total' && (v as Limit).every !== undefined) {
+  if (k === 'total' && isPeriodic(v)) {
     const why = unperiodic(env);
 
     if (why) {
@@ -60,16 +60,22 @@ export function malformed(
     : null;
 }
 
+/** A well-formed `total` whose limit has `every`. */
+const isPeriodic = (v: unknown): boolean => isTotal(v) && v.every !== undefined;
+
 /**
  * Why a `total` with `every` can't count in periods in this grant (SPEC §6.3), on any verb: its
- * block hasn't exactly one `nbf` to count them from, or the grant has no `exp` to end them.
+ * block hasn't exactly one `nbf` to count them from, or neither it nor an earlier block has an
+ * `exp` to end them. A later block's `exp` doesn't count: its holder wrote it.
  */
-function unperiodic({ anchor, end }: CaveatEnv): string | null {
+function unperiodic({ anchor, bound }: CaveatEnv): string | null {
   if (anchor === null) {
     return 'a total with every needs exactly one nbf in its block';
   }
 
-  return end === null ? 'a total with every needs an exp in the grant' : null;
+  return bound === null
+    ? 'a total with every needs an exp in its block or an earlier one'
+    : null;
 }
 
 /** ` (starts again …)`, when the period after `p` starts before the grant ends; else nothing. */
@@ -97,7 +103,9 @@ export interface CaveatEnv {
   blockId: string;
   /** The block's one `nbf`, which its periodic totals count from; null if it hasn't one. */
   anchor: number | null;
-  /** The grant's earliest `exp`; null if it has none. */
+  /** The earliest `exp` in this block or an earlier one, which a periodic total needs; null if none. */
+  bound: number | null;
+  /** The grant's earliest `exp`, in any block: when the grant, and its last period, ends. */
   end: number | null;
 }
 

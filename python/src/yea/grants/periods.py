@@ -7,13 +7,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple
 
-from ..lens import fmt_duration, fmt_time
+from ..lens import fmt_duration, fmt_time, is_lens_time
 from ..uses import fmt_quantity, is_total
 from .token import _safe_int
-
-# 9999-12-31T23:59:59Z, the last time Lens shows (SPEC §9.2).
-_MAX_TIME = 253402300799
-
 
 class Period(NamedTuple):
     """The period of a ``total`` with ``every`` that a COMMIT counts in: its length and its start."""
@@ -50,7 +46,8 @@ def anchor_of(block: Mapping[str, Any]) -> int | None:
 
 
 def end_of(blocks: Iterable[Mapping[str, Any]]) -> int | None:
-    """The earliest ``exp`` in a grant's blocks: when it, and its last period, ends. None with none."""
+    """The earliest ``exp`` in ``blocks``; for all of a grant's, when it and its last period end.
+    None with none."""
     exps = [v for b in blocks for v in _values(b["p"]["caveats"], "exp") if _safe_int(v)]
     return min(exps) if exps else None
 
@@ -89,7 +86,7 @@ def next_start(p: Period, end: int | None) -> int | None:
     """When the period after ``p`` starts, if that is before the grant ends at ``end`` and a time
     Lens can show (SPEC §9.2); otherwise None."""
     nxt = p.start + p.every
-    return nxt if 0 <= nxt <= _MAX_TIME and (end is None or nxt < end) else None
+    return nxt if is_lens_time(nxt) and (end is None or nxt < end) else None
 
 
 def starts_again(p: Period | None, end: int | None) -> str:

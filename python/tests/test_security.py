@@ -1187,12 +1187,33 @@ def test_405_a_block_with_a_periodic_total_needs_exactly_one_nbf_of_its_own_on_e
     assert _code(_check(_policy({"nbf": T0 - DAY}, {"nbf": T0 - 2 * DAY}), verb="ASK")) == "ok"
 
 
-def test_405_a_grant_with_a_periodic_total_needs_an_exp_in_any_block_on_every_verb():
+def test_405_a_periodic_totals_exp_is_in_its_block_or_an_earlier_one_a_holder_cant_add_its_own_end():
+    no_end = "a total with every needs an exp in its block or an earlier one"
     endless = _policy({"total": _usd(100, WEEK)}, {"nbf": T0 - DAY})
-    ended = delegate_grant(endless, AGENT, SUB.public, [{"exp": T0 + WEEK}])
+    # The holder appends the latest exp there is, for a sub-agent or for itself.
+    for_sub = delegate_grant(endless, AGENT, SUB.public, [{"exp": 2**53 - 1}])
+    for_self = delegate_grant(endless, AGENT, AGENT.public, [{"exp": 2**53 - 1}])
+    # A delegation's own periodic total is ended by the root's exp, an earlier block's.
+    rooted = delegate_grant(
+        _policy({"nbf": T0 - DAY}, {"exp": T0 + WEEK}), AGENT, SUB.public,
+        [{"total": _usd(100, DAY)}, {"nbf": T0 - DAY}],
+    )
     for verb in ("ASK", "COMMIT"):
         assert _code(_check(endless, verb=verb)) == "forbidden"
-        assert _code(_check(ended, verb=verb, holder=SUB.public)) == "ok"
+        for grant, holder in ((for_sub, SUB.public), (for_self, AGENT.public)):
+            r = _check(grant, verb=verb, holder=holder)
+            assert (r.code, r.reason) == ("forbidden", no_end), verb
+        assert _code(_check(rooted, verb=verb, holder=SUB.public)) == "ok"
+
+
+def test_405_a_clock_that_isnt_a_whole_second_is_refused_with_or_without_a_period():
+    exp = {"exp": T0 + WEEK}
+    lifetime = _policy({"total": _usd(100)}, exp)
+    weekly = _policy({"total": _usd(100, WEEK)}, {"nbf": T0 - DAY}, exp)
+    for grant in (lifetime, weekly):
+        r = _check(grant, now=T0 + 0.5)
+        assert (r.code, r.reason) == ("forbidden", f"the time to check at is not a whole second: {T0 + 0.5}")
+        assert _code(_check(grant)) == "ok"
 
 
 def test_405_a_delegation_blocks_nbf_never_moves_the_roots_periods():

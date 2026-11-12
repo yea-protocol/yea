@@ -2,6 +2,7 @@
  * Lens formatting helpers (SPEC §9.2): times, durations and effect lines.
  */
 import type { Effect } from '../types.js';
+import { isSafeInt } from '../util.js';
 import { scalar } from './notation.js';
 
 const SYM: Record<string, string> = {
@@ -12,14 +13,12 @@ const SYM: Record<string, string> = {
   other: '*',
 };
 
-const isInteger = (v: unknown): v is number => Number.isSafeInteger(v);
-
 /** 9999-12-31T23:59:59Z: past it the ISO form needs a six-digit year. */
 const MAX_TIME = 253402300799;
 
 /** Whether `v` is a time Lens renders as a time (SPEC §9.2): an integer in [0, 9999-12-31T23:59:59Z]. */
 export const isLensTime = (v: unknown): v is number =>
-  isInteger(v) && v >= 0 && v <= MAX_TIME;
+  isSafeInt(v) && v >= 0 && v <= MAX_TIME;
 
 /**
  * A Unix time as UTC `YYYY-MM-DDTHH:MM[:SS]Z` (SPEC §9.2). Anything but an integer in
@@ -41,7 +40,7 @@ export function fmtTime(unix: unknown): string {
  * safe integer renders as its lean scalar instead.
  */
 export function fmtDuration(s: unknown): string {
-  if (!isInteger(s)) {
+  if (!isSafeInt(s)) {
     return scalar(s);
   }
 

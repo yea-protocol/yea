@@ -4,7 +4,7 @@
  */
 import { isLensTime } from '../lens.js';
 import { isTotal, type Limit } from '../uses.js';
-import { isObject } from '../util.js';
+import { isObject, isSafeInt } from '../util.js';
 import type { LedgerKey, Period } from './context.js';
 
 /** A block's caveats, decoded but not yet validated. */
@@ -18,18 +18,14 @@ const valuesOf = (b: Caveats, k: string): unknown[] =>
 
 /** A block's one `nbf`, which its periodic totals count from; null with none, several, or a malformed one. */
 export function anchorOf(b: Caveats): number | null {
-  const nbf = valuesOf(b, 'nbf');
+  const [nbf, ...more] = valuesOf(b, 'nbf');
 
-  return nbf.length === 1 && Number.isSafeInteger(nbf[0])
-    ? (nbf[0] as number)
-    : null;
+  return more.length === 0 && isSafeInt(nbf) ? nbf : null;
 }
 
-/** The earliest `exp` in a grant's blocks: when it, and its last period, ends. Null with none. */
+/** The earliest `exp` in `blocks`; for all of a grant's, when it and its last period end. Null with none. */
 export function endOf(blocks: Caveats[]): number | null {
-  const exps = blocks
-    .flatMap((b) => valuesOf(b, 'exp'))
-    .filter((v): v is number => Number.isSafeInteger(v));
+  const exps = blocks.flatMap((b) => valuesOf(b, 'exp')).filter(isSafeInt);
 
   return exps.length ? Math.min(...exps) : null;
 }

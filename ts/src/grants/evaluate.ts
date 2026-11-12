@@ -72,12 +72,15 @@ export async function evaluateCaveats(
 ): Promise<CaveatResults> {
   const t = ctx.now ?? unixNow();
   const p = ctx.verb === 'COMMIT' ? ctx.proposal : undefined;
-  const end = endOf(blocks.map((b) => b.p));
+  const payloads = blocks.map((b) => b.p);
+  const end = endOf(payloads);
   const out: CaveatResults = { hard: [], soft: [], totals: [] };
 
-  for (const b of blocks) {
+  for (const [i, b] of blocks.entries()) {
     const anchor = anchorOf(b.p);
-    const env = { ctx, t, p, blockId: await blockId(b), anchor, end };
+    // A later block's `exp` can only shorten the grant: it never ends this block's periods.
+    const bound = endOf(payloads.slice(0, i + 1));
+    const env = { ctx, t, p, blockId: await blockId(b), anchor, bound, end };
     const caveats: unknown[] = b.p.caveats; // decoded but not yet validated
 
     for (const c of caveats) {

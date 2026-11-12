@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,13 +37,21 @@ class Denial:
     hard: bool
 
 
-def limit_denial(
-    name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int = 0, after: str = ""
-) -> Denial | None:
+def limit_denial(name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int = 0) -> Denial | None:
     """Why an ``each`` or ``total`` limit fails for a proposal, or None if it holds. A present
     but malformed ``uses`` (including null) is hard. ``already`` is the exact value committed
-    or reserved against the total's ledger key, and ``after`` what a refusal over it adds, such as
-    when its next period starts (``total`` only)."""
+    or reserved against the total's ledger key (``total`` only)."""
+    if name == "each":
+        return _over_limit(limit, proposal, 0, lambda shown: f"over the per-commit limit of {shown}")
+    return _over_limit(limit, proposal, already, lambda shown: f"would pass the total limit of {shown}")
+
+
+def _over_limit(
+    limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int, breaks: Callable[[str], str]
+) -> Denial | None:
+    """Why ``limit``, with ``already`` counted against it, fails for a proposal, in the words
+    ``breaks`` gives for the limit as Lens shows it; or None if it holds. Like overLimit in
+    ts/src/grants/limits.ts."""
     if "uses" not in proposal:
         return None
     uses = proposal["uses"]
@@ -55,11 +63,8 @@ def limit_denial(
         return None  # limits bind only what is reported
     if not same_unit(q, limit):
         return Denial(f"{of} is in {q.get('unit') or 'no unit'}, but the limit is in {limit.get('unit') or 'no unit'}", hard=False)
-    shown = fmt_limit(limit)
-    if name == "each" and value(q) > limit_value(limit):
-        return Denial(f"{of} over the per-commit limit of {shown}", hard=False)
-    if name == "total" and already + value(q) > limit_value(limit):
-        return Denial(f"{of} would pass the total limit of {shown}{after}", hard=False)
+    if already + value(q) > limit_value(limit):
+        return Denial(f"{of} {breaks(fmt_limit(limit))}", hard=False)
     return None
 
 
@@ -87,11 +92,14 @@ def well_formed(caveat: Any) -> bool:
 
 @dataclass(frozen=True)
 class BlockFacts:
-    """What a caveat needs from the rest of its grant: its block's one ``nbf``, which a periodic
-    ``total`` counts from, and the grant's earliest ``exp``, which ends its periods (SPEC §6.3).
-    None means there isn't one."""
+    """What a caveat needs from the rest of its grant (SPEC §6.3), None where there isn't one:
+    ``anchor``, its block's one ``nbf``, which a periodic ``total`` counts from; ``bound``, the
+    earliest ``exp`` in its block or an earlier one, which a periodic ``total`` needs (a later
+    block's was written by its holder); ``end``, the grant's earliest ``exp`` in any block, when
+    the grant and its last period end."""
 
     anchor: int | None = None
+    bound: int | None = None
     end: int | None = None
 
 
@@ -125,10 +133,11 @@ def caveat_denial(caveat: Any, bid: str, ctx: GrantContext, facts: BlockFacts = 
 
 def _unperiodic(facts: BlockFacts) -> str | None:
     """Why a ``total`` with ``every`` can't count in periods in this grant (§6.3): its block hasn't
-    exactly one ``nbf`` to count them from, or the grant has no ``exp`` to end them."""
+    exactly one ``nbf`` to count them from, or neither it nor an earlier block has an ``exp`` to
+    end them."""
     if facts.anchor is None:
         return "a total with every needs exactly one nbf in its block"
-    return "a total with every needs an exp in the grant" if facts.end is None else None
+    return "a total with every needs an exp in its block or an earlier one" if facts.bound is None else None
 
 
 def _total_denial(limit: Mapping[str, Any], bid: str, ctx: GrantContext, facts: BlockFacts) -> Denial | None:
@@ -136,8 +145,10 @@ def _total_denial(limit: Mapping[str, Any], bid: str, ctx: GrantContext, facts: 
     key = ledger_key(bid, limit, facts.anchor, ctx.now)
     if key is None:
         return None  # before the block's nbf, which denies the request; this counts nothing
-    after = starts_again(key.period, facts.end)
-    return limit_denial("total", limit, ctx.proposal or {}, int(ctx.used.get(key, 0)), after)
+    again = starts_again(key.period, facts.end)
+    return _over_limit(
+        limit, ctx.proposal or {}, int(ctx.used.get(key, 0)), lambda shown: f"would pass the total limit of {shown}{again}"
+    )
 
 
 def _denial(name: str, arg: Any, ctx: GrantContext) -> str | None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -12,7 +12,7 @@ from ..uses import limit_value
 from .caveats import BlockFacts, caveat_denial
 from .context import GrantContext
 from .periods import TotalLimit, anchor_of, end_of, ledger_key
-from .token import Grant, block_id, decode_grant
+from .token import Grant, _safe_int, block_id, decode_grant
 
 Trusted = Iterable[str] | Callable[[str], bool]
 
@@ -50,6 +50,10 @@ def verify_grant(
     """Verify one grant for one request (SPEC §6.4). Never raises."""
     if not isinstance(ctx, GrantContext):
         ctx = GrantContext.from_dict(ctx)
+    # Every time a grant holds is whole seconds, and a period's start is worked out from this one.
+    if not _safe_int(ctx.now):
+        why = f"the time to check at is not a whole second: {ctx.now}"
+        return Verification(False, "forbidden", why, reason=why)
     try:
         g = token if isinstance(token, Grant) else decode_grant(token)
     except ValueError as e:
@@ -77,12 +81,11 @@ def verify_grant(
         return Verification(False, "unauthorized", "the proof key is not the grant's holder", g,
                             reason="proof key is not the grant holder")
 
-    end = end_of(g.blocks)
     denials = [
         (c, d)
-        for b in g.blocks
+        for i, b in enumerate(g.blocks)
         for c in b["p"]["caveats"]
-        if (d := caveat_denial(c, block_id(b), ctx, BlockFacts(anchor_of(b), end)))
+        if (d := caveat_denial(c, block_id(b), ctx, _facts(g.blocks, i)))
     ]
     if not ctx.limits:  # only the limits deny softly: who may act is decided by the hard denials
         denials = [(c, d) for c, d in denials if d.hard]
@@ -96,6 +99,12 @@ def verify_grant(
     shown = ", ".join(d.why for _, d in denials[:3])
     return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g,
                         [c for c, _ in denials], reason="; ".join(d.why for _, d in denials))
+
+
+def _facts(blocks: Sequence[Mapping[str, Any]], i: int) -> BlockFacts:
+    """What block ``i``'s caveats need from the rest of the grant. A later block's ``exp`` only
+    shortens the grant: it never ends block ``i``'s periods."""
+    return BlockFacts(anchor_of(blocks[i]), end_of(blocks[: i + 1]), end_of(blocks))
 
 
 def _totals(g: Grant, ctx: GrantContext) -> list[TotalLimit]:

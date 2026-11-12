@@ -5634,23 +5634,68 @@ describe('a total that counts in periods (#405)', () => {
     ).toBe('ok');
   });
 
-  it('a grant with a periodic total needs an exp, in any block, on every verb', async () => {
+  it("a periodic total's exp is in its block or an earlier one: a holder can't add its own end", async () => {
+    const NO_END =
+      'a total with every needs an exp in its block or an earlier one';
     const endless = await policy([
       { total: usd(100, WEEK) },
       { nbf: T0 - DAY },
     ]);
-    const ended = await P.delegateGrant(endless, {
-      holder: agent,
-      to: otherAgent.public,
-      caveats: [{ exp: T0 + WEEK }],
-    });
+    const endedBy = (holder: P.KeyPair, to: string, caveats: P.Caveat[]) =>
+      P.delegateGrant(endless, { holder, to, caveats });
+    // The holder appends the latest exp there is, for a sub-agent or for itself.
+    const forSub = await endedBy(agent, otherAgent.public, [
+      { exp: 2 ** 53 - 1 },
+    ]);
+    const forSelf = await endedBy(agent, agent.public, [{ exp: 2 ** 53 - 1 }]);
+    // A delegation's own periodic total is ended by the root's exp, an earlier block's.
+    const rooted = await P.delegateGrant(
+      await policy([{ nbf: T0 - DAY }, { exp: T0 + WEEK }]),
+      {
+        holder: agent,
+        to: otherAgent.public,
+        caveats: [{ total: usd(100, DAY) }, { nbf: T0 - DAY }],
+      },
+    );
 
     for (const verb of ['ASK', 'COMMIT'] as const) {
       expect(await codeOn(endless, verb), verb).toBe('forbidden');
 
-      const r = await check(ended, { verb, holder: otherAgent.public });
+      for (const [grant, holder] of [
+        [forSub, otherAgent.public],
+        [forSelf, agent.public],
+      ] as const) {
+        const r = await check(grant, { verb, holder });
+
+        expect(!r.ok && [r.code, r.reason], verb).toEqual([
+          'forbidden',
+          NO_END,
+        ]);
+      }
+
+      const r = await check(rooted, { verb, holder: otherAgent.public });
 
       expect(r.ok ? 'ok' : r.code, verb).toBe('ok');
+    }
+  });
+
+  it("a clock that isn't a whole second is refused, with or without a period", async () => {
+    const exp = { exp: T0 + WEEK };
+    const lifetime = await policy([{ total: usd(100) }, exp]);
+    const weekly = await policy([
+      { total: usd(100, WEEK) },
+      { nbf: T0 - DAY },
+      exp,
+    ]);
+
+    for (const grant of [lifetime, weekly]) {
+      const r = await check(grant, { now: T0 + 0.5 });
+
+      expect(!r.ok && [r.code, r.reason]).toEqual([
+        'forbidden',
+        `the time to check at is not a whole second: ${T0 + 0.5}`,
+      ]);
+      expect(await codeOn(grant, 'COMMIT')).toBe('ok');
     }
   });
 
