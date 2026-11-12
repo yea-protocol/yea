@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as P from '../src/index.js';
+import { fmtTime } from '../src/lens.js';
 import { connect } from '../src/node.js';
 
 const pyDir = fileURLToPath(new URL('../../python', import.meta.url));
@@ -15,13 +16,15 @@ const ready =
 
 /** serve.py's start-up line on stderr: the addresses it bound. */
 const UP = /python example up · calendar yea:\/\/(\S+) http:\/\/(\S+)\/yea/;
+/** tests/interop_shop.py's start-up line on stderr: the address it bound. */
+const SHOP_UP = /python interop shop up · yea:\/\/(\S+)/;
 
 /**
- * Wait for serve.py's "up" line and return the `host:port` of its TCP and HTTP
- * servers, as bound. The service binds port 0, so parallel runs never reach
- * each other's process.
+ * Wait for a Python service's "up" line (`up`, serve.py's by default) and return
+ * the `host:port` of each server it names, as bound. The services bind port 0,
+ * so parallel runs never reach each other's process.
  */
-function boundAddresses(proc: ChildProcess): Promise<[string, string]> {
+function boundAddresses(proc: ChildProcess, up = UP): Promise<string[]> {
   return new Promise((resolve, reject) => {
     let log = '';
     const fail = (why: string) => {
@@ -34,11 +37,11 @@ function boundAddresses(proc: ChildProcess): Promise<[string, string]> {
     proc.stderr?.on('data', (chunk: string) => {
       log += chunk;
 
-      const m = UP.exec(log);
+      const m = up.exec(log);
 
       if (m) {
         clearTimeout(timer);
-        resolve([m[1], m[2]]);
+        resolve(m.slice(1));
       }
     });
     proc.on('error', (e) => fail(`could not start (${e.message})`));
@@ -225,3 +228,77 @@ describe.skipIf(!ready)('interop: TS client → Python service', async () => {
     c.close();
   });
 });
+
+// #405: a TS grant's weekly total counts in the Python service's ledger, as it does in TS. The
+// calendar reports no `uses`, so this shop (python/tests/interop_shop.py) reports `spend`.
+describe.skipIf(!ready)(
+  'interop: a TS periodic total in a Python shop',
+  async () => {
+    const principal = await P.keyPair(),
+      agent = await P.keyPair();
+    let url = '';
+    let proc: ChildProcess;
+
+    beforeAll(async () => {
+      proc = spawn('uv', ['run', 'python', 'tests/interop_shop.py'], {
+        cwd: pyDir,
+        env: { ...process.env, YEA_TRUST: principal.public, HOST: '127.0.0.1' },
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+
+      const [tcp] = await boundAddresses(proc, SHOP_UP);
+
+      url = `yea://${tcp}`;
+    }, 30_000);
+    afterAll(() => proc?.kill());
+
+    it('the first order fills the week, and the next asks and says when the week starts again', async () => {
+      const week = 604_800;
+      const midnight = Math.floor(Date.now() / 86_400_000) * 86_400;
+      const grant = await P.issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [
+          { svc: ['shop.example'] },
+          {
+            total: {
+              of: 'spend',
+              max: 1500,
+              scale: 2,
+              unit: 'USD',
+              every: week,
+            },
+          },
+          { nbf: midnight },
+          { exp: midnight + 30 * 86_400 },
+        ],
+      });
+      const c = await connect(url, { key: agent.seed, grants: [grant] });
+      const order = async (sku: string) => {
+        const p = await c.intent('shop.order', { sku });
+
+        if (p.kind !== 'PROPOSALS') {
+          throw new Error(p.lens);
+        }
+
+        return c.commit(p.proposals[0]);
+      };
+      const first = await order('m001');
+
+      expect(first.kind, first.lens).toBe('RECEIPT');
+
+      const next = await order('m002');
+
+      expect(
+        next.kind === 'ERROR' && [next.code, next.message],
+        next.lens,
+      ).toEqual([
+        'consent_required',
+        expect.stringContaining(
+          `15.00 USD every 7d (starts again ${fmtTime(midnight + week)})`,
+        ),
+      ]);
+      c.close();
+    });
+  },
+);
