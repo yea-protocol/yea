@@ -598,6 +598,31 @@ const ownLaterExp = await P.delegateGrant(noExp, {
   iat: anchor,
   caveats: [{ exp: MAX_SAFE }],
 });
+// Three blocks: an `exp` in any block before the total's own meets the rule, one after never does.
+const chainOf = async (nonce, first, second) => {
+  const one = await P.delegateGrant(await periodic(nonce, []), {
+    holder: agent,
+    to: sub.public,
+    iat: anchor,
+    caveats: first,
+  });
+
+  return P.delegateGrant(one, {
+    holder: sub,
+    to: mallory.public,
+    iat: anchor,
+    caveats: second,
+  });
+};
+const weeklyFromNbf = [{ total: usd(50000, WEEK) }, { nbf: anchor }];
+const middleExp = await chainOf(
+  'n47',
+  [{ exp: anchor + 4 * WEEK }],
+  weeklyFromNbf,
+);
+const lastExp = await chainOf('n48', weeklyFromNbf, [
+  { exp: anchor + 4 * WEEK },
+]);
 // "starts again" names a time Lens can show: the last one is 9999-12-31T23:59:59Z (SPEC §9.2).
 const LAST_LENS_TIME = 253402300799;
 const toLastTime = LAST_LENS_TIME - anchor;
@@ -799,6 +824,34 @@ const periodCases = [
     ownLaterExp,
     NO_END,
   ),
+  [
+    "periods: an exp in a middle block ends the last block's periodic total",
+    middleExp,
+    mallory.public,
+    buy(now),
+    {
+      ok: true,
+      totals: [
+        countsIn(await idOf(middleExp, 2), 50000, {
+          every: WEEK,
+          start: anchor,
+        }),
+      ],
+    },
+  ],
+  ...onAskAndCommit(
+    "periods: an exp in the block after a middle block's periodic total is not its end",
+    lastExp,
+    NO_END,
+    mallory.public,
+  ),
+  [
+    'periods: a next start that falls on exp is left out: the grant has ended',
+    weekToken,
+    agent.public,
+    buy(now, { used: inPeriod(await idOf(weekToken), anchor, 50000) }),
+    asks('spend would pass the total limit of 500.00 USD every 7d'),
+  ],
   [
     "periods: a delegation's nbf doesn't move the root's periods",
     laterNbf,

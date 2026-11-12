@@ -2858,6 +2858,137 @@
       }
     },
     {
+      "name": "periods: an exp in a middle block ends the last block's periodic total",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19XSwiaWF0IjoxNzg5Nzc2MDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6Im40NyIsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USJ9LCJzIjoiM29Kbl9WQmpZVGRVRFFfQnFMb25SbEJQc0g3VUdwcWtndkgwdTBiaHp2NmJ5S3JGYjItSk1obzhkMTcwUmRVOWhNejMzcU9OZDl6OFFHQVpnN2t2REEifSx7InAiOnsiY2F2ZWF0cyI6W3siZXhwIjoxNzkyMTk1MjAwfV0sImlhdCI6MTc4OTc3NjAwMCwicHJldiI6IkhGZUU3TW55dU9GdWN1MTVNUHBBMTdpRllDRWFtOHh6WTYyQ2RfaUdIZnciLCJzdWIiOiJlZDI1NTE5OjdVa294aWpSd3NicTZRTTRrRm1WWVNsWkp6cGNZX2syTnNGR0ZLeUhOOUUifSwicyI6Ilo1Y1lfNkF2b1FySl9iN0QxOTZsN24zQ3R6cEo5Y3JmS3YxWjM3aFpuVTZCX21zQXZ6dVJyamFIN0llTTF1VkwtREVOZk1rZE1wX25URnQ2S3JSNEJRIn0seyJwIjp7ImNhdmVhdHMiOlt7InRvdGFsIjp7ImV2ZXJ5Ijo2MDQ4MDAsIm1heCI6NTAwMDAsIm9mIjoic3BlbmQiLCJzY2FsZSI6MiwidW5pdCI6IlVTRCJ9fSx7Im5iZiI6MTc4OTc3NjAwMH1dLCJpYXQiOjE3ODk3NzYwMDAsInByZXYiOiJoSlVSS3B0MHE1RDZ6TWlQYVh0MFRJU0R5LUNQTVNRbm4yMDR2TmE3czlzIiwic3ViIjoiZWQyNTUxOTp5cE9zRndVWWNISFdlNFBIX3c3LWdRam83RVV3VjExM0pvZVRNOXZhdm53In0sInMiOiIxakNhRGhtSm50VlRuZVk0RXQyWGN3Z3dxaE9jaUpTaFdiZXdmSy1Rc1NZeWdwVmJNSnVkMFFOVWdYeVhybnpLNWJ6YVNXdkZxSng4ajJOTHRyZ3JEUSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:ypOsFwUYcHHWe4PH_w7-gQjo7EUwV113JoeTM9vavnw",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 2000,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "totals": [
+          {
+            "key": {
+              "block": "b1iosYN_2k7ggfRGKetfiQaPGH2cbzPdPvdbWVluslA",
+              "of": "spend",
+              "period": {
+                "every": 604800,
+                "start": 1789776000
+              }
+            },
+            "max": "500000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "periods: an exp in the block after a middle block's periodic total is not its end",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19XSwiaWF0IjoxNzg5Nzc2MDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6Im40OCIsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USJ9LCJzIjoiM0ZIX3pGZmVvT0NRZmZBUTNlTkFERm1fSmtmR2RmNlROc1VaNWVVS3hwc0JCUm83dGgzMUlFbzdacTJ4UVI4SGZUamIyUm83bFpGOUY2dTVvZGg2QXcifSx7InAiOnsiY2F2ZWF0cyI6W3sidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfV0sImlhdCI6MTc4OTc3NjAwMCwicHJldiI6IjN5VHJfWWRZMDliWFRNclpnTXZIVHNzX0IxTHEtR0pjRElzZk84c0o0SHMiLCJzdWIiOiJlZDI1NTE5OjdVa294aWpSd3NicTZRTTRrRm1WWVNsWkp6cGNZX2syTnNGR0ZLeUhOOUUifSwicyI6IjdxVzZITzRLaEJvcG5GV2JjWEp3UEVYWWFsSUNEbGdXTXYxb21ON3Y1aUgxQ1VVdFZpVFVKSkR3WTM0ZURPUWJXa0RhbmF1aFJVaFVBTm5tV2tTTkRnIn0seyJwIjp7ImNhdmVhdHMiOlt7ImV4cCI6MTc5MjE5NTIwMH1dLCJpYXQiOjE3ODk3NzYwMDAsInByZXYiOiJnUGpLNjRVamdtZ2ZjVzQ3NzhvNU9mWGk3M2FxSnVNdDNEbGJDa2Y1SDRFIiwic3ViIjoiZWQyNTUxOTp5cE9zRndVWWNISFdlNFBIX3c3LWdRam83RVV3VjExM0pvZVRNOXZhdm53In0sInMiOiJZZUItNlk4Q3VVY0tYYXEyZ0k4cHIyMEdXcVI1NEQyc29OR3BYT0RYaTRqUVU2dl9xckpHS1JDbkN5YnVyRmltclR4OUZ5dThUSURLRXVsUEw0VllDQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:ypOsFwUYcHHWe4PH_w7-gQjo7EUwV113JoeTM9vavnw",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "forbidden",
+        "reason": "a total with every needs an exp in its block or an earlier one"
+      }
+    },
+    {
+      "name": "periods: an exp in the block after a middle block's periodic total is not its end on COMMIT too",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19XSwiaWF0IjoxNzg5Nzc2MDAwLCJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJub25jZSI6Im40OCIsInN1YiI6ImVkMjU1MTk6Z1RsM0RxaDlGMTlXbzFSbXcweC16TXVOaXBHMDdqZWlYZllQVzRfSnM1USJ9LCJzIjoiM0ZIX3pGZmVvT0NRZmZBUTNlTkFERm1fSmtmR2RmNlROc1VaNWVVS3hwc0JCUm83dGgzMUlFbzdacTJ4UVI4SGZUamIyUm83bFpGOUY2dTVvZGg2QXcifSx7InAiOnsiY2F2ZWF0cyI6W3sidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfV0sImlhdCI6MTc4OTc3NjAwMCwicHJldiI6IjN5VHJfWWRZMDliWFRNclpnTXZIVHNzX0IxTHEtR0pjRElzZk84c0o0SHMiLCJzdWIiOiJlZDI1NTE5OjdVa294aWpSd3NicTZRTTRrRm1WWVNsWkp6cGNZX2syTnNGR0ZLeUhOOUUifSwicyI6IjdxVzZITzRLaEJvcG5GV2JjWEp3UEVYWWFsSUNEbGdXTXYxb21ON3Y1aUgxQ1VVdFZpVFVKSkR3WTM0ZURPUWJXa0RhbmF1aFJVaFVBTm5tV2tTTkRnIn0seyJwIjp7ImNhdmVhdHMiOlt7ImV4cCI6MTc5MjE5NTIwMH1dLCJpYXQiOjE3ODk3NzYwMDAsInByZXYiOiJnUGpLNjRVamdtZ2ZjVzQ3NzhvNU9mWGk3M2FxSnVNdDNEbGJDa2Y1SDRFIiwic3ViIjoiZWQyNTUxOTp5cE9zRndVWWNISFdlNFBIX3c3LWdRam83RVV3VjExM0pvZVRNOXZhdm53In0sInMiOiJZZUItNlk4Q3VVY0tYYXEyZ0k4cHIyMEdXcVI1NEQyc29OR3BYT0RYaTRqUVU2dl9xckpHS1JDbkN5YnVyRmltclR4OUZ5dThUSURLRXVsUEw0VllDQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:ypOsFwUYcHHWe4PH_w7-gQjo7EUwV113JoeTM9vavnw",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 2000,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "forbidden",
+        "reason": "a total with every needs an exp in its block or an earlier one"
+      }
+    },
+    {
+      "name": "periods: a next start that falls on exp is left out: the grant has ended",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5MDM4MDgwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjQxIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiJITTc4aVE4WU1JVEJIczRnbmVZNm9HNF9qLXQ1cnJWenhEZFM4WlpDemthNUs1R25XM3J0d2hvdnV2Z3ZhVFAxVWFhYjlyVS1TRy1fODRwcGpyS2VBdyJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 2000,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        },
+        "used": {
+          "H1kaSCQc-jmvp0PmdWeb_LEoF1Qcd6YFGzPYQxp3Prs": {
+            "spend@604800": {
+              "1789776000": {
+                "amount": 50000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "consent_required",
+        "reason": "spend would pass the total limit of 500.00 USD every 7d"
+      }
+    },
+    {
       "name": "periods: a delegation's nbf doesn't move the root's periods",
       "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9LHsicCI6eyJjYXZlYXRzIjpbeyJuYmYiOjE3ODk5NDg4MDB9XSwiaWF0IjoxNzg5OTQ4ODAwLCJwcmV2IjoiYkNPVkFfQ3otSkpWT09lNzRmU2NHR3JONXNKeEgwTWZINE5taVlDbjJEQSIsInN1YiI6ImVkMjU1MTk6N1Vrb3hpalJ3c2JxNlFNNGtGbVZZU2xaSnpwY1lfazJOc0ZHRkt5SE45RSJ9LCJzIjoiWFNQLTNrSjJlcEl3OUFEWWJtWDFudEpNWnV5dW9IaTlTZDZFV1VXdFFDYXdudUdBejNZalRYRV9RRmFpWlBJVF9FQUdHd1hmYnpYVVp4MXFQOW1TQVEifV0",
       "trusted": [
