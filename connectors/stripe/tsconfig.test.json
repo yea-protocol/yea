@@ -3,11 +3,13 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "../..",
-    // test/stripe-billing.test.ts checks examples/stripe-billing.ts, which imports this package.
+    // test/stripe-billing.test.ts checks examples/stripe-billing.ts, which imports this package,
+    // and examples/stripe-connector.ts, the README's library example, is type-checked here.
     "paths": {
+      "@yea-protocol/stripe": ["./src/index.ts"],
       "@yea-protocol/stripe/api": ["./src/api.ts"],
       "@yea-protocol/stripe/currency": ["./src/currency.ts"]
     }
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "../../examples/stripe-connector.ts"]
 }
