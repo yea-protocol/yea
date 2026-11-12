@@ -8,12 +8,11 @@ from __future__ import annotations
 import os
 import re
 import secrets
-import stat
 from pathlib import Path
 from typing import Any
 
 from ..grants import consent_expiry, decode_consent_code
-from .files import _write_atomic
+from .files import _read_regular_bytes, _write_atomic
 
 # The ids ``yea approve <id>`` accepts, matched whole: never a path, and no prefix search.
 PENDING_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
@@ -21,7 +20,6 @@ PENDING_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
 # Lowercase base32: 32 letters and digits, so a random byte's low 5 bits pick one evenly.
 _ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 _ID_LENGTH = 10
-_MAX_BYTES = 64 * 1024  # as the TypeScript reader's cap
 
 
 def new_pending_id() -> str:
@@ -35,29 +33,13 @@ def pending_file(code: str) -> str:
 
 
 def _read(path: Path) -> str | None:
-    """The file's first line, if it's a regular file of at most 64 KiB, opened without following
-    a symlink; None for anything else."""
+    """The file's first line, read as ``_read_regular_bytes`` reads one (a regular file of at most
+    64 KiB, opened without following a symlink); None for anything it won't read."""
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
-    except OSError:
+        data = _read_regular_bytes(path)
+    except OSError:  # a symlink, unreadable, not a regular file, or over 64 KiB (NotRegularFile)
         return None
-    try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
-            return None
-        data = _read_capped(fd)
-    finally:
-        os.close(fd)
     return None if data is None else data.decode("utf-8", errors="replace").split("\n", 1)[0].strip()
-
-
-def _read_capped(fd: int) -> bytes | None:
-    """At most 64 KiB from ``fd``; None if there is more, however the reads come back."""
-    data = b""
-    while chunk := os.read(fd, _MAX_BYTES + 1 - len(data)):
-        data += chunk
-        if len(data) > _MAX_BYTES:
-            return None
-    return data
 
 
 class PendingCodes:

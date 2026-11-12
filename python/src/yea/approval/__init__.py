@@ -15,8 +15,10 @@ from ..grants import RISK_ORDER  # re-exported: callers read the order from here
 from ..risk import at_least  # re-exported: yea.risk's, which the decision and judge use
 from .consent import (
     CONSENT_TTL,
+    NOT_A_CONSENT,
     ConsentCheck,
     check_job_consent,
+    job_consent_expiry,
     OTHER_PHRASE,
     PHRASE_CHANGED,
     StoredConsent,
@@ -28,7 +30,7 @@ from .decision import Decision, decide, denied_reason, needs_approval
 from .form import build_form, offered_plans
 from .judge import Verdict, judge_answer
 from .ledger import release_all, reserve_all, settle_all, spent
-from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of
+from .phrase import checked_phrase, normalize_phrase, phrase_matches, phrase_of, strip_phrase_edge
 from .pinned_key import (
     _resolve_links,  # noqa: F401 — the key-file tests use it
     check_key_file,
@@ -57,6 +59,7 @@ __all__ = [
     "shown_plan",
     "plan_lines",
     "normalize_phrase",
+    "strip_phrase_edge",
     "checked_phrase",
     "phrase_of",
     "phrase_matches",
@@ -86,9 +89,11 @@ __all__ = [
     "consent_hash_of",
     "StoredConsent",
     "OTHER_PHRASE",
+    "NOT_A_CONSENT",
     "PHRASE_CHANGED",
     "ConsentCheck",
     "check_job_consent",
+    "job_consent_expiry",
     "reserve_all",
     "spent",
     "settle_all",

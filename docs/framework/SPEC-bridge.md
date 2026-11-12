@@ -239,7 +239,9 @@ Anything else is refused, and nothing is written. A valid consent is saved in th
 `~/.yea/consents` under its `only` hash, never over a different valid consent for the same
 hash, and the result says which pending proposal it's for. It signs nothing and commits
 nothing. Passing a consent through the model is safe: it's signed by the principal, commits
-one exact proposal at one service, and still needs the agent key's proof.
+one exact proposal at one service, and still needs the agent key's proof. Job tools take the
+consent `yea approve` prints for a job code the same way, as their own `yea_consent` argument
+([SPEC-approval §6](SPEC-approval.md#6-when-the-client-cant-ask)).
 
 ## Read tools, expand and undo
 

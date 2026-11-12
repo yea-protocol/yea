@@ -1,6 +1,7 @@
 /** The approval store's lock files: taken with O_EXCL, each holding a fresh token, broken when stale. */
+import { rmSync } from 'node:fs';
 import { randomId } from '../crypto.js';
-import { breakIfStale, createOnce } from './files.js';
+import { breakIfStale, createOnce, readOrNull } from './files.js';
 
 const LOCK_WAIT_MS = 2000;
 const LOCK_RETRY_MS = 10;
@@ -24,4 +25,15 @@ export async function acquire(lock: string): Promise<string> {
   }
 
   return token;
+}
+
+/** Whether `lock` still holds `token`: false once it was broken as stale and taken by another. */
+export const stillHeld = (lock: string, token: string) =>
+  readOrNull(lock) === token;
+
+/** Release `lock` if it still holds `token`; one broken and taken by another is left alone. */
+export function release(lock: string, token: string) {
+  if (stillHeld(lock, token)) {
+    rmSync(lock, { force: true });
+  }
 }

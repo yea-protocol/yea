@@ -16,7 +16,7 @@ from typing import Any
 from mcp_types.methods import is_input_required
 from yea import Plan
 
-from .call import JobDef, Req, Yea, described_plans, run_job
+from .call import CONSENT_DESCRIPTION, JobDef, Req, Reserved, Yea, described_plans, run_job, shadowed
 from .result import error_result, job_annotations, job_meta
 
 
@@ -35,7 +35,7 @@ class Guarded:
 
 @dataclass
 class _Info:
-    has_preview: bool
+    shadowed: str | None  # a reserved argument the tool has its own of, which the guard would shadow
     has_output: bool
     is_job: bool  # registered with job(): already guarded
 
@@ -67,11 +67,11 @@ class GuardMiddleware:
         tool = next((t for t in await self.server.list_tools() if t.name == name), None)
         if tool is None:
             return None
-        return _Info("preview" in ((tool.input_schema or {}).get("properties") or {}), tool.output_schema is not None,
-                     "dev.yea/job" in (tool.meta or {}))
+        return _Info(shadowed(tool.input_schema), tool.output_schema is not None, "dev.yea/job" in (tool.meta or {}))
 
     def _advertise(self, result: Any) -> Any:
-        """Add ``preview`` and the job annotations to guarded tools in a copy of the listing."""
+        """Add ``preview``, ``yea_consent`` and the job annotations to guarded tools in a copy of the
+        listing."""
         if not isinstance(result, dict):
             return result
         out = copy.deepcopy(result)
@@ -81,6 +81,8 @@ class GuardMiddleware:
                 continue
             props = tool.setdefault("inputSchema", {"type": "object"}).setdefault("properties", {})
             props.setdefault("preview", {"type": "boolean", "default": False})
+            props.setdefault("yea_consent", {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None,
+                                             "description": CONSENT_DESCRIPTION})
             tool["annotations"] = {**job_annotations(), **(tool.get("annotations") or {})}
             tool["_meta"] = {**(tool.get("_meta") or {}), **job_meta(g.risk, g.revert is not None, g.prompts(self.y))}
         return out
@@ -97,13 +99,14 @@ class GuardMiddleware:
             return error_result([f"✗ guard(): {name} is already a job tool; nothing was run"])
         if not isinstance(args, dict):
             return error_result([f"✗ {name}'s arguments must be an object; nothing was run"])
-        if info.has_preview:
-            return error_result([f"✗ guard(): {name} has its own preview argument, which the guard would shadow; "
-                                 "nothing was run"])
+        if info.shadowed:
+            return error_result([f"✗ guard(): {name} has its own {info.shadowed} argument, which the guard would "
+                                 "shadow; nothing was run"])
         args = dict(args)
-        preview = args.pop("preview", False)
-        if not isinstance(preview, bool):
-            return error_result(["✗ preview must be true or false; nothing was run"])
+        preview, consent = args.pop("preview", False), args.pop("yea_consent", None)
+        why = _reserved_issue(preview, consent)
+        if why:
+            return error_result([f"✗ {why}; nothing was run"])
         stripped = replace(ctx, params={**params, "arguments": args})
 
         async def plan() -> list[Plan]:
@@ -113,7 +116,17 @@ class GuardMiddleware:
                      failed=wire_failed, with_receipt=wire_with_receipt, with_note=wire_with_note)
         req = Req(ctx, ctx.session, ctx.request_id, ctx.protocol_version, params.get("requestState"),
                   params.get("inputResponses"))
-        return await run_job(self.y, job, args, preview, req, plan)
+        return await run_job(self.y, job, args, Reserved(preview, consent), req, plan)
+
+
+def _reserved_issue(preview: Any, consent: Any) -> str | None:
+    """Why the reserved arguments can't be used, as the job schema would say: the guard runs before
+    the tool's own validation. ``preview`` is a JSON boolean, and ``yea_consent`` a string or null."""
+    if not isinstance(preview, bool):
+        return "preview must be true or false"
+    if consent is not None and not isinstance(consent, str):
+        return "yea_consent must be a string: the consent yea approve printed"
+    return None
 
 
 def wire_failed(result: Any) -> bool:

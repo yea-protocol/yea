@@ -45,8 +45,9 @@ async function main(argv: string[]) {
   }
 
   const auth = httpAuthFrom();
-  // One process serves every request, so approvals can live in memory. There is no shared
-  // store for `yea approve`, so plans that need it (live high-risk ones) can't run here.
+  // One process serves every request, so approvals can live in memory. `yea approve` can't save
+  // a consent where this server reads it, so plans that need one (live high-risk ones) run with
+  // the consent the person pastes back, which binds this store alone (SPEC-approval §6).
   const approvals = yea({
     name: NAME,
     transport: 'http',

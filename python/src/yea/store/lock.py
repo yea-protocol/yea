@@ -47,17 +47,22 @@ def _break_if_stale(lock: Path, stale: float | None = None) -> None:
         return
     if _read(aside) != token:
         try:
-            os.link(aside, lock)  # someone's fresh one: restore it unless a third holder took the name
-        except FileExistsError:
-            pass
+            os.link(aside, lock)  # someone's fresh one: restore it where it can (SPEC-approval §8)
+        except OSError:
+            pass  # a third holder took the name, or there are no hard links: its holder fails closed
     aside.unlink(missing_ok=True)
 
 
+def _holds(lock: Path, token: str) -> bool:
+    """Whether ``lock`` still holds ``token``: False once it was broken as stale and taken by another."""
+    return _read(lock) == token
+
+
 def _still_held(lock: Path, token: str) -> None:
-    if _read(lock) != token:
+    if not _holds(lock, token):
         raise StoreError(f"lost {lock} while holding it; nothing was written")
 
 
 def _release(lock: Path, token: str) -> None:
-    if _read(lock) == token:
+    if _holds(lock, token):
         lock.unlink(missing_ok=True)

@@ -7,7 +7,7 @@ import os
 
 import pytest
 import yea_mcp
-from conftest import PRINCIPAL, Person, text
+from conftest import PRINCIPAL, Person, printed_consent, text
 from mcp.server.mcpserver import MCPServer
 from mcp.shared.exceptions import NoBackChannelError
 from yea_mcp import token_subject, yea
@@ -29,6 +29,11 @@ def test_start_up_refusals(tmp_path):
         yea(home=tmp_path, name="s", transport="http", sub=lambda r: "me", server_key=key)
     with pytest.raises(ValueError, match="name must match"):
         yea(home=tmp_path, name="Bad Name", transport="stdio", server_key=key)
+
+    class NoId(FileStore):  # a custom store written before store ids (SPEC-approval decision 9)
+        store_id = None
+    with pytest.raises(TypeError, match=r"store must be an ApprovalStore, with store_id\(\)"):
+        yea(home=tmp_path, name="s", transport="stdio", store=NoId(tmp_path / "st"), server_key=key)
     loose = tmp_path / "loose.key"
     loose.write_text("A" * 43 + "\n")
     os.chmod(loose, 0o644)
@@ -150,21 +155,26 @@ def test_the_default_store_reads_yea_store_before_yea_home(tmp_path, monkeypatch
     assert str(yea(name="s", transport="stdio", home=tmp_path / "h")._y.store.root) == str(tmp_path / "h" / "store")
 
 
-async def test_a_memory_store_says_why_no_consent_code_and_what_to_do(tmp_path):
-    """The same words as mcp-ts: where `yea approve` can't reach, and the two ways out (#145)."""
+async def test_a_memory_store_gives_codes_and_runs_the_consent_passed_back_once(tmp_path):
+    """`yea approve` can't save where a MemoryStore reads, so the consent comes back on the call (#358)."""
     # No policy: the job asks, and this client can't.
     mem = yea(home=tmp_path, name="m", transport="stdio", store=MemoryStore(), server_key=tmp_path / "m",
               principal=PRINCIPAL.public)
     srv = MCPServer("m", request_state_security=mem.request_state_security())
+    done = []
 
     @mem.job(srv, risk="low")
     async def move(event: str) -> list[Plan]:
-        return [Plan(f"Move {event}", [create("e")], apply=lambda: None)]
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event))]
 
     async with Client(srv, mode="auto") as c:  # a client that can't show forms
         r = await c.call_tool("move", {"event": "e1"})
-    assert r.is_error and ("this server keeps approvals in memory, where `yea approve` can't reach them; use a "
-                           "client that can show approval forms, or run the server with a FileStore") in text(r)
+        assert r.is_error and "`yea_consent` set to it" in text(r)
+        (code,) = r.structured_content["codes"]
+        consent = printed_consent(code)
+        assert not (await c.call_tool("move", {"event": "e1", "yea_consent": consent})).is_error
+        assert (await c.call_tool("move", {"event": "e1", "yea_consent": consent})).is_error
+    assert done == ["e1"]
 
 
 async def test_no_pinned_key_says_to_run_yea_doctor_and_never_names_a_command_that_makes_a_key(tmp_path, monkeypatch):

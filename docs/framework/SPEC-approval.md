@@ -19,11 +19,12 @@ A developer marks a tool as a job, for example `reschedule`, `send_email`, `dele
   somewhere else.
 - **Afterwards**, anything reversible can be undone within its window.
 
-Nothing the model passes to a tool counts as an approval, and a replayed or stale approval
-never runs anything. Both hold only as far as the principal key, the principal's public key
-and the store are out of the agent's reach. What an approval proves about the person depends on
-the step that produced it: a form answer is only as trustworthy as the client that draws it
-([§9, What an approval proves](#what-an-approval-proves)).
+Nothing the model passes is an approval; a consent signed by the pinned key, which the model
+may carry back from the person (§6), is checked as one from the store. A replayed or stale
+approval never runs anything. Both hold only as far as the principal key, the principal's
+public key and the store are out of the agent's reach. What an approval proves about the person
+depends on the step that produced it: a form answer is only as trustworthy as the client that
+draws it ([§9, What an approval proves](#what-an-approval-proves)).
 
 **Approval is about what an action does.** A plan is judged on which tool it belongs to, how
 risky it is, whether it can be undone, and what it uses up. What it uses is the protocol's
@@ -350,11 +351,16 @@ chosen plan at or above `outOfBand`, then returns an error result with:
     [1] yea approve k7m2x9qa4b
   If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:
     code for [1]: pc1.…
+  If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it.
   ```
 
   Without ids (the store isn't a `FileStore`, or a pending file couldn't be written), the first
-  line names `<code>` instead, and the id lines and the line after them are left out. The words *outside this chat* are there because a client's own shell (Claude
-  Code's `! command`) gives `yea approve` no terminal, so it refuses there.
+  line names `<code>` instead, and the id lines and the line after them are left out. The last
+  line is always there: a consent comes back on the call wherever `yea approve` can't save it
+  where the server reads (below, "A consent on the call"). The words *outside this chat* are
+  there because a client's own shell (Claude Code's `! command`) gives `yea approve` no
+  terminal, so it refuses there. `howToApprove` (`how_to_approve`) builds these lines, and
+  conformance/job-calls.json pins them for both languages.
 
 When no consent can be accepted here, there are no codes, and the result says why in one line:
 *No consent can be accepted: …*. With no pinned principal key, the reason is *no principal key
@@ -366,15 +372,23 @@ The model reads this line, so it names a command that changes no keys. No tool r
 itself, and the key would land on its side (ADR-0003).
 
 The consent code is the existing unsigned `pc1.` code: SPEC.md's consent request, with the
-plan's details. For a job, its `detail` is `{ job, phrase }`: `job` is the full plan-hash
-preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, and `undoWindow` when the plan
-is undoable, §1), and `phrase`
-is what the person types, after the `approve` fallback (§3). The **consent preimage** binds
-that phrase to the plan, whose hash already covers `job`:
+plan's details. For a job, its `detail` is `{ job, phrase, store }`: `job` is the full
+plan-hash preimage (`tool`, `input`, `summary`, `effects`, `uses`, `risk`, and `undoWindow`
+when the plan is undoable, §1), `phrase` is what the person types, after the `approve`
+fallback (§3), and `store` is the id of the server's store (§8), the one that will consume the
+consent. The **consent preimage** binds that phrase and that store to the plan, whose hash
+already covers `job`:
 
 ```
-consentHash = b64url(sha256(canonical({ plan: planHash, phrase })))
+consentHash = b64url(sha256(canonical({ plan: planHash, phrase, store })))
 ```
+
+**Why the store.** A consent is used once in the store that consumes it (`consumeOnce`), so
+it must not run in any other. Servers that share a key but not a store, such as a connector's
+stdio and HTTP sides, or one server restarted on a `MemoryStore`, would otherwise each run the
+same consent once. Bound to one store's id, a consent approves no plan in any store made
+separately, where the consent hash comes out different, and it runs nothing there (a copy of a
+store keeps its id; see §9).
 
 The code's fields are `proposal` = the plan hash, `hash` = the consent hash, `service` = the
 server's service id, `capability` = the tool, `principal` = the pinned principal key,
@@ -385,11 +399,12 @@ it against its own phrase. `consentHash` applies the `approve` fallback to the p
 an empty or blank phrase hashes as `approve`.
 
 `yea approve <code>`:
-1. recomputes the plan hash from `job`, then the consent hash from it and the phrase, and
-   refuses if they don't equal the code's `proposal` and `hash`, if the phrase isn't typeable
-   (§3, so one over 64 characters is refused), if the code's `capability` isn't the plan's
-   `tool`, or if the code has expired (saying when, and the time on this machine, so a wrong
-   clock shows); it caps `expires` at 10 minutes from now, whatever the code says;
+1. recomputes the plan hash from `job`, then the consent hash from it, the phrase and `store`,
+   and refuses if they don't equal the code's `proposal` and `hash`, if the phrase isn't
+   typeable (§3, so one over 64 characters is refused), if `store` isn't a store id (§8), if
+   the code's `capability` isn't the plan's `tool`, or if the code has expired (saying when,
+   and the time on this machine, so a wrong clock shows); it caps `expires` at 10 minutes from
+   now, whatever the code says;
 2. shows the plan, never only a summary, in which control, format, line/paragraph-separator
    and invisible filler characters are shown as `\u{…}` escapes (`printable` itself keeps
    backslashes, §3), so the text can't rewrite what the person reads, and its undo as the form
@@ -398,7 +413,14 @@ an empty or blank phrase hashes as `approve`.
    phrase falls back to `approve`);
 4. signs a **consent grant** (`pg1.`) with the principal key, issued **to the server's key**,
    with `[{svc:[service]}, {verbs:["COMMIT"]}, {can:[tool]}, {only: consentHash}, {exp}]`, and
-   saves it in the store under the plan hash (`YEA_STORE`, else `$YEA_HOME/store`, else `~/.yea/store`).
+   prints it on stdout. It saves it under the plan hash in its store (`YEA_STORE`, else
+   `$YEA_HOME/store`, else `~/.yea/store`) only when that store's id is the code's `store`: then
+   it's the store the server reads, and in any other the consent could never run. It reads that
+   id without making one, since a store with no id issued no code. Then it says where the
+   consent went: saved where the server reads it, so nothing needs pasting back and the agent
+   can call the tool again; or not saved, because the code is another store's or the save
+   failed (and why), so the person pastes the printed consent back into the chat. A failed save
+   doesn't fail the approval: the consent was signed, and the call can carry it.
 
 When there is no terminal (stdin isn't a TTY), `yea approve` refuses before asking:
 *approval needs an interactive terminal: a person has to confirm, so run it in a separate
@@ -427,7 +449,7 @@ alone, and approving works as before.
   id never starts with `-`, so the command line never reads one as a flag.
 - The directory is created `0700` and the file `0600`, written to a temp file and renamed (§8).
   If the store is ever shared with the principal's OS user
-  ([#358](https://github.com/yea-protocol/yea/issues/358)), `pending/` must stay readable by
+  ([#376](https://github.com/yea-protocol/yea/issues/376)), `pending/` must stay readable by
   that user.
 
 **The lifecycle.** A directory holds at most one file per service and proposal, the code's
@@ -475,28 +497,70 @@ form tier ([§9, What an approval proves](#what-an-approval-proves)): the agent 
 OS user, so it can run `yea approve` itself, and a terminal isn't a person. Another OS user or
 device keeps the whole code.
 
-On the next identical call, the server looks up a consent for each recomputed plan's hash
-and checks it against that plan's consent hash, recomputed from the plan and the phrase the
-tool names now: it must be a single root block that itself carries `only` = that consent hash
-and an `exp` (so neither a copied policy grant nor a block the server's key appended to one
-ever counts), and pass the grant check as a `COMMIT` of the tool at this server, signed by
-the pinned principal key (§2). It then consumes it with
-`consumeOnce(<consent grant id>, exp)`, and runs that plan. Consents are keyed by plan hash,
-not by code, so a fresh code for the same plan still finds them; a consumed or expired one
-counts as absent, and the server issues fresh codes. Denied tools and plans that aren't
-recomputed are never run. An unsigned approval in the store is never accepted.
+On the next identical call, the server looks up a consent for each recomputed plan's hash and
+checks it against that plan's consent hash, recomputed from the plan, the phrase the tool names
+now, and its own store's id: it must be a single root block that itself carries `only` = that
+consent hash and an `exp` (so neither a copied policy grant nor a block the server's key
+appended to one ever counts), and pass the grant check as a `COMMIT` of the tool at this server,
+signed by the pinned principal key (§2). It then consumes it with
+`consumeOnce(<consent grant id>, exp)`, and runs that plan. Consents are keyed by plan hash, not
+by code, so a fresh code for the same plan still finds them; a consumed or expired one counts as
+absent, and the server issues fresh codes. Denied tools and plans that aren't recomputed are
+never run. An unsigned approval in the store is never accepted.
 
-A consent for another phrase is refused, but not silently. The grant check runs against the
-hash the consent binds, so a consent that is otherwise valid but binds another hash is told
-apart, as `not a consent for this phrase`. When the call then asks (a form or fresh codes), the
-reason it gives is *"a consent for this plan was signed for a different phrase; approve the new
-code — if this repeats, the code you were given may have been altered"*. The person can then
-tell a changed phrase or an edited code from a lost consent. A consumed, expired or malformed
-consent leaves no such reason.
+A consent for another phrase is refused, but not silently. The grant check runs against the hash
+the consent binds, so a consent that is otherwise valid but binds another hash (another phrase,
+or another store's id) is told apart, as `not a consent for this phrase`. When the call then
+asks (a form or fresh codes), the reason it gives is *"a consent for this plan was signed for a
+different phrase; approve the new code — if this repeats, the code you were given may have been
+altered"*. The person can then tell a changed phrase or an edited code from a lost consent. A
+consumed, expired or malformed consent leaves no such reason.
 
-This needs `yea approve` changes (today it issues to the agent key and checks
-`proposalHash`), and a store shared by the server and the `yea` command: a local stdio server
-with `FileStore`. For remote HTTP servers, url-mode approval pages come later.
+**A consent on the call.** The consent `yea approve` prints can also come back on the call,
+so the server and `yea approve` needn't share a store. The person pastes it into the chat,
+and the agent calls the tool again with the same input and the consent as `yea_consent`.
+Every job tool takes that argument beside `preview`. It's a string, the `pg1.` grant as
+printed; absent or `null` means the call carries none, and any other type is an invalid
+argument. The edge set a typed phrase loses (§3) is stripped from both ends first, so the
+newline a terminal copy often carries doesn't matter: the signature covers nothing outside the
+token. It's taken off before the input is validated, so it's no part of the input, the plan
+hash or the input hash, and a tool's own input may not have a field of that name.
+
+A first round that carries a consent (a preview doesn't read it, and a retry is judged on the
+form's answer alone) checks it **exactly as a stored consent**: against each recomputed plan in
+order, a single root block carrying `only` and `exp`, passing the grant check as a `COMMIT` of
+the tool at this server signed by the pinned principal, with `only` equal to that plan's consent
+hash, which binds this server's store. It then consumes it with
+`consumeOnce(<consent grant id>, exp)` and runs that plan. A consent is used once, whichever way
+it arrived, and only in the store it binds. If it approves no plan, nothing runs that round.
+Neither a stored consent nor the policy is consulted, and the call asks (the form, else fresh
+consent codes) with the reason `the consent passed as yea_consent can't be used: <why>`, where
+`<why>` is the first that applies:
+
+| `<why>` | when |
+|---|---|
+| why no principal key is pinned | there's none (as for consent codes) |
+| `it isn't a consent from yea approve` | it doesn't decode as a single-block grant with `only` and `exp`: a value mangled on the way lands here |
+| `it has expired` | the grant check fails and its `exp` is past |
+| `it isn't signed by the pinned principal for this tool at this server` | the grant check fails otherwise: forged, altered, or for another server or tool |
+| `it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered` | it passes, but binds no recomputed plan's consent hash: another plan, other input, a phrase that changed, an edited code, or another store's consent |
+| `it was already used` | its grant id was already consumed |
+
+A call whose handler returns no plans is refused before any consent is read, as it is without
+one (`<tool> has no way to do this`). These reasons are fixed
+text, pinned by the job call cases, so both languages say the same.
+
+Carrying a consent through the chat gives the model nothing to forge. Nothing the model passes
+is an approval; a consent signed by the pinned key is checked as one from the store. The bytes
+are the principal's signature over one plan, its phrase and the store that consumes it, issued
+to this server's key, so a model that changes one character turns it into a refusal. It costs
+about a kilobyte of chat. The bridge takes the protocol's consents the same way (SPEC-bridge
+`yea_consent`), and so does a `COMMIT` that carries one (SPEC.md §6.6).
+
+The store route needs a store shared by the server and the `yea` command: a local stdio server
+with `FileStore`, on the person's own account. The call route needs nothing shared, so it
+serves a server under another OS user, on another machine, or over HTTP with a `MemoryStore`.
+Url-mode approval pages come later.
 
 ### 7. Undo
 
@@ -534,7 +598,8 @@ interface ApprovalStore {
   release(r: Reservation): Promise<void>;
   used(k: LedgerKey): Promise<bigint>;                               // settled + reserved
   putConsent(planHash: string, grant: string): Promise<void>;        // from `yea approve`
-  getConsent(planHash: string): Promise<string | null>;              // a signed pg1. consent grant
+  getConsent(planHash: string): Promise<string | null>;              // a pg1. consent grant, or null if none can be read
+  storeId(): Promise<string>;                                        // this store's id, which a job consent binds (§6)
 }
 
 type LedgerKey = { block: string; of: string };  // a policy grant block id and a measure
@@ -547,10 +612,32 @@ type JobReceipt = Receipt & {                     // SPEC.md's receipt, plus wha
 Amounts are the SDK core's `exact()` values: integers at scale 18. What `decide` reads is
 `used(k)`: the settled plus reserved amount for a block and measure.
 
-**Store selection.** Stdio servers use `FileStore` by default, because `yea approve` and undo
-across restarts need it. HTTP servers use `MemoryStore` by default, and one with a `total`
-limit refuses to start on it unless the author passes `store` or sets `singleProcess: true`.
-A custom store (Redis, SQL) is for multi-process servers.
+**The store id.** Every store has an id, which a job consent binds (§6), so a consent runs in
+one store only. A store id is 22 b64url characters: 16 random bytes. It never changes for the
+store. Two stores made separately never share one; a copy of a store shares it (§9):
+- A `MemoryStore` makes its id when it's made, so a restarted server's store has a new one.
+- A `FileStore` keeps its id in `<root>/id`, so every process that shares the root, and
+  `yea approve`, reads the same one. The first process that needs it writes a temp file and
+  links it into place, so it's created once, and whole, whichever process wins. Where the
+  filesystem has no hard links (`link` fails with `ENOTSUP`, `EPERM` or `ENOSYS`: FAT, exFAT,
+  many SMB shares), it does the same under a lock file, `<root>/id.lock`, taken as a ledger
+  lock is (below): it looks again, and only if there's still no id renames the temp file into
+  place. A file there that isn't a store id, or can't be read, is a store error, and nothing
+  runs; so is an id that can't be made.
+- A custom store (Redis, SQL) keeps one id for everything that shares it, made once with
+  `newStoreId()` (`new_store_id()` in Python) and kept with the rest of its data.
+
+The job call session reads the store's id once a round, before it reads a consent or issues a
+code. An id that isn't a store id is a store error there, so nothing runs and no code is issued:
+a consent that binds no store would run once in every store with the server's key.
+
+**Store selection.** Stdio servers use `FileStore` by default, because `yea approve` saves
+consents there and undo across restarts needs it. HTTP servers use `MemoryStore` by default,
+where a consent comes back on the call (§6), and one with a `total` limit refuses to start on
+it unless the author passes `store` or sets `singleProcess: true`. A custom store (Redis, SQL)
+is for multi-process servers: replicas of one server share one store, with a shared state key.
+Never create a store by copying a used one (a volume snapshot, an image with a store baked in, a
+copied home): the copy keeps the id, so a consent would run once in each (§9).
 
 **`FileStore` format**, under `~/.yea/store/` by default (`$YEA_HOME/store` when `YEA_HOME` is set;
 the MCP servers and `yea approve` use `YEA_STORE` first), pinned by the conformance
@@ -562,6 +649,8 @@ undo/<receipt id>.claim, .done       markers, created with O_EXCL; the claim hol
 receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinned: results may hold floats)
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
+id                                   the store id (22 b64url characters, nothing else), created once
+id.lock                              the lock for making `id`, only where the filesystem has no hard links
 pending/<id>                         a consent code waiting for `yea approve <id>` (§6, Short ids)
 ```
 
@@ -571,13 +660,27 @@ then a store error). The lock holds a random token: its holder re-checks the tok
 after writing, deletes the lock only if it still holds it, and reports a store error (nothing
 runs) if the token changed. A lock older than 30 s is stale: a waiter reads its token, renames
 it aside, and deletes it only if the moved file still holds that token; otherwise it links it
-back. Undo claims hold a token too, and one older than 10 minutes with no `done` marker (the
-process died) may be claimed again the same way. A holder paused for more than 30 s between
-its checks is the one case lock files can't fully close; the check after writing turns it
-into a store error instead of a silent overshoot. Files are written to a uniquely named temp file
-(`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids
-are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be
-removed after `exp`.
+back where it can (without hard links it can't, and that lock's holder fails closed). Undo
+claims hold a token too, and one older than 10 minutes with no `done` marker (the process died)
+may be claimed again the same way. A holder paused for more than 30 s between its checks is the
+one case lock files can't fully close; the check after writing turns it into a store error
+instead of a silent overshoot. Files are written to a uniquely named temp file
+(`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids are
+`r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be removed after
+`exp`.
+
+**An unreadable consent is absent.** A consent is read the way a server key is: opened without
+following a symlink and without blocking (`O_NOFOLLOW`, `O_NONBLOCK`), checked on the open file
+to be a regular file, and read to at most 64 KiB. A `consents/` file that exists but can't be
+read that way counts as no consent: a mode or owner that shuts the server out, a symlink,
+directory, FIFO or device in its place, or more than 64 KiB. The server writes one line to
+stderr naming the file and why. The call then asks as it would
+without one. A consent only ever adds a way to run, so treating an unreadable one as absent
+never runs more than the policy would. And the fs error, with its path, never reaches the
+model's context. A file whose bytes aren't UTF-8 is no consent either: TypeScript reads it with
+replacement characters, which no grant decodes from, and Python counts the decode error as
+unreadable. Any other read the store makes that fails is still a store error, and nothing
+runs.
 
 ## 9. Security
 
@@ -643,19 +746,18 @@ what the prompt shows.
   the retry of a 2026-07-28 `input_required` call draws a second prompt. Both wait for the
   interactive check in [#372](https://github.com/yea-protocol/yea/issues/372).
 
-**Today's status, for servers built with the framework**, where `yea approve` must save the
-consent in the server's store:
+**Today's status, for servers built with the framework:**
 - **The key on the server's account:** best effort. An agent that runs as that user can read
   the key, or run `yea approve` itself: the command checks for a terminal, and a terminal isn't
   a person.
-- **The key on another OS user:** blocked. The store's directories and files are private to
-  the server's user (§8), so `yea approve` run as another user can't save the consent there
-  ([#358](https://github.com/yea-protocol/yea/issues/358)).
-- **The key on another device:** not possible yet
-  ([#328](https://github.com/yea-protocol/yea/issues/328)).
+- **The key on another OS user:** works, with the consent pasted back on the call (§6). The
+  signature holds; the store stays best effort under a stdio server, which runs as the agent's
+  user ("What else must hold"). No test runs two OS users.
+- **The key on another device:** works the same way. The person copies the code to the device,
+  runs `yea approve` there, and pastes the consent back. Approval pages for web chat clients
+  are [#328](https://github.com/yea-protocol/yea/issues/328).
 
-The bridge's consent codes already work with the key on another device, because `yea approve`
-there prints the consent and the person pastes it back (SPEC-bridge).
+The bridge's consent codes work the same way (SPEC-bridge, `yea_consent`).
 
 **Choosing the tier.**
 - **The author chooses it for each plan.** A plan at `risk: 'high'` is never offered in the
@@ -665,8 +767,8 @@ there prints the consent and the person pastes it back (SPEC-bridge).
   instead is [#369](https://github.com/yea-protocol/yea/issues/369). The Stripe
   connector does this in live mode: its refunds, immediate cancellations and changes, and
   dearer changes at renewal are `high` ([SPEC-connector-stripe](SPEC-connector-stripe.md)).
-  The cost is a pinned principal key and a store `yea approve` can reach (§2, §6): without
-  them, a `high` plan can't be approved at all.
+  The cost is a pinned principal key (§2): without one, a `high` plan can't be approved at
+  all. Its consent comes back on the call, or through a store `yea approve` shares (§6).
 - **The person can lower `outOfBand`.** It's a risk level, not a list of tools:
   `{ "outOfBand": "medium" }` sends medium and high plans out of band. Like every unsigned
   rule, it's best effort (§2): an agent that can write `~/.yea` can remove it.
@@ -680,12 +782,35 @@ there prints the consent and the person pastes it back (SPEC-bridge).
   (root can write anything) and on platforms where it can't check file ownership.
 - **Keep the agent away from three things.** The principal key (or it signs for itself), the
   pinned principal public key (or it swaps in its own), and the store (or it resets totals,
-  deletes a `consumeOnce` marker to replay a consent within its `exp`, or deletes receipts).
+  deletes a `consumeOnce` marker or rewrites the store's id to replay a consent within its
+  `exp`, or deletes receipts).
   `YEA_PRINCIPAL_HOME`, the write check on `YEA_PRINCIPAL_PUB`, and running the server as
   another OS user are how. On one account with a shell-capable agent, the guarantees are best
   effort, as the security guide already says for the principal key.
-- **A restarted server keeps its totals** only with a persistent store, which is why stdio
-  defaults to `FileStore`.
+- **What a second OS user buys, and what it doesn't.** With the principal key under another OS
+  user, who runs `yea approve` there and pastes the consent back (§6), the agent can't sign.
+  It can't make itself a consent or a policy, and that holds strongly. The store doesn't move.
+  A stdio server runs as the client's user, which is the agent's, so the store is still the
+  agent's: it can delete a `consumed/` marker to replay a consent within its `exp`, reset a
+  `total`, delete receipts, or delete or spoil a stored consent. Spoiling one is a denial, not
+  a forgery: an unreadable consent only asks again (§8). So with two users, signing is
+  strong and the store stays best effort. The store is out of the agent's reach too only with
+  **three** users: the server as its own user (started through a wrapper in the client's
+  config), the agent as another that can't read or write the server's store, and the
+  principal as a third. The consent travels on the call in that layout as well. The guides
+  don't walk through it yet, and the shared-store variants are #376.
+- **A restarted server keeps its totals and receipts** only with a persistent store, which is
+  why stdio defaults to `FileStore`. A consent used before a restart still can't run again: on
+  a `MemoryStore` the restarted store has a new id, so the consent, which the model may still
+  hold, binds none of its plans (§6). A form state can't either: a `MemoryStore` can't be given
+  a shared state key, so the restarted server's new key refuses it.
+- **Servers that share a key but not a store** (a connector's stdio and HTTP sides, or one
+  server listed twice in a client's config) each keep their own one-time markers. A consent
+  still runs in only one of them, the store it binds (§6). A copied store keeps its id, though:
+  a `FileStore` directory baked into an image or copied with a home would run a consent once
+  in each copy, so make a new store rather than copy one. Totals are another matter: each
+  store keeps its own, which is why an HTTP server with a `total` limit refuses to start on a
+  `MemoryStore` unless its author says it runs as a single process (SPEC-mcp-ts).
 - **Short consents.** Consent grants expire in 10 minutes by default, which bounds a replay
   if a marker is ever deleted.
 - **Fail closed** everywhere: an invalid state, a missing or unsigned policy, an unpinned key,
@@ -699,6 +824,7 @@ there prints the consent and the person pastes it back (SPEC-bridge).
 | `preview: true` | `INTENT` without commit |
 | Approval form and typed confirmation | Plays a consent grant's role for one plan, unsigned: the form tier (§9) |
 | Consent code and `yea approve` | A `pc1.` consent request, then a `pg1.` consent grant signed by the principal |
+| `yea_consent` on the call | A `COMMIT` re-sent with the consent grant (§6.6) |
 | Signed policy | A grant signed by the principal, with its caveats; unsigned config can only tighten |
 | `undo(receipt)` | `UNDO` |
 
@@ -767,12 +893,14 @@ export function decide(
   `nonce of step n`), whether the handler ran (`planned`), and the `outcome`: plans by hash and
   a state without its nonce. The first step's `before` sets the store up, with the call's
   `consents`; a step's `race` is reserved by another call between the decision and the
-  reservation. The store is not a MemoryStore, so consent codes are issued. They cover a denied
+  reservation. They cover a denied
   tool, a run inside the policy, asking then answering, a wrong phrase three times, a replayed
   state, a declined answer, a state for other input or past its expiry, plans that changed, a
   chosen plan now out of band, a consent code consumed twice, a consent signed for another
   phrase, a limit that fills up between decide and reserve, no pinned principal, a
-  clarification and no plans.
+  clarification and no plans. A step's `consent` is the consent its call carries
+  (`yea_consent`, §6); those cases cover one that runs its plan once, whether it came on the
+  call or from the store, and each reason one is refused.
 - **Conformance cases** (`conformance/approval.json`). Given plans, a policy and a ledger, both
   languages agree on:
   - the decision, and the reason text;
@@ -786,12 +914,24 @@ export function decide(
   - reading an unsigned policy file with loosening and unknown fields;
   - the `FileStore` on-disk format, and the pending file's (`conformance/pending.json`).
 - **Unit tests** for the store: consume-once under concurrent calls, claim-undo once, and
-  reservations under concurrency and failure.
+  reservations under concurrency and failure. A `FileStore` whose filesystem has no hard links
+  makes its id once, holding its lock file when it writes it, however many stores race for it;
+  one whose lock is taken over while held makes none, and leaves the other's lock; any other
+  failure to make it is a store error.
 - **Security tests** in `ts/test/security.test.ts` and its Python counterpart:
   - an unsigned approval is rejected, and an unsigned policy can't loosen the defaults;
   - a consent for one plan can't run another, and a replayed state or consent runs nothing;
   - a consent code with an edited phrase is refused, and a consent signed for an edited phrase
     never runs; a phrase over 64 characters is refused;
+  - a consent on the call (`yea_consent`) that is forged, altered, expired, issued to another
+    key, for another server or tool, already used, or for another plan runs nothing, and never
+    falls through to the policy;
+  - a consent consumed in one store runs nothing in another with the same server key, and a
+    `MemoryStore` server's consent runs nothing after a restart;
+  - a store whose id isn't a store id runs nothing and issues no code, even for a consent that
+    binds no store, and `yea approve` refuses a code that binds none;
+  - an unreadable consent in the store (a planted mode-0 file, a FIFO or a symlink) asks
+    again, with no fs error in the result;
   - an irreversible plan never auto-runs, whatever the grant says, and neither does one whose
     `undoWindow` is zero, negative or not an integer;
   - a `high` plan never auto-runs and can't be approved in the form, even as `plans[1]`;
@@ -859,8 +999,9 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
    recipient, the amount as written), or `approve` when it names none. Phrases are text only
    in v0, at most 64 characters, and a consent code's phrase is bound by its consent hash (§6),
    adopted 2026-11-03 (#141).
-3. **Remote servers.** Local, signed `yea approve` is enough for v0. Url-mode pages come
-   later.
+3. **Remote servers.** Local, signed `yea approve` is enough for v0, with the consent pasted
+   back on the call when the server can't read the store `yea approve` writes (decision 8).
+   Url-mode pages come later.
 4. **Undo doesn't ask** within its window.
 5. **SPEC.md's "MCP binding" appendix** comes after v0 ships.
 6. **Count limits** are already in the protocol (`total` on any measure, SPEC.md §6.3), so
@@ -871,3 +1012,19 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
    SPEC.md §4.3.1 requires, so `send_email` and most refunds always ask. Allowing named
    irreversible tools to auto-run would be a new, always-signed grant caveat: a protocol
    change.
+8. **A consent travels on the call; a shared inbox comes later** (#358, adopted 2026-11-07).
+   The consent `yea approve` prints can be passed back on the retry call as `yea_consent` and
+   is checked exactly as a stored one (§6). That needs no shared filesystem, so it works for a
+   server under another OS user, on another device, and over HTTP with a `MemoryStore`, and
+   #328's paste-back can reuse it. A group-writable consents inbox in the server's store, which
+   would save the paste on one machine with two users, is deferred (#376). It needs the
+   store outside both users' homes (`~/.yea` is `0700`), the server rather than `yea approve`
+   to create the inbox, file modes that a `umask` can't strip, and a two-user CI job to show it
+   works. It also buys nothing against an agent that runs as the server's user, which owns the
+   store either way (§9).
+9. **A job consent binds the store that consumes it** (#358, adopted 2026-11-07). Its consent
+   hash covers the store's id as well as the plan and the phrase (§6), so a consent runs once
+   in all, not once per store: not again in a second server with the same key, and not again
+   after a `MemoryStore` server restarts. The exception is a copy of a store: it keeps the id,
+   so a consent runs once in each copy (§9). The id is in the consent code, so `yea approve`
+   needs no store to sign, and saves the consent only in the store it binds.

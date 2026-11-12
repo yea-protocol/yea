@@ -23,6 +23,7 @@ import {
 export {
   approve,
   type Kind,
+  printedConsent,
   textOf,
   tmp,
 } from './harness.js';

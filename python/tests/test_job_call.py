@@ -18,16 +18,6 @@ PRINCIPAL = key_from_seed(bytes([1]) * 32).public
 SERVER = key_from_seed(bytes([5]) * 32).public
 
 
-class FileLike:
-    """A MemoryStore the session doesn't treat as one, so it issues consent codes."""
-
-    def __init__(self) -> None:
-        self.inner = MemoryStore()
-
-    def __getattr__(self, name):
-        return getattr(self.inner, name)
-
-
 def call(plan=None, input=None, tool=None, can_ask=True) -> JobCall:
     async def refund():
         return [Plan("Refund", [], apply=lambda c: None, risk="low")]
@@ -36,16 +26,16 @@ def call(plan=None, input=None, tool=None, can_ask=True) -> JobCall:
 
 
 def test_an_ask_carries_what_to_return_instead_when_the_client_is_unreachable():
-    o = asyncio.run(job_call(call(), FileLike()))
+    o = asyncio.run(job_call(call(), MemoryStore()))
     assert o.kind == "ask" and o.otherwise is not None
     instead = o.otherwise()
     assert instead.kind == "consent-codes" and instead.why == "refund can't be undone"
     assert [c["planHash"] for c in instead.codes] == o.form["offered"] and instead.unavailable is None
 
 
-def test_a_memory_store_gets_no_consent_codes():
+def test_a_memory_store_gets_consent_codes_too_their_consents_come_back_on_the_call():
     o = asyncio.run(job_call(call(can_ask=False), MemoryStore()))
-    assert o.kind == "consent-codes" and "keeps approvals in memory" in (o.unavailable or "")
+    assert o.kind == "consent-codes" and o.unavailable is None and len(o.codes) == 1
 
 
 def test_a_non_integer_input_raises_before_the_handler_runs():

@@ -6,40 +6,45 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .._json import canonical, sha256_b64url
+from .._json import MAX_SAFE_INT, canonical, sha256_b64url
 from ..grants import Grant, GrantContext, consent_code, decode_grant, verify_grant
-from ..store import ApprovalStore
+from ..store import ApprovalStore, is_store_id
 from ..uses import check_uses
 from .phrase import checked_phrase, effective_phrase
 from .plan import HashedPlan, plan_preimage
 from .policy import Policy
 
 CONSENT_TTL = 600
-_NOT_A_CONSENT = "not a consent for this plan"
-# A consent the principal signed, validly, for another phrase: the tool's phrase changed, or the
-# code the person approved was edited (§6).
+# A consent that isn't shaped like one (§6).
+NOT_A_CONSENT = "not a consent for this plan"
+# A consent the principal signed, validly, for another hash: the tool's phrase changed, the code
+# the person approved was edited, or it binds another store (§6).
 OTHER_PHRASE = "not a consent for this phrase"
 # What the person is told when a stored consent was signed for a different phrase.
 PHRASE_CHANGED = ("a consent for this plan was signed for a different phrase; approve the new code — "
                   "if this repeats, the code you were given may have been altered")
 
 
-def consent_hash_of(plan_hash: str, phrase: str) -> str:
-    """What a consent grant's ``only`` binds (§6): the plan and the phrase the tool names for it,
-    after the ``approve`` fallback, so a consent signed for an edited phrase never matches the
-    server's own."""
-    return sha256_b64url(canonical({"plan": plan_hash, "phrase": effective_phrase(phrase)}).encode())
+def consent_hash_of(plan_hash: str, phrase: str, store: str) -> str:
+    """What a consent grant's ``only`` binds (§6): the plan, the phrase the tool names for it (after
+    the ``approve`` fallback) and the id of the store that consumes it. So a consent signed for an
+    edited phrase never matches the server's own, and one consumed in a store never runs in another."""
+    return sha256_b64url(canonical({"plan": plan_hash, "phrase": effective_phrase(phrase), "store": store}).encode())
 
 
-def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan, phrase: str, now: int) -> str:
+def job_consent_code(server_key: str, principal: str, input: Any, p: HashedPlan, phrase: str, store: str,
+                     now: int) -> str:
     """The unsigned ``pc1.`` consent request for one plan. Its detail carries the plan-hash
-    preimage (``job``), so ``yea approve`` can re-check the hash, and the phrase to type.
-    ``proposal`` is the plan hash; ``hash`` is the consent hash, which binds the phrase."""
+    preimage (``job``), so ``yea approve`` can re-check the hash, the phrase to type, and the
+    server's store id. ``proposal`` is the plan hash; ``hash`` is the consent hash, which binds the
+    phrase and the store."""
+    if not is_store_id(store):
+        raise ValueError(f"not a store id: {store!r}")
     phrase = checked_phrase(phrase)
-    consent = {"proposal": p.plan_hash, "hash": consent_hash_of(p.plan_hash, phrase), "service": server_key,
+    consent = {"proposal": p.plan_hash, "hash": consent_hash_of(p.plan_hash, phrase, store), "service": server_key,
                "capability": p.tool, "principal": principal, "summary": p.plan.summary, "expires": now + CONSENT_TTL}
     job = plan_preimage(input, p)
-    return consent_code(consent, {"job": job, "phrase": phrase})
+    return consent_code(consent, {"job": job, "phrase": phrase, "store": store})
 
 
 @dataclass(frozen=True)
@@ -49,18 +54,18 @@ class StoredConsent:
     note: str | None = None  # PHRASE_CHANGED when a consent was signed for a different phrase
 
 
-async def consent_for(plans: list[HashedPlan], store: ApprovalStore, policy: Policy, now: int,
+async def consent_for(plans: list[HashedPlan], store: ApprovalStore, store_id: str, policy: Policy, now: int,
                       phrase_for: Callable[[HashedPlan], str]) -> StoredConsent:
     """The first recomputed plan with a valid, unused consent from ``yea approve`` for the phrase
-    the tool names now, consuming it by grant id. Denied tools are never run. One that is
-    consumed, expired or failing counts as absent, but one signed for a different phrase leaves a
-    note, so a changed phrase or an edited code isn't silent."""
+    the tool names now, in this store (``store_id``), consuming it by grant id. Denied tools are
+    never run. One that is consumed, expired or failing counts as absent, but one signed for a
+    different phrase leaves a note, so a changed phrase or an edited code isn't silent."""
     note = None
     for p in plans:
         if p.tool in policy.deny:
             continue
         token = await store.get_consent(p.plan_hash)
-        check = check_job_consent(token, p, phrase_for(p), policy, now) if token else None
+        check = check_job_consent(token, p, phrase_for(p), store_id, policy, now) if token else None
         if check is not None and check.ok and check.id and check.exp is not None and await store.consume_once(check.id, check.exp):
             return StoredConsent(plan=p)
         if check is not None and check.why == OTHER_PHRASE:
@@ -76,20 +81,18 @@ class ConsentCheck:
     exp: int | None = None
 
 
-def check_job_consent(token: Any, p: HashedPlan, phrase: str, policy: Policy, now: int) -> ConsentCheck:
-    """Whether ``token`` is a consent from ``yea approve`` for exactly this plan and ``phrase``: a
-    grant with an ``only`` equal to their consent hash and an ``exp``, signed by the pinned
-    principal, issued to this server's key, and valid as a COMMIT of the tool here now. A copied
-    policy grant isn't shaped like a consent. One that is valid but binds another hash is refused
-    with ``OTHER_PHRASE``, so the caller can say why."""
-    try:
-        g = decode_grant(token) if isinstance(token, str) else None
-    except ValueError:
-        g = None
+def check_job_consent(token: Any, p: HashedPlan, phrase: str, store: str, policy: Policy, now: int) -> ConsentCheck:
+    """Whether ``token``, a consent from ``yea approve`` in the store or on the call, may run exactly
+    this plan with ``phrase`` in the store whose id is ``store``: a grant with an ``only`` equal to
+    their consent hash and an ``exp``,
+    signed by the pinned principal, issued to this server's key, and valid as a COMMIT of the tool
+    here now. A copied policy grant isn't shaped like a consent. One that is valid but binds another
+    hash is refused with ``OTHER_PHRASE``, so the caller can say why."""
+    g = _decoded(token)
     bound = _bound_hash(g) if g is not None else None
     exp = _expiry(g) if g is not None else None
     if g is None or bound is None or exp is None:
-        return ConsentCheck(False, why=_NOT_A_CONSENT)
+        return ConsentCheck(False, why=NOT_A_CONSENT)
     # Checked against the hash it binds, so a valid consent for another phrase is told apart.
     uses = check_uses(p.plan.uses)
     proposal: dict[str, Any] = {"hash": bound, "risk": p.risk, **({"uses": uses} if uses is not None else {})}
@@ -97,9 +100,24 @@ def check_job_consent(token: Any, p: HashedPlan, phrase: str, policy: Policy, no
     v = verify_grant(g, [policy.principal or ""], policy.server_key or "", ctx)
     if not v.ok:
         return ConsentCheck(False, why=v.reason)
-    if bound != consent_hash_of(p.plan_hash, phrase):
+    if bound != consent_hash_of(p.plan_hash, phrase, store):
         return ConsentCheck(False, why=OTHER_PHRASE)
     return ConsentCheck(True, id=g.id, exp=exp)
+
+
+def job_consent_expiry(token: Any) -> int | None:
+    """When a consent grant expires: its earliest ``exp``, read without checking anything else, or
+    None if it isn't shaped like a consent. To tell an expired consent from a forged one when the
+    grant check fails (§6)."""
+    g = _decoded(token)
+    return _expiry(g) if g is not None and _bound_hash(g) is not None else None
+
+
+def _decoded(token: Any) -> Grant | None:
+    try:
+        return decode_grant(token) if isinstance(token, str) else None
+    except ValueError:
+        return None
 
 
 def _bound_hash(g: Grant) -> str | None:
@@ -113,6 +131,11 @@ def _bound_hash(g: Grant) -> str | None:
 
 
 def _expiry(g: Grant) -> int | None:
-    """The earliest ``exp`` in the grant; consents must have one, which bounds a replay."""
-    exps = [c["exp"] for b in g.blocks for c in b["p"]["caveats"] if isinstance(c, dict) and type(c.get("exp")) is int]
+    """The earliest ``exp`` in the grant; consents must have one, which bounds a replay. Only a safe
+    integer counts, as in TypeScript, so both languages agree on what is shaped like a consent."""
+    exps = [c["exp"] for b in g.blocks for c in b["p"]["caveats"] if isinstance(c, dict) and _safe_int(c.get("exp"))]
     return min(exps) if exps else None
+
+
+def _safe_int(v: Any) -> bool:
+    return type(v) is int and abs(v) <= MAX_SAFE_INT

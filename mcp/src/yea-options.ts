@@ -69,6 +69,7 @@ const STORE_METHODS: Record<keyof ApprovalStore, true> = {
   used: true,
   putConsent: true,
   getConsent: true,
+  storeId: true,
 };
 
 /** One rule per key of `YeaOptions`, and no other. */

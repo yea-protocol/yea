@@ -2,8 +2,7 @@
 runs through ``yea.job_call`` a round per step, and each step's store before, outcome, whether the
 handler ran, and store after must match. The twin of ts/scripts/job-call-run.mjs.
 
-The store is a MemoryStore behind a plain class (so the session issues consent codes) that records
-each id it consumes. A step's ``race`` is reserved by "another call" just before the session's
+The store is a MemoryStore with the call's ``store`` id, behind a plain class that records each id it consumes. A step's ``race`` is reserved by "another call" just before the session's
 first reservation, after the policy has decided."""
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from conftest import CONFORMANCE, load_vectors
 
 from yea import Plan, clarify
 from yea.approval import Tightening, load_policy
-from yea.job_call import JobCall, JobTool, Outcome, Retry, job_call
+from yea.job_call import JobCall, JobTool, Outcome, Retry, how_to_approve, job_call
 from yea.store import LedgerKey, MemoryStore
 
 DATA = load_vectors("job-calls")
@@ -37,8 +36,8 @@ def _key(id: str) -> LedgerKey:
 class VectorStore:
     """A MemoryStore that records what it consumed, and lets a race in before the first reserve."""
 
-    def __init__(self) -> None:
-        self.inner = MemoryStore()
+    def __init__(self, store_id: str) -> None:
+        self.inner = MemoryStore(store_id=store_id)
         self.consumed: list[str] = []
         self.race: list[dict] = []
 
@@ -59,7 +58,7 @@ class VectorStore:
 
 
 async def _store_for(call: dict) -> VectorStore:
-    s = VectorStore()
+    s = VectorStore(call["store"])
     setup = call["steps"][0]["before"]
     for id, amount in setup["used"].items():
         await s.inner.settle(await s.inner.reserve(_key(id), int(amount), NO_MAX))
@@ -133,7 +132,8 @@ async def _run(call: dict) -> list[dict]:
             retry = Retry(st, step["retry"]["answer"])
         s.race[:] = step.get("race", [])
         facts = JobCall(_tool(call["tool"]), step["input"], _handler(step, ran), step["sub"], step["now"],
-                        _policy(step["policy"]), step["canAsk"], step.get("preview", False), step.get("unpinned"))
+                        _policy(step["policy"]), step["canAsk"], step.get("preview", False), step.get("unpinned"),
+                        step.get("consent"))
         o = await job_call(facts, s, retry)
         if o.kind == "ask":
             states[i] = o.state
@@ -154,3 +154,14 @@ def test_the_keys_are_the_ones_every_step_uses():
 def test_job_call(call):
     want = [{k: s[k] for k in ("before", "outcome", "planned", "after")} for s in call["steps"]]
     assert asyncio.run(_run(call)) == want
+
+
+def _approve_texts():
+    if DATA is None:
+        return [pytest.param(None)]
+    return [pytest.param(t, id=t["name"]) for t in DATA["approveTexts"]]
+
+
+@pytest.mark.parametrize("t", _approve_texts())
+def test_how_to_approve(t):
+    assert how_to_approve(t["planHashes"], t["codes"]) == t["lines"]

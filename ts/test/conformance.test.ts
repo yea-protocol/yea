@@ -377,6 +377,7 @@ describe('conformance vectors', () => {
       const r = await checkJobConsent(c.grant, {
         hp: await rehash(v.consents.plan),
         phrase: v.consents.phrase,
+        store: v.consents.store,
         policy: { principal: v.keys.principal, server: v.keys.server },
         now: c.now,
       });
@@ -414,9 +415,10 @@ describe('conformance vectors', () => {
     const cc = v.consentCodes;
 
     for (const c of cc.cases) {
-      expect(await P.consentHashOf(cc.plan.planHash, c.phrase), c.name).toBe(
-        c.consentHash,
-      );
+      expect(
+        await P.consentHashOf(cc.plan.planHash, c.phrase, cc.store),
+        c.name,
+      ).toBe(c.consentHash);
       expect(
         await jobConsentCode({
           server: cc.server,
@@ -424,6 +426,7 @@ describe('conformance vectors', () => {
           input: cc.input,
           hp: await rehash(cc.plan),
           phrase: c.phrase,
+          store: cc.store,
           now: cc.now,
         }),
         c.name,
@@ -454,6 +457,11 @@ describe('conformance vectors', () => {
       );
 
       expect(await runCall(P, c), c.name).toEqual(want);
+    }
+  });
+  it('job calls: how the model is told to approve outside the chat', () => {
+    for (const t of load('job-calls').approveTexts) {
+      expect(P.howToApprove(t.planHashes, t.codes), t.name).toEqual(t.lines);
     }
   });
   it('commit ledger: the order a COMMIT is checked in', async () => {
@@ -501,6 +509,17 @@ describe('conformance vectors', () => {
 
     walk(dir);
     expect(files).toEqual(v.fileStore.files);
+  });
+  it("approval FileStore id: the file holds a store id, or it's a store error", async () => {
+    for (const c of load('approval').fileStore.storeIds) {
+      const root = mkdtempSync(join(tmpdir(), 'yea-conf-'));
+
+      writeFileSync(join(root, 'id'), c.file);
+
+      const got = await new FileStore(root).storeId().catch(() => null);
+
+      expect(got, c.name).toBe(c.expect);
+    }
   });
   it('pending files', () => {
     const v = load('pending');

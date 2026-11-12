@@ -31,6 +31,7 @@ from .call import (
     JobDef,
     PartialApplyError,
     Req,
+    Reserved,
     Yea,
     run_job,
 )
@@ -83,6 +84,10 @@ def _check_options(transport: str, sub: Any, store: ApprovalStore, single_proces
                          "would accept the same approval once")
     if transport == "http" and is_memory_store(store) and not single_process:
         raise ValueError("yea(): HTTP on a MemoryStore needs single_process=True, or pass a store every process shares")
+    if not callable(getattr(store, "store_id", None)):
+        # The method a store written before store ids lacks (SPEC-approval decision 9); mcp-ts checks
+        # every ApprovalStore method, as its closed options do.
+        raise TypeError("yea(): store must be an ApprovalStore, with store_id() (SPEC-approval §8)")
 
 
 def yea(*, name: str, transport: str, home: str | os.PathLike[str] | None = None, store: ApprovalStore | None = None,
@@ -155,10 +160,10 @@ class Approvals:
                 self._undo_free(server)
             job = JobDef(tool_name, risk, revert, confirm_with)
 
-            async def run(input: dict, plan: Any, preview: bool, ctx: Context) -> Any:
+            async def run(input: dict, plan: Any, reserved: Reserved, ctx: Context) -> Any:
                 req = Req(ctx.request_context, ctx.session, ctx.request_context.request_id, ctx.protocol_version,
                           ctx.request_state, ctx.input_responses)
-                return await run_job(self._y, job, input, preview, req, plan)
+                return await run_job(self._y, job, input, reserved, req, plan)
 
             given = job_annotations(_as_dict(annotations))
             prompt = self._y.require_interaction if require_interaction is None else require_interaction

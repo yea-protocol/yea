@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import httpx2
@@ -18,21 +19,22 @@ import pytest
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
-from yea import Plan, create, issue_grant
+from yea import Plan, create, decode_consent_code, issue_grant, key_from_seed
 from yea.approval import consent_hash_of
-from yea.store import FileStore
+from yea.store import FileStore, MemoryStore
 
-from conftest import PRINCIPAL, Person, make_world, text
+from conftest import PRINCIPAL, Person, make_world, printed_consent, text
 from import_audit import REPO, import_audit, reachable, signers
 from yea_mcp import yea
 
 pytestmark = pytest.mark.anyio
 
 
-def consent_for(world, tool, plan_hash, phrase="approve"):
-    """A consent as ``yea approve`` signs it: bound to the plan and the phrase typed for it."""
+async def consent_for(world, tool, plan_hash, phrase="approve"):
+    """A consent as ``yea approve`` signs it: bound to the plan, the phrase typed for it, and the
+    server's store."""
     sid = world.approvals.service_id()
-    only = consent_hash_of(plan_hash, phrase)
+    only = consent_hash_of(plan_hash, phrase, await world.store.store_id())
     return issue_grant(PRINCIPAL, sid, [{"svc": [sid]}, {"verbs": ["COMMIT"]}, {"can": [tool]}, {"only": only},
                                         {"exp": 2**31}]).encode()
 
@@ -88,7 +90,7 @@ async def test_a_denied_tool_never_runs_even_with_a_stored_consent(world):
     done = []
     jobs(world, done)
     (h, _) = await plan_hashes(world, "refund", {"amount": 5})
-    await world.store.put_consent(h, consent_for(world, "refund", h))
+    await world.store.put_consent(h, await consent_for(world, "refund", h))
     world.approvals._y.tighten = {"deny": ["refund"]}
     async with world.client("auto", Person()) as c:
         r = await c.call_tool("refund", {"amount": 5})
@@ -122,10 +124,107 @@ async def test_a_consent_for_one_plan_never_runs_another(world):
     jobs(world, done)
     (h5, _) = await plan_hashes(world, "refund", {"amount": 5})
     (h6, _) = await plan_hashes(world, "refund", {"amount": 6})
-    await world.store.put_consent(h6, consent_for(world, "refund", h5))
+    await world.store.put_consent(h6, await consent_for(world, "refund", h5))
     async with world.client("auto") as c:
         r = await c.call_tool("refund", {"amount": 6})
     assert r.is_error and done == []
+
+
+def _tampered(s: str) -> str:
+    """``s`` with one character in the middle changed (the last ones can carry only padding bits)."""
+    i = len(s) // 2
+    return s[:i] + ("B" if s[i] == "A" else "A") + s[i + 1:]
+
+
+_STRANGER = key_from_seed(bytes([9]) * 32)
+_NOT_SIGNED = "it isn't signed by the pinned principal for this tool at this server"
+_NO_PLAN = ("it approves none of these plans; if the person approved this exact request, this server may have "
+            "restarted since or not be the one that asked, or the code they were given may have been altered")
+
+
+def _variant(code: dict, by=PRINCIPAL, to: str | None = None, svc: str | None = None, can: str | None = None,
+             exp: int | None = None) -> str:
+    """The consent ``yea approve`` would print for ``code``, with one part changed."""
+    c = decode_consent_code(code["code"])
+    return issue_grant(by, to or c["service"], [{"svc": [svc or c["service"]]}, {"verbs": ["COMMIT"]},
+                                                {"can": [can or c["capability"]]}, {"only": c["hash"]},
+                                                {"exp": c["expires"] if exp is None else exp}]).encode()
+
+
+async def test_a_yea_consent_forged_altered_expired_for_another_server_tool_or_plan_or_used_runs_nothing(world):
+    """[M21] A consent on the call is checked exactly as one from the store, even where the policy
+    would run the plan by itself (#358)."""
+    done = []
+
+    @world.approvals.job(world.server, risk="low", revert=lambda r, ctx: None)
+    async def reschedule(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event), undo_window=60)]
+
+    async with world.client("auto") as c:  # can't ask
+        (code,) = (await c.call_tool("reschedule", {"event": "e1"})).structured_content["codes"]
+        consent = printed_consent(code)
+        refusals = [
+            ({"event": "e2", "yea_consent": consent}, _NO_PLAN),
+            ({"event": "e1", "yea_consent": _variant(code, by=_STRANGER)}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, to=_STRANGER.public)}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, svc=_STRANGER.public)}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, can="delete_branch")}, _NOT_SIGNED),
+            ({"event": "e1", "yea_consent": _variant(code, exp=int(time.time()) - 1)}, "it has expired"),
+        ]
+        world.grant({"can": ["reschedule"]}, {"risk": "low"})  # the policy alone would now run e1
+        for args, why in refusals:
+            r = await c.call_tool("reschedule", args)
+            assert r.is_error and f"the consent passed as yea_consent can't be used: {why}" in text(r), why
+        # Altered on the way: refused, whatever part the change lands in.
+        forged = await c.call_tool("reschedule", {"event": "e1", "yea_consent": _tampered(consent)})
+        assert forged.is_error and "the consent passed as yea_consent can't be used" in text(forged) and done == []
+        assert not (await c.call_tool("reschedule", {"event": "e1", "yea_consent": consent})).is_error
+        again = await c.call_tool("reschedule", {"event": "e1", "yea_consent": consent})
+        assert again.is_error and "can't be used: it was already used" in text(again)
+    assert done == ["e1"]
+
+
+def _reschedules(ap, server, done: list) -> None:
+    @ap.job(server, risk="low", revert=lambda r, ctx: None)
+    async def reschedule(event: str) -> list[Plan]:
+        return [Plan(f"Move {event}", [create("e")], apply=lambda: done.append(event), undo_window=60)]
+
+
+async def test_a_consent_runs_in_one_store_only_a_twin_server_with_the_same_key_runs_it_nothing(world, tmp_path):
+    """[M23] A connector's stdio and HTTP sides: one server key, but each its own store (#358)."""
+    done, twin_done = [], []
+    twin_ap = yea(name="billing", transport="stdio", home=tmp_path / "home", store=MemoryStore(),
+                  server_key=tmp_path / "server.key", principal=PRINCIPAL.public, policy=str(world.policy))
+    twin = MCPServer("billing", request_state_security=twin_ap.request_state_security())
+    _reschedules(world.approvals, world.server, done)
+    _reschedules(twin_ap, twin, twin_done)
+    assert twin_ap.service_id() == world.approvals.service_id()
+    async with world.client("auto") as c, Client(twin, mode="auto") as tc:
+        (code,) = (await c.call_tool("reschedule", {"event": "e1"})).structured_content["codes"]
+        consent = printed_consent(code)
+        assert not (await c.call_tool("reschedule", {"event": "e1", "yea_consent": consent})).is_error
+        r = await tc.call_tool("reschedule", {"event": "e1", "yea_consent": consent})
+        assert r.is_error and f"the consent passed as yea_consent can't be used: {_NO_PLAN}" in text(r)
+    assert (done, twin_done) == (["e1"], [])
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid") or os.getuid() == 0, reason="needs a user that file modes apply to")
+async def test_an_unreadable_consent_in_the_store_asks_again_with_no_fs_error_in_the_result(world, capsys):
+    """[M22] What an agent with the store could plant: a file the server can't read (#358)."""
+    done = []
+    jobs(world, done)
+    (h, _) = await plan_hashes(world, "refund", {"amount": 5})
+    await world.store.put_consent(h, "pg1.x")
+    planted = world.store.root / "consents" / h
+    planted.chmod(0)
+    try:
+        async with world.client("auto") as c:
+            r = await c.call_tool("refund", {"amount": 5})
+        assert r.is_error and text(r).startswith("✗ approval needed") and done == []
+        assert "EACCES" not in r.model_dump_json() and "consents/" not in r.model_dump_json()
+        assert "can't be read (EACCES), so it counts as absent" in capsys.readouterr().err
+    finally:
+        planted.chmod(0o600)
 
 
 async def test_a_stored_copy_of_the_policy_grant_never_counts_as_a_consent(world):
@@ -434,7 +533,7 @@ async def test_m4_a_consent_for_one_plan_runs_only_its_own_plan_once(world):
     done = []
     jobs(world, done)
     (h5, _) = await plan_hashes(world, "refund", {"amount": 5})
-    await world.store.put_consent(h5, consent_for(world, "refund", h5))
+    await world.store.put_consent(h5, await consent_for(world, "refund", h5))
     async with world.client("auto") as c:
         other = await c.call_tool("refund", {"amount": 6})
         own = await c.call_tool("refund", {"amount": 5})
@@ -850,6 +949,7 @@ ALLOWED: dict[str, set[str] | None] = {
     "dataclasses": None,  # value types
     "datetime": None,  # Lens dates
     "decimal": None,  # exact amounts
+    "errno": None,  # error names (EACCES) for a stored consent that can't be read
     "fastmcp": None,  # the FastMCP adapter, an optional extra
     "hashlib": None,  # sha256 for plan hashes and store names
     "inspect": None,  # reading handler signatures
@@ -869,7 +969,8 @@ ALLOWED: dict[str, set[str] | None] = {
     "unicodedata": None,  # phrase normalization
     "weakref": None,  # per-server state in yea_mcp/__init__.py
     # Narrowed to the files that need them:
-    "sys": {"python/mcp/src/yea_mcp/__init__.py", "python/mcp/src/yea_mcp/util.py"},  # stderr; sys.modules is refused
+    # stderr (file_store.py: a consent it can't read, #358); sys.modules is refused
+    "sys": {"python/mcp/src/yea_mcp/__init__.py", "python/mcp/src/yea_mcp/util.py", "python/src/yea/store/file_store.py"},
     "cryptography": {"python/src/yea/keys.py"},  # the SDK's Ed25519, which verifies consents
     "asyncio": {"python/src/yea/store/lock.py"},  # it can start processes, so only where it's needed
 }

@@ -7,8 +7,10 @@ import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   type Clarification,
   type HashedPlan,
+  howToApprove,
   type JobReceipt,
   lean,
+  type PlanConsentCode,
   planLines,
   printable,
   shownPlan,
@@ -53,40 +55,19 @@ export function previewResult(
     : textResult(lines, structured);
 }
 
-/** How to approve outside the chat (SPEC-approval §6): by short id when there are ids, else by code. */
-function howToApprove(
-  plans: HashedPlan[],
-  codes: { planHash: string; code: string; id?: string }[],
-): string[] {
-  const codeLines = codes.map(
-    (c) => `  code for [${codeNumber(plans, c)}]: ${c.code}`,
-  );
-
-  if (!codes.length || !codes.every((c) => c.id)) {
-    return [
-      'Ask the user to run `yea approve <code>` in a terminal outside this chat, then call this tool again with the same arguments.',
-      ...codeLines,
-    ];
-  }
-
-  return [
-    'Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again with the same arguments.',
-    ...codes.map((c) => `  [${codeNumber(plans, c)}] yea approve ${c.id}`),
-    "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:",
-    ...codeLines,
-  ];
-}
-
 /** No approval could be asked for here: the plans, and a consent code (and its id) for each. */
 export function consentResult(
   why: string,
   plans: HashedPlan[],
-  codes: { planHash: string; code: string; id?: string }[],
+  codes: PlanConsentCode[],
   unavailable: string | null,
 ): CallToolResult {
   const tail = unavailable
     ? [`No consent can be accepted: ${unavailable}.`]
-    : howToApprove(plans, codes);
+    : howToApprove(
+        plans.map((hp) => hp.planHash),
+        codes,
+      );
 
   return refused(
     `approval needed: ${printable(why)}`,
@@ -97,9 +78,6 @@ export function consentResult(
     },
   );
 }
-
-const codeNumber = (plans: HashedPlan[], c: { planHash: string }) =>
-  plans.findIndex((hp) => hp.planHash === c.planHash) + 1;
 
 /** A job's receipt as Lens (the protocol's RECEIPT), with the job's result. */
 export function receiptResult(

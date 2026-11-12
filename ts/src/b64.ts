@@ -59,4 +59,10 @@ export function isB64u(s: unknown, bytes?: number): s is string {
 export const utf8 = (s: string): Uint8Array<ArrayBuffer> =>
   new TextEncoder().encode(s) as Uint8Array<ArrayBuffer>;
 
-export const fromUtf8 = (b: Uint8Array) => new TextDecoder().decode(b);
+/**
+ * Bytes as UTF-8, strictly: invalid bytes throw rather than becoming U+FFFD, and a leading BOM is
+ * kept rather than dropped, so a grant or code that isn't the canonical encoding of what was signed
+ * never decodes to it (as Python's decoder refuses both).
+ */
+export const fromUtf8 = (b: Uint8Array) =>
+  new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(b);

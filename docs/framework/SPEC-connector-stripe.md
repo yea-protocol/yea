@@ -181,8 +181,10 @@ caution. Every plan's summary starts with `[test]` or `[LIVE]`.
 What that means in practice:
 - `high` plans are never offered in the client's form; they need `yea approve`
   (SPEC-approval §2).
-- Under `--http` there's no shared store for `yea approve`, so live `high` plans can't run
-  there at all. The README says so.
+- Under `--http` approvals live in a `MemoryStore`, where `yea approve` can't save them, so a
+  live `high` plan runs there only with its consent pasted back: the person runs
+  `yea approve <code>`, pastes the consent it prints, and the agent passes it as `yea_consent`
+  (SPEC-approval §6). It runs once, and not after a restart. The README says so.
 
 ### Keys and permissions
 
