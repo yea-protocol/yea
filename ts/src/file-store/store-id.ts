@@ -5,9 +5,19 @@
  */
 import { join } from 'node:path';
 import { isStoreId, newStoreId } from '../store.js';
-import { createWhole, NotRegularFile, readRegular } from './files.js';
+import { errno } from '../util.js';
+import {
+  createWhole,
+  NotRegularFile,
+  readRegular,
+  writeAtomic,
+} from './files.js';
+import { acquire, release, stillHeld } from './lock.js';
 
 const idPath = (root: string) => join(root, 'id');
+
+/** What `link` fails with where the filesystem has no hard links: FAT, exFAT, many SMB shares. */
+const NO_HARD_LINKS = new Set(['ENOTSUP', 'EPERM', 'ENOSYS']);
 
 /**
  * The text at `path`, or null if there's none. A file it won't read is a store error naming the
@@ -39,8 +49,8 @@ export function readStoreId(root: string): string | null {
   return text;
 }
 
-/** The id of the store at `root`, made now if it has none: the first to link one in wins. */
-export function ensureStoreId(root: string): string {
+/** The id of the store at `root`, made now if it has none: the first to make one wins. */
+export async function ensureStoreId(root: string): Promise<string> {
   const id = readStoreId(root);
 
   if (id !== null) {
@@ -49,7 +59,7 @@ export function ensureStoreId(root: string): string {
 
   const made = newStoreId();
 
-  if (createWhole(idPath(root), made)) {
+  if (await createId(root, made)) {
     return made;
   }
 
@@ -62,4 +72,66 @@ export function ensureStoreId(root: string): string {
   }
 
   return theirs;
+}
+
+/**
+ * Make `<root>/id` hold `made`, once and whole; false if another process made one first. An fs
+ * error is a store error naming the file, with the error as its cause.
+ */
+async function createId(root: string, made: string): Promise<boolean> {
+  try {
+    return await linkedOrLocked(root, made);
+  } catch (e) {
+    if (errno(e) === undefined) {
+      throw e;
+    }
+
+    throw new Error(
+      `can't make the store id at ${idPath(root)}: ${(e as Error).message}`,
+      { cause: e },
+    );
+  }
+}
+
+/** Link the id into place; where the filesystem has no hard links, make it under the lock. */
+function linkedOrLocked(
+  root: string,
+  made: string,
+): Promise<boolean> | boolean {
+  try {
+    return createWhole(idPath(root), made);
+  } catch (e) {
+    if (NO_HARD_LINKS.has(errno(e) ?? '')) {
+      return createIdLocked(root, made);
+    }
+
+    throw e;
+  }
+}
+
+/**
+ * Where the filesystem has no hard links: under the lock file `<root>/id.lock`, look again, and
+ * only if there's still no id, write it to a temp file and rename it into place. Still once,
+ * since on such a filesystem every maker takes the lock first, and whole, since a rename is.
+ */
+async function createIdLocked(root: string, made: string): Promise<boolean> {
+  const lock = `${idPath(root)}.lock`;
+  const token = await acquire(lock);
+
+  try {
+    if (readStoreId(root) !== null) {
+      return false;
+    }
+
+    // A lock broken as stale (a holder paused over 30 s) may have let another maker in.
+    if (!stillHeld(lock, token)) {
+      throw new Error(`lost the store id's lock (${lock}); no id was made`);
+    }
+
+    writeAtomic(idPath(root), made);
+
+    return true;
+  } finally {
+    release(lock, token);
+  }
 }

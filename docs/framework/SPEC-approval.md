@@ -613,12 +613,16 @@ Amounts are the SDK core's `exact()` values: integers at scale 18. What `decide`
 
 **The store id.** Every store has an id, which a job consent binds (§6), so a consent runs in
 one store only. A store id is 22 b64url characters: 16 random bytes. It never changes for the
-store, and two stores never share one:
+store. Two stores made separately never share one; a copy of a store shares it (§9):
 - A `MemoryStore` makes its id when it's made, so a restarted server's store has a new one.
 - A `FileStore` keeps its id in `<root>/id`, so every process that shares the root, and
   `yea approve`, reads the same one. The first process that needs it writes a temp file and
-  links it into place, so it's created once, and whole, whichever process wins. A file there
-  that isn't a store id, or can't be read, is a store error, and nothing runs.
+  links it into place, so it's created once, and whole, whichever process wins. Where the
+  filesystem has no hard links (`link` fails with `ENOTSUP`, `EPERM` or `ENOSYS`: FAT, exFAT,
+  many SMB shares), it does the same under a lock file, `<root>/id.lock`, taken as a ledger
+  lock is (below): it looks again, and only if there's still no id renames the temp file into
+  place. A file there that isn't a store id, or can't be read, is a store error, and nothing
+  runs; so is an id that can't be made.
 - A custom store (Redis, SQL) keeps one id for everything that shares it, made once with
   `newStoreId()` (`new_store_id()` in Python) and kept with the rest of its data.
 
@@ -630,7 +634,9 @@ a consent that binds no store would run once in every store with the server's ke
 consents there and undo across restarts needs it. HTTP servers use `MemoryStore` by default,
 where a consent comes back on the call (§6), and one with a `total` limit refuses to start on
 it unless the author passes `store` or sets `singleProcess: true`. A custom store (Redis, SQL)
-is for multi-process servers.
+is for multi-process servers. Never clone a replica's store from a used one (a volume snapshot,
+an image with a store baked in, a copied home): the copy keeps the id, so a consent would run
+once in each (§9).
 
 **`FileStore` format**, under `~/.yea/store/` by default (`$YEA_HOME/store` when `YEA_HOME` is set;
 the MCP servers and `yea approve` use `YEA_STORE` first), pinned by the conformance
@@ -643,6 +649,7 @@ receipts/<receipt id>.json           the JobReceipt as JSON (read, not byte-pinn
 ledger/<block>/<of>.json             {"settled": "<decimal>", "reserved": {"<rid>": "<decimal>"}}
 consents/<planHash>                  the pg1. consent grant (plan hashes are b64url)
 id                                   the store id (22 b64url characters, nothing else), created once
+id.lock                              the lock for making `id`, only where the filesystem has no hard links
 pending/<id>                         a consent code waiting for `yea approve <id>` (§6, Short ids)
 ```
 
@@ -918,6 +925,8 @@ export function decide(
     `MemoryStore` server's consent runs nothing after a restart;
   - a store whose id isn't a store id runs nothing and issues no code, even for a consent that
     binds no store, and `yea approve` refuses a code that binds none;
+  - a `FileStore` whose filesystem has no hard links makes its id once, under its lock file,
+    however many stores race for it; any other failure to make it is a store error;
   - an unreadable consent in the store (a planted mode-0 file, a FIFO or a symlink) asks
     again, with no fs error in the result;
   - an irreversible plan never auto-runs, whatever the grant says, and neither does one whose
@@ -1013,5 +1022,6 @@ the work to keep moving; any of them can be reopened. parley-05's review agreed 
 9. **A job consent binds the store that consumes it** (#358, adopted 2026-11-07). Its consent
    hash covers the store's id as well as the plan and the phrase (§6), so a consent runs once
    in all, not once per store: not again in a second server with the same key, and not again
-   after a `MemoryStore` server restarts. The id is in the consent code, so `yea approve` needs
-   no store to sign, and saves the consent only in the store it binds.
+   after a `MemoryStore` server restarts. The exception is a copy of a store: it keeps the id,
+   so a consent runs once in each copy (§9). The id is in the consent code, so `yea approve`
+   needs no store to sign, and saves the consent only in the store it binds.

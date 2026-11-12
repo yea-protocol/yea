@@ -45,7 +45,7 @@ class FileStore:
     async def store_id(self) -> str:
         """``<root>/id``, made by the first process that needs it, then kept for this instance (§8)."""
         if self._id is None:
-            self._id = _ensure_store_id(self.root)
+            self._id = await _ensure_store_id(self.root)
         return self._id
 
     async def consume_once(self, id: str, expires_at: int) -> bool:

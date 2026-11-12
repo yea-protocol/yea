@@ -246,6 +246,8 @@ No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not
 
 A server whose store is in memory (the default over HTTP) gives codes too: `yea approve` can't save where it reads, so its consents come back pasted.
 
+Give each server, and each replica, a store of its own. Never clone a replica's store from a used one (a volume snapshot, an image with a store baked in, a copied home): the copy keeps the store's id, so a consent would run once in each copy.
+
 ## FastMCP
 
 `yea-mcp` takes a FastMCP 4 server wherever it takes an `MCPServer`: `@approvals.job(mcp, ...)` and `approvals.guard(mcp, "tool_name", ...)` work the same, with `FastMCP("files", request_state_security=approvals.request_state_security())`. Install the extra: `yea-mcp[fastmcp]` (until the release, `"yea-mcp[fastmcp] @ git+https://github.com/yea-protocol/yea#subdirectory=python/mcp"`). Guard a mounted server's tool on the server that defines it.

@@ -1,6 +1,7 @@
 """Approval for job tools (docs/framework/SPEC-approval.md): unit and security tests."""
 
 import asyncio
+import errno
 import os
 import re
 from pathlib import Path
@@ -362,6 +363,49 @@ def test_a_file_store_id_is_made_once_whole_and_read_by_every_store_on_its_root(
     assert is_store_id(only) and (tmp_path / "id").read_text() == only
     assert (tmp_path / "id").stat().st_mode & 0o777 == 0o600 and [p.name for p in tmp_path.iterdir()] == ["id"]
     assert run(FileStore(tmp_path).store_id()) != run(FileStore(tmp_path / "other").store_id())
+
+
+def _no_hard_links(monkeypatch, code: int) -> None:
+    """A filesystem without hard links (FAT, exFAT, many SMB shares): ``link`` fails with ``code``."""
+    def link(src, dst, *_a, **_k):
+        raise OSError(code, os.strerror(code), str(src), None, str(dst))
+
+    monkeypatch.setattr(os, "link", link)
+
+
+@pytest.mark.parametrize("code", [errno.ENOTSUP, errno.EPERM, errno.ENOSYS], ids=["ENOTSUP", "EPERM", "ENOSYS"])
+def test_where_link_fails_for_want_of_hard_links_a_file_store_id_is_made_once_under_its_lock(tmp_path, monkeypatch,
+                                                                                               code):
+    import yea.store.store_id as sid
+
+    _no_hard_links(monkeypatch, code)
+    acquire, write, written = sid._acquire, sid._write_atomic, []
+
+    async def slow_acquire(lock):  # the holder pauses with the lock held, as a slower process would
+        token = await acquire(lock)
+        await asyncio.sleep(0.02)
+        return token
+
+    def counted_write(path, text):
+        written.append(path)
+        write(path, text)
+
+    monkeypatch.setattr(sid, "_acquire", slow_acquire)
+    monkeypatch.setattr(sid, "_write_atomic", counted_write)
+
+    async def race():
+        return await asyncio.gather(*(FileStore(tmp_path).store_id() for _ in range(8)))
+
+    (only,) = set(run(race()))
+    assert is_store_id(only) and (tmp_path / "id").read_text() == only and written == [tmp_path / "id"]
+    assert (tmp_path / "id").stat().st_mode & 0o777 == 0o600 and [p.name for p in tmp_path.iterdir()] == ["id"]
+
+
+def test_a_file_store_id_that_cant_be_made_is_a_store_error_naming_the_file_and_none_is_made(tmp_path, monkeypatch):
+    _no_hard_links(monkeypatch, errno.EACCES)
+    with pytest.raises(StoreError, match=f"can't make the store id at {re.escape(str(tmp_path / 'id'))}"):
+        run(FileStore(tmp_path).store_id())
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_a_file_store_id_that_isnt_one_is_a_store_error_and_nothing_is_made_over_it(tmp_path):

@@ -15,7 +15,7 @@ import {
   readRegular,
   writeAtomic,
 } from './file-store/files.js';
-import { acquire } from './file-store/lock.js';
+import { acquire, release, stillHeld } from './file-store/lock.js';
 import { PendingCodes } from './file-store/pending.js';
 import { ensureStoreId } from './file-store/store-id.js';
 import { home } from './home.js';
@@ -63,7 +63,7 @@ export class FileStore implements ApprovalStore {
 
   /** `<root>/id`, made by the first process that needs it, then kept for this instance (§8). */
   async storeId(): Promise<string> {
-    this.id ??= ensureStoreId(this.root);
+    this.id ??= await ensureStoreId(this.root);
 
     return this.id;
   }
@@ -237,7 +237,7 @@ export class FileStore implements ApprovalStore {
       const l = this.readLedger(key);
       const out = change(l);
 
-      if (readOrNull(lock) !== token) {
+      if (!stillHeld(lock, token)) {
         throw new Error(
           `lost the approval store lock (${lock}); nothing was written`,
         );
@@ -247,15 +247,13 @@ export class FileStore implements ApprovalStore {
 
       // A lock broken as stale between the check and the write (a holder paused > 30 s) may
       // have let another write through; refuse rather than report success (SPEC-approval §8).
-      if (readOrNull(lock) !== token) {
+      if (!stillHeld(lock, token)) {
         throw new Error(`lost the approval store lock while writing (${lock})`);
       }
 
       return out;
     } finally {
-      if (readOrNull(lock) === token) {
-        rmSync(lock, { force: true });
-      }
+      release(lock, token);
     }
   }
 }

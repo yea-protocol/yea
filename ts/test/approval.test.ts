@@ -8,10 +8,41 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { assertIntegers } from '../src/approval.js';
 import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
+
+// A filesystem without hard links, for the store id (SPEC-approval §8): with `linkFails` set,
+// link() fails with that code. `renamedTo` records each rename's target. Null leaves fs alone.
+const fsHook = vi.hoisted(() => ({
+  linkFails: null as string | null,
+  renamedTo: [] as string[],
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs')>();
+  const linkSync = (...args: Parameters<typeof real.linkSync>) => {
+    if (fsHook.linkFails) {
+      throw Object.assign(new Error(`${fsHook.linkFails}: no hard links`), {
+        code: fsHook.linkFails,
+      });
+    }
+
+    return real.linkSync(...args);
+  };
+  const renameSync = (...args: Parameters<typeof real.renameSync>) => {
+    real.renameSync(...args);
+    fsHook.renamedTo.push(String(args[1]));
+  };
+
+  return {
+    ...real,
+    default: { ...real, linkSync, renameSync },
+    linkSync,
+    renameSync,
+  };
+});
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'yea-approval-'));
 const now = 1790000000;
@@ -215,6 +246,48 @@ describe('a FileStore id (SPEC-approval §8)', () => {
     expect(readFileSync(join(root, 'id'), 'utf8')).toBe(ids[0]);
     expect(statSync(join(root, 'id')).mode & 0o777).toBe(0o600);
     expect(readdirSync(root)).toEqual(['id']);
+  });
+
+  it.each(['ENOTSUP', 'EPERM', 'ENOSYS'])(
+    'where link fails with %s (no hard links), is made once under <root>/id.lock, across racing stores',
+    async (code) => {
+      const root = tmp();
+
+      fsHook.linkFails = code;
+      fsHook.renamedTo = [];
+
+      try {
+        const ids = await Promise.all(
+          Array.from({ length: 8 }, () => new FileStore(root).storeId()),
+        );
+
+        expect(new Set(ids).size).toBe(1);
+        expect(P.isStoreId(ids[0])).toBe(true);
+        expect(readFileSync(join(root, 'id'), 'utf8')).toBe(ids[0]);
+        expect(statSync(join(root, 'id')).mode & 0o777).toBe(0o600);
+        // One rename made it; the lock and every temp file are gone.
+        expect(fsHook.renamedTo).toEqual([join(root, 'id')]);
+        expect(readdirSync(root)).toEqual(['id']);
+      } finally {
+        fsHook.linkFails = null;
+      }
+    },
+  );
+
+  it('is a store error naming the file when making it fails any other way, and none is made', async () => {
+    const root = tmp();
+    const path = join(root, 'id');
+
+    fsHook.linkFails = 'EACCES';
+
+    try {
+      await expect(new FileStore(root).storeId()).rejects.toThrow(
+        `can't make the store id at ${path}: EACCES`,
+      );
+      expect(readdirSync(root)).toEqual([]);
+    } finally {
+      fsHook.linkFails = null;
+    }
   });
 
   it('is a store error when the file holds anything else, and nothing is made over it', async () => {
