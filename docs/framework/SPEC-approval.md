@@ -173,7 +173,8 @@ A plan runs without asking only when **all** of these hold:
 A policy of `can: ['reschedule']` and `risk: 'low'` lets an agent move meetings on its own and
 asks about everything else. A `total` counts for the grant's lifetime unless it has `every`:
 for "20 emails a day", give it `every: 86400`. Its periods are fixed, counted from its block's
-one `nbf`, not a rolling window, and a grant with one needs an `exp` (SPEC.md §6.3).
+one `nbf`, not a rolling window, and its block or an earlier one needs an `exp` (SPEC.md
+§6.3).
 
 **Only undoable plans run without asking.** This is the protocol's rule (SPEC.md §4.3.1, "if,
 and only if" the proposal is undoable), and the framework can't be looser than the protocol.

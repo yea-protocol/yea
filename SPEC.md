@@ -478,17 +478,20 @@ counted from the `nbf` of the block that holds it: period *k* covers
   caveat. With none, or more than one, that `total` fails closed as a hard (`forbidden`)
   failure, on every verb. Only the block's own `nbf` anchors its periods: another block's
   `nbf` never moves them.
-- **An end.** A grant with a `total` with `every` MUST carry an `exp` caveat in some block.
-  Without one, that `total` fails closed as a hard (`forbidden`) failure, on every verb: a
-  period's `max` is allowed again in every period, so the allowance needs an end (§11).
+- **An end.** A block that holds a `total` with `every` MUST have an `exp` caveat in that
+  block or an earlier one. Without one, that `total` fails closed as a hard (`forbidden`)
+  failure, on every verb: a period's `max` is allowed again in every period, so the allowance
+  needs an end (§11). An `exp` in a later block still ends the grant sooner, but never meets
+  this rule: the holder writes the later blocks, and the party a limit bounds mustn't choose
+  its end.
 - **Exact arithmetic.** `now` − `nbf` can pass 2^53, so *k* MUST be computed in exact
   integers, with floor division, never in floating point. A period's start, `nbf` +
   *k*·`every`, lies between `nbf` and `now`, so it is always a safe integer. Before `nbf`, the
   grant fails its `nbf` caveat and the `total` counts nothing.
 - **What it allows.** The commits of one period that count against the `total` add up to at
   most `max`. Periods are fixed, so `every` seconds that straddle a boundary can see up to
-  2 × `max`. A commit made with the principal's consent counts against no `total` of this
-  grant (§6.6), and an undone one still counts.
+  2 × `max`. A commit that a consent grant authorizes (§6.6) counts against no `total` of
+  this grant, and an undone one still counts.
 - **The refusal.** A service that refuses a `COMMIT` over a `total` with `every` SHOULD say
   when the next period starts, if that is a time Lens can show (§9.2) and before the grant's
   earliest `exp`: `buy would pass the total limit of 500.00 USD every 7d (starts again
