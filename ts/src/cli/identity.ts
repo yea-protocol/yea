@@ -3,7 +3,6 @@ import { dirname } from 'node:path';
 import { keyPair } from '../crypto.js';
 import {
   delegateGrant,
-  endOf,
   inspectGrant,
   isPublicKey,
   issueGrant,
@@ -133,7 +132,7 @@ export const cmdGrant = command({
     'Sign a grant from your principal key to an agent: your policy. Saved and used automatically.',
   usage: 'grant [flags]',
   flags: GRANT_FLAGS,
-  example: 'yea grant --exp 90d --total spend=500.00USD/7d --risk low',
+  example: 'yea grant --exp 24h --total spend=100.00USD --risk low',
   run: (_args, o) => grant(o),
 });
 
@@ -150,10 +149,9 @@ async function grant(o: Values<typeof GRANT_FLAGS>) {
     saveGrant(token, 'grants', info.id.slice(0, 16));
   }
 
-  const root = info.blocks[0];
   const shown = [
-    lean({ caveats: root.caveats }),
-    ...periodLines(root, endOf(info.blocks)),
+    lean({ caveats: info.blocks[0].caveats }),
+    ...periodLines(info.blocks, 0),
   ];
 
   console.log(token);
@@ -214,8 +212,16 @@ async function delegate(rest: string[], o: Values<typeof DELEGATE_FLAGS>) {
   const to = publicKey(o.to);
   const cav = caveats(o);
   const a = (await agentKey()) ?? die('no agent key');
+  const narrowed = await delegateGrant(token, { holder: a, to, caveats: cav });
+  const { blocks } = await inspectGrant(narrowed);
+  // A total with `every` renews, so the person sees its worst case here, as `yea grant` shows it.
+  const periods = periodLines(blocks, blocks.length - 1);
 
-  console.log(await delegateGrant(token, { holder: a, to, caveats: cav }));
+  console.log(narrowed);
+
+  if (periods.length) {
+    console.error(`\n${periods.join('\n')}`);
+  }
 }
 
 /** `--to`'s value, if it is a public key: the holder the grant is signed to. */
@@ -239,10 +245,9 @@ export const cmdInspect = command({
 
 async function inspect(rest: string[]) {
   const info = await inspectGrant(positional(rest, 0, 'token'));
-  const end = endOf(info.blocks);
   // A total with `every`, as the person should read it: its periods, their end, its worst case.
-  const periods = info.blocks.flatMap((b, i) =>
-    periodLines(b, end).map((line) => `  block ${i}: ${line}`),
+  const periods = info.blocks.flatMap((_, i) =>
+    periodLines(info.blocks, i).map((line) => `  block ${i}: ${line}`),
   );
 
   console.log(

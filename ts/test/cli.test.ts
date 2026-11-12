@@ -417,4 +417,45 @@ describe('yea grant and yea inspect with a period', () => {
 
     expect(i.out).toContain(`periods:\n  block 0: ${line}\n`);
   });
+
+  it("yea delegate prints its block's periods, and yea inspect ends every block's at the earliest exp", async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-period-'));
+    const env = { YEA_HOME: home, YEA_PRINCIPAL_HOME: '' };
+
+    expect((await yea(['init'], env)).status).toBe(0);
+
+    const root = (
+      await yea(['grant', '--total', 'buy=500USD/7d', '--exp', '90d'], env)
+    ).out.trim();
+    const d = await yea(
+      [
+        'delegate',
+        root,
+        '--to',
+        KEY,
+        '--total',
+        'buy=100USD/1d',
+        '--exp',
+        '1d',
+      ],
+      env,
+    );
+    const blocks = decodeGrant(d.out.trim());
+    const caveat = (i: number, k: string) =>
+      Number(blocks[i].p.caveats.find((c) => k in c)?.[k]);
+    // The delegation's exp, a day out, is the grant's earliest: both blocks' periods end there.
+    const until = caveat(1, 'exp');
+    const days = Math.ceil((until - caveat(1, 'nbf')) / 86_400);
+    const own = `buy: 100 USD every 1d from ${fmtTime(caveat(1, 'nbf'))} until ${fmtTime(until)}, at most ${100 * days} USD`;
+
+    expect(d.status, d.err).toBe(0);
+    expect(until).toBeLessThan(caveat(0, 'exp'));
+    expect(d.err).toBe(`\n${own}\n`);
+
+    const i = await yea(['inspect', d.out.trim()], env);
+
+    expect(i.out).toContain(
+      `periods:\n  block 0: buy: 500 USD every 7d from ${fmtTime(caveat(0, 'nbf'))} until ${fmtTime(until)}, at most 500 USD\n  block 1: ${own}\n`,
+    );
+  });
 });
