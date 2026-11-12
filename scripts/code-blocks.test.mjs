@@ -13,9 +13,15 @@ const code = (lines) =>
 
 test('an indented block follows a blank line, a heading or code, never a paragraph', () => {
   assert.deepEqual(code(['text', '', '    a', '', '    b', 'text']), [3, 5]);
+  assert.deepEqual(code(['', '    a', '    b']), [2, 3]);
   assert.deepEqual(code(['text', '    a paragraph line']), []);
+  assert.deepEqual(code(['text', '    - not an item', '', '    a']), [4]);
   assert.deepEqual(code(['## Example', '    a']), [2]);
   assert.deepEqual(code(['text', '## Example', '    a']), [3]);
+  assert.deepEqual(code(['Title', '=====', '    a']), [3]);
+  assert.deepEqual(code(['Title', '--', '    a']), [3]);
+  assert.deepEqual(code(['* * *', '', '    a']), [3]);
+  assert.deepEqual(code(['- - -', '', '    a']), [3]);
   assert.deepEqual(code(['```sh', 'x', '```', '    a']), [1, 2, 3, 4]);
   assert.deepEqual(code(['', '\ta']), [2]);
 });
@@ -34,7 +40,16 @@ test("in a list item, an indented block starts four spaces in from the item's te
     code(['-\ta', '', '      text of a', '', '         code']),
     [5],
   );
+  assert.deepEqual(code(['-\ta', '', '        code']), [3]);
   assert.deepEqual(code(['- a', '', 'text', '', '    code']), [5]);
+  assert.deepEqual(
+    code(['- a', '', '  1.    b', '', '      code', '', '        code']),
+    [5, 7],
+  );
+  assert.deepEqual(
+    code(['- a', '  - b', '', '  text of a', '', '      code']),
+    [6],
+  );
   assert.deepEqual(code(['-     a', '', '      code']), [3]);
   assert.deepEqual(
     code(['- a', '```sh', 'x', '```', '', '    code']),

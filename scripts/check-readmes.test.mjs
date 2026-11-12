@@ -367,7 +367,7 @@ test('a package page has no relative link in a link, a definition or an HTML att
     '[t](../titled.md "a title") <a href=\'../single\'>s</a> <a href=../bare>b</a>',
     '',
     '[s]: docs/SPEC.md',
-    '[^1]: a footnote, not a link',
+    '[^1]: SPEC.md',
     '[g]: https://yea-protocol.github.io/yea/guide/x',
     '  [i]: ../indented.md',
     '[a]: <../angle.md>',

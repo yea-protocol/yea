@@ -43,7 +43,7 @@ test('reference definitions and anchors become absolute; a footnote stays as it 
     '[spec][s] <a href="docs/why.md">why</a> and a note[^1]',
     '',
     '[s]: SPEC.md',
-    '[^1]: see the spec',
+    '[^1]: SPEC.md',
   ].join('\n');
   const blob = 'https://github.com/yea-protocol/yea/blob/main/';
 
@@ -53,7 +53,7 @@ test('reference definitions and anchors become absolute; a footnote stays as it 
       `[spec][s] <a href="${blob}docs/why.md">why</a> and a note[^1]`,
       '',
       `[s]: ${blob}SPEC.md`,
-      '[^1]: see the spec',
+      '[^1]: SPEC.md',
     ].join('\n'),
   );
 });
@@ -61,6 +61,7 @@ test('reference definitions and anchors become absolute; a footnote stays as it 
 test('titles, quotes and a definition on two lines keep their shape', () => {
   const readme = [
     '[spec](SPEC.md "the spec") <a href=\'docs/why.md\'>why</a> <a href=LICENSE>l</a>',
+    "[a](docs/a.md 'A') [b](docs/b.md (B))",
     '',
     '> [s]: docs/a.md',
     '[t]:',
@@ -75,6 +76,7 @@ test('titles, quotes and a definition on two lines keep their shape', () => {
     syncedReadme(repoWith(readme, '')),
     [
       `[spec](${blob}SPEC.md "the spec") <a href='${blob}docs/why.md'>why</a> <a href=${blob}LICENSE>l</a>`,
+      `[a](${blob}docs/a.md 'A') [b](${blob}docs/b.md (B))`,
       '',
       `> [s]: ${blob}docs/a.md`,
       '[t]:',
@@ -99,7 +101,7 @@ test('code, fenced or indented, is copied as it is; the text around it is not', 
     '```',
     '',
     '    <a href="/pricing">pricing</a>',
-    '    [k]: v',
+    '    await handlers[name](args);',
     '',
   ];
   const text = (blob) => [

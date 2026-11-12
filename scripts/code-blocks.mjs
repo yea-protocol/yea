@@ -1,8 +1,18 @@
 /**
- * The code blocks of a Markdown page, read the way CommonMark reads them. Fenced blocks (in
- * backticks or tildes, indented under a list item or quoted with `>`, with their language in any
- * case or none) are what the README checks pin as snippets. Indented blocks, four spaces in from
- * the text they sit in, are code too, so links are read only from the lines outside both.
+ * The code blocks of a Markdown page, read as CommonMark reads them but for the cases below.
+ * Fenced blocks (in backticks or tildes, indented under a list item or quoted with `>`, with
+ * their language in any case or none) are what the README checks pin as snippets. Indented
+ * blocks, four spaces in from the text they sit in, are code too, so links are read only from
+ * the lines outside both.
+ *
+ * Where it parts from CommonMark (none of this occurs in the repo's Markdown today):
+ * - a fence indented four or more spaces past its list item's text (or the margin) is read as a
+ *   fence, not as an indented block's text;
+ * - a quote that opens right after a paragraph line (`text`, then `>     code`) doesn't start a
+ *   new block, so an indented block there is read as the paragraph's text;
+ * - a list item doesn't close when the quote it's in ends;
+ * - an indented line after a blank line inside a multi-line `<!-- -->` or `<pre>` is read as
+ *   code, and so are a GitHub footnote's later paragraphs.
  */
 
 /** A fence's opening line: what comes before it (indent, `>`), the fence, and its info string. */
@@ -17,8 +27,14 @@ const QUOTES = /^( {0,3}> ?)+/;
 /** A list item's start: its marker, then the spaces before its text, or the end of the line. */
 const ITEM = /^([-+*]|\d{1,9}[.)])([ \t]+|$)/;
 
-/** An ATX heading: an indented block may start right after one, as after a blank line. */
+/** An ATX heading: a block may start right after one, as after a blank line. */
 const HEADING = /^ {0,3}#{1,6}(\s|$)/;
+
+/** A thematic break (`***`, `- - -`, `___`): no list item, and a block may start after it. */
+const RULE = /^ {0,3}([-*_])([ \t]*\1){2,}[ \t]*$/;
+
+/** A setext heading's underline, when it follows a paragraph line. */
+const UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/;
 
 /** `md`'s lines, whichever line ending it uses. */
 export function linesOf(md) {
@@ -102,9 +118,13 @@ function indentOf(text) {
   );
 }
 
-/** How far a list item's text starts from its marker's: past the marker and 1 to 4 spaces. */
-function itemWidth([, marker, spaces]) {
-  const width = indentOf(spaces);
+/**
+ * How far a list item's text starts from its marker's, the marker being `indent` columns in: past
+ * the marker and 1 to 4 columns of spaces (a tab reaching the next multiple of 4).
+ */
+function itemWidth([, marker, spaces], indent) {
+  const start = indent + marker.length;
+  const width = indentOf(' '.repeat(start) + spaces) - start;
   const gap = width > 0 && width <= 4 ? width : 1;
 
   return marker.length + gap;
@@ -122,11 +142,14 @@ function step({ items, after }, text) {
   }
 
   const indent = indentOf(text);
-  const item = ITEM.exec(text.trimStart());
+  const oneLine =
+    HEADING.test(text) ||
+    RULE.test(text) ||
+    (after === 'text' && UNDERLINE.test(text));
+  const item = oneLine ? null : ITEM.exec(text.trimStart());
   const open = items.filter((at) => at <= indent);
   const indented = indent >= (open.at(-1) ?? 0) + 4;
-  const heading = HEADING.test(text);
-  const interrupts = heading || (item !== null && !indented);
+  const interrupts = oneLine || (item !== null && !indented);
 
   if (after === 'text' && !interrupts) {
     return { items, after: 'text', code: false };
@@ -137,8 +160,8 @@ function step({ items, after }, text) {
   }
 
   return {
-    items: item === null ? open : [...open, indent + itemWidth(item)],
-    after: heading ? 'blank' : 'text',
+    items: item === null ? open : [...open, indent + itemWidth(item, indent)],
+    after: oneLine ? 'blank' : 'text',
     code: false,
   };
 }
