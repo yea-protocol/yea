@@ -5,12 +5,7 @@ from __future__ import annotations
 
 from ..approval import HashedPlan, build_form, input_hash, job_consent_code, new_state
 from ..approval.decision import ruled_out
-from ..store import is_memory_store
 from .outcome import Outcome, Round
-
-# `yea approve` stores consents in a FileStore; a code for a MemoryStore could never work.
-MEMORY_NO_CONSENT = ("this server keeps approvals in memory, where `yea approve` can't reach them; use a client "
-                     "that can show approval forms, or run the server with a FileStore")
 
 
 def ask(r: Round, why: str, round: int) -> Outcome:
@@ -31,15 +26,15 @@ def no_principal(why: str | None) -> str:
 
 
 def consent_codes(r: Round, why: str, plans: list[HashedPlan]) -> Outcome:
-    """Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6)."""
+    """Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6). Any
+    store gets codes: a consent ``yea approve`` can't save where the server reads comes back on the
+    call."""
     call = r.call
     if not call.policy.principal:
         return Outcome("consent-codes", why, plans, unavailable=no_principal(call.unpinned))
-    if is_memory_store(r.store):
-        return Outcome("consent-codes", why, plans, unavailable=MEMORY_NO_CONSENT)
     codes = [{"planHash": hp.plan_hash,
               "code": job_consent_code(call.policy.server_key or "", call.policy.principal, call.input, hp,
-                                       r.phrase_for(hp), call.now)}
+                                       r.phrase_for(hp), r.store_id, call.now)}
              for hp in plans if _not_denied(hp, r)]
     return Outcome("consent-codes", why, plans, codes=codes)
 

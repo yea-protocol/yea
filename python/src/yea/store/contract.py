@@ -11,6 +11,8 @@ from .._json import MAX_SAFE_INT, b64url_encode
 from ..grants import LedgerKey, Period
 
 RECEIPT_ID = re.compile(r"r_[A-Za-z0-9_-]{8,32}")
+# A store id (§8): 22 b64url characters, 16 random bytes. A job consent binds it (§6).
+STORE_ID = re.compile(r"[A-Za-z0-9_-]{22}")
 _B64URL = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MEASURE = re.compile(r"[a-z][a-z0-9_.\-]{0,63}")
 
@@ -39,6 +41,19 @@ class ApprovalStore(Protocol):
     async def used(self, k: LedgerKey) -> int: ...
     async def put_consent(self, plan_hash: str, grant: str) -> None: ...
     async def get_consent(self, plan_hash: str) -> str | None: ...
+    async def store_id(self) -> str:
+        """This store's id, which a job consent binds, so it runs in this store only (§6, §8). It
+        never changes for the store, and no two stores share one."""
+        ...
+
+
+def is_store_id(v: Any) -> bool:
+    return isinstance(v, str) and STORE_ID.fullmatch(v) is not None
+
+
+def new_store_id() -> str:
+    """A fresh store id."""
+    return b64url_encode(os.urandom(16))
 
 
 def is_receipt_id(v: Any) -> bool:

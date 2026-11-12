@@ -17,6 +17,7 @@ import {
 } from '../consent.js';
 import type { KeyPair } from '../crypto.js';
 import { isRisk } from '../risk.js';
+import { isStoreId } from '../store.js';
 import type { ConsentRequest, Effect, Risk } from '../types.js';
 import { isUses, type Uses } from '../uses.js';
 import { unixNow } from '../util.js';
@@ -34,15 +35,17 @@ export interface JobConsent {
     risk: Risk;
   };
   phrase: string;
+  /** The id of the store the consent will be consumed in, which the consent hash binds. */
+  store: string;
   planHash: string;
 }
 
 export const CONSENT_TTL = 600;
 
 /**
- * A job's consent code: the unsigned pc1. consent request, carrying the whole plan and its
- * phrase to re-check. `proposal` is the plan hash; `hash` is the consent hash, which binds the
- * phrase.
+ * A job's consent code: the unsigned pc1. consent request, carrying the whole plan, its phrase
+ * and the server's store id to re-check. `proposal` is the plan hash; `hash` is the consent hash,
+ * which binds the phrase and the store. It throws unless `store` is a store id.
  */
 export async function jobConsentCode(o: {
   server: string;
@@ -50,16 +53,22 @@ export async function jobConsentCode(o: {
   input: unknown;
   hp: HashedPlan;
   phrase: string;
+  store: string;
   now: number;
   ttl?: number;
 }): Promise<string> {
+  if (!isStoreId(o.store)) {
+    throw new Error(`not a store id: ${JSON.stringify(o.store)}`);
+  }
+
   const detail = {
     job: planPreimage(o.input, o.hp),
     phrase: checkedPhrase(o.phrase),
+    store: o.store,
   };
   const consent: ConsentRequest = {
     proposal: o.hp.planHash,
-    hash: await consentHashOf(o.hp.planHash, detail.phrase),
+    hash: await consentHashOf(o.hp.planHash, detail.phrase, o.store),
     service: o.server,
     capability: o.hp.tool,
     principal: o.principal,
@@ -85,9 +94,9 @@ function isJob(j: unknown): j is JobConsent['job'] {
 
 /**
  * Read a job consent code for signing (§6). Everything shown or signed is checked: the phrase
- * must be typeable, the plan hash and the consent hash are recomputed from the plan and the
- * phrase, the tool must be the plan's, and it must not have expired. The expiry is capped at
- * `CONSENT_TTL` from now, whatever the code asks for.
+ * must be typeable, the store a store id, the plan hash and the consent hash are recomputed from
+ * the plan, the phrase and the store, the tool must be the plan's, and it must not have expired.
+ * The expiry is capped at `CONSENT_TTL` from now, whatever the code asks for.
  */
 export async function readJobConsent(
   code: string,
@@ -95,11 +104,12 @@ export async function readJobConsent(
 ): Promise<JobConsent> {
   const c = decodeConsentCode(code);
   const d = c.detail as unknown as
-    | { job?: unknown; phrase?: unknown }
+    | { job?: unknown; phrase?: unknown; store?: unknown }
     | undefined;
   const job = d?.job;
+  const store = d?.store;
 
-  if (!isJob(job) || typeof d?.phrase !== 'string') {
+  if (!isJob(job) || typeof d?.phrase !== 'string' || !isStoreId(store)) {
     throw new Error('not a job consent code');
   }
 
@@ -114,7 +124,7 @@ export async function readJobConsent(
 
   if (
     planHash !== c.proposal ||
-    (await consentHashOf(planHash, phrase)) !== c.hash ||
+    (await consentHashOf(planHash, phrase, store)) !== c.hash ||
     job.tool !== c.capability
   ) {
     throw new Error(
@@ -134,6 +144,7 @@ export async function readJobConsent(
     consent: { ...consent, expires: Math.min(c.expires, now + CONSENT_TTL) },
     job,
     phrase,
+    store,
     planHash,
   };
 }

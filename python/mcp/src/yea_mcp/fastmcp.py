@@ -23,7 +23,7 @@ from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from pydantic_core import to_jsonable_python
 from yea import Plan
 
-from .call import JobDef, Req, Yea, described_plans, run_job
+from .call import JobDef, Req, Reserved, Yea, described_plans, run_job, shadowed
 from .guard import Guarded
 from .result import job_annotations, job_meta
 from .signature import job_wrapper
@@ -37,8 +37,8 @@ def _req(ctx: FastContext) -> Req:
 
 def add_job(y: Yea, server: FastMCP, plan_fn: Callable[..., Any], job: JobDef, title: str | None,
             description: str | None, annotations: dict, meta: dict) -> None:
-    async def run(input: dict, plan: Any, preview: bool, ctx: FastContext) -> Any:
-        return await run_job(y, job, input, preview, _req(ctx), plan)
+    async def run(input: dict, plan: Any, reserved: Reserved, ctx: FastContext) -> Any:
+        return await run_job(y, job, input, reserved, _req(ctx), plan)
 
     fn = job_wrapper(plan_fn, job.name, FastContext, run)
     # Built with FastMCP's default task mode (forbidden), so a job never runs as a background task.
@@ -172,8 +172,8 @@ class FastMCPGuard(Middleware):
             raise ValueError(f"guard(): {tool.name} is already a job tool")
         if _runs_as_task(tool):
             raise ValueError(f"guard(): {tool.name} runs as a background task, which a guard doesn't support yet")
-        if "preview" in ((tool.parameters or {}).get("properties") or {}):
-            raise ValueError(f"guard(): {tool.name} has its own preview argument, which the guard would shadow")
+        if (own := shadowed(tool.parameters)) is not None:
+            raise ValueError(f"guard(): {tool.name} has its own {own} argument, which the guard would shadow")
         inner = tool.model_copy()  # the original behaviour, reachable only through apply
         injected = _injected(fn)
         has_output = tool.output_schema is not None
@@ -181,8 +181,8 @@ class FastMCPGuard(Middleware):
                      own_results_are_errors=lambda: has_output, failed=_failed, with_receipt=_with_receipt,
                      with_note=_with_note)
 
-        async def run(input: dict, plan: Any, preview: bool, ctx: FastContext) -> Any:
-            return await run_job(self.y, job, input, preview, _req(ctx), plan)
+        async def run(input: dict, plan: Any, reserved: Reserved, ctx: FastContext) -> Any:
+            return await run_job(self.y, job, input, reserved, _req(ctx), plan)
 
         wrapper_fn = job_wrapper(_plan_fn(inner, g, injected), tool.name, FastContext, run, frozenset(injected))
         wrapper_fn.__yea_guard__ = True  # type: ignore[attr-defined]

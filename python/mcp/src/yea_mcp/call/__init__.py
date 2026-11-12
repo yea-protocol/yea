@@ -8,14 +8,18 @@ The entry of the ``yea_mcp.call`` package: it re-exports the parts, each one job
 from __future__ import annotations
 
 from .model import (
+    CONSENT_DESCRIPTION,
+    RESERVED_ARGS,
     Call,
     JobDef,
     PartialApplyError,
     Req,
+    Reserved,
     Result,
     Yea,
     _maybe,  # noqa: F401 — yea_mcp uses it for the undo tool and the job wrapper
     is_partial,
+    shadowed,
 )
 from .prepare import (
     caller_of,
@@ -33,6 +37,10 @@ __all__ = [
     "Yea",
     "JobDef",
     "Req",
+    "Reserved",
+    "RESERVED_ARGS",
+    "CONSENT_DESCRIPTION",
+    "shadowed",
     "Call",
     "caller_of",
     "policy_for",

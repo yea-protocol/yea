@@ -9,12 +9,15 @@ from typing import Any
 from .contract import (
     LedgerKey,
     Reservation,
+    StoreError,
     _key,
     _Ledger,
     _plan_hash,
     _receipt_id,
     _reservation_id,
     is_receipt_id,
+    is_store_id,
+    new_store_id,
 )
 from .lock import CLAIM_STALE
 
@@ -30,7 +33,12 @@ def is_memory_store(store: Any) -> bool:
 class MemoryStore:
     """One process's store. Fine for a single-process server; totals reset on restart."""
 
-    def __init__(self, now: Any = time.time):
+    def __init__(self, now: Any = time.time, store_id: str | None = None):
+        """``store_id`` is made now unless given (for tests and vectors that need a fixed one), so a
+        restarted server's consents from before never run (§8)."""
+        if store_id is not None and not is_store_id(store_id):
+            raise StoreError(f"not a store id: {store_id!r}")
+        self._id = store_id if store_id is not None else new_store_id()
         self._now = now
         self._consumed: dict[str, int] = {}
         self._receipts: dict[str, dict] = {}
@@ -97,3 +105,6 @@ class MemoryStore:
 
     async def get_consent(self, plan_hash: str) -> str | None:
         return self._consents.get(_plan_hash(plan_hash))
+
+    async def store_id(self) -> str:
+        return self._id

@@ -15,18 +15,18 @@ from yea.text import printable
 from ..ask import answer_of, ask_in_call, can_ask, input_required, is_modern, parse_state
 from ..render import clarify_result, consent_result, preview_result
 from ..result import NOTHING_RAN, error_result
-from .model import Call, JobDef, Req, Result, Yea
+from .model import Call, JobDef, Req, Reserved, Result, Yea
 from .pending import drop_pending, with_ids
 from .prepare import caller_of, policy_for
 from .run import _run_plan
 
 
-async def run_job(y: Yea, job: JobDef, input: dict, preview: bool, req: Req,
+async def run_job(y: Yea, job: JobDef, input: dict, reserved: Reserved, req: Req,
                   plan: Callable[[], Awaitable[Any]]) -> Result:
     """Anything unexpected before ``apply()`` runs nothing."""
     try:
         call = Call(y, job, input, req, caller_of(y, req.rctx), int(time.time()), plan)
-        return await _round(call, preview, None if preview else _retry_of(req))
+        return await _round(call, reserved, None if reserved.preview else _retry_of(req))
     except Exception as e:  # noqa: BLE001 — nothing has been applied yet
         return error_result([f"✗ {printable(str(e))}; {NOTHING_RAN}"])
 
@@ -42,15 +42,16 @@ def _retry_of(req: Req) -> Retry | None:
     return Retry(value, answer_of(req.responses))
 
 
-def _facts(call: Call, preview: bool) -> JobCall:
+def _facts(call: Call, reserved: Reserved) -> JobCall:
     """The session's facts for this round: the policy and the clock as they are now."""
     job = call.job
     return JobCall(JobTool(job.name, job.risk, job.revert, job.confirm_with), call.input, call.plan, call.sub,
-                   call.now, policy_for(call.y), can_ask(call.req.session), preview, call.y.principal.why)
+                   call.now, policy_for(call.y), can_ask(call.req.session), reserved.preview, call.y.principal.why,
+                   reserved.consent)
 
 
-async def _round(call: Call, preview: bool, retry: Retry | None) -> Result:
-    return await _result_of(call, await job_call(_facts(call, preview), call.y.store, retry))
+async def _round(call: Call, reserved: Reserved, retry: Retry | None) -> Result:
+    return await _result_of(call, await job_call(_facts(call, reserved), call.y.store, retry))
 
 
 async def _result_of(call: Call, o: Outcome) -> Result:
@@ -81,4 +82,4 @@ async def _ask(call: Call, form: dict, state: dict, otherwise: Callable[[], Outc
     if answer is None:  # the client can't be reached from here
         return await _result_of(call, otherwise())
     later = Call(call.y, call.job, call.input, call.req, call.sub, int(time.time()), call.plan)
-    return await _round(later, False, Retry(state, answer))
+    return await _round(later, Reserved(), Retry(state, answer))

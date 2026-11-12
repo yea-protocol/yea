@@ -8,6 +8,7 @@ from typing import Any
 import mcp_types as t
 from yea import lean
 from yea.approval import HashedPlan, plan_lines, shown_plan
+from yea.job_call import how_to_approve
 from yea.lens import untrusted_lens
 from yea.service import Clarification
 from yea.text import printable
@@ -40,29 +41,14 @@ def preview_result(plans: list[HashedPlan], as_error: bool) -> t.CallToolResult:
     )
 
 
-def _how_to_approve(plans: list[HashedPlan], codes: list[dict]) -> list[str]:
-    """How to approve outside the chat (SPEC-approval §6): by short id when there are ids, else by code."""
-    code_lines = [f"  code for [{_number(plans, c)}]: {c['code']}" for c in codes]
-    if not codes or not all(c.get("id") for c in codes):
-        return ["Ask the user to run `yea approve <code>` in a terminal outside this chat, then call this tool "
-                "again with the same arguments.", *code_lines]
-    return ["Ask the user to run `yea approve <id>` in a terminal outside this chat, then call this tool again "
-            "with the same arguments.",
-            *(f"  [{_number(plans, c)}] yea approve {c['id']}" for c in codes),
-            "If `yea approve` can't find the id (run as another OS user, or on another device), give it the "
-            "whole code instead:",
-            *code_lines]
-
-
 def consent_result(why: str, plans: list[HashedPlan], codes: list[dict], unavailable: str | None) -> t.CallToolResult:
     """No approval could be asked for here: the plans, and a consent code (and its id) for each."""
-    tail = [f"No consent can be accepted: {unavailable}."] if unavailable else _how_to_approve(plans, codes)
+    if unavailable:
+        tail = [f"No consent can be accepted: {unavailable}."]
+    else:
+        tail = how_to_approve([hp.plan_hash for hp in plans], codes)
     return error_result([f"✗ approval needed: {printable(why)}; nothing was run", *plans_text(plans), *tail],
                         {"plans": [plan_view(hp) for hp in plans], "codes": codes})
-
-
-def _number(plans: list[HashedPlan], c: dict) -> int:
-    return next(i for i, hp in enumerate(plans, 1) if hp.plan_hash == c["planHash"])
 
 
 def receipt_result(receipt: dict, auto: bool) -> t.CallToolResult:

@@ -2,22 +2,15 @@
  * `yea approve`: review and sign a one-time consent for one proposal or one job plan, given its
  * consent code or, on the same account, the short id of a pending one (SPEC-approval §6).
  */
-import { createInterface } from 'node:readline/promises';
 import { approveConsentCode } from '../approve.js';
-import {
-  phraseMatches,
-  planLines,
-  readJobConsent,
-  signJobConsent,
-} from '../ask.js';
 import { decodeConsentCode } from '../consent.js';
 import { NO_DETAIL } from '../consent-round.js';
 import type { KeyPair } from '../crypto.js';
-import { defaultFileStore } from '../file-store.js';
 import { agentKey, principalKey, saveGrant } from '../home.js';
-import { fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import { unixNow } from '../util.js';
+import { approveJob } from './approve/job.js';
+import { NO_TERMINAL } from './approve/terminal.js';
 import { command, type Flags, type Values } from './command.js';
 import { pendingCode, pendingLines } from './pending.js';
 import { confirm, die } from './shared.js';
@@ -29,10 +22,6 @@ const APPROVE_FLAGS = {
     help: "the agent key the consent is for, if not this machine's (check its fingerprint first)",
   },
 } as const satisfies Flags;
-
-/** Why there's no terminal to approve at, and where to go instead (SPEC-approval §6). */
-const NO_TERMINAL =
-  '✗ approval needs an interactive terminal: a person has to confirm, so run it in a separate terminal window, not through the agent';
 
 export const cmdApprove = command({
   summary:
@@ -132,54 +121,5 @@ function isJobCode(code: string): boolean {
     return d?.job !== undefined;
   } catch {
     return false;
-  }
-}
-
-/**
- * Approve one job plan for an MCP server (SPEC-approval §6): re-check the plan hash, show the
- * plan, have the person type its phrase, and store a consent signed to the server's key.
- */
-async function approveJob(p: KeyPair, code: string) {
-  const j = await orRefuse(() => readJobConsent(code, unixNow()));
-
-  console.log(printable(`at server ${j.consent.service}, tool ${j.job.tool}:`));
-  console.log(
-    [
-      ...planLines(j.job),
-      printable(`  input: ${JSON.stringify(j.job.input)}`),
-    ].join('\n'),
-  );
-  console.log(`  approval expires: ${fmtTime(j.consent.expires)}`);
-
-  if (!process.stdin.isTTY) {
-    die(NO_TERMINAL);
-  }
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const typed = await rl.question(
-    `\nto approve, type: ${printable(j.phrase)}\n› `,
-  );
-
-  rl.close();
-
-  if (!phraseMatches(typed, j.phrase)) {
-    die('not approved');
-  }
-
-  // Signed at the time it's signed, so a consent that expired while the person typed is refused.
-  const grant = await orRefuse(() => signJobConsent(p, j));
-
-  await defaultFileStore().putConsent(j.planHash, grant);
-  console.log(
-    '✓ approved: a one-time consent for this plan only. Ask the agent to call the tool again.',
-  );
-}
-
-/** What `f` resolves to, or the command dies refusing, with `f`'s error, escaped, as the reason. */
-async function orRefuse<T>(f: () => Promise<T>): Promise<T> {
-  try {
-    return await f();
-  } catch (e) {
-    return die(`✗ ${printable((e as Error).message)}: refusing`);
   }
 }

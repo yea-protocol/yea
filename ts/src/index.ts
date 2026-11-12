@@ -71,6 +71,7 @@ export {
   consentGrant,
   consentRecipient,
   decodeConsentCode,
+  expiredWhy,
 } from './consent.js';
 
 export {
@@ -121,11 +122,13 @@ export { fetchHandler } from './http.js';
 export {
   type ConsentCodes,
   type ConsentCodesOutcome,
+  howToApprove,
   type JobCall,
   type JobCallOutcome,
   type JobCallRetry,
   type JobTool,
   jobCall,
+  type PlanConsentCode,
 } from './job-call.js';
 
 export {
@@ -162,10 +165,12 @@ export { Service, service } from './service.js';
 export {
   type ApprovalStore,
   isMemoryStore,
+  isStoreId,
   type JobReceipt,
   type LedgerKey,
   ledgerId,
   MemoryStore,
+  newStoreId,
   type Reservation,
 } from './store.js';
 

@@ -4,12 +4,7 @@
  */
 import { type HashedPlan, ruledOut } from '../approval.js';
 import { buildForm, inputHashOf, jobConsentCode, newState } from '../ask.js';
-import { isMemoryStore } from '../store.js';
 import type { ConsentCodesOutcome, JobCallOutcome, Round } from './types.js';
-
-/** `yea approve` stores consents in a FileStore; a code for a MemoryStore could never work. */
-const MEMORY_NO_CONSENT =
-  "this server keeps approvals in memory, where `yea approve` can't reach them; use a client that can show approval forms, or run the server with a FileStore";
 
 /** Ask with a form if the client can take one and a plan can be offered; else consent codes. */
 export async function ask(
@@ -50,7 +45,11 @@ export async function ask(
 const noPrincipal = (why?: string) =>
   `no principal key is pinned${why ? ` (${why})` : ''}: run \`yea doctor\` in a terminal outside this chat; it says how to pin one`;
 
-/** Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6). */
+/**
+ * Nothing runs: the plans, and a consent code for each one the policy doesn't deny (§6). Any
+ * store gets codes: a consent `yea approve` can't save where the server reads comes back on the
+ * call.
+ */
 export async function consentCodes(
   r: Round,
   why: string,
@@ -66,10 +65,6 @@ export async function consentCodes(
     };
   }
 
-  if (isMemoryStore(r.store)) {
-    return { ...base, unavailable: MEMORY_NO_CONSENT };
-  }
-
   const codes = await Promise.all(
     plans
       .filter((hp) => ruledOut(hp, call.policy)?.kind !== 'denied')
@@ -81,6 +76,7 @@ export async function consentCodes(
           input: call.input,
           hp,
           phrase: r.phraseFor(hp),
+          store: r.storeId,
           now: call.now,
         }),
       })),

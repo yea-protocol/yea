@@ -13,6 +13,12 @@ _STRIP = "\u0009\u000a\u000b\u000c\u000d  ﻿"
 MAX_PHRASE = 64  # the longest phrase a tool may name, in code points, as TypeScript counts them
 
 
+def strip_phrase_edge(s: str) -> str:
+    """``s`` without U+0009–000D, U+0020, U+00A0 and U+FEFF at either end: the edge set a typed
+    phrase loses, which a consent passed back on the call loses too (§6)."""
+    return s.strip(_STRIP)
+
+
 def normalize_phrase(s: str) -> str:
     """NFC, then strip exactly U+0009–000D, U+0020, U+00A0, U+FEFF at both ends, then lowercase."""
     return unicodedata.normalize("NFC", s).strip(_STRIP).lower()

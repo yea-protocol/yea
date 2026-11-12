@@ -179,13 +179,36 @@ export function consentExpiry(c: {
     : c.expires;
 }
 
+/** What expired: a consent code, a service's consent request, or the proposal either is for. */
+export type ExpiredSubject = 'consent code' | 'consent request' | 'proposal';
+
 /**
- * Why a consent code whose consent expires at `expires` can't be approved at `now`, or null while
- * it can. It's expired from `expires` on, as an `exp` caveat is (SPEC §6.3). Both times are shown,
- * in UTC, so a person whose clock is wrong sees that it's the clock, not the code.
+ * Says, at `now`, that the `subject` valid until `expires` has expired, then `next`, what to do
+ * about it; null while it's valid. It's expired from `expires` on, as an `exp` caveat is (SPEC
+ * §6.3). Both times are shown, in UTC, so a person whose clock is wrong sees that it's the clock,
+ * not the consent.
  */
+export function expiredWhy(
+  subject: ExpiredSubject,
+  expires: number,
+  now: number,
+  next?: string,
+): string | null {
+  if (now < expires) {
+    return null;
+  }
+
+  const why = `this ${subject} expired at ${fmtTime(expires)}; it is ${fmtTime(now)} on this machine`;
+
+  return next ? `${why}. ${next}` : why;
+}
+
+/** Why a consent code whose consent expires at `expires` can't be approved at `now`, or null. */
 export function codeExpired(expires: number, now: number): string | null {
-  return now >= expires
-    ? `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(now)} on this machine. Call the tool again for a fresh one`
-    : null;
+  return expiredWhy(
+    'consent code',
+    expires,
+    now,
+    'Call the tool again for a fresh one',
+  );
 }

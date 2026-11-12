@@ -7,7 +7,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { jobConsentCode } from '../dist/ask.js';
+import { jobConsentCode, readJobConsent } from '../dist/ask.js';
 import { PENDING_ID, PendingCodes, pendingFile } from '../dist/file-store.js';
 import * as P from '../dist/index.js';
 
@@ -16,6 +16,8 @@ const now = 1790000000;
 const principal = await P.keyPair(seed(1));
 const server = await P.keyPair(seed(5));
 const agent = await P.keyPair(seed(7));
+// The server's store, which every job code binds (SPEC-approval §6, §8).
+const storeId = 'yea-pending-store-aaaa';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const must = (name, got, want) => {
   if (!same(got, want)) {
@@ -25,20 +27,27 @@ const must = (name, got, want) => {
   }
 };
 
-/** A framework server's code for one plan, issued at `at` (it expires 10 minutes later). */
+/**
+ * A framework server's code for one plan, issued at `at` (it expires 10 minutes later). It must
+ * be one `yea approve` reads, so a change to the code's format can't leave these behind.
+ */
 async function jobCode(summary, at) {
   const [hp] = await P.hashPlans({ name: 'delete_file' }, { path: 'a.txt' }, [
     { summary, effects: [], risk: 'medium', apply: () => null },
   ]);
-
-  return jobConsentCode({
+  const code = await jobConsentCode({
     server: server.public,
     principal: principal.public,
     input: { path: 'a.txt' },
     hp,
     phrase: 'approve',
+    store: storeId,
     now: at,
   });
+
+  must(`${summary} reads`, (await readJobConsent(code, at)).store, storeId);
+
+  return code;
 }
 
 /**

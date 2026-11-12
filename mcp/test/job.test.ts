@@ -10,6 +10,7 @@ import {
   grantPolicy,
   type Kind,
   ledgerKeyOf,
+  printedConsent,
   refundServer,
   textOf,
   world,
@@ -276,6 +277,7 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit', 'legacy-http'])(
           `  [1] yea approve ${codes[0].id}`,
           "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole code instead:",
           `  code for [1]: ${codes[0].code}`,
+          'If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the same arguments and `yea_consent` set to it.',
         ].join('\n'),
       );
 
@@ -298,6 +300,31 @@ describe.each<Kind>(['2026-no-elicit', '2025-no-elicit', 'legacy-http'])(
       const third = await conn.call(ch1);
 
       expect(third.isError).toBe(true);
+      expect(w.applied).toEqual(['ch_1']);
+    });
+
+    it('runs the consent yea approve printed, passed back as yea_consent, once', async () => {
+      const w = await world();
+      const conn = await connect(kind, refundServer(w));
+      const r = await conn.call(ch1);
+      const { codes } = r.structuredContent as { codes: { code: string }[] };
+      const consent = await printedConsent(w, codes[0].code);
+      const ran = await conn.call({ ...ch1, yea_consent: consent });
+
+      expect(ran.isError).toBeFalsy();
+      expect(w.applied).toEqual(['ch_1']);
+      // The consent is no part of the input the receipt keeps, or the plan hash binds.
+      expect(
+        (ran.structuredContent as { receipt: { input: unknown } }).receipt
+          .input,
+      ).toEqual(ch1);
+
+      const again = await conn.call({ ...ch1, yea_consent: consent });
+
+      expect(again.isError).toBe(true);
+      expect(textOf(again)).toContain(
+        "approval needed: the consent passed as yea_consent can't be used: it was already used",
+      );
       expect(w.applied).toEqual(['ch_1']);
     });
 
@@ -373,10 +400,25 @@ describe.each<Kind>(['2026', '2025'])('preview on a %s client', (kind) => {
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(/preview must be true or false/);
   });
+
+  it('a yea_consent that isn’t a string is refused by the schema; null is none', async () => {
+    const w = await world();
+    const conn = await connect(kind, refundServer(w));
+    const r = await conn.call({ ...ch1, yea_consent: 42 });
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/yea_consent must be a string/);
+
+    conn.answers.push(accept('ch_1'));
+    expect(
+      (await conn.call({ ...ch1, yea_consent: null })).isError,
+    ).toBeFalsy();
+    expect(w.applied).toEqual(['ch_1']);
+  });
 });
 
 describe('the tool as clients see it', () => {
-  it('carries preview in its schema, job annotations and risk metadata', async () => {
+  it('carries preview and yea_consent in its schema, job annotations and risk metadata', async () => {
     const w = await world();
     const conn = await connect('2026', refundServer(w));
     const { tools } = await conn.client.listTools();
@@ -385,7 +427,11 @@ describe('the tool as clients see it', () => {
 
     expect(refund?.inputSchema).toMatchObject({
       type: 'object',
-      properties: { charge: { type: 'string' }, preview: { type: 'boolean' } },
+      properties: {
+        charge: { type: 'string' },
+        preview: { type: 'boolean' },
+        yea_consent: { type: 'string' },
+      },
       required: ['charge'],
     });
     expect(refund?.annotations).toEqual({
@@ -655,6 +701,7 @@ describe('a store that isn’t a FileStore', () => {
       'used',
       'putConsent',
       'getConsent',
+      'storeId',
     ] as const;
     const store = Object.fromEntries(
       methods.map((m) => [m, h.store[m].bind(h.store)]),
@@ -676,7 +723,7 @@ describe('a store that isn’t a FileStore', () => {
 });
 
 describe('HTTP on the default MemoryStore', () => {
-  it('gives no consent codes, since yea approve can’t reach it, and says why', async () => {
+  it('gives consent codes, and runs the consent passed back as yea_consent, once', async () => {
     const w = await world({
       transport: 'http',
       store: undefined,
@@ -687,11 +734,25 @@ describe('HTTP on the default MemoryStore', () => {
     const r = await conn.call(ch1);
 
     expect(r.isError).toBe(true);
-    expect(textOf(r)).toMatch(
-      /No consent can be accepted: this server keeps approvals in memory, where `yea approve` can't reach them/,
+
+    const { codes } = r.structuredContent as { codes: { code: string }[] };
+
+    expect(codes).toHaveLength(1);
+
+    // `yea approve` saves to a FileStore this server never reads: only the paste reaches it.
+    await approve(w, codes[0].code);
+    expect((await conn.call(ch1)).isError).toBe(true);
+    expect(w.applied).toEqual([]);
+
+    const consent = await printedConsent(w, codes[0].code);
+
+    expect(
+      (await conn.call({ ...ch1, yea_consent: consent })).isError,
+    ).toBeFalsy();
+    expect((await conn.call({ ...ch1, yea_consent: consent })).isError).toBe(
+      true,
     );
-    expect((r.structuredContent as { codes: unknown[] }).codes).toEqual([]);
-    expect(textOf(r)).not.toMatch(/pc1\./);
+    expect(w.applied).toEqual(['ch_1']);
   });
 });
 

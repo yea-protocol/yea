@@ -20,16 +20,6 @@ PRINCIPAL = key_from_seed(bytes([1]) * 32).public
 SERVER = key_from_seed(bytes([5]) * 32).public
 
 
-class FileLike:
-    """A MemoryStore the session doesn't treat as one, so it issues consent codes."""
-
-    def __init__(self) -> None:
-        self.inner = MemoryStore()
-
-    def __getattr__(self, name):
-        return getattr(self.inner, name)
-
-
 def call(plan=None, input=None, tool=None, can_ask=True) -> JobCall:
     async def refund():
         return [Plan("Refund", [], apply=lambda c: None, risk="low")]
@@ -38,16 +28,16 @@ def call(plan=None, input=None, tool=None, can_ask=True) -> JobCall:
 
 
 def test_an_ask_carries_what_to_return_instead_when_the_client_is_unreachable():
-    o = asyncio.run(job_call(call(), FileLike()))
+    o = asyncio.run(job_call(call(), MemoryStore()))
     assert o.kind == "ask" and o.otherwise is not None
     instead = o.otherwise()
     assert instead.kind == "consent-codes" and instead.why == "refund can't be undone"
     assert [c["planHash"] for c in instead.codes] == o.form["offered"] and instead.unavailable is None
 
 
-def test_a_memory_store_gets_no_consent_codes():
+def test_a_memory_store_gets_consent_codes_too_their_consents_come_back_on_the_call():
     o = asyncio.run(job_call(call(can_ask=False), MemoryStore()))
-    assert o.kind == "consent-codes" and "keeps approvals in memory" in (o.unavailable or "")
+    assert o.kind == "consent-codes" and o.unavailable is None and len(o.codes) == 1
 
 
 def test_a_non_integer_input_raises_before_the_handler_runs():
@@ -117,7 +107,7 @@ def _week_of(policy: Policy, start: int) -> LedgerKey:
 
 def test_a_weekly_total_asks_in_the_week_it_filled_runs_in_the_next_until_that_fills_and_keeps_the_old_week():
     async def go():
-        store, policy, next_week = FileLike(), _weekly_policy(), WEEK0 + WEEK
+        store, policy, next_week = MemoryStore(), _weekly_policy(), WEEK0 + WEEK
         assert (await _run(store, 30000, NOW, policy)).kind == "run"
         asked = await _run(store, 30000, NOW, policy)
         assert asked.kind == "ask" and asked.otherwise is not None
@@ -134,7 +124,7 @@ def test_a_weekly_total_asks_in_the_week_it_filled_runs_in_the_next_until_that_f
 
 def test_a_clock_in_fractional_seconds_is_floored_the_run_counts_in_the_period_of_its_whole_second():
     async def go():
-        store, policy = FileLike(), _weekly_policy()
+        store, policy = MemoryStore(), _weekly_policy()
         # Half a second before the second week: floored, it is in the first; rounded, in the second.
         o = await job_call(_buy(30000, WEEK0 + WEEK - 0.5, policy), store)
         assert o.kind == "run"
@@ -145,7 +135,7 @@ def test_a_clock_in_fractional_seconds_is_floored_the_run_counts_in_the_period_o
 
 def test_a_weekly_reservation_released_after_the_week_ends_frees_that_week_only():
     async def go():
-        store, policy = FileLike(), _weekly_policy()
+        store, policy = MemoryStore(), _weekly_policy()
         o = await job_call(_buy(30000, WEEK0 + WEEK - 1, policy), store)
         assert o.kind == "run"
         # The plan failed after the boundary: what it held goes back to the week it was taken in.

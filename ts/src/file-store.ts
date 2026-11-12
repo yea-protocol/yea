@@ -10,12 +10,15 @@ import { randomId, sha256 } from './crypto.js';
 import {
   breakIfStale,
   createOnce,
+  NotRegularFile,
   readOrNull,
+  readRegular,
   writeAtomic,
 } from './file-store/files.js';
-import { acquire } from './file-store/lock.js';
+import { acquire, release, stillHeld } from './file-store/lock.js';
+import { periodNames, safeName } from './file-store/names.js';
 import { PendingCodes } from './file-store/pending.js';
-import type { Period } from './grants.js';
+import { ensureStoreId } from './file-store/store-id.js';
 import { home } from './home.js';
 import type {
   ApprovalStore,
@@ -23,6 +26,7 @@ import type {
   LedgerKey,
   Reservation,
 } from './store.js';
+import { errno } from './util.js';
 
 /** An undo claimed but never finished (the process died) can be claimed again after this. */
 const STALE_CLAIM_MS = 600_000;
@@ -46,13 +50,23 @@ export {
   pendingFile,
 } from './file-store/pending.js';
 
+export { readStoreId } from './file-store/store-id.js';
+
 export class FileStore implements ApprovalStore {
   /** The brand `pendingCodesOf` reads, as `isMemoryStore` reads MemoryStore's. */
   readonly yeaStore = 'file' as const;
   readonly root: string;
+  private id: string | null = null;
 
   constructor(root = join(home(), 'store')) {
     this.root = root;
+  }
+
+  /** `<root>/id`, made by the first process that needs it, then kept for this instance (§8). */
+  async storeId(): Promise<string> {
+    this.id ??= await ensureStoreId(this.root);
+
+    return this.id;
   }
 
   async consumeOnce(id: string, expiresAt: number): Promise<boolean> {
@@ -150,8 +164,31 @@ export class FileStore implements ApprovalStore {
     writeAtomic(this.consentPath(planHash), grant);
   }
 
+  /**
+   * The consent stored for a plan, or null. It's read as a server key is (`readRegular`), and one
+   * that is there but can't be read that way (a mode or owner that shuts this user out; a symlink,
+   * directory, FIFO or device in its place; over 64 KiB) counts as absent, with a line on stderr:
+   * it can only mean asking again, never an fs error in the model's context (SPEC-approval §8).
+   * Anything else is still thrown.
+   */
   async getConsent(planHash: string): Promise<string | null> {
-    return readOrNull(this.consentPath(planHash));
+    const path = this.consentPath(planHash);
+
+    try {
+      return readRegular(path);
+    } catch (e) {
+      const why = e instanceof NotRegularFile ? e.message : errno(e);
+
+      if (why === undefined) {
+        throw e;
+      }
+
+      console.error(
+        `yea: the consent at ${path} can't be read (${why}), so it counts as absent`,
+      );
+
+      return null;
+    }
   }
 
   // ---- paths: every name from outside is checked or hashed before it reaches one ----
@@ -205,7 +242,7 @@ export class FileStore implements ApprovalStore {
       const l = this.readLedger(key);
       const out = change(l);
 
-      if (readOrNull(lock) !== token) {
+      if (!stillHeld(lock, token)) {
         throw new Error(
           `lost the approval store lock (${lock}); nothing was written`,
         );
@@ -215,15 +252,13 @@ export class FileStore implements ApprovalStore {
 
       // A lock broken as stale between the check and the write (a holder paused > 30 s) may
       // have let another write through; refuse rather than report success (SPEC-approval §8).
-      if (readOrNull(lock) !== token) {
+      if (!stillHeld(lock, token)) {
         throw new Error(`lost the approval store lock while writing (${lock})`);
       }
 
       return out;
     } finally {
-      if (readOrNull(lock) === token) {
-        rmSync(lock, { force: true });
-      }
+      release(lock, token);
     }
   }
 }
@@ -250,26 +285,4 @@ export function pendingCodesOf(s: unknown): PendingCodes | null {
   return f?.yeaStore === 'file' && typeof f.root === 'string'
     ? new PendingCodes(join(f.root, 'pending'))
     : null;
-}
-
-/** A period's length and start as store names: safe integers, the length positive, or refused. */
-function periodNames({ every, start }: Period): [string, string] {
-  if (
-    !(Number.isSafeInteger(every) && every > 0 && Number.isSafeInteger(start))
-  ) {
-    throw new Error(
-      `refusing a ledger period of ${every} seconds from ${start}`,
-    );
-  }
-
-  return [String(every), String(start)];
-}
-
-/** Names are b64url ids, receipt ids or measure names; anything else is refused. */
-function safeName(s: string): string {
-  if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/.test(s)) {
-    throw new Error(`refusing an unsafe store name: ${JSON.stringify(s)}`);
-  }
-
-  return s;
 }

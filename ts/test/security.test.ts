@@ -1021,6 +1021,8 @@ describe('security regressions', () => {
 const A = await P.keyPair(); // a server
 const B = await P.keyPair(); // a principal
 const now = 1790000000;
+/** The store the approval tests' consents bind (SPEC-approval §6), unless one names its own. */
+const STORE = 'yea-test-store-aaaaaaa';
 const tmp = () => mkdtempSync(join(tmpdir(), 'yea-approval-'));
 
 /** A refund call outside any policy, from a client that can ask: its first round asks. */
@@ -1213,6 +1215,7 @@ describe('approval security (SPEC-approval)', () => {
           input: { who: 'Chen' },
           hp,
           phrase: 'approve',
+          store: STORE,
           now,
         }),
       ) as unknown as Record<string, unknown> & {
@@ -1283,7 +1286,7 @@ describe('approval security (SPEC-approval)', () => {
   });
 
   it('[A30] yea approve refuses an expired protocol consent code before showing or asking, from the second it expires (#370)', async () => {
-    // An hour ahead: a consent that is approved has its grant checked against the real clock.
+    // The clock given decides, for both expiry checks and the grant's (#383).
     const at = P.unixNow() + 3600;
     const code = await protocolCode({
       principal: B.public,
@@ -1445,6 +1448,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: '  ',
+        store: STORE,
         now,
       }),
       now,
@@ -1458,12 +1462,13 @@ describe('approval security (SPEC-approval)', () => {
       { svc: [A.public] },
       { verbs: ['COMMIT'] },
       { can: ['refund'] },
-      { only: await P.consentHashOf(hp.planHash, 'approve') },
+      { only: await P.consentHashOf(hp.planHash, 'approve', STORE) },
       { exp: j.consent.expires },
     ]);
     expect(
       await checkJobConsent(await P.signJobConsent(B, j, now), {
         hp,
+        store: STORE,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
         now,
@@ -1567,7 +1572,7 @@ describe('approval security (SPEC-approval)', () => {
       holder: A,
       to: A.public,
       caveats: [
-        { only: await P.consentHashOf(hp.planHash, 'approve') },
+        { only: await P.consentHashOf(hp.planHash, 'approve', STORE) },
         { exp: now + 600 },
       ],
     });
@@ -1575,6 +1580,7 @@ describe('approval security (SPEC-approval)', () => {
     expect(
       await checkJobConsent(forged, {
         hp,
+        store: STORE,
         phrase: 'approve',
         policy: { principal: B.public, server: A.public },
         now,
@@ -1695,6 +1701,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -1705,7 +1712,7 @@ describe('approval security (SPEC-approval)', () => {
     const hash = await P.planHashOf(job);
     const bad = {
       ...good,
-      hash: await P.consentHashOf(hash, 'approve'),
+      hash: await P.consentHashOf(hash, 'approve', STORE),
       proposal: hash,
       detail: { ...good.detail, job },
     };
@@ -1793,6 +1800,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase,
+        store: STORE,
         now,
       });
 
@@ -1835,6 +1843,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: 'old-nav',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -1859,14 +1868,20 @@ describe('approval security (SPEC-approval)', () => {
     // A forger who rehashes gets a code `yea approve` signs, but the consent binds `approve`,
     // and the server checks it against its own phrase, so it never runs the plan.
     const forged = await P.readJobConsent(
-      edited({ hash: await P.consentHashOf(hp.planHash, 'approve') }),
+      edited({ hash: await P.consentHashOf(hp.planHash, 'approve', STORE) }),
       now,
     );
     const grant = await P.signJobConsent(B, forged, now);
     const policy = { principal: B.public, server: A.public };
 
     expect(
-      await checkJobConsent(grant, { hp, phrase: 'old-nav', policy, now }),
+      await checkJobConsent(grant, {
+        hp,
+        store: STORE,
+        phrase: 'old-nav',
+        policy,
+        now,
+      }),
     ).toEqual({ ok: false, why: 'not a consent for this phrase' });
 
     // Nor is it silent: the next call asks again and says a consent was signed for another
@@ -1907,14 +1922,72 @@ describe('approval security (SPEC-approval)', () => {
     );
 
     expect(
-      await checkJobConsent(bare, { hp, phrase: 'approve', policy, now }),
+      await checkJobConsent(bare, {
+        hp,
+        store: STORE,
+        phrase: 'approve',
+        policy,
+        now,
+      }),
     ).toEqual({ ok: false, why: 'not a consent for this phrase' });
 
     // The `approve` fallback is part of the consent hash, so a caller passing a tool's raw,
     // empty phrase still redeems the consent the person signed for `approve`.
-    expect(await P.consentHashOf(hp.planHash, ' ')).toBe(
-      await P.consentHashOf(hp.planHash, 'approve'),
+    expect(await P.consentHashOf(hp.planHash, ' ', STORE)).toBe(
+      await P.consentHashOf(hp.planHash, 'approve', STORE),
     );
+  });
+
+  it("[A19] a consent code that binds no store, or one that isn't a store id, is refused, even rehashed (#358)", async () => {
+    const [hp] = await P.hashPlans({ name: 'delete_branch' }, {}, [
+      {
+        summary: 'Delete branch old-nav',
+        effects: [],
+        risk: 'low',
+        apply: () => null,
+      },
+    ]);
+    const codeFor = (store: string) =>
+      jobConsentCode({
+        server: A.public,
+        principal: B.public,
+        input: {},
+        hp,
+        phrase: 'old-nav',
+        store,
+        now,
+      });
+    const good = P.decodeConsentCode(await codeFor(STORE)) as unknown as {
+      detail: Record<string, unknown>;
+    };
+    /** The code binding `store` (none when undefined), rehashed to match, as a forger would. */
+    const binding = async (store: string | undefined) => {
+      const { store: _ours, ...detail } = good.detail;
+      const bound = store === undefined ? {} : { store };
+      const hash = await P.sha256(
+        P.canonical({ plan: hp.planHash, phrase: 'old-nav', ...bound }),
+      );
+
+      return `pc1.${P.b64u(
+        new TextEncoder().encode(
+          P.canonical({ ...good, hash, detail: { ...detail, ...bound } }),
+        ),
+      )}`;
+    };
+    const notIds = ['', 'x'.repeat(21), 'x'.repeat(36), `${STORE}\n`];
+
+    // With no store, the hash binds the plan and phrase only, as before the store binding: a
+    // consent signed for it would run once in every store with the server's key.
+    for (const store of [undefined, ...notIds]) {
+      await expect(P.readJobConsent(await binding(store), now)).rejects.toThrow(
+        'not a job consent code',
+      );
+    }
+
+    // Nor does a server make one.
+    for (const store of [undefined, ...notIds]) {
+      await expect(codeFor(store as string)).rejects.toThrow('not a store id');
+    }
   });
 
   it('[A20] a phrase over 64 characters is refused, counted in code points (#141)', async () => {
@@ -1940,6 +2013,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: long,
+        store: STORE,
         now,
       }),
     ).rejects.toThrow('longer than 64 characters');
@@ -1952,6 +2026,7 @@ describe('approval security (SPEC-approval)', () => {
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -1959,7 +2034,7 @@ describe('approval security (SPEC-approval)', () => {
     };
     const bad = {
       ...good,
-      hash: await P.consentHashOf(hp.planHash, long),
+      hash: await P.consentHashOf(hp.planHash, long, STORE),
       detail: { ...good.detail, phrase: long },
     };
 
@@ -1984,6 +2059,341 @@ describe('approval security (SPEC-approval)', () => {
     expect(phraseMatches(typed, 'approve')).toBe(false);
     expect(phraseMatches(`${bom}Approve${nbsp}`, 'approve')).toBe(true);
     expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  describe('[A38] a consent on the call is checked exactly as one from the store (#358)', async () => {
+    const refund = {
+      summary: 'Refund 30.00 USD to Chen',
+      effects: [],
+      risk: 'low' as const,
+      undoWindow: 60,
+    };
+    const credit = { ...refund, summary: 'Give Chen store credit' };
+    const tool = { name: 'refund', revert: () => null };
+    const input = { who: 'Chen' };
+    const [refundHp] = await P.hashPlans(tool, input, [
+      { ...refund, apply: () => null },
+    ]);
+    const only = await P.consentHashOf(refundHp.planHash, 'approve', STORE);
+    // A policy that would run the refund without asking.
+    const policyGrant = await P.issueGrant({
+      principal: B,
+      to: A.public,
+      caveats: [{ can: ['refund'] }, { risk: 'low' }, { exp: now + 3600 }],
+    });
+
+    /** A consent as `yea approve` signs one, with `o` changing a part of it. */
+    const consent = (
+      o: {
+        by?: P.KeyPair;
+        to?: string;
+        svc?: string;
+        can?: string;
+        exp?: number;
+      } = {},
+    ) =>
+      P.issueGrant({
+        principal: o.by ?? B,
+        to: o.to ?? A.public,
+        iat: now,
+        caveats: [
+          { svc: [o.svc ?? A.public] },
+          { verbs: ['COMMIT'] },
+          { can: [o.can ?? 'refund'] },
+          { only },
+          { exp: o.exp ?? now + 600 },
+        ],
+      });
+    /** A call carrying `token` from a client that can't ask, with the refund (or `plans`). */
+    const carrying = (token: string, o: Partial<P.JobCall> = {}) => {
+      const ran: string[] = [];
+      const call: P.JobCall = {
+        tool,
+        input,
+        plan: () =>
+          [refund].map((p) => ({ ...p, apply: () => ran.push(p.summary) })),
+        sub: '',
+        now,
+        policy: {
+          grant: policyGrant,
+          principal: B.public,
+          server: A.public,
+          deny: [],
+          outOfBand: 'high',
+        },
+        canAsk: false,
+        consent: token,
+        ...o,
+      };
+
+      return { call, ran };
+    };
+    const notSigned =
+      "it isn't signed by the pinned principal for this tool at this server";
+    const noPlan =
+      'it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered';
+    const refusedFor = (why: string) => ({
+      kind: 'consent-codes',
+      why: `the consent passed as yea_consent can't be used: ${why}`,
+    });
+
+    it('runs its plan once, and a second use is refused', async () => {
+      const store = new P.MemoryStore({ id: STORE });
+      const token = await consent();
+      // The newline a terminal copy adds doesn't matter: the signature covers only the token.
+      const first = await P.jobCall(carrying(`${token}\n`).call, store);
+
+      expect(first).toMatchObject({ kind: 'run', how: 'approved' });
+      expect(await P.jobCall(carrying(token).call, store)).toMatchObject(
+        refusedFor('it was already used'),
+      );
+    });
+
+    it('is the one consent: once used on the call, a stored copy of it is used too', async () => {
+      const store = new P.MemoryStore({ id: STORE });
+      const token = await consent();
+
+      expect(await P.jobCall(carrying(token).call, store)).toMatchObject({
+        kind: 'run',
+        how: 'approved',
+      });
+
+      // The same consent saved by `yea approve` afterwards, and a call without a policy.
+      await store.putConsent(refundHp.planHash, token);
+
+      const { consent: _none, ...plain } = carrying(token).call;
+      const again = await P.jobCall(
+        { ...plain, policy: { ...plain.policy, grant: null } },
+        store,
+      );
+
+      expect(again.kind).toBe('consent-codes');
+    });
+
+    it('refuses a forged, altered, expired, other-server or other-tool consent, and runs nothing', async () => {
+      const token = await consent();
+      const [block] = P.decodeGrant(token);
+      const altered = P.encodeGrant([
+        {
+          ...block,
+          p: {
+            ...block.p,
+            caveats: [...block.p.caveats.slice(0, 4), { exp: now + 9999 }],
+          },
+        },
+      ]);
+      const cases: [string, string, number?][] = [
+        [await consent({ by: other }), notSigned],
+        [await consent({ to: other.public }), notSigned],
+        [altered, notSigned],
+        [token, 'it has expired', now + 600],
+        [await consent({ svc: other.public }), notSigned],
+        [await consent({ can: 'delete_branch' }), notSigned],
+        [token.slice(0, 40), "it isn't a consent from yea approve"],
+        ['', "it isn't a consent from yea approve"],
+        [policyGrant, "it isn't a consent from yea approve"],
+      ];
+
+      for (const [bad, why, at] of cases) {
+        const { call, ran } = carrying(bad, at ? { now: at } : {});
+
+        // The policy alone would run the refund: a refused consent never falls through to it.
+        expect(
+          await P.jobCall(call, new P.MemoryStore({ id: STORE })),
+        ).toMatchObject(refusedFor(why));
+        expect(ran).toEqual([]);
+      }
+    });
+
+    it("passed for one plan, doesn't commit another", async () => {
+      const { call, ran } = carrying(await consent(), {
+        plan: () => [{ ...credit, apply: () => ran.push(credit.summary) }],
+      });
+
+      expect(
+        await P.jobCall(call, new P.MemoryStore({ id: STORE })),
+      ).toMatchObject(refusedFor(noPlan));
+      expect(ran).toEqual([]);
+    });
+
+    it('signed for another phrase, runs nothing, and says the code may have been altered', async () => {
+      const { call, ran } = carrying(await consent(), {
+        tool: { ...tool, confirmWith: () => 'refund Chen' },
+      });
+
+      expect(
+        await P.jobCall(call, new P.MemoryStore({ id: STORE })),
+      ).toMatchObject(refusedFor(noPlan));
+      expect(ran).toEqual([]);
+    });
+
+    it('consumed in one store, runs nothing in another with the same server key', async () => {
+      // Two servers with one key and their own stores (a connector's stdio and HTTP sides), or
+      // one server restarted on a MemoryStore: the consent binds the store it was issued for.
+      const token = await consent();
+      const first = carrying(token);
+      const twin = carrying(token);
+
+      expect(
+        await P.jobCall(first.call, new P.MemoryStore({ id: STORE })),
+      ).toMatchObject({
+        kind: 'run',
+        how: 'approved',
+      });
+      expect(await P.jobCall(twin.call, new P.MemoryStore())).toMatchObject(
+        refusedFor(noPlan),
+      );
+      expect(twin.ran).toEqual([]);
+    });
+
+    it("runs nothing and issues no code when the store's id isn't a store id, even with a storeless consent", async () => {
+      // A custom store whose storeId() gives no id would issue codes that bind no store, as
+      // before the store binding, and accept a consent that binds none: once in every such store.
+      const storeless = await P.issueGrant({
+        principal: B,
+        to: A.public,
+        iat: now,
+        caveats: [
+          { svc: [A.public] },
+          { verbs: ['COMMIT'] },
+          { can: ['refund'] },
+          {
+            only: await P.sha256(
+              P.canonical({ plan: refundHp.planHash, phrase: 'approve' }),
+            ),
+          },
+          { exp: now + 600 },
+        ],
+      });
+
+      for (const id of [undefined, '', 'x'.repeat(21), 'x'.repeat(36)]) {
+        const store = new P.MemoryStore({ id: STORE });
+
+        store.storeId = () => Promise.resolve(id as string);
+
+        const carried = carrying(storeless);
+        const bare = carrying(storeless);
+        // No consent and no policy: the call would otherwise ask, with codes.
+        const { consent: _none, ...plain } = bare.call;
+        const asked = { ...plain, policy: { ...plain.policy, grant: null } };
+
+        for (const call of [carried.call, asked]) {
+          await expect(P.jobCall(call, store)).rejects.toThrow(
+            "this store's storeId() isn't a store id",
+          );
+        }
+
+        expect([...carried.ran, ...bare.ran]).toEqual([]);
+      }
+    });
+
+    it('counts for nothing without a pinned principal', async () => {
+      const { call } = carrying(await consent());
+      const o = await P.jobCall(
+        {
+          ...call,
+          policy: { ...call.policy, principal: '' },
+          unpinned: 'YEA_PRINCIPAL_PUB is not set',
+        },
+        new P.MemoryStore({ id: STORE }),
+      );
+
+      expect(o).toMatchObject({
+        ...refusedFor('YEA_PRINCIPAL_PUB is not set'),
+        codes: [],
+      });
+    });
+  });
+
+  describe('[A37] an unreadable consent in the store asks again, with no fs error in the result (#358)', async () => {
+    const [hp] = await P.hashPlans({ name: 'refund' }, { who: 'Chen' }, [
+      { summary: 'Refund', effects: [], risk: 'low', apply: () => null },
+    ]);
+    const canAsk = false;
+    const call = askingCall({
+      policy: {
+        grant: null,
+        principal: B.public,
+        server: A.public,
+        deny: [],
+        outOfBand: 'high',
+      },
+      canAsk,
+    });
+
+    /**
+     * What an agent with the store could plant under the plan's hash: the call asks, as with no
+     * consent, and the reason reaches stderr only. It never blocks, so a FIFO can't hang it.
+     */
+    async function asksPast(
+      plant: (path: string, dir: string) => void,
+      why: string,
+    ) {
+      const dir = tmp();
+      const store = new FileStore(dir);
+      const planted = join(dir, 'consents', hp.planHash);
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      mkdirSync(join(dir, 'consents'), { recursive: true });
+      plant(planted, dir);
+
+      try {
+        const o = await P.jobCall(call, store);
+
+        expect(o.kind).toBe('consent-codes');
+        expect(JSON.stringify(o)).not.toContain(why);
+        expect(logged).toHaveBeenCalledWith(
+          `yea: the consent at ${planted} can't be read (${why}), so it counts as absent`,
+        );
+      } finally {
+        logged.mockRestore();
+        chmodSync(planted, 0o600);
+      }
+    }
+
+    it.skipIf(!process.getuid || process.getuid() === 0)(
+      'a file the server may not read',
+      () =>
+        asksPast((path) => {
+          writeFileSync(path, 'pg1.x');
+          chmodSync(path, 0);
+        }, 'EACCES'),
+    );
+    it.skipIf(process.platform === 'win32')(
+      'a FIFO, which never blocks the read',
+      () =>
+        asksPast(
+          (path) => execFileSync('mkfifo', [path]),
+          'not a regular file',
+        ),
+    );
+    it('a symlink, never followed, even to a consent', () =>
+      asksPast((path, dir) => {
+        writeFileSync(join(dir, 'elsewhere'), 'pg1.x');
+        symlinkSync(join(dir, 'elsewhere'), path);
+      }, 'ELOOP'));
+    it('a file over 64 KiB', () =>
+      asksPast(
+        (path) => writeFileSync(path, 'x'.repeat(65537)),
+        'over 64 KiB',
+      ));
+    it('anything but an fs error is still thrown: a store error, so nothing runs', async () => {
+      const planted = join('consents', hp.planHash);
+
+      fsHook.beforeOpen = (path) => {
+        if (path.endsWith(planted)) {
+          throw new Error('not an fs error');
+        }
+      };
+
+      try {
+        await expect(P.jobCall(call, new FileStore(tmp()))).rejects.toThrow(
+          'not an fs error',
+        );
+      } finally {
+        fsHook.beforeOpen = null;
+      }
+    });
   });
 });
 
@@ -2171,6 +2581,38 @@ function yeaDo(args: string[], home: string) {
   );
 }
 
+/**
+ * A service `yea do` runs as a script in `home`: it answers each verb with its reply in `replies`
+ * and logs every frame. Its target for `yea do`, and the COMMITs it got.
+ */
+function scriptedService(home: string, replies: Record<string, object>) {
+  const log = join(home, 'frames.log');
+  const script = join(home, 'service.mjs');
+
+  writeFileSync(
+    script,
+    `import { appendFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+const replies = ${JSON.stringify(replies)};
+for await (const line of createInterface({ input: process.stdin })) {
+  const f = JSON.parse(line);
+  appendFileSync(${JSON.stringify(log)}, JSON.stringify(f) + '\\n');
+  process.stdout.write(JSON.stringify({ yea: 1, id: 's', re: f.id, ...replies[f.verb] }) + '\\n');
+}
+`,
+  );
+
+  return {
+    target: `stdio:${process.execPath} ${script}`,
+    commits: () =>
+      readFileSync(log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l))
+        .filter((f) => f.verb === 'COMMIT'),
+  };
+}
+
 // Every caller (`yea do`, test-drive, `yea approve`, the bridge, the site) goes through the
 // consent round (consent-round.ts). These run it with a fake approver against the pay service,
 // through a transport that edits its replies as a lying service would; [C6] also runs `yea do`.
@@ -2243,6 +2685,19 @@ function expiredWhy(expires: number, at: number) {
   return `this consent code expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Call the tool again for a fresh one`;
 }
 
+/**
+ * Why the consent round refuses a consent request that expired at `expires`, when it's `at` and
+ * its proposal hasn't expired.
+ */
+function requestExpiredWhy(expires: number, at: number) {
+  return `this consent request expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Commit again for a fresh one`;
+}
+
+/** Why the consent round refuses a consent to a proposal that expired at `expires`, when it's `at`. */
+function proposalExpiredWhy(expires: number, at: number) {
+  return `this proposal expired at ${fmtTime(expires)}; it is ${fmtTime(at)} on this machine. Send INTENT again for a fresh proposal`;
+}
+
 /** A job code for a plan the person can't confirm without a terminal. */
 async function jobCodeAt(at: number, summary = 'Delete a.txt') {
   const [hp] = await P.hashPlans({ name: 'delete_file' }, { path: 'a.txt' }, [
@@ -2255,6 +2710,7 @@ async function jobCodeAt(at: number, summary = 'Delete a.txt') {
     input: { path: 'a.txt' },
     hp,
     phrase: 'approve',
+    store: STORE,
     now: at,
   });
 }
@@ -2682,20 +3138,26 @@ describe('consent requests (SPEC.md §6.6)', () => {
   /** The principal, saying yes. */
   const yes = P.signer(principal, async () => true);
 
-  /** One round for the proposal shown (default: the one the service sent), with its lie. */
+  /**
+   * One round for the proposal shown (default: the one the service sent), with its lie. `now` is
+   * the round's clock, read with the proposal shown; the system's if absent.
+   */
   async function round(
     o: Parameters<typeof lyingClient>[0] & {
       answer?: (a: P.ConsentAsk) => Promise<P.ConsentAnswer>;
       consents?: P.ConsentStore;
+      now?: (p: P.Proposal) => number;
     } = {},
   ) {
     const { c, commits, shown } = await lyingClient(o);
     const { asks, approver } = fakeApprover(o.answer);
+    const { now } = o;
     const out = await P.consentRound({
       client: c,
       proposal: shown,
       approver,
       consents: o.consents,
+      now: now && (() => now(shown)),
     });
 
     return { out, asks, commits, p: shown };
@@ -2893,33 +3355,13 @@ describe('consent requests (SPEC.md §6.6)', () => {
             },
           },
         };
-        const log = join(home, 'frames.log');
-        const script = join(home, 'evil.mjs');
+        const evil = scriptedService(home, replies);
 
-        writeFileSync(
-          script,
-          `import { appendFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
-const replies = ${JSON.stringify(replies)};
-for await (const line of createInterface({ input: process.stdin })) {
-  const f = JSON.parse(line);
-  appendFileSync(${JSON.stringify(log)}, JSON.stringify(f) + '\\n');
-  process.stdout.write(JSON.stringify({ yea: 1, id: 's', re: f.id, ...replies[f.verb] }) + '\\n');
-}
-`,
-        );
         writeFileSync(join(home, 'principal.key'), principal.seed);
         writeFileSync(join(home, 'agent.key'), agent.seed);
 
-        const r = await yeaDo(
-          [`stdio:${process.execPath} ${script}`, 'pay.send'],
-          home,
-        );
-        const commits = readFileSync(log, 'utf8')
-          .trim()
-          .split('\n')
-          .map((l) => JSON.parse(l))
-          .filter((f) => f.verb === 'COMMIT');
+        const r = await yeaDo([evil.target, 'pay.send'], home);
+        const commits = evil.commits();
 
         expect(r.status).not.toBe(0);
         expect(r.stderr).toContain("the proposal doesn't match its hash");
@@ -3021,6 +3463,14 @@ for await (const line of createInterface({ input: process.stdin })) {
         ],
       }),
     });
+    /** An approver that edits the ask it's handed, then signs it as edited, as `by`. */
+    const editing =
+      (edit: (a: P.ConsentAsk) => void, by = principal) =>
+      (a: P.ConsentAsk): Promise<P.ConsentAnswer> => {
+        edit(a);
+
+        return signed({ by })(a);
+      };
 
     for (const [answer, why] of [
       [signed({}, { hash: 'h_other' }), 'it consents to something other'],
@@ -3032,6 +3482,32 @@ for await (const line of createInterface({ input: process.stdin })) {
       [signed({ by: other }), "it isn't signed by the request's principal"],
       [extra, 'it consents to something other'],
       [async () => ({ grant: 'pg1.nope' }), "it isn't a readable grant"],
+      // The approver's edits are to its own copy: the grant is checked against the ask as built.
+      [
+        editing((a) => {
+          a.request.hash = 'h_other';
+        }),
+        'it consents to something other',
+      ],
+      [
+        editing((a) => {
+          a.request.expires += 3600;
+        }),
+        'it consents to something other',
+      ],
+      [
+        editing((a) => {
+          a.agent = otherAgent.public;
+        }),
+        "it's issued to another key",
+      ],
+      [
+        editing((a) => {
+          a.request.principal = other.public;
+          a.request.hash = 'h_other';
+        }, other),
+        "it isn't signed by the request's principal",
+      ],
     ] as const) {
       const { out, commits } = await round({ answer, consents });
 
@@ -3057,6 +3533,25 @@ for await (const line of createInterface({ input: process.stdin })) {
     const { out } = await round({ answer: forged, consents });
 
     expect(out.kind === 'refused' && out.why).toContain('its check failed');
+
+    // Pushing the request's expiry on, as the clock crosses it, doesn't keep the answer from being
+    // refused. The request expires a minute before its proposal, so its expiry is what decides.
+    let shift = -61;
+    const late = await round({
+      lie: (p) => patched({ expires: p.expires - 60 }),
+      now: (p) => p.expires + shift,
+      answer: editing((a) => {
+        shift = -60;
+        a.request.expires += 3600;
+      }),
+      consents,
+    });
+
+    expect(late.out).toMatchObject({
+      kind: 'refused',
+      why: requestExpiredWhy(late.p.expires - 60, late.p.expires - 60),
+    });
+    expect(late.commits).toHaveLength(1);
     expect(kept).toEqual([]);
   });
 
@@ -3074,6 +3569,308 @@ for await (const line of createInterface({ input: process.stdin })) {
     ).toBe('consent_required');
     expect(out.kind === 'reply' && out.consent).toMatch(/^pg1\./);
   });
+
+  /** `v` behind proxies all the way down, as a Vue `reactive` store hands out what it holds. */
+  function proxied<T>(v: T): T {
+    if (typeof v !== 'object' || v === null) {
+      return v;
+    }
+
+    return new Proxy(v, { get: (t, k) => proxied(Reflect.get(t, k)) });
+  }
+
+  // #383: the approver is handed a copy of the ask. `structuredClone` made it at first, and that
+  // throws on a proxy, which is how the docs site's playground holds the proposals it was sent.
+  it("[C16] the approver's copy of the ask is plain data: a proposal behind proxies is asked about and committed, and edits to the copy's proposal don't reach the COMMIT (#383)", async () => {
+    const behind = await round({ shown: proxied, answer: yes });
+
+    expect(behind.asks).toHaveLength(1);
+    expect(behind.commits).toHaveLength(2);
+    expect(behind.out.kind === 'reply' && behind.out.reply.kind).toBe(
+      'RECEIPT',
+    );
+
+    const edited = await round({
+      answer: (a) => {
+        a.proposal.id = 'p_other';
+        a.proposal.summary = 'something else';
+
+        return yes(a);
+      },
+    });
+    const reply = edited.out.kind === 'reply' ? edited.out.reply : null;
+
+    expect(reply?.kind === 'RECEIPT' && reply.receipt).toMatchObject({
+      proposal: edited.p.id,
+      summary: edited.p.summary,
+    });
+    expect(edited.p.id).not.toBe('p_other');
+  });
+
+  /**
+   * What one run of an entry point to the ask step did: when its consent expires, whether anyone
+   * was asked, why it refused (null if it didn't), and whether the consent was used: handed out
+   * by `yea approve`, kept or sent by the live round. The live round also says when a consent it
+   * refused as expired expired, and its clock then; `yea approve` says only why.
+   */
+  interface AskRun {
+    expires: number;
+    asked: boolean;
+    why: string | null;
+    used: boolean;
+    expired?: { expires: number; now: number };
+  }
+
+  /**
+   * A clock for one run: it reads `expires + before` until the person answers, and `expires +
+   * after` from then on. `gone` puts `expires` 10 seconds ago by this machine's clock; otherwise
+   * it's ahead.
+   */
+  interface AskClock {
+    before: number;
+    after: number;
+    gone?: true;
+  }
+
+  /** `yea approve` of a code whose consent expires in an hour, or 10 seconds ago (`gone`). */
+  async function approveRun(c: AskClock): Promise<AskRun> {
+    const expires = P.unixNow() + (c.gone ? -10 : 3600);
+    let t = expires + c.before;
+    const { r, asked } = await approveProtocol(
+      await protocolCode({ principal: B.public, agent: agent.public, expires }),
+      () => t,
+      () => {
+        t = expires + c.after;
+      },
+    );
+
+    return { expires, asked, why: r.ok ? null : r.why, used: r.ok };
+  }
+
+  /** The live round for the pay service's proposal; `gone`, with a request that expired 10 seconds ago. */
+  async function roundRun(c: AskClock): Promise<AskRun> {
+    const gone = P.unixNow() - 10;
+    const put = vi.fn();
+    let shift = c.before;
+    const { out, asks, commits, p } = await round({
+      lie: c.gone ? () => patched({ expires: gone }) : undefined,
+      now: (p) => (c.gone ? gone : p.expires) + shift,
+      answer: (a) => {
+        shift = c.after;
+
+        return yes(a);
+      },
+      consents: { get: () => null, put },
+    });
+
+    return {
+      expires: c.gone ? gone : p.expires,
+      asked: asks.length > 0,
+      why: out.kind === 'refused' ? out.why : null,
+      used: put.mock.calls.length > 0 || commits.length > 1,
+      expired: out.kind === 'refused' ? out.expired : undefined,
+    };
+  }
+
+  // #383: the live round asked for a consent request it never compared with the clock, and
+  // `yea approve` had its own copy of the ask. Both now ask through one step, which reads the
+  // clock it's given before asking, after the answer, and for the grant check. Each row runs on
+  // both, and each says it in its own words: `yea approve` as #370 did; the round of the pay
+  // service's proposal, since its request expires with it, as every conforming service's does.
+  const ASK_ENTRIES = [
+    {
+      entry: 'yea approve',
+      run: approveRun,
+      expired: expiredWhy,
+      saysWhen: false,
+    },
+    {
+      entry: 'the live round',
+      run: roundRun,
+      expired: proposalExpiredWhy,
+      saysWhen: true,
+    },
+  ];
+  const CLOCK_ROWS = [
+    {
+      ids: ['A30', 'C12'],
+      clock: { before: -1, after: -1 },
+      want: 'asks at expires - 1, and the consent is used',
+      asked: true,
+      refused: false,
+    },
+    {
+      ids: ['A30', 'C12'],
+      clock: { before: 0, after: 0 },
+      want: 'refuses at expires without asking',
+      asked: false,
+      refused: true,
+    },
+    {
+      ids: ['A32', 'C13'],
+      clock: { before: -1, after: 0 },
+      want: 'refuses unused an answer given once the clock crossed expires',
+      asked: true,
+      refused: true,
+    },
+    {
+      ids: ['A36', 'C13'],
+      clock: { before: -10, after: -10, gone: true as const },
+      want: "checks the grant by the same clock, not this machine's",
+      asked: true,
+      refused: false,
+    },
+  ];
+
+  it.each(
+    ASK_ENTRIES.flatMap((e, i) =>
+      CLOCK_ROWS.map((row) => ({ ...e, ...row, id: row.ids[i] })),
+    ),
+  )('[$id] $entry $want (#383)', async (row) => {
+    const r = await row.run(row.clock);
+
+    expect(r).toEqual({
+      expires: r.expires,
+      asked: row.asked,
+      why: row.refused ? row.expired(r.expires, r.expires) : null,
+      used: !row.refused,
+      expired:
+        row.refused && row.saysWhen
+          ? { expires: r.expires, now: r.expires }
+          : undefined,
+    });
+  });
+
+  it('[C12] a request that expires before its proposal is refused from its own expiry; one that also names something else, for that first (#383)', async () => {
+    const early = await round({
+      lie: (p) => patched({ expires: p.expires - 60 }),
+      now: (p) => p.expires - 1,
+      answer: yes,
+    });
+
+    expect(early.out).toMatchObject({
+      kind: 'refused',
+      why: requestExpiredWhy(early.p.expires - 60, early.p.expires - 1),
+      expired: { expires: early.p.expires - 60, now: early.p.expires - 1 },
+    });
+    expect(early.asks).toEqual([]);
+    expect(
+      await refusal({
+        lie: () => patched({ service: 'other', expires: 1 }),
+        answer: yes,
+      }),
+    ).toBe('the consent request names another service');
+  });
+
+  // The round's next step depends on what ran out: committing again can't help once the proposal
+  // has expired, since the service refuses it, so only a request that ran out first is told to.
+  // Here the request expires a minute before its proposal; the clock reads `before` seconds from
+  // the proposal's expiry (`ends`) until the person answers, and `after` from then on.
+  it.each([
+    {
+      want: 'the request ran out while the person read: commit again',
+      before: -61,
+      after: -60,
+      asked: true,
+      why: (ends: number) => requestExpiredWhy(ends - 60, ends - 60),
+    },
+    {
+      want: 'both ran out before asking: send INTENT again',
+      before: 0,
+      after: 0,
+      asked: false,
+      why: (ends: number) => proposalExpiredWhy(ends, ends),
+    },
+    {
+      want: 'both ran out while the person read: send INTENT again',
+      before: -61,
+      after: 0,
+      asked: true,
+      why: (ends: number) => proposalExpiredWhy(ends, ends),
+    },
+  ])('[C15] the live round says what ran out: $want (#383)', async (row) => {
+    let shift = row.before;
+    const { out, asks, commits, p } = await round({
+      lie: (p) => patched({ expires: p.expires - 60 }),
+      now: (p) => p.expires + shift,
+      answer: (a) => {
+        shift = row.after;
+
+        return yes(a);
+      },
+    });
+
+    expect(out).toMatchObject({
+      kind: 'refused',
+      why: row.why(p.expires),
+      expired: { expires: p.expires - 60, now: p.expires + row.after },
+    });
+    expect(asks).toHaveLength(row.asked ? 1 : 0);
+    expect(commits).toHaveLength(1);
+  });
+
+  it.skipIf(!existsSync(CLI))(
+    '[C14] yea do says the consent request expired and to commit again, and asks no one (#383)',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'yea-do-'));
+
+      try {
+        const p = {
+          id: 'p_1',
+          capability: 'pay.send',
+          summary: 'pay a 1',
+          effects: [],
+          risk: 'low' as const,
+          undo: null,
+          expires: 4_000_000_000,
+        };
+        const hash = await P.proposalHash(p);
+        // The proposal is live; the service's request for it expired long ago.
+        const gone = 1_000_000_000;
+        const svc = scriptedService(home, {
+          HELLO: {
+            kind: 'BRIEF',
+            service: { id: 'pay', name: 'Pay', summary: 'x' },
+            capabilities: [],
+          },
+          INTENT: { kind: 'PROPOSALS', proposals: [{ ...p, hash }] },
+          COMMIT: {
+            kind: 'ERROR',
+            code: 'consent_required',
+            message: 'needs consent',
+            consent: {
+              proposal: p.id,
+              hash,
+              service: 'pay',
+              capability: p.capability,
+              principal: principal.public,
+              summary: p.summary,
+              expires: gone,
+            },
+          },
+        });
+
+        writeFileSync(join(home, 'principal.key'), principal.seed);
+        writeFileSync(join(home, 'agent.key'), agent.seed);
+
+        const r = await yeaDo([svc.target, 'pay.send'], home);
+
+        expect(r.status).toBe(1);
+        expect(r.stderr).toMatch(
+          new RegExp(
+            `✗ this consent request expired at ${fmtTime(gone)}; it is \\S+ on this machine\\. Commit again for a fresh one\\n`,
+          ),
+        );
+        expect(r.stderr).not.toContain('not signing');
+        expect(r.stdout).not.toContain('approve this exact proposal');
+        expect(svc.commits()).toHaveLength(1);
+        expect(existsSync(join(home, 'consents'))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 });
 
 // #89: `show` (yea hello/ask/intent/commit/undo) and test-drive's tool results passed the
@@ -4984,6 +5781,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       }),
     ) as unknown as Record<string, unknown> & {
@@ -4993,7 +5791,7 @@ describe('Approval never covers content Lens cuts (#213)', () => {
     const hash = await P.planHashOf(job);
     const c = {
       ...good,
-      hash: await P.consentHashOf(hash, 'approve'),
+      hash: await P.consentHashOf(hash, 'approve', STORE),
       proposal: hash,
       detail: { ...good.detail, job },
     };
@@ -5423,6 +6221,7 @@ describe('an undo window is a positive integer, or there is none (#83)', async (
         input: {},
         hp,
         phrase: 'approve',
+        store: STORE,
         now,
       });
 

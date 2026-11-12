@@ -35,6 +35,11 @@ export interface JobCall {
   canAsk: boolean;
   /** Why no principal key is pinned, when `policy.principal` is empty: no consent counts then. */
   unpinned?: string;
+  /**
+   * The consent the call carries (`yea_consent`, SPEC-approval §6), as the model passed it. On a
+   * first round it alone decides whether anything runs; a preview and a retry ignore it.
+   */
+  consent?: string;
 }
 
 /** A retry: the state the last round handed out, as it came back, and the person's answer. */
@@ -43,11 +48,21 @@ export interface JobCallRetry {
   answer: ApprovalAnswer;
 }
 
+/**
+ * A consent code for one plan, as a result names it: the plan's hash, the code, and its short id
+ * once its pending file is written.
+ */
+export interface PlanConsentCode {
+  planHash: string;
+  code: string;
+  id?: string;
+}
+
 /** Plans to approve outside the chat, with a consent code for each one that may be approved. */
 export interface ConsentCodes {
   why: string;
   plans: HashedPlan[];
-  codes: { planHash: string; code: string }[];
+  codes: PlanConsentCode[];
   /** Why no consent can be accepted here, so there are no codes; null when there are. */
   unavailable: string | null;
 }
@@ -82,10 +97,14 @@ export type JobCallOutcome =
 
 export type ConsentCodesOutcome = { kind: 'consent-codes' } & ConsentCodes;
 
-/** A round in progress: the call, its hashed plans, its store, and the phrase for each plan. */
+/**
+ * A round in progress: the call, its hashed plans, its store and that store's id (a consent
+ * binds it, SPEC-approval §6), and the phrase for each plan.
+ */
 export interface Round {
   call: JobCall;
   plans: HashedPlan[];
   store: ApprovalStore;
+  storeId: string;
   phraseFor(hp: HashedPlan): string;
 }

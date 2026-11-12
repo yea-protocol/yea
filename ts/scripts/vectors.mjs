@@ -328,6 +328,23 @@ const respelled = async (token, from, to) => {
 
   return `pg1.${P.b64u(new TextEncoder().encode(text.replace(from, to)))}`;
 };
+/** `token` with its payload's bytes changed by `f`: the same text, encoded otherwise. */
+const rebytes = async (token, f) =>
+  `pg1.${P.b64u(f(new Uint8Array(Buffer.from((await token).slice(4), 'base64url'))))}`;
+/** `bytes` with the first run of `from` replaced by `to`. */
+const swapBytes = (bytes, from, to) => {
+  const at = Buffer.from(bytes).indexOf(Buffer.from(from));
+
+  if (at < 0) {
+    throw new Error(`no ${from} in the grant`);
+  }
+
+  return Uint8Array.from([
+    ...bytes.slice(0, at),
+    ...to,
+    ...bytes.slice(at + from.length),
+  ]);
+};
 /** A root grant from the principal to the agent, with `fields` changed (undefined drops one). */
 const rootWith = async (fields) =>
   rawToken([
@@ -427,6 +444,18 @@ const malformedCases = await Promise.all([
   malformed(
     'malformed caveat: nbf written as -0',
     respelled(rootWith({ caveats: [{ nbf: 0 }] }), '"nbf":0', '"nbf":-0'),
+  ),
+  // Only UTF-8 itself is read (§6.2): a decoder that drops a BOM or turns a bad byte into U+FFFD
+  // would read the signed text back out of bytes that aren't its encoding.
+  malformed(
+    'not UTF-8 as signed: a BOM before the JSON',
+    rebytes(rootWith({}), (b) => Uint8Array.from([0xef, 0xbb, 0xbf, ...b])),
+  ),
+  malformed(
+    'not UTF-8 as signed: a signed U+FFFD sent as an invalid byte',
+    rebytes(rootWith({ nonce: 'n\ufffd' }), (b) =>
+      swapBytes(b, [0xef, 0xbf, 0xbd], [0xff]),
+    ),
   ),
 ]);
 const T = [principal.public];

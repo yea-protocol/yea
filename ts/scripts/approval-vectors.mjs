@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -1268,6 +1269,9 @@ const tightening = [
 
 // ---- consent codes (§6) ----
 const refundHp = await hashed('refund');
+// The store the consents below are consumed in, which their consent hash binds (§6, §8).
+const storeId = 'yea-conformance-store1';
+const otherStoreId = 'yea-conformance-store2';
 // The consent hash is where a phrase's bytes first enter a hash both languages compute: one
 // code with the fallback phrase, one with non-ASCII, inner spaces and edge spaces, kept as named.
 const consentCodes = [];
@@ -1283,10 +1287,11 @@ for (const [name, phrase] of [
     input,
     hp: refundHp,
     phrase,
+    store: storeId,
     now,
   });
   const decoded = P.decodeConsentCode(code);
-  const consentHash = await P.consentHashOf(refundHp.planHash, phrase);
+  const consentHash = await P.consentHashOf(refundHp.planHash, phrase, storeId);
 
   must(
     `consent code plan hash: ${name}`,
@@ -1303,13 +1308,18 @@ for (const [name, phrase] of [
     decoded.detail.phrase,
     phrase || DEFAULT_PHRASE,
   );
+  must(`consent code store: ${name}`, decoded.detail.store, storeId);
   consentCodes.push({ name, phrase, consentHash, code });
 }
 
-// A stored consent may run only its own plan and phrase: a consent grant with `only` (their
-// consent hash) and `exp`, signed by the pinned principal and issued to the server.
+// A consent may run only its own plan and phrase, in its own store: a consent grant with `only`
+// (their consent hash) and `exp`, signed by the pinned principal and issued to the server.
 const consentPhrase = 'approve';
-const refundConsent = await P.consentHashOf(refundHp.planHash, consentPhrase);
+const refundConsent = await P.consentHashOf(
+  refundHp.planHash,
+  consentPhrase,
+  storeId,
+);
 const consentFor = (hash, by = principal, exp = now + 600) =>
   P.issueGrant({
     principal: by,
@@ -1353,7 +1363,27 @@ for (const [name, grant, at, want] of [
   ],
   [
     'a consent for this plan with another phrase',
-    await consentFor(await P.consentHashOf(refundHp.planHash, 'refund')),
+    await consentFor(
+      await P.consentHashOf(refundHp.planHash, 'refund', storeId),
+    ),
+    now,
+    'not a consent for this phrase',
+  ],
+  [
+    'a consent for this plan and phrase in another store',
+    await consentFor(
+      await P.consentHashOf(refundHp.planHash, consentPhrase, otherStoreId),
+    ),
+    now,
+    'not a consent for this phrase',
+  ],
+  [
+    'a consent for this plan and phrase that binds no store',
+    await consentFor(
+      await P.sha256(
+        P.canonical({ plan: refundHp.planHash, phrase: consentPhrase }),
+      ),
+    ),
     now,
     'not a consent for this phrase',
   ],
@@ -1365,7 +1395,9 @@ for (const [name, grant, at, want] of [
   ],
   [
     'an expired consent for another phrase says it expired',
-    await consentFor(await P.consentHashOf(refundHp.planHash, 'refund')),
+    await consentFor(
+      await P.consentHashOf(refundHp.planHash, 'refund', storeId),
+    ),
     now + 600,
     'grant has expired',
   ],
@@ -1386,6 +1418,7 @@ for (const [name, grant, at, want] of [
   const r = await checkJobConsent(grant, {
     hp: { ...refundHp, plan: { ...refundHp.plan, apply: () => null } },
     phrase: consentPhrase,
+    store: storeId,
     policy: { principal: principal.public, server: server.public },
     now: at,
   });
@@ -1395,7 +1428,9 @@ for (const [name, grant, at, want] of [
     name,
     grant,
     now: at,
-    expect: r.ok ? { ok: true, id: r.id } : { ok: false, why: r.why },
+    expect: r.ok
+      ? { ok: true, id: r.id, exp: r.exp }
+      : { ok: false, why: r.why },
   });
 }
 
@@ -1572,6 +1607,28 @@ const walk = (d) => {
 walk(dir);
 rmSync(dir, { recursive: true });
 
+// A FileStore's id (§8): `<root>/id` holds a store id and nothing else. Each runner plants the
+// file and reads the id; null is a store error. A store with no file makes one (unit tests).
+const storeIds = [];
+
+for (const [name, text] of [
+  ['a store id is read as it is', storeId],
+  ['a store id with a newline after it is not one', `${storeId}\n`],
+  ['21 characters are not a store id', storeId.slice(1)],
+  ['a character outside b64url is not one', `${storeId.slice(1)}=`],
+  ['an empty file is not a store id', ''],
+]) {
+  const root = mkdtempSync(join(tmpdir(), 'yea-store-'));
+
+  writeFileSync(join(root, 'id'), text);
+
+  const got = await new FileStore(root).storeId().catch(() => null);
+
+  rmSync(root, { recursive: true });
+  must(`store id: ${name}`, got, P.isStoreId(text) ? text : null);
+  storeIds.push({ name, file: text, expect: got });
+}
+
 export const approval = {
   seeds: { principal: seed(1), server: seed(5), stranger: seed(6) },
   keys: { principal: principal.public, server: server.public },
@@ -1589,6 +1646,7 @@ export const approval = {
   consents: {
     plan: hashedOut(refundHp),
     phrase: consentPhrase,
+    store: storeId,
     consentHash: refundConsent,
     cases: consents,
   },
@@ -1597,11 +1655,13 @@ export const approval = {
     principal: principal.public,
     input,
     plan: hashedOut(refundHp),
+    store: storeId,
     now,
     cases: consentCodes,
   },
   fileStore: {
     ops: fileOps,
     files,
+    storeIds,
   },
 };

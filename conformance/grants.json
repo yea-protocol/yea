@@ -1949,6 +1949,42 @@
       }
     },
     {
+      "name": "not UTF-8 as signed: a BOM before the JSON",
+      "token": "pg1.77u_W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLCJub25jZSI6Im4yMCJ9LCJzIjoiM0hNV2RiTVRxZUhNR1h0N1BZWlVXTzRsa2xIUlpNUWF1dDh2M2NJUmpYNW51WjJhalB5OFM0OHlwVkUzRzlJb0pqYWZiQ2Fyd1ZXdDFOMVVfMXN2Q3cifV0",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
+      "name": "not UTF-8 as signed: a signed U+FFFD sent as an invalid byte",
+      "token": "pg1.W3sicCI6eyJpc3MiOiJlZDI1NTE5OmlvamozWFFKOFpYOVV0c3RQTHBkY3NwbkNiOGRsQkliODNTSUFiUVBiMXciLCJzdWIiOiJlZDI1NTE5OmdUbDNEcWg5RjE5V28xUm13MHgtek11TmlwRzA3amVpWGZZUFc0X0pzNVEiLCJjYXZlYXRzIjpbXSwiaWF0IjoxNzkwMDAwMDAwLCJub25jZSI6Im7_In0sInMiOiIyUHo0MFB2MEt3dTdGQ2Q4aGExUFhqODBLVTZYVzNoNlF3WnFxOVdEM25DLS1ramQzMnV6VTZ2UWZuOGVTLVNxZGlkaVFBdU1fZUNiUmRrZzJFd3REZyJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "ASK",
+        "capability": "shop.search",
+        "now": 1790000000
+      },
+      "expect": {
+        "ok": false,
+        "code": "unauthorized"
+      }
+    },
+    {
       "name": "periods: a commit with room counts in the period it is in",
       "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9XQ",
       "trusted": [

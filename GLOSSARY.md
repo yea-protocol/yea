@@ -78,8 +78,8 @@ _Avoid_: cancel window, grace period
 
 **Consent round**:
 What an agent does when a commit comes back `consent_required`: check that the service's request
-names the proposal the agent was shown, get the person's consent to that proposal, and commit
-once more with it.
+names the proposal the agent was shown and hasn't expired, get the person's consent to that
+proposal, and commit once more with it.
 _Avoid_: approval flow, consent loop
 
 **Approver**:
@@ -93,17 +93,27 @@ looks there before asking the person.
 _Avoid_: consent cache, consents dir
 
 **Job consent**:
-A person's consent to one job plan, given somewhere else (`yea approve`) and kept by plan hash
-in the job's store, where the job's server looks for it on the next identical call. The
-consent store keeps the other kind: consents to one proposal, for an agent's consent round.
+A person's consent to one job plan, given somewhere else (`yea approve`). It reaches the job's
+server on the next identical call, either kept by plan hash in the job's store or passed back on
+the call as `yea_consent`, and is checked the same way either way. It runs once, in the one store
+it binds (its store id). The consent store keeps the other kind: consents to one proposal, for an
+agent's consent round.
 _Avoid_: consents dir (for either), round consent
 
 **Consent hash**:
-What a job consent binds: the plan hash and the phrase the tool names for it (after the
-`approve` fallback), hashed together (SPEC-approval §6). It is a job consent code's `hash` and
-the consent grant's `only`, so a consent signed for an edited phrase never runs. The plan hash,
-the code's `proposal`, stays what the job's store keeps the consent by.
+What a job consent binds: the plan hash, the phrase the tool names for it (after the `approve`
+fallback) and the store id of the store that consumes it, hashed together (SPEC-approval §6). It
+is a job consent code's `hash` and the consent grant's `only`, so a consent signed for an edited
+phrase never runs, and one used in one store never runs in another. The plan hash, the code's
+`proposal`, stays what the job's store keeps the consent by.
 _Avoid_: phrase hash, code hash
+
+**Store id**:
+An approval store's own id, which a job consent binds (SPEC-approval §8), so the consent runs
+once in all, not once in each store made separately. A `MemoryStore` makes a new one each time
+it's made; a `FileStore` keeps one in `<root>/id`, shared by every process that uses that root,
+and by any copy of that directory.
+_Avoid_: server id (that's the server key), store key
 
 **Tool host**:
 The module that gives an AI agent YEA tools. It is on the agent's side, so it must be handed the

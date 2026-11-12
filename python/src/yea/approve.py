@@ -1,6 +1,6 @@
 """What an approver's tooling checks and shows before a person consents (SPEC §6.6). Mirrors
-ts/src/approve.ts: the consent request must name the proposal the agent actually received, and
-that proposal must be well formed and hash to its hash; what the person reads is re-rendered
+ts/src/consent-round/check.ts: the consent request must name the proposal the agent received,
+and that proposal must be well formed and hash to its hash; what the person reads is re-rendered
 from the proposal's fields with every line escaped, never the service's summary alone."""
 
 from __future__ import annotations

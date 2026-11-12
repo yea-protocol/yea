@@ -15,6 +15,8 @@ from .contract import (
     Reservation,
     StoreError,
     is_receipt_id,
+    is_store_id,
+    new_store_id,
 )
 from .file_store import FileStore
 from .files import default_store_dir
@@ -29,6 +31,8 @@ __all__ = [
     "StoreError",
     "ApprovalStore",
     "is_receipt_id",
+    "is_store_id",
+    "new_store_id",
     "PRUNE_AT",
     "MemoryStore",
     "is_memory_store",

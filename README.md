@@ -31,7 +31,8 @@ sends the client its plan as a form (MCP form elicitation), and the tool runs on
 comes back with the right phrase typed in. Why not just have the model ask the user first?
 
 - **The server enforces it.** The tool doesn't run until the client returns the form, and
-  nothing the model passes to the tool counts as approval.
+  nothing the model passes to the tool counts as approval, except a consent the person signed
+  with `yea approve`, which is checked as one from the store.
 - **The plan is the server's.** Your code computes its summary and effects from the call's
   input, and the approval is bound to them by hash, not to the model's account of the call.
 - **It fails closed.** If the client can't show forms, or the phrase is wrong three times,
@@ -130,8 +131,9 @@ A guarded tool's plans are at risk `medium` unless you say otherwise, and a `med
 approved in the form even when it can't be undone. A plan at `risk: 'high'` (returned by
 `describe`, or passed to `guard()` as the default) never is: it gets a consent code for
 `yea approve` instead, which needs the public half of the person's key, the *principal key*,
-pinned on the server (guide step 5). Where `yea approve` runs decides what the consent proves,
-and not every setup works yet
+pinned on the server (guide step 5). Where `yea approve` runs decides what the consent proves:
+on the server's account it's best effort; under another OS user or on another device, the
+person runs it there and pastes the consent back into the chat
 ([what an approval proves](docs/framework/SPEC-approval.md#what-an-approval-proves)).
 
 ### Client support

@@ -21,7 +21,9 @@ import type {
   JobCallOutcome,
   JobCallRetry,
 } from './job-call/types.js';
-import type { ApprovalStore } from './store.js';
+import { type ApprovalStore, isStoreId } from './store.js';
+
+export { howToApprove } from './job-call/approve-text.js';
 
 export type {
   ConsentCodes,
@@ -30,7 +32,25 @@ export type {
   JobCallOutcome,
   JobCallRetry,
   JobTool,
+  PlanConsentCode,
 } from './job-call/types.js';
+
+/**
+ * The id of the store every consent this round binds (SPEC-approval §8). One that isn't a store id
+ * is a store error, before a consent is read or a code issued: a consent that binds no store
+ * would run once in every store with the server's key.
+ */
+async function storeIdOf(store: ApprovalStore): Promise<string> {
+  const id: unknown = await store.storeId();
+
+  if (!isStoreId(id)) {
+    throw new Error(
+      "this store's storeId() isn't a store id (22 b64url characters), so the store can't be used",
+    );
+  }
+
+  return id;
+}
 
 /**
  * One round of a job call. A first round tries a stored consent, then the policy, then asks; a
@@ -65,6 +85,7 @@ export async function jobCall(
     call,
     plans: planned.plans,
     store,
+    storeId: await storeIdOf(store),
     phraseFor: phraseOf(call),
   };
 

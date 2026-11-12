@@ -28,6 +28,8 @@ const credit = {
   undoWindow: 60,
 };
 const tool = { name: 'refund', revert: true };
+// The store every call runs in, unless it names its own; a consent binds it (SPEC-approval §6).
+const store = 'yea-conformance-store1';
 const input = { who: 'Chen', order: 42 };
 const [refundHp, creditHp] = await P.hashPlans(tool, input, [
   { ...refund, apply: () => null },
@@ -56,11 +58,41 @@ const consentGrant = await P.issueGrant({
     { svc: [server.public] },
     { verbs: ['COMMIT'] },
     { can: ['refund'] },
-    { only: await P.consentHashOf(refundHp.planHash, 'approve') },
+    { only: await P.consentHashOf(refundHp.planHash, 'approve', store) },
     { exp: now + 600 },
   ],
 });
 const consentId = await P.sha256(P.decodeGrant(consentGrant)[0].s);
+/** The refund's consent, signed by the server's own key instead of the principal's. */
+const forgedConsent = await P.issueGrant({
+  principal: server,
+  to: server.public,
+  iat: now,
+  nonce: 'job-calls-forged',
+  caveats: P.decodeGrant(consentGrant)[0].p.caveats,
+});
+/**
+ * The refund's consent with an `exp` past the safe integers, signed as written: neither language
+ * reads it as a consent, so neither checks it (SPEC-approval §6).
+ */
+const unsafeExpConsent = await (async () => {
+  const [b] = P.decodeGrant(consentGrant);
+  const text = P.canonical(b.p).replace(
+    `"exp":${now + 600}`,
+    `"exp":${2 ** 53}`,
+  );
+  const s = await P.sign(principal.seed, text);
+
+  return `pg1.${P.b64u(new TextEncoder().encode(`[{"p":${text},"s":"${s}"}]`))}`;
+})();
+/** The refund's consent, signed by the principal but issued to another key than the server's. */
+const elsewhereConsent = await P.issueGrant({
+  principal,
+  to: (await P.keyPair(seed(9))).public,
+  iat: now,
+  nonce: 'job-calls-elsewhere',
+  caveats: P.decodeGrant(consentGrant)[0].p.caveats,
+});
 
 /** The person's standing rules: no signed policy unless `grant` is given. */
 const policy = (o = {}) => ({
@@ -93,6 +125,15 @@ const retry = (fromStep, answer) => ({ state: { fromStep }, answer });
 const empty = { used: {}, consumed: [] };
 /** The reason a call gives when a stored consent was signed for another phrase (§6). */
 const phraseChanged = 'consent for this plan was signed for a different phrase';
+/** The reason a call gives when the consent it carries can't be used (§6). */
+const carried = (why) =>
+  `the consent passed as yea_consent can't be used: ${why}`;
+/** Why a consent on the call that binds no plan here runs nothing: its whole text (§6). */
+const noPlan = carried(
+  'it approves none of these plans; if the person approved this exact request, this server may have restarted since or not be the one that asked, or the code they were given may have been altered',
+);
+/** Another server's store, with the same server key: a second process, or a restarted one. */
+const otherStore = 'yea-conformance-store2';
 
 const calls = [
   {
@@ -237,6 +278,123 @@ const calls = [
     ],
   },
   {
+    name: 'a consent on the call runs its plan once, and a second use asks',
+    before: empty,
+    steps: [
+      step('run', { consent: consentGrant }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: consentGrant,
+        says: carried('it was already used'),
+      }),
+    ],
+  },
+  {
+    name: 'a consent on the call for another plan asks, and never falls through to the policy',
+    before: { used: { [spendKey]: '0' }, consumed: [] },
+    steps: [
+      step('ask', {
+        plans: [credit],
+        policy: allowed,
+        consent: consentGrant,
+        says: noPlan,
+      }),
+    ],
+  },
+  {
+    name: 'a consent on the call signed for another phrase asks, and says the code may have been altered',
+    tool: { ...tool, phrases: { [refundHp.planHash]: 'refund Chen' } },
+    before: empty,
+    steps: [
+      step('consent-codes', {
+        canAsk: false,
+        consent: consentGrant,
+        says: noPlan,
+      }),
+    ],
+  },
+  {
+    // The same key, another store: a consent runs once in all, not once per store (§6).
+    name: 'a consent on the call runs nothing in another store with the same server key',
+    store: otherStore,
+    before: { used: { [spendKey]: '0' }, consumed: [] },
+    steps: [
+      step('ask', { policy: allowed, consent: consentGrant, says: noPlan }),
+    ],
+  },
+  {
+    name: 'a stored consent from another store runs nothing, and says why',
+    store: otherStore,
+    consents: { [refundHp.planHash]: consentGrant },
+    before: empty,
+    steps: [step('consent-codes', { canAsk: false, says: phraseChanged })],
+  },
+  {
+    name: 'a mangled, expired or forged consent on the call asks, and says why',
+    before: empty,
+    steps: [
+      step('ask', {
+        consent: consentGrant.slice(0, 60),
+        says: carried("it isn't a consent from yea approve"),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        now: now + 600,
+        consent: consentGrant,
+        says: carried('it has expired'),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: forgedConsent,
+        says: carried(
+          "it isn't signed by the pinned principal for this tool at this server",
+        ),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: elsewhereConsent,
+        says: carried(
+          "it isn't signed by the pinned principal for this tool at this server",
+        ),
+      }),
+      step('consent-codes', {
+        canAsk: false,
+        consent: unsafeExpConsent,
+        says: carried("it isn't a consent from yea approve"),
+      }),
+    ],
+  },
+  {
+    name: 'a consent on the call keeps working with the newline a terminal copy adds',
+    before: empty,
+    steps: [step('run', { consent: ` ${consentGrant}\r\n` })],
+  },
+  {
+    name: 'with no pinned principal key, a consent on the call counts for nothing',
+    before: empty,
+    steps: [
+      step('consent-codes', {
+        canAsk: false,
+        policy: policy({ principal: '' }),
+        unpinned: 'YEA_PRINCIPAL_PUB is not set',
+        consent: consentGrant,
+        says: carried('YEA_PRINCIPAL_PUB is not set'),
+      }),
+    ],
+  },
+  {
+    name: 'a preview and a retry ignore a consent on the call',
+    before: empty,
+    steps: [
+      step('preview', { preview: true, consent: consentGrant }),
+      step('ask', { consent: 'pg1.nope' }),
+      step('run', {
+        consent: 'pg1.nope',
+        retry: retry(2, accept('approve')),
+      }),
+    ],
+  },
+  {
     name: 'a plan at or above outOfBand is listed but not offered in the form',
     before: empty,
     steps: [step('ask', { plans: [{ ...refund, risk: 'high' }, credit] })],
@@ -254,9 +412,16 @@ const calls = [
     ],
   },
   {
-    name: 'no plans refuses the call',
+    name: 'no plans refuses the call, with or without a consent on it',
     before: empty,
-    steps: [step('refuse', { plans: [] })],
+    steps: [
+      step('refuse', { plans: [] }),
+      step('refuse', {
+        plans: [],
+        consent: consentGrant,
+        says: 'has no way to do this',
+      }),
+    ],
   },
   {
     // Only a positive integer is an undo window (SPEC-approval §1, #83).
@@ -272,7 +437,38 @@ const calls = [
   },
 ];
 
+/**
+ * How the model is told to approve outside the chat (SPEC-approval §6), for codes with and
+ * without short ids. The text reads only each code's plan hash, code and id, so the codes are
+ * stand-ins.
+ */
+const refundCode = { planHash: refundHp.planHash, code: 'pc1.refund' };
+const creditCode = { planHash: creditHp.planHash, code: 'pc1.credit' };
+const approveTexts = [
+  ['one code without an id: the whole code', [refundCode]],
+  [
+    'every code has an id: the ids, then the whole codes',
+    [
+      { ...refundCode, id: 'k7m2x9qa4b' },
+      { ...creditCode, id: 'p3n8w2zr6c' },
+    ],
+  ],
+  [
+    'a code without an id: the whole codes only',
+    [{ ...refundCode, id: 'k7m2x9qa4b' }, creditCode],
+  ],
+  [
+    'no code for a denied plan: each numbered by its plan',
+    [{ ...creditCode, id: 'p3n8w2zr6c' }],
+  ],
+].map(([name, codes]) => {
+  const planHashes = [refundHp.planHash, creditHp.planHash];
+
+  return { name, planHashes, codes, lines: P.howToApprove(planHashes, codes) };
+});
+
 export const jobCalls = {
   keys: { principal: principal.public, server: server.public },
-  calls: await recordCalls(P, calls, tool),
+  calls: await recordCalls(P, calls, tool, store),
+  approveTexts,
 };

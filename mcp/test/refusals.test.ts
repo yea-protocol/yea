@@ -192,7 +192,7 @@ describe('per-call refusals', () => {
 });
 
 describe('job() refuses schemas it can’t carry preview on', () => {
-  it('a root that is not a plain object, or has a preview field', async () => {
+  it('a root that is not a plain object, or has a preview or yea_consent field', async () => {
     const z = await import('zod');
     const { McpServer } = await import('@modelcontextprotocol/server');
     const w = await world();
@@ -208,6 +208,9 @@ describe('job() refuses schemas it can’t carry preview on', () => {
 
     expect(job(z.object({ preview: z.boolean() }))).toThrow(
       /field named preview/,
+    );
+    expect(job(z.object({ yea_consent: z.string() }))).toThrow(
+      'a job input schema may not have a field named yea_consent: it is reserved for consents from yea approve',
     );
     expect(job(z.string())).toThrow(/plain object at its root/);
     expect(

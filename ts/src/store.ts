@@ -3,6 +3,7 @@
  * consumed approvals, job receipts, undo markers, reservations against `total` limits, and
  * consents from `yea approve`. `MemoryStore` is here; `FileStore` is in the Node entry.
  */
+import { b64u } from './b64.js';
 import { randomId } from './crypto.js';
 import type { LedgerKey } from './grants.js';
 import type { Receipt } from './types.js';
@@ -48,7 +49,22 @@ export interface ApprovalStore {
   used(key: LedgerKey): Promise<bigint>;
   putConsent(planHash: string, grant: string): Promise<void>;
   getConsent(planHash: string): Promise<string | null>;
+  /**
+   * This store's id, which a job consent binds, so it runs in this store only (§6, §8). It never
+   * changes for the store, and no two stores share one.
+   */
+  storeId(): Promise<string>;
 }
+
+/** A store id (SPEC-approval §8): 22 b64url characters, 16 random bytes. */
+const STORE_ID = /^[A-Za-z0-9_-]{22}$/;
+
+export const isStoreId = (s: unknown): s is string =>
+  typeof s === 'string' && STORE_ID.test(s);
+
+/** A fresh store id. */
+export const newStoreId = () =>
+  b64u(globalThis.crypto.getRandomValues(new Uint8Array(16)));
 
 /**
  * Keys a ledger entry by its block and measure, and its period's length and start when it has
@@ -88,6 +104,19 @@ export class MemoryStore implements ApprovalStore {
   private undo = new Map<string, 'done' | number>();
   private ledgers = new Map<string, Ledger>();
   private consents = new Map<string, string>();
+  private readonly id: string;
+
+  /**
+   * A store whose id is made now, so a restarted server's consents from before never run (§8).
+   * `id` is for tests and vectors that need a fixed one.
+   */
+  constructor(o: { id?: string } = {}) {
+    if (o.id !== undefined && !isStoreId(o.id)) {
+      throw new Error(`not a store id: ${JSON.stringify(o.id)}`);
+    }
+
+    this.id = o.id ?? newStoreId();
+  }
 
   consumeOnce(id: string, expiresAt: number): Promise<boolean> {
     if (this.consumed.has(id)) {
@@ -185,6 +214,10 @@ export class MemoryStore implements ApprovalStore {
 
   getConsent(planHash: string): Promise<string | null> {
     return Promise.resolve(this.consents.get(planHash) ?? null);
+  }
+
+  storeId(): Promise<string> {
+    return Promise.resolve(this.id);
   }
 
   /** Forget consumed ids past their expiry, so a long-running server doesn't grow forever. */

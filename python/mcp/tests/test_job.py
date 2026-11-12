@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from yea import Plan, create, decode_consent_code, decode_grant, issue_grant, quantity
 from yea.store import LedgerKey, pending_codes_of
 
-from conftest import MODES, PRINCIPAL, Person, text
+from conftest import MODES, PRINCIPAL, Person, printed_consent, text
 
 pytestmark = pytest.mark.anyio
 
@@ -107,7 +107,9 @@ async def test_a_client_that_cant_ask_gets_consent_codes_and_a_signed_consent_ru
             f"  [1] yea approve {code['id']}",
             "If `yea approve` can't find the id (run as another OS user, or on another device), give it the whole "
             "code instead:",
-            f"  code for [1]: {code['code']}"]) in text(r)
+            f"  code for [1]: {code['code']}",
+            "If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the "
+            "same arguments and `yea_consent` set to it."]) in text(r)
         again = await c.call_tool("send", {"to": "ana"})
         assert again.structured_content["codes"][0]["id"] == code["id"]  # the id passed on still works
         pending = pending_codes_of(world.store)
@@ -120,6 +122,31 @@ async def test_a_client_that_cant_ask_gets_consent_codes_and_a_signed_consent_ru
         assert not (pending.dir / code["id"]).exists()  # the plan ran: its file went with it
         assert (await c.call_tool("send", {"to": "ana"})).is_error  # used once
     assert done == [("send", "ana")]
+
+
+async def test_the_consent_yea_approve_printed_passed_back_as_yea_consent_runs_once(world):
+    done = []
+    register(world, done)
+    async with world.client("auto") as c:
+        r = await c.call_tool("send", {"to": "ana"})
+        assert ("If the user pastes back a consent that `yea approve` printed (pg1.…), call this tool again with the "
+                "same arguments and `yea_consent` set to it.") in text(r)
+        consent = printed_consent(r.structured_content["codes"][0])
+        ran = await c.call_tool("send", {"to": "ana", "yea_consent": consent})
+        # The consent is no part of the input the receipt keeps, or the plan hash binds.
+        assert not ran.is_error and ran.structured_content["receipt"]["input"] == {"to": "ana"}
+        again = await c.call_tool("send", {"to": "ana", "yea_consent": consent})
+        assert again.is_error and "can't be used: it was already used" in text(again)
+        bad = await c.call_tool("send", {"to": "ana", "yea_consent": 42})
+        assert bad.is_error
+    assert done == [("send", "ana")]
+
+
+async def test_a_plan_function_with_its_own_yea_consent_fails_registration(world):
+    with pytest.raises(TypeError, match="has its own yea_consent parameter, which job\\(\\) adds"):
+        @world.approvals.job(world.server)
+        async def send(to: str, yea_consent: str) -> list[Plan]:
+            return []
 
 
 @pytest.mark.parametrize("mode", MODES)

@@ -7,18 +7,17 @@
 
 import {
   codeExpired,
-  consentExpiry,
   consentRecipient,
   decodeConsentCode,
 } from '../consent.js';
-import type { Approver, ConsentAsk } from '../consent-round.js';
+import type { Approver } from '../consent-round.js';
 import { sha256 } from '../crypto.js';
 import { fmtTime } from '../lens.js';
 import { printable } from '../text.js';
 import type { ConsentRequest, Proposal } from '../types.js';
 import { unixNow } from '../util.js';
-import { checkConsentRequest, consentFrom, consentLines } from './check.js';
-import { grantMismatch } from './grant.js';
+import { type AskWords, askConsent } from './ask.js';
+import { consentLines } from './check.js';
 
 /** A short fingerprint of a key, to compare by eye: the first 8 b64url characters of its sha256. */
 export const keyFingerprint = async (key: string) =>
@@ -100,23 +99,27 @@ interface CodeApproval {
   now?: () => number;
 }
 
-/** A code that passed its own checks, with its proposal and the consent it asks for. */
+/** A code that passed its own checks, and the proposal it carries. */
 interface CheckedCode {
   code: ReturnType<typeof decodeConsentCode>;
   proposal: Proposal;
-  request: ConsentRequest;
 }
 
+/** How `yea approve` says why it refused a code (#370); the live round has its own words. */
+const CODE_WORDS: AskWords = {
+  expired: codeExpired,
+  mismatch: (why) => `this consent code can't be approved: ${why}`,
+  unusable: (why) => `the consent given can't be used: ${why}`,
+};
+
 /**
- * The code checked on its own, before anyone is asked anything: it must be for `principal`, carry
- * its proposal, match it as a service's request must (SPEC.md §6.6), and its consent mustn't have
- * expired at `now`. The consent expires with the code and its proposal: §4.4 commits a proposal
- * no grant authorized only with a consent whose `exp` is the proposal's, so it isn't capped.
+ * The code checked on its own, before anyone is asked anything: it must be for `principal`, and
+ * carry its proposal. The ask step then checks it against that proposal, as a service's request
+ * is checked (SPEC.md §6.6), and its consent's expiry. The consent expires with the code and its
+ * proposal: §4.4 commits a proposal no grant authorized only with a consent whose `exp` is the
+ * proposal's, so it isn't capped.
  */
-async function checkCode(
-  o: CodeApproval,
-  now: number,
-): Promise<CheckedCode | Refusal> {
+function checkCode(o: CodeApproval): CheckedCode | Refusal {
   let c: ReturnType<typeof decodeConsentCode>;
 
   try {
@@ -132,48 +135,29 @@ async function checkCode(
     };
   }
 
-  if (!c.detail) {
-    return { ok: false, why: NO_DETAIL };
-  }
-
-  const why = await checkConsentRequest(c, c.detail);
-
-  if (why) {
-    return { ok: false, why: `this consent code can't be approved: ${why}` };
-  }
-
-  // The same expiry `yea approve` lists the code with, and the one `consentFrom` signs.
-  const expired = codeExpired(consentExpiry(c), now);
-
-  return expired
-    ? { ok: false, why: expired }
-    : { code: c, proposal: c.detail, request: consentFrom(c, c.detail) };
+  return c.detail
+    ? { code: c, proposal: c.detail }
+    : { ok: false, why: NO_DETAIL };
 }
 
 /**
- * The ask for a consent code, or why it can't be approved: the code's own checks, then the agent
- * it's for (SPEC-bridge). A consent valid for long is flagged before the y/N.
+ * The rest of the ask for a code's consent, `request`, at `now`, or why it can't be approved: the
+ * agent it's for (SPEC-bridge), and what the person is shown. A consent valid for long is flagged
+ * before the y/N.
  */
-async function askForCode(
-  o: CodeApproval,
+async function codeAsk(
+  { code, proposal }: CheckedCode,
+  request: ConsentRequest,
   now: number,
-): Promise<ConsentAsk | Refusal> {
-  const checked = await checkCode(o, now);
-
-  if ('ok' in checked) {
-    return checked;
-  }
-
-  const { code, proposal, request } = checked;
+  o: CodeApproval,
+) {
   const agent = await recipientOf(code.agent, o);
 
   if ('why' in agent) {
-    return { ok: false, why: agent.why };
+    return agent;
   }
 
   return {
-    request,
-    proposal,
     agent: agent.key,
     lines: [
       ...consentLines(code, proposal),
@@ -187,35 +171,36 @@ async function askForCode(
 
 /**
  * Approve one protocol consent code for `principal` (its public key): check it, pick the agent
- * (SPEC-bridge), ask the approver, and check the grant it signs. A code the approver hands on
- * again, or declines, is not approved, nor is one whose consent expires while the person reads.
+ * (SPEC-bridge), ask the approver, and check the grant it signs, through the round's ask step. A
+ * code the approver hands on again, or declines, is not approved, nor is one whose consent
+ * expires while the person reads.
  */
 export async function approveCode(
   o: CodeApproval & { approver: Approver },
 ): Promise<{ ok: true; grant: string; agent: string; hash: string } | Refusal> {
-  const clock = o.now ?? unixNow;
-  const ask = await askForCode(o, clock());
+  const checked = checkCode(o);
 
-  if ('ok' in ask) {
-    return ask;
+  if ('ok' in checked) {
+    return checked;
   }
 
-  const a = await o.approver(ask);
+  const asked = await askConsent({
+    request: checked.code,
+    proposal: checked.proposal,
+    build: (request, now) => codeAsk(checked, request, now, o),
+    approver: o.approver,
+    clock: o.now ?? unixNow,
+    words: CODE_WORDS,
+  });
 
-  if (!('grant' in a)) {
-    return { ok: false, why: 'not approved' };
+  if (asked.kind === 'grant') {
+    const { grant, ask } = asked;
+
+    return { ok: true, grant, agent: ask.agent, hash: ask.request.hash };
   }
 
-  // The person may have read for a while: a consent that expired meanwhile is never handed out.
-  const expired = codeExpired(ask.request.expires, clock());
-
-  if (expired) {
-    return { ok: false, why: expired };
-  }
-
-  const bad = await grantMismatch(a.grant, ask);
-
-  return bad
-    ? { ok: false, why: `the consent given can't be used: ${bad}` }
-    : { ok: true, grant: a.grant, agent: ask.agent, hash: ask.request.hash };
+  return {
+    ok: false,
+    why: asked.kind === 'refused' ? asked.why : 'not approved',
+  };
 }
