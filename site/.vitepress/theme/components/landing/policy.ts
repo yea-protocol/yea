@@ -52,6 +52,20 @@ export function span(seconds: number): string {
   return `${n} ${unit}${n === 1 ? '' : 's'}`;
 }
 
+/**
+ * A `total` as a reader says it: `$100 in total`, or with `every`, `$500 every 7 days` and
+ * `$20 every day`.
+ */
+export function totalAmount(limit: Limit): string {
+  if (limit.every === undefined) {
+    return `${amount(limit)} in total`;
+  }
+
+  const period = span(limit.every);
+
+  return `${amount(limit)} every ${period.startsWith('1 ') ? period.slice(2) : period}`;
+}
+
 const RISK: Record<string, string> = {
   low: 'low-risk actions',
   medium: 'actions up to medium risk',
@@ -71,7 +85,7 @@ interface Parts {
 function limit(p: Parts, l: Limit, kind: 'each' | 'total') {
   const entry = p.limits.get(l.of) ?? {};
 
-  entry[kind] = kind === 'each' ? `${amount(l)} each` : `${amount(l)} in total`;
+  entry[kind] = kind === 'each' ? `${amount(l)} each` : totalAmount(l);
   p.limits.set(l.of, entry);
 }
 
