@@ -493,9 +493,10 @@ counted from the `nbf` of the block that holds it: period *k* covers
   2 × `max`. A commit that a consent grant authorizes (§6.6) counts against no `total` of
   this grant, and an undone one still counts.
 - **The refusal.** A service that refuses a `COMMIT` over a `total` with `every` SHOULD say
-  when the next period starts, if that is a time Lens can show (§9.2) and before the grant's
-  earliest `exp`: `buy would pass the total limit of 500.00 USD every 7d (starts again
-  2026-11-17T00:00Z)`. It is worked out from the grant and the clock alone.
+  when the next period starts, if the proposal's own quantity is within `max` (else no period
+  will take it), and that start is a time Lens can show (§9.2) and before the grant's earliest
+  `exp`: `buy would pass the total limit of 500.00 USD every 7d (starts again
+  2026-11-17T00:00Z)`. It is worked out from the grant, the proposal and the clock alone.
 
 The service MUST **reserve** the proposal's quantity against every `total` caveat of the
 authorizing grant, atomically with the check and before executing, so that concurrent or
@@ -844,8 +845,11 @@ shown among its members, and no more lines.
   service's usage; they don't protect against a service that under-reports.
 - A `total` with `every` renews: it allows its `max` again in every period until the grant
   expires, so it needs an `exp` (§6.3). Tooling SHOULD show the person the worst case, `max`
-  times the number of periods that start before `exp`, ceil((`exp` − `nbf`) / `every`): for
-  example, `500.00 USD every 7d until 2027-02-08T00:00Z, at most 6500.00 USD`.
+  times the number of periods that start before `exp`, ceil((`exp` − `nbf`) / `every`), and say
+  that it is per service: a `total` counts at each service on its own, so unless the grant's
+  `svc` caveats leave one service, every service that accepts the grant allows it again (with
+  several listed, tooling SHOULD show the sum too). For example, `500.00 USD every 7d until
+  2027-02-08T00:00Z, at most 6500.00 USD at each service`.
 - `ASK` and `INTENT` are side-effect free, so agents can explore freely and safely.
 - Replay protection: proofs are time-bound and `COMMIT` is idempotent.
 - `auto` proofs bind the frame id, not the params (floats have no canonical form), so an

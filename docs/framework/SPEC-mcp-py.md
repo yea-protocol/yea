@@ -293,8 +293,9 @@ again, with the clock, the policy and the plans as they are then.
    `consent_for` does this. It returns a `StoredConsent`: the plan it runs, or a `note` when a
    consent was refused as `not a consent for this phrase`, which becomes the ask's reason
    instead of the policy's (SPEC-approval §6).
-7. **Decide.** `decide(plans, policy, used, now)`, with `used` from `spent(store, policy)` and
-   `now` the call time.
+7. **Decide.** `decide(plans, policy, used, now)`, with `used` from `spent(store, policy, now)`
+   and the same `now`, the call time: one clock reading, so the usage read ahead and the decision
+   count in the same periods.
    - `run`: `reserve_all`, then step 11. If it returns `None`, ask (step 8), with why "a limit
      filled up while this call was being decided".
    - `denied`: an `is_error` result.

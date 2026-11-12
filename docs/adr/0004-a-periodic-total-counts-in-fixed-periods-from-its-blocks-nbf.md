@@ -24,7 +24,8 @@ this over calendar periods and rolling windows.
   so `every` seconds that straddle a boundary can see twice that. Plans the person approved
   don't count, and undone ones still do.
 - A periodic total renews until the grant ends, so its block or an earlier one must carry an
-  `exp`, and tooling shows the worst case (`500.00 USD every 7d until …, at most 6500.00 USD`).
+  `exp`, and tooling shows the worst case at each service (`500.00 USD every 7d until …, at
+  most 6500.00 USD at each service`).
   A later block's `exp` doesn't count: the holder writes those, and could end its own
   allowance as late as it liked.
 - The period is worked out once per commit and carried on the limit, the reservation request
