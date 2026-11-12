@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .contract import StoreError, is_store_id, new_store_id
 from .files import _create_whole, _read_regular, _write_atomic
-from .lock import _acquire, _release, _still_held
+from .lock import _acquire, _holds, _release
 
 # What ``link`` fails with where the filesystem has no hard links: FAT, exFAT, many SMB shares.
 _NO_HARD_LINKS = {errno.ENOTSUP, errno.EPERM, errno.ENOSYS}
@@ -65,7 +65,8 @@ async def _create_id_locked(root: Path, made: str) -> bool:
     try:
         if _read_store_id(root) is not None:
             return False
-        _still_held(lock, token)  # a lock broken as stale (a holder paused over 30 s) let another in
+        if not _holds(lock, token):  # broken as stale (a holder paused over 30 s): another may be in
+            raise StoreError(f"lost the store id's lock ({lock}); no id was made")
         _write_atomic(root / "id", made)
         return True
     finally:

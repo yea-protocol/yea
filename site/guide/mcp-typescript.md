@@ -255,7 +255,7 @@ No consent can be accepted: no principal key is pinned (YEA_PRINCIPAL_PUB is not
 
 A server whose store is in memory (the default over HTTP) gives codes too: `yea approve` can't save where it reads, so its consents come back pasted.
 
-Give each server, and each replica, a store of its own. Never clone a replica's store from a used one (a volume snapshot, an image with a store baked in, a copied home): the copy keeps the store's id, so a consent would run once in each copy.
+Replicas of one server share one store: a custom store every process reads, with a shared `stateKey` ([SPEC-approval §8](https://github.com/yea-protocol/yea/blob/main/docs/framework/SPEC-approval.md#8-the-store)). Then a consent runs once across them, and a `total` holds across them. Never create a store by copying a used one (a volume snapshot, an image with a store baked in, a copied home): the copy keeps the store's id, so a consent would run once in each copy.
 
 ## Where to next
 

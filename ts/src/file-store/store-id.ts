@@ -14,10 +14,10 @@ import {
 } from './files.js';
 import { acquire, release, stillHeld } from './lock.js';
 
-const idPath = (root: string) => join(root, 'id');
-
 /** What `link` fails with where the filesystem has no hard links: FAT, exFAT, many SMB shares. */
 const NO_HARD_LINKS = new Set(['ENOTSUP', 'EPERM', 'ENOSYS']);
+
+const idPath = (root: string) => join(root, 'id');
 
 /**
  * The text at `path`, or null if there's none. A file it won't read is a store error naming the

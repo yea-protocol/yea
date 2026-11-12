@@ -386,8 +386,9 @@ consentHash = b64url(sha256(canonical({ plan: planHash, phrase, store })))
 **Why the store.** A consent is used once in the store that consumes it (`consumeOnce`), so
 it must not run in any other. Servers that share a key but not a store, such as a connector's
 stdio and HTTP sides, or one server restarted on a `MemoryStore`, would otherwise each run the
-same consent once. Bound to one store's id, a consent approves no plan in any other store,
-where the consent hash comes out different, and it runs nothing there.
+same consent once. Bound to one store's id, a consent approves no plan in any store made
+separately, where the consent hash comes out different, and it runs nothing there (a copy of a
+store keeps its id; see §9).
 
 The code's fields are `proposal` = the plan hash, `hash` = the consent hash, `service` = the
 server's service id, `capability` = the tool, `principal` = the pinned principal key,
@@ -634,9 +635,9 @@ a consent that binds no store would run once in every store with the server's ke
 consents there and undo across restarts needs it. HTTP servers use `MemoryStore` by default,
 where a consent comes back on the call (§6), and one with a `total` limit refuses to start on
 it unless the author passes `store` or sets `singleProcess: true`. A custom store (Redis, SQL)
-is for multi-process servers. Never clone a replica's store from a used one (a volume snapshot,
-an image with a store baked in, a copied home): the copy keeps the id, so a consent would run
-once in each (§9).
+is for multi-process servers: replicas of one server share one store, with a shared state key.
+Never create a store by copying a used one (a volume snapshot, an image with a store baked in, a
+copied home): the copy keeps the id, so a consent would run once in each (§9).
 
 **`FileStore` format**, under `~/.yea/store/` by default (`$YEA_HOME/store` when `YEA_HOME` is set;
 the MCP servers and `yea approve` use `YEA_STORE` first), pinned by the conformance
@@ -659,13 +660,14 @@ then a store error). The lock holds a random token: its holder re-checks the tok
 after writing, deletes the lock only if it still holds it, and reports a store error (nothing
 runs) if the token changed. A lock older than 30 s is stale: a waiter reads its token, renames
 it aside, and deletes it only if the moved file still holds that token; otherwise it links it
-back. Undo claims hold a token too, and one older than 10 minutes with no `done` marker (the
-process died) may be claimed again the same way. A holder paused for more than 30 s between
-its checks is the one case lock files can't fully close; the check after writing turns it
-into a store error instead of a silent overshoot. Files are written to a uniquely named temp file
-(`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids
-are `r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be
-removed after `exp`.
+back where it can (without hard links it can't, and that lock's holder fails closed). Undo
+claims hold a token too, and one older than 10 minutes with no `done` marker (the process died)
+may be claimed again the same way. A holder paused for more than 30 s between its checks is the
+one case lock files can't fully close; the check after writing turns it into a store error
+instead of a silent overshoot. Files are written to a uniquely named temp file
+(`<name>.<random>.tmp`) and renamed. Directories are created private (`0700`). Receipt ids are
+`r_` and 12 b64url characters, reservation ids `v_` and 12. Expired markers may be removed after
+`exp`.
 
 **An unreadable consent is absent.** A consent is read the way a server key is: opened without
 following a symlink and without blocking (`O_NOFOLLOW`, `O_NONBLOCK`), checked on the open file
@@ -912,7 +914,10 @@ export function decide(
   - reading an unsigned policy file with loosening and unknown fields;
   - the `FileStore` on-disk format, and the pending file's (`conformance/pending.json`).
 - **Unit tests** for the store: consume-once under concurrent calls, claim-undo once, and
-  reservations under concurrency and failure.
+  reservations under concurrency and failure. A `FileStore` whose filesystem has no hard links
+  makes its id once, holding its lock file when it writes it, however many stores race for it;
+  one whose lock is taken over while held makes none, and leaves the other's lock; any other
+  failure to make it is a store error.
 - **Security tests** in `ts/test/security.test.ts` and its Python counterpart:
   - an unsigned approval is rejected, and an unsigned policy can't loosen the defaults;
   - a consent for one plan can't run another, and a replayed state or consent runs nothing;
@@ -925,8 +930,6 @@ export function decide(
     `MemoryStore` server's consent runs nothing after a restart;
   - a store whose id isn't a store id runs nothing and issues no code, even for a consent that
     binds no store, and `yea approve` refuses a code that binds none;
-  - a `FileStore` whose filesystem has no hard links makes its id once, under its lock file,
-    however many stores race for it; any other failure to make it is a store error;
   - an unreadable consent in the store (a planted mode-0 file, a FIFO or a symlink) asks
     again, with no fs error in the result;
   - an irreversible plan never auto-runs, whatever the grant says, and neither does one whose

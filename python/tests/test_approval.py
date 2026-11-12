@@ -365,8 +365,9 @@ def test_a_file_store_id_is_made_once_whole_and_read_by_every_store_on_its_root(
     assert run(FileStore(tmp_path).store_id()) != run(FileStore(tmp_path / "other").store_id())
 
 
-def _no_hard_links(monkeypatch, code: int) -> None:
-    """A filesystem without hard links (FAT, exFAT, many SMB shares): ``link`` fails with ``code``."""
+def _link_fails(monkeypatch, code: int) -> None:
+    """``link`` fails with ``code``: ENOTSUP, EPERM or ENOSYS where the filesystem has no hard links
+    (FAT, exFAT, many SMB shares), or any other error."""
     def link(src, dst, *_a, **_k):
         raise OSError(code, os.strerror(code), str(src), None, str(dst))
 
@@ -378,7 +379,7 @@ def test_where_link_fails_for_want_of_hard_links_a_file_store_id_is_made_once_un
                                                                                                code):
     import yea.store.store_id as sid
 
-    _no_hard_links(monkeypatch, code)
+    _link_fails(monkeypatch, code)
     acquire, write, written = sid._acquire, sid._write_atomic, []
 
     async def slow_acquire(lock):  # the holder pauses with the lock held, as a slower process would
@@ -386,8 +387,8 @@ def test_where_link_fails_for_want_of_hard_links_a_file_store_id_is_made_once_un
         await asyncio.sleep(0.02)
         return token
 
-    def counted_write(path, text):
-        written.append(path)
+    def counted_write(path, text):  # and whether its maker held <root>/id.lock then
+        written.append((path, path.with_name(f"{path.name}.lock").exists()))
         write(path, text)
 
     monkeypatch.setattr(sid, "_acquire", slow_acquire)
@@ -397,12 +398,31 @@ def test_where_link_fails_for_want_of_hard_links_a_file_store_id_is_made_once_un
         return await asyncio.gather(*(FileStore(tmp_path).store_id() for _ in range(8)))
 
     (only,) = set(run(race()))
-    assert is_store_id(only) and (tmp_path / "id").read_text() == only and written == [tmp_path / "id"]
+    assert is_store_id(only) and (tmp_path / "id").read_text() == only and written == [(tmp_path / "id", True)]
     assert (tmp_path / "id").stat().st_mode & 0o777 == 0o600 and [p.name for p in tmp_path.iterdir()] == ["id"]
 
 
+def test_a_file_store_id_whose_lock_is_taken_over_while_held_is_a_store_error_and_the_others_lock_stays(tmp_path,
+                                                                                                          monkeypatch):
+    import yea.store.store_id as sid
+
+    _link_fails(monkeypatch, errno.ENOTSUP)
+    acquire = sid._acquire
+
+    async def taken_over(lock):  # another maker breaks it as stale and takes it: a holder paused 30 s
+        token = await acquire(lock)
+        lock.write_text("theirs")
+        return token
+
+    monkeypatch.setattr(sid, "_acquire", taken_over)
+    lock = tmp_path / "id.lock"
+    with pytest.raises(StoreError, match=re.escape(f"lost the store id's lock ({lock}); no id was made")):
+        run(FileStore(tmp_path).store_id())
+    assert lock.read_text() == "theirs" and [p.name for p in tmp_path.iterdir()] == ["id.lock"]
+
+
 def test_a_file_store_id_that_cant_be_made_is_a_store_error_naming_the_file_and_none_is_made(tmp_path, monkeypatch):
-    _no_hard_links(monkeypatch, errno.EACCES)
+    _link_fails(monkeypatch, errno.EACCES)
     with pytest.raises(StoreError, match=f"can't make the store id at {re.escape(str(tmp_path / 'id'))}"):
         run(FileStore(tmp_path).store_id())
     assert list(tmp_path.iterdir()) == []
@@ -769,6 +789,27 @@ def test_a_stale_lock_is_broken_but_a_fresh_one_is_not_removed_by_its_breaker(tm
     assert lock.exists()  # only the holder releases it
     with pytest.raises(StoreError):
         st._still_held(lock, "not-mine")
+
+
+def test_a_fresh_lock_its_breaker_moved_goes_back_where_it_can_and_nothing_is_left_where_it_cant(tmp_path,
+                                                                                                  monkeypatch):
+    import yea.store.lock as st
+
+    lock, rename, takers = tmp_path / "x.lock", os.rename, iter(["fresh", "fresher"])
+
+    def taken_as_it_moves(src, dst):  # a fresh lock replaces the stale one between its read and its move
+        lock.write_text(next(takers))
+        rename(src, dst)
+
+    monkeypatch.setattr(os, "rename", taken_as_it_moves)
+    lock.write_text("stale")
+    os.utime(lock, (0, 0))
+    st._break_if_stale(lock)
+    assert lock.read_text() == "fresh" and [p.name for p in tmp_path.iterdir()] == ["x.lock"]
+    _link_fails(monkeypatch, errno.ENOTSUP)  # no hard links: it can't go back, and its holder fails closed
+    os.utime(lock, (0, 0))
+    st._break_if_stale(lock)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_a_crashed_undo_claim_can_be_claimed_again(tmp_path):

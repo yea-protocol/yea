@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -14,10 +15,13 @@ import * as P from '../src/index.js';
 import { FileStore } from '../src/node.js';
 
 // A filesystem without hard links, for the store id (SPEC-approval §8): with `linkFails` set,
-// link() fails with that code. `renamedTo` records each rename's target. Null leaves fs alone.
+// link() fails with that code. `renamed` records each rename's target, and whether a lock file
+// for it (`<target>.lock`) existed then. `afterCreate` runs after each O_EXCL create, as a lock
+// is taken. Null leaves fs alone.
 const fsHook = vi.hoisted(() => ({
   linkFails: null as string | null,
-  renamedTo: [] as string[],
+  renamed: [] as { to: string; locked: boolean }[],
+  afterCreate: null as ((path: string) => void) | null,
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -32,15 +36,27 @@ vi.mock('node:fs', async (importOriginal) => {
     return real.linkSync(...args);
   };
   const renameSync = (...args: Parameters<typeof real.renameSync>) => {
+    const to = String(args[1]);
+
+    fsHook.renamed.push({ to, locked: real.existsSync(`${to}.lock`) });
     real.renameSync(...args);
-    fsHook.renamedTo.push(String(args[1]));
+  };
+  const writeFileSync = (...args: Parameters<typeof real.writeFileSync>) => {
+    real.writeFileSync(...args);
+
+    const o = args[2];
+
+    if (typeof o === 'object' && o?.flag === 'wx') {
+      fsHook.afterCreate?.(String(args[0]));
+    }
   };
 
   return {
     ...real,
-    default: { ...real, linkSync, renameSync },
+    default: { ...real, linkSync, renameSync, writeFileSync },
     linkSync,
     renameSync,
+    writeFileSync,
   };
 });
 
@@ -254,7 +270,7 @@ describe('a FileStore id (SPEC-approval §8)', () => {
       const root = tmp();
 
       fsHook.linkFails = code;
-      fsHook.renamedTo = [];
+      fsHook.renamed = [];
 
       try {
         const ids = await Promise.all(
@@ -265,14 +281,42 @@ describe('a FileStore id (SPEC-approval §8)', () => {
         expect(P.isStoreId(ids[0])).toBe(true);
         expect(readFileSync(join(root, 'id'), 'utf8')).toBe(ids[0]);
         expect(statSync(join(root, 'id')).mode & 0o777).toBe(0o600);
-        // One rename made it; the lock and every temp file are gone.
-        expect(fsHook.renamedTo).toEqual([join(root, 'id')]);
+        // One rename made it, while its maker held <root>/id.lock; the lock and every temp
+        // file are gone.
+        expect(fsHook.renamed).toEqual([
+          { to: join(root, 'id'), locked: true },
+        ]);
         expect(readdirSync(root)).toEqual(['id']);
       } finally {
         fsHook.linkFails = null;
       }
     },
   );
+
+  it("is a store error, and makes no id, when its lock is taken over while it holds it; the other's lock stays", async () => {
+    const root = tmp();
+    const lock = join(root, 'id.lock');
+
+    fsHook.linkFails = 'ENOTSUP';
+    // Once it has the lock, another maker breaks it as stale and takes it: a holder paused 30 s.
+    fsHook.afterCreate = (path) => {
+      if (path === lock) {
+        writeFileSync(lock, 'theirs');
+      }
+    };
+
+    try {
+      await expect(new FileStore(root).storeId()).rejects.toThrow(
+        `lost the store id's lock (${lock}); no id was made`,
+      );
+      expect(existsSync(join(root, 'id'))).toBe(false);
+      expect(readFileSync(lock, 'utf8')).toBe('theirs');
+      expect(readdirSync(root)).toEqual(['id.lock']);
+    } finally {
+      fsHook.linkFails = null;
+      fsHook.afterCreate = null;
+    }
+  });
 
   it('is a store error naming the file when making it fails any other way, and none is made', async () => {
     const root = tmp();

@@ -96,9 +96,9 @@ _Avoid_: phrase hash, code hash
 
 **Store id**:
 An approval store's own id, which a job consent binds (SPEC-approval §8), so the consent runs
-once in all, not once per store. A `MemoryStore` makes a new one each time it's made; a
-`FileStore` keeps one in `<root>/id`, shared by every process that uses that root, and by any
-copy of that directory.
+once in all, not once in each store made separately. A `MemoryStore` makes a new one each time
+it's made; a `FileStore` keeps one in `<root>/id`, shared by every process that uses that root,
+and by any copy of that directory.
 _Avoid_: server id (that's the server key), store key
 
 **Tool host**:
