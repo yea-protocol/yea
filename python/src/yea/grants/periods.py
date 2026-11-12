@@ -11,6 +11,7 @@ from ..lens import fmt_duration, fmt_time, is_lens_time
 from ..uses import fmt_quantity, is_total
 from .token import _safe_int
 
+
 class Period(NamedTuple):
     """The period of a ``total`` with ``every`` that a COMMIT counts in: its length and its start."""
 

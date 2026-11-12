@@ -3639,6 +3639,22 @@ describe('canonical base64url (SPEC §6.1)', () => {
     }
   });
 
+  it('a proof verifies 300 s either side of the clock, and is refused 301 s off', async () => {
+    const target = { aud: 'pay', verb: 'ASK' as const, target: 'pay.send' };
+    const ts = 1_790_000_000;
+    const proof = await P.makeProof(agent.seed, target, ts);
+
+    for (const off of [-300, 300]) {
+      expect(await P.checkProof(proof, target, ts + off), `${off}`).toBeNull();
+    }
+
+    for (const off of [-301, 301]) {
+      expect(await P.checkProof(proof, target, ts + off), `${off}`).toBe(
+        'proof timestamp is outside the 300s window',
+      );
+    }
+  });
+
   it('[B64] a non-canonical key is refused in grants, proofs and signatures', async () => {
     const msg = 'm';
     const sig = await P.sign(agent.seed, msg);

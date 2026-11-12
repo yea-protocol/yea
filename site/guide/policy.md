@@ -23,7 +23,7 @@ The agent presents the token with each request, with a signature from its own ke
 | Which actions | `--can` | `calendar.*`, or one capability such as `shop.order` |
 | Which verbs | `--verbs` | `ASK,INTENT`: read and propose, never commit |
 | How much, per action | `--each` | `spend=40.00USD`, `emails=5` |
-| How much, in total | `--total` | `spend=100.00USD` across every commit through this grant, counted at each service; `spend=500USD/7d` for 500 in each 7-day period from today (with `--exp`) |
+| How much, in total | `--total` | `spend=100.00USD` across every commit through this grant, counted at each service; `spend=500USD/7d` for 500 in each 7-day period from 00:00 UTC (with `--exp`) |
 | How risky | `--risk` | `low`: anything `medium` or `high` goes back to the person |
 | For how long | `--exp` | `8h`, `7d` |
 

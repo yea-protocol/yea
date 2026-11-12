@@ -41,7 +41,7 @@ export const CAVEAT_FLAGS = {
     type: 'string',
     multiple: true,
     value: 'measure=max[/period]',
-    help: 'a limit over all commits, such as emails=20, or per period from today, such as spend=500USD/7d (needs --exp)',
+    help: 'a limit over all commits, such as emails=20, or per period from 00:00 UTC, such as spend=500USD/7d (needs --exp)',
   },
   risk: {
     type: 'string',

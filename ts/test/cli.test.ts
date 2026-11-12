@@ -8,7 +8,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { caveats } from '../src/cli/caveats.js';
 import { COMMANDS } from '../src/cli/commands.js';
 import { keyPair } from '../src/crypto.js';
-import { decodeGrant, delegateGrant, issueGrant } from '../src/grants.js';
+import {
+  type Caveat,
+  decodeGrant,
+  delegateGrant,
+  issueGrant,
+} from '../src/grants.js';
 import { fmtTime } from '../src/lens.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
@@ -438,6 +443,7 @@ describe('yea grant and yea inspect with a period', () => {
 
       // At 00:00:20 a service 300 s behind is still on the 11th: the period starts then.
       expect(nbfAt('2026-11-12T00:00:20Z')).toEqual({ nbf: day - 86_400 });
+      expect(nbfAt('2026-11-12T00:04:59Z')).toEqual({ nbf: day - 86_400 });
       expect(nbfAt('2026-11-12T00:05:00Z')).toEqual({ nbf: day });
       expect(nbfAt('2026-11-12T23:59:59Z')).toEqual({ nbf: day });
     } finally {
@@ -480,26 +486,71 @@ describe('yea grant and yea inspect with a period', () => {
       ),
     );
 
-    // A delegation that narrows two services to one leaves one: across the chain, as a service checks.
+    // The services are those every block's svc leaves, as a service checks, each counted once.
+    const principal = await keyPair();
     const agent = await keyPair();
-    const root = await issueGrant({
-      principal: await keyPair(),
-      to: agent.public,
-      caveats: [
-        { svc: ['a.example', 'b.example'] },
-        { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
-        { nbf: 1_790_000_000 },
-        { exp: 1_790_000_000 + 604_800 },
-      ],
-    });
-    const narrowed = await delegateGrant(root, {
-      holder: agent,
-      to: KEY,
-      caveats: [{ svc: ['b.example', 'c.example'] }],
-    });
+    const rootTo = (svc: string[]) =>
+      issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [
+          { svc },
+          { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
+          { nbf: 1_790_000_000 },
+          { exp: 1_790_000_000 + 604_800 },
+        ],
+      });
+    const narrowed = async (from: string[], to: string[]) =>
+      delegateGrant(await rootTo(from), {
+        holder: agent,
+        to: KEY,
+        caveats: [{ svc: to }],
+      });
+    const inspected = async (token: string) =>
+      (await yea(['inspect', token])).out;
 
-    expect((await yea(['inspect', narrowed])).out).toContain(
+    expect(
+      await inspected(
+        await narrowed(['a.example', 'b.example'], ['b.example', 'c.example']),
+      ),
+    ).toContain(', at most 500 USD\n');
+    expect(await inspected(await rootTo(['a.example', 'a.example']))).toContain(
       ', at most 500 USD\n',
+    );
+    expect(
+      await inspected(await narrowed(['a.example'], ['b.example'])),
+    ).toContain(
+      'buy: 500 USD every 7d, refused everywhere: its svc caveats leave no service\n',
+    );
+  });
+
+  it('yea inspect says a periodic total every service refuses is refused everywhere', async () => {
+    const principal = await keyPair();
+    const agent = await keyPair();
+    const weekly = {
+      total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 },
+    };
+    const issued = (caveats: Caveat[]) =>
+      issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [weekly, ...caveats],
+      });
+    // The only exp is in a block the holder wrote, after the total's.
+    const holderEnded = await delegateGrant(
+      await issued([{ nbf: 1_790_000_000 }]),
+      { holder: agent, to: KEY, caveats: [{ exp: 1_790_000_000 + 604_800 }] },
+    );
+    const unanchored = await issued([{ exp: 1_790_000_000 + 604_800 }]);
+    const [ended, anchored] = await Promise.all(
+      [holderEnded, unanchored].map((t) => yea(['inspect', t])),
+    );
+
+    expect(ended.out).toContain(
+      '  block 0: buy: 500 USD every 7d, refused everywhere: neither its block nor an earlier one has an exp to end it\n',
+    );
+    expect(anchored.out).toContain(
+      '  block 0: buy: 500 USD every 7d, refused everywhere: its block has no single nbf to count from\n',
     );
   });
 

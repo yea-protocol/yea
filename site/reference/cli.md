@@ -81,7 +81,7 @@ Then it reports, as warnings that say where each is fixed: a clone's build that'
 | `--verbs A,B` | `verbs` | `--verbs ASK,INTENT` |
 | `--exp <duration>` | `exp` | `--exp 24h` (`s`, `m`, `h`, `d`) |
 | `--each <measure>=<max>` | `each`, a per-commit limit, repeatable | `--each spend=40.00USD` |
-| `--total <measure>=<max>[/<period>]` | `total`, a limit over all commits, or per period (`s`, `m`, `h`, `d`) from 00:00 UTC today: it adds that `nbf` and needs `--exp`; repeatable | `--total emails=20`, `--total spend=500USD/7d` |
+| `--total <measure>=<max>[/<period>]` | `total`, a limit over all commits, or per period (`s`, `m`, `h`, `d`) from 00:00 UTC (yesterday's in the first 300 s of a day, so a service a little behind accepts it): it adds that `nbf` and needs `--exp`; repeatable | `--total emails=20`, `--total spend=500USD/7d` |
 | `--risk <level>` | `risk`, a ceiling | `--risk low` |
 | `--to <key>` | the holder, if not your agent key | `--to ed25519:…` |
 
