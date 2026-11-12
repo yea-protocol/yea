@@ -206,3 +206,11 @@ def test_grant_numbers_are_integers_in_minimal_form():
     # NaN and Infinity aren't JSON at all.
     with pytest.raises(ValueError, match="not valid b64url JSON"):
         decode_grant(_respell(token, '"nbf":0', '"nbf":NaN'))
+
+
+def test_a_used_mapping_not_keyed_by_ledger_key_is_refused():
+    """A (block, measure) pair never equals a LedgerKey, so such a dict would count nothing: the
+    total would pass unfilled. GrantContext refuses it instead."""
+    with pytest.raises(TypeError, match="keyed by LedgerKey"):
+        GrantContext("s", "COMMIT", "c", 0, None, {("b_1", "spend"): 1})
+    assert GrantContext("s", "COMMIT", "c", 0, None, {LedgerKey("b_1", "spend"): 1}).used

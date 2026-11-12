@@ -7,13 +7,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .._json import b64url_encode
+from .._json import MAX_SAFE_INT, b64url_encode
 from ..grants import LedgerKey, Period
 
 RECEIPT_ID = re.compile(r"r_[A-Za-z0-9_-]{8,32}")
 _B64URL = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MEASURE = re.compile(r"[a-z][a-z0-9_.\-]{0,63}")
-_SAFE = 2**53 - 1
 
 
 @dataclass(frozen=True)
@@ -63,7 +62,7 @@ def _key(k: LedgerKey) -> LedgerKey:
 
 def _period(p: Period) -> bool:
     """A period's length is a positive safe integer, and its start a safe integer."""
-    return (type(p.every) is int and 0 < p.every <= _SAFE) and (type(p.start) is int and -_SAFE <= p.start <= _SAFE)
+    return (type(p.every) is int and 0 < p.every <= MAX_SAFE_INT) and (type(p.start) is int and -MAX_SAFE_INT <= p.start <= MAX_SAFE_INT)
 
 
 def _plan_hash(v: Any) -> str:

@@ -14,6 +14,7 @@ from yea.approval import (
     normalize_phrase, phrase_matches, plan_hash, plan_lines, plan_preimage, read_tightening, reserve_all, shown_plan,
     undo_receipt,
 )
+from yea.grants import Period
 from yea.store import FileStore, LedgerKey, MemoryStore, StoreError, is_receipt_id
 from yea._json import canonical, sha256_b64url
 
@@ -371,6 +372,16 @@ def test_undo_ids_must_be_in_the_generated_format(store):
         assert await store.get_receipt("../x") is None
         with pytest.raises(StoreError):
             await store.put_receipt({"id": "r_../../etc"})
+
+    run(go())
+
+
+def test_a_ledger_period_with_a_length_that_isnt_positive_or_a_start_that_isnt_safe_is_refused(store):
+    async def go():
+        for every, start in ((0, 1), (-1, 1), (True, 1), (1.5, 1), (2**53, 1), (7, 1.5), (7, 2**53)):
+            with pytest.raises(StoreError):
+                await store.reserve(LedgerKey("B" * 43, "spend", Period(every, start)), 1, 10)
+        assert await store.reserve(LedgerKey("B" * 43, "spend", Period(7, -(2**53 - 1))), 1, 10) is not None
 
     run(go())
 

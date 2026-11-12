@@ -10,6 +10,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runCase } from '../scripts/commit-ledger-run.mjs';
 import { runCall } from '../scripts/job-call-run.mjs';
+import { usedAt } from '../scripts/used-at.mjs';
 import { checkJobConsent, decide } from '../src/approval.js';
 import {
   buildForm,
@@ -33,22 +34,6 @@ import { CommitLedger } from '../src/service/commit-ledger.js';
 import { parseRequest } from '../src/service/verified-request.js';
 
 const DIR = new URL('../../conformance/', import.meta.url);
-
-/**
- * One ledger entry's usage in a vector's `used`, written as FileStore lays the ledger out:
- * `{"spend": q}` for a total, `{"spend@604800": {"1789776000": q}}` for one period of one.
- */
-function usedAt(used: unknown, k: P.LedgerKey): P.Quantity {
-  const at = (v: unknown, name: string | number): unknown =>
-    v && typeof v === 'object'
-      ? (v as Record<string, unknown>)[name]
-      : undefined;
-  const q = k.period
-    ? at(at(used, `${k.of}@${k.period.every}`), k.period.start)
-    : at(used, k.of);
-
-  return (q as P.Quantity | undefined) ?? { amount: 0 };
-}
 
 /** Each vector file this runner loaded, with the top-level sections it read (none for a list). */
 const read = new Map<string, Set<string>>();
