@@ -42,16 +42,16 @@ def limit_denial(name: str, limit: Mapping[str, Any], proposal: Mapping[str, Any
     but malformed ``uses`` (including null) is hard. ``already`` is the exact value committed
     or reserved against the total's ledger key (``total`` only)."""
     if name == "each":
-        return _over_limit(limit, proposal, 0, lambda shown: f"over the per-commit limit of {shown}")
-    return _over_limit(limit, proposal, already, lambda shown: f"would pass the total limit of {shown}")
+        return _over_limit(limit, proposal, 0, lambda shown, _fits: f"over the per-commit limit of {shown}")
+    return _over_limit(limit, proposal, already, lambda shown, _fits: f"would pass the total limit of {shown}")
 
 
 def _over_limit(
-    limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int, breaks: Callable[[str], str]
+    limit: Mapping[str, Any], proposal: Mapping[str, Any], already: int, breaks: Callable[[str, bool], str]
 ) -> Denial | None:
     """Why ``limit``, with ``already`` counted against it, fails for a proposal, in the words
-    ``breaks`` gives for the limit as Lens shows it; or None if it holds. Like overLimit in
-    ts/src/grants/limits.ts."""
+    ``breaks`` gives for the limit as Lens shows it and whether the proposal alone fits it; or
+    None if it holds. Like overLimit in ts/src/grants/limits.ts."""
     if "uses" not in proposal:
         return None
     uses = proposal["uses"]
@@ -63,8 +63,9 @@ def _over_limit(
         return None  # limits bind only what is reported
     if not same_unit(q, limit):
         return Denial(f"{of} is in {q.get('unit') or 'no unit'}, but the limit is in {limit.get('unit') or 'no unit'}", hard=False)
-    if already + value(q) > limit_value(limit):
-        return Denial(f"{of} {breaks(fmt_limit(limit))}", hard=False)
+    v, most = value(q), limit_value(limit)
+    if already + v > most:
+        return Denial(f"{of} {breaks(fmt_limit(limit), v <= most)}", hard=False)
     return None
 
 
@@ -146,8 +147,10 @@ def _total_denial(limit: Mapping[str, Any], bid: str, ctx: GrantContext, facts: 
     if key is None:
         return None  # before the block's nbf, which denies the request; this counts nothing
     again = starts_again(key.period, facts.end)
+    # A proposal over the max alone fits no period, so the next one's start isn't offered.
     return _over_limit(
-        limit, ctx.proposal or {}, int(ctx.used.get(key, 0)), lambda shown: f"would pass the total limit of {shown}{again}"
+        limit, ctx.proposal or {}, int(ctx.used.get(key, 0)),
+        lambda shown, fits: f"would pass the total limit of {shown}{again if fits else ''}",
     )
 
 

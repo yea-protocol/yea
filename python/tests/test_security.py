@@ -36,9 +36,9 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def pay_service(runs=None, slow=0.0):
+def pay_service(runs=None, slow=0.0, now=None):
     """A payment service: ``pay.send`` spends ``amt`` hundredths of a dollar."""
-    svc = Service("pay", "Pay", "pay", trust=[PRINCIPAL.public])
+    svc = Service("pay", "Pay", "pay", trust=[PRINCIPAL.public], now=now)
 
     async def apply(ctx):
         if runs is not None:
@@ -1141,9 +1141,10 @@ def _policy(*caveats):
     return issue_grant(PRINCIPAL, AGENT.public, list(caveats), iat=T0)
 
 
-def _check(grant, now=T0, verb="COMMIT", holder=AGENT.public, used=None):
+def _check(grant, now=T0, verb="COMMIT", holder=AGENT.public, used=None, limits=True):
     proposal = {"hash": "h", "risk": "low", "uses": {"spend": quantity(100, scale=2, unit="USD")}}
-    return verify_grant(grant, [PRINCIPAL.public], holder, GrantContext("pay", verb, "pay.send", now, proposal, used or {}))
+    ctx = GrantContext("pay", verb, "pay.send", now, proposal, used or {}, limits)
+    return verify_grant(grant, [PRINCIPAL.public], holder, ctx)
 
 
 def _code(v):
@@ -1206,6 +1207,19 @@ def test_405_a_periodic_totals_exp_is_in_its_block_or_an_earlier_one_a_holder_ca
         assert _code(_check(rooted, verb=verb, holder=SUB.public)) == "ok"
 
 
+def test_405_the_anchor_and_end_rules_hold_where_only_who_may_act_is_checked_limits_off_on_every_verb():
+    unanchored = _policy({"total": _usd(100, WEEK)}, {"exp": T0 + WEEK})
+    unended = _policy({"total": _usd(100, WEEK)}, {"nbf": T0 - DAY})
+    for grant, reason in (
+        (unanchored, "a total with every needs exactly one nbf in its block"),
+        (unended, "a total with every needs an exp in its block or an earlier one"),
+    ):
+        for verb in ("ASK", "COMMIT"):
+            # A service checks ASK, INTENT and UNDO this way: the limits never deny, the rules still do.
+            r = _check(grant, verb=verb, limits=False)
+            assert (r.code, r.reason) == ("forbidden", reason), verb
+
+
 def test_405_a_clock_that_isnt_a_whole_second_is_refused_with_or_without_a_period():
     exp = {"exp": T0 + WEEK}
     lifetime = _policy({"total": _usd(100)}, exp)
@@ -1264,6 +1278,17 @@ def test_405_500_a_week_and_1000_in_all_the_third_week_asks():
     with pytest.raises(YeaError) as e:
         run(commit())
     assert e.value.message == "spend would pass the total limit of 1000.00 USD"
+
+
+def test_405_a_service_whose_clock_reads_fractional_seconds_floors_it_and_a_periodic_grant_still_commits():
+    at = time.time() // 1 + 0.75
+    c = client(pay_service(now=lambda: at), {"total": _usd(50000, WEEK)}, {"nbf": int(at) - DAY}, {"exp": int(at) + WEEK})
+
+    async def go():
+        r = await c.commit(await proposal(c, "ana", 100))
+        assert r.kind == "RECEIPT", r.lens
+
+    asyncio.run(go())
 
 
 def test_405_the_clock_crossing_a_boundary_between_admit_and_reserve_lands_in_the_period_checked():

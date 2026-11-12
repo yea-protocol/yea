@@ -24,14 +24,14 @@ export function fmtLimit(l: Limit): string {
 
 /**
  * Why the proposal's use of `l.of`, on top of `already`, breaks the limit `l` (SPEC §6.3);
- * null if it doesn't. `breaks` says how, given the limit as it reads. A proposal that doesn't
- * report the measure passes.
+ * null if it doesn't. `breaks` says how, given the limit as it reads and whether the proposal
+ * alone fits it. A proposal that doesn't report the measure passes.
  */
 export function overLimit(
   p: CheckContext['proposal'],
   l: Limit,
   already: bigint,
-  breaks: (limit: string) => string,
+  breaks: (limit: string, fits: boolean) => string,
 ): string | null {
   if (!p) {
     return null;
@@ -48,7 +48,10 @@ export function overLimit(
     return `${l.of} is in ${q.unit ?? 'no unit'}, but the limit is in ${l.unit ?? 'no unit'}`;
   }
 
-  return already + exact(q) > exact({ amount: l.max, scale: l.scale })
-    ? `${l.of} ${breaks(fmtLimit(l))}`
+  const value = exact(q);
+  const max = exact({ amount: l.max, scale: l.scale });
+
+  return already + value > max
+    ? `${l.of} ${breaks(fmtLimit(l), value <= max)}`
     : null;
 }

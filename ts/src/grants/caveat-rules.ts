@@ -142,11 +142,13 @@ const CAVEAT_CHECKS: Record<
 
     const again = startsAgain(key.period, env.end);
 
+    // A proposal over the max alone fits no period, so the next one's start isn't offered.
     return overLimit(
       env.p,
       l,
       env.ctx.used?.(key) ?? 0n,
-      (shown) => `would pass the total limit of ${shown}${again}`,
+      (shown, fits) =>
+        `would pass the total limit of ${shown}${fits ? again : ''}`,
     );
   },
   // `v` is a known risk: malformed() rejects any other ceiling before this runs.

@@ -2079,6 +2079,159 @@
       }
     },
     {
+      "name": "periods: a commit at nbf counts in the period that starts there",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1789776000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 2000,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "totals": [
+          {
+            "key": {
+              "block": "bCOVA_Cz-JJVOOe74fScGGrN5sJxH0MfH4NmiYCn2DA",
+              "of": "spend",
+              "period": {
+                "every": 604800,
+                "start": 1789776000
+              }
+            },
+            "max": "500000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "periods: a full first period asks from its first second",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1789776000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 2000,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        },
+        "used": {
+          "bCOVA_Cz-JJVOOe74fScGGrN5sJxH0MfH4NmiYCn2DA": {
+            "spend@604800": {
+              "1789776000": {
+                "amount": 49000,
+                "scale": 2,
+                "unit": "USD"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "consent_required",
+        "reason": "spend would pass the total limit of 500.00 USD every 7d (starts again 2026-09-26T00:00Z)"
+      }
+    },
+    {
+      "name": "periods: a commit over the max alone fits no period, so no next start is offered",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 50001,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "consent_required",
+        "reason": "spend would pass the total limit of 500.00 USD every 7d"
+      }
+    },
+    {
+      "name": "periods: a commit of exactly the max, after a cent, is offered the next start",
+      "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9XQ",
+      "trusted": [
+        "ed25519:iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w"
+      ],
+      "proofKey": "ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "ctx": {
+        "service": "shop.example",
+        "verb": "COMMIT",
+        "capability": "shop.order",
+        "now": 1790000000,
+        "proposal": {
+          "hash": "HASH_X",
+          "uses": {
+            "spend": {
+              "amount": 50000,
+              "scale": 2,
+              "unit": "USD"
+            }
+          },
+          "risk": "low"
+        },
+        "used": {
+          "bCOVA_Cz-JJVOOe74fScGGrN5sJxH0MfH4NmiYCn2DA": {
+            "spend@604800": {
+              "1789776000": {
+                "amount": 1,
+                "scale": 2,
+                "unit": "USD"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "ok": false,
+        "code": "consent_required",
+        "reason": "spend would pass the total limit of 500.00 USD every 7d (starts again 2026-09-26T00:00Z)"
+      }
+    },
+    {
       "name": "periods: the last second of a period is in it",
       "token": "pg1.W3sicCI6eyJjYXZlYXRzIjpbeyJzdmMiOlsic2hvcC5leGFtcGxlIl19LHsidG90YWwiOnsiZXZlcnkiOjYwNDgwMCwibWF4Ijo1MDAwMCwib2YiOiJzcGVuZCIsInNjYWxlIjoyLCJ1bml0IjoiVVNEIn19LHsibmJmIjoxNzg5Nzc2MDAwfSx7ImV4cCI6MTc5NzYzODQwMH1dLCJpYXQiOjE3ODk3NzYwMDAsImlzcyI6ImVkMjU1MTk6aW9qajNYUUo4Wlg5VXRzdFBMcGRjc3BuQ2I4ZGxCSWI4M1NJQWJRUGIxdyIsIm5vbmNlIjoibjMwIiwic3ViIjoiZWQyNTUxOTpnVGwzRHFoOUYxOVdvMVJtdzB4LXpNdU5pcEcwN2plaVhmWVBXNF9KczVRIn0sInMiOiI1UjhnUC1SRzZGZlFlSGg0Q2VzWElBeWFFOEg5TWZydE5yWExTMGExQ3haX1FQQTRSS0lEanNfOGRBbGt2SDVkcGZSbjNUUGppUUd4RnFXQndoQ0dBQSJ9XQ",
       "trusted": [

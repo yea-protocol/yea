@@ -143,8 +143,9 @@ const principal = await P.keyPair(),
   otherAgent = await P.keyPair();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function payService(opts: { failRevert?: boolean } = {}) {
+function payService(opts: { failRevert?: boolean; now?: () => number } = {}) {
   return P.service({
+    ...(opts.now ? { now: opts.now } : {}),
     id: 'pay',
     name: 'Pay',
     summary: 'pay',
@@ -5536,9 +5537,11 @@ describe('a total that counts in periods (#405)', () => {
       verb?: P.Verb;
       holder?: string;
       used?: Map<string, bigint>;
+      limits?: false;
     } = {},
   ) =>
     P.checkGrant(grant, {
+      ...(opts.limits === false ? { limits: false } : {}),
       service: 'pay',
       verb: opts.verb ?? 'COMMIT',
       capability: 'pay.send',
@@ -5679,6 +5682,35 @@ describe('a total that counts in periods (#405)', () => {
     }
   });
 
+  it('the anchor and end rules hold where only who may act is checked (limits off), on every verb', async () => {
+    const unanchored = await policy([
+      { total: usd(100, WEEK) },
+      { exp: T0 + WEEK },
+    ]);
+    const unended = await policy([
+      { total: usd(100, WEEK) },
+      { nbf: T0 - DAY },
+    ]);
+
+    for (const [grant, reason] of [
+      [unanchored, 'a total with every needs exactly one nbf in its block'],
+      [
+        unended,
+        'a total with every needs an exp in its block or an earlier one',
+      ],
+    ] as const) {
+      for (const verb of ['ASK', 'COMMIT'] as const) {
+        // A service checks ASK, INTENT and UNDO this way: the limits never deny, the rules still do.
+        const r = await check(grant, { verb, limits: false });
+
+        expect(!r.ok && [r.code, r.reason], verb).toEqual([
+          'forbidden',
+          reason,
+        ]);
+      }
+    }
+  });
+
   it("a clock that isn't a whole second is refused, with or without a period", async () => {
     const exp = { exp: T0 + WEEK };
     const lifetime = await policy([{ total: usd(100) }, exp]);
@@ -5697,6 +5729,18 @@ describe('a total that counts in periods (#405)', () => {
       ]);
       expect(await codeOn(grant, 'COMMIT')).toBe('ok');
     }
+  });
+
+  it('a service whose clock reads fractional seconds floors it, and a periodic grant still commits', async () => {
+    const at = P.unixNow() + 0.75;
+    const c = await client(payService({ now: () => at }), agent, principal, [
+      { total: usd(50000, WEEK) },
+      { nbf: Math.floor(at) - DAY },
+      { exp: Math.floor(at) + WEEK },
+    ]);
+    const r = await c.commit(await intent(c, { to: 'ana', amt: 100 }));
+
+    expect(r.kind, r.lens).toBe('RECEIPT');
   });
 
   it("a delegation block's nbf never moves the root's periods", async () => {

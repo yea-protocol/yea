@@ -476,6 +476,7 @@ const inPeriod = (id, start, cents, every = WEEK) => ({
   [id]: { [`spend@${every}`]: { [start]: spent(cents) } },
 });
 const buy = (at, extra = {}) => ({ ...c(commit(2000), extra), now: at });
+const buyOf = (cents, extra = {}) => ({ ...c(commit(cents), extra), now });
 const asksAt = (at) => ({ ...ask, now: at });
 /** A fail-closed case twice, on ASK and on a COMMIT: `forbidden`, with `reason` if it is given. */
 const onAskAndCommit = (name, token, reason, holder = agent.public) => {
@@ -664,6 +665,37 @@ const periodCases = [
     agent.public,
     buy(now, { used: { [weeklyId]: { spend: spent(50000) } } }),
     { ok: true },
+  ],
+  [
+    'periods: a commit at nbf counts in the period that starts there',
+    weekly,
+    agent.public,
+    buy(anchor),
+    {
+      ok: true,
+      totals: [countsIn(weeklyId, 50000, { every: WEEK, start: anchor })],
+    },
+  ],
+  [
+    'periods: a full first period asks from its first second',
+    weekly,
+    agent.public,
+    buy(anchor, { used: inPeriod(weeklyId, anchor, 49000) }),
+    asks(weekFull),
+  ],
+  [
+    'periods: a commit over the max alone fits no period, so no next start is offered',
+    weekly,
+    agent.public,
+    buyOf(50001),
+    asks('spend would pass the total limit of 500.00 USD every 7d'),
+  ],
+  [
+    'periods: a commit of exactly the max, after a cent, is offered the next start',
+    weekly,
+    agent.public,
+    buyOf(50000, { used: inPeriod(weeklyId, anchor, 1) }),
+    asks(weekFull),
   ],
   [
     'periods: the last second of a period is in it',
