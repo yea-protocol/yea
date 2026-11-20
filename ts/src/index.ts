@@ -107,11 +107,14 @@ export {
   decodeGrant,
   delegateGrant,
   encodeGrant,
+  fmtLimit,
   type GrantCheck,
   type GrantInfo,
   inspectGrant,
   isPublicKey,
   issueGrant,
+  type Period,
+  type TotalLimit,
 } from './grants.js';
 
 export { fetchHandler } from './http.js';
@@ -165,6 +168,7 @@ export {
   isStoreId,
   type JobReceipt,
   type LedgerKey,
+  ledgerId,
   MemoryStore,
   newStoreId,
   type Reservation,

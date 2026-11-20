@@ -98,6 +98,23 @@ test('policySentence: partial, unknown and non-spend caveats', {
   );
 });
 
+test('a total with every reads per period, in the sentence and the terms', {
+  skip,
+}, async () => {
+  const { policySentence } = await import(`${LANDING}/policy.ts`);
+  const { policyTerms } = await import(`${LANDING}/policy-terms.ts`);
+  const weekly = { total: { ...usd(50000), every: 604800 } };
+  const daily = { total: { of: 'emails', max: 20, every: 86400 } };
+
+  assert.equal(
+    policySentence([weekly, daily], 0),
+    'Your agent may take actions that spend up to $500 every 7 days and use up to 20 emails every day.',
+  );
+  assert.deepEqual(policyTerms([weekly], 0), [
+    { key: 'total', text: '$500 every 7 days' },
+  ]);
+});
+
 test('phaseTone: the hero band waits in amber, commits in green, and goes plain after', {
   skip,
 }, async () => {

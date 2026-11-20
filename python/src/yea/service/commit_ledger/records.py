@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...errors import YeaError
+from ...grants import TotalLimit
 from ...store import LedgerKey, Reservation
 from ..plan import Plan
 from ..util import Emit, random_id
@@ -38,15 +39,6 @@ class StoredReceipt:
 
 # The amount the usage ledger holds against each `total`, settled and reserved, by key.
 Used = Mapping[LedgerKey, int]
-
-
-@dataclass(frozen=True)
-class TotalLimit:
-    """A ``total`` caveat a COMMIT counts against: its block, measure and exact ceiling (scale 18)."""
-
-    id: str
-    of: str
-    max: int
 
 
 @dataclass(frozen=True)

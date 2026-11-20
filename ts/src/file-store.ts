@@ -16,6 +16,7 @@ import {
   writeAtomic,
 } from './file-store/files.js';
 import { acquire, release, stillHeld } from './file-store/lock.js';
+import { periodNames, safeName } from './file-store/names.js';
 import { PendingCodes } from './file-store/pending.js';
 import { ensureStoreId } from './file-store/store-id.js';
 import { home } from './home.js';
@@ -208,13 +209,17 @@ export class FileStore implements ApprovalStore {
     return join(this.root, 'consents', safeName(planHash));
   }
 
-  private ledgerPath(key: LedgerKey, ext: 'json' | 'lock') {
-    return join(
-      this.root,
-      'ledger',
-      safeName(key.block),
-      `${safeName(key.of)}.${ext}`,
-    );
+  /** `ledger/<block>/<of>.json`, or for one period, `ledger/<block>/<of>@<every>/<start>.json`. */
+  private ledgerPath({ block, of, period }: LedgerKey, ext: 'json' | 'lock') {
+    const dir = join(this.root, 'ledger', safeName(block));
+
+    if (!period) {
+      return join(dir, `${safeName(of)}.${ext}`);
+    }
+
+    const [every, start] = periodNames(period);
+
+    return join(dir, `${safeName(of)}@${every}`, `${start}.${ext}`);
   }
 
   private readLedger(key: LedgerKey): LedgerFile {
@@ -280,13 +285,4 @@ export function pendingCodesOf(s: unknown): PendingCodes | null {
   return f?.yeaStore === 'file' && typeof f.root === 'string'
     ? new PendingCodes(join(f.root, 'pending'))
     : null;
-}
-
-/** Names are b64url ids, receipt ids or measure names; anything else is refused. */
-function safeName(s: string): string {
-  if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/.test(s)) {
-    throw new Error(`refusing an unsafe store name: ${JSON.stringify(s)}`);
-  }
-
-  return s;
 }

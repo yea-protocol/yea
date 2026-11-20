@@ -117,8 +117,7 @@ describe('a new commit', () => {
     const admit = async () => ({
       iss: 'alice',
       totals: [100, 50, 70].map((cents) => ({
-        id: 'b_1',
-        of: 'spend',
+        key: { block: 'b_1', of: 'spend' },
         max: exact({ amount: cents, scale: 2 }),
       })),
     });

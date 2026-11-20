@@ -1,4 +1,5 @@
-"""Grants: attenuable Ed25519 delegation chains (SPEC §6.2–6.4).
+"""Grants: attenuable Ed25519 delegation chains (SPEC §6.2–6.4), and the periods a ``total``
+with ``every`` counts in (§6.3).
 
 The entry of the ``yea.grants`` package: it re-exports the parts, each one job per module."""
 
@@ -9,6 +10,7 @@ from .caveats import (
     CONSENT_CAVEATS,
     LIMITS,
     RISK_ORDER,
+    BlockFacts,
     Denial,
     caveat_denial,
     check_caveat,
@@ -17,6 +19,7 @@ from .caveats import (
 )
 from .consent import CONSENT_PREFIX, consent_code, consent_expiry, consent_grant, decode_consent_code, matches_consent
 from .context import GrantContext
+from .periods import LedgerKey, Period, TotalLimit, fmt_limit, total_keys
 from .token import (
     TOKEN_PREFIX,
     Grant,
@@ -44,6 +47,7 @@ __all__ = [
     "CONSENT_CAVEATS",
     "LIMITS",
     "COMMIT_ONLY",
+    "BlockFacts",
     "Denial",
     "limit_denial",
     "well_formed",
@@ -53,4 +57,9 @@ __all__ = [
     "Verification",
     "verify_grant",
     "GrantContext",
+    "LedgerKey",
+    "Period",
+    "TotalLimit",
+    "fmt_limit",
+    "total_keys",
 ]

@@ -45,10 +45,19 @@ def is_uses(v: Any) -> bool:
 
 
 def is_limit(v: Any) -> bool:
-    """An ``each``/``total`` argument: ``{of, max, scale?, unit?}``."""
+    """An ``each`` argument: ``{of, max, scale?, unit?}``, with no ``every``."""
     if not isinstance(v, dict) or not set(v) <= {"of", "max", "scale", "unit"}:
         return False
     return is_name(v.get("of")) and _in_range(v.get("max"), MAX_AMOUNT) and _scale_unit_ok(v)
+
+
+def is_total(v: Any) -> bool:
+    """A ``total`` argument: an ``each`` one, or one with ``every``, a positive safe integer of
+    seconds (SPEC §6.3)."""
+    if not isinstance(v, dict):
+        return False
+    limit = {k: x for k, x in v.items() if k != "every"}
+    return is_limit(limit) and ("every" not in v or (type(v["every"]) is int and 0 < v["every"] <= MAX_AMOUNT))
 
 
 def check_uses(v: Any) -> dict | None:

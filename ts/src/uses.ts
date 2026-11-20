@@ -21,6 +21,8 @@ export interface Limit {
   max: number;
   scale?: number;
   unit?: string;
+  /** `total` only: count in periods of this many seconds, from the block's `nbf` (SPEC §6.3). */
+  every?: number;
 }
 
 const MAX_SCALE = 18;
@@ -60,6 +62,7 @@ export function isUses(v: unknown): v is Uses {
   );
 }
 
+/** An `each` limit: `{of, max, scale?, unit?}`, with no `every`. */
 export function isLimit(v: unknown): v is Limit {
   return (
     isObject(v) &&
@@ -68,6 +71,21 @@ export function isLimit(v: unknown): v is Limit {
     isAmount(v.max) &&
     isScale(v.scale) &&
     isUnit(v.unit)
+  );
+}
+
+/** A `total` limit: an `each` limit, or one with `every`, a positive safe integer of seconds. */
+export function isTotal(v: unknown): v is Limit {
+  if (!isObject(v)) {
+    return false;
+  }
+
+  const { every, ...limit } = v;
+
+  return (
+    isLimit(limit) &&
+    (every === undefined ||
+      (Number.isSafeInteger(every) && (every as number) > 0))
   );
 }
 
@@ -93,12 +111,23 @@ export function fmtQuantity(q: Quantity): string {
     return '?';
   }
 
-  const scale = q.scale ?? 0;
-  const digits = String(q.amount).padStart(scale + 1, '0');
+  return fmtAmount(q.amount, q.scale ?? 0, q.unit);
+}
+
+/**
+ * A whole number of units at `scale`, with its unit if it has one: `fmtAmount(2290, 2, 'USD')` is
+ * `22.90 USD`. A bigint amount can pass a quantity's 2^53 − 1, as a worst case over periods does.
+ */
+export function fmtAmount(
+  amount: number | bigint,
+  scale: number,
+  unit?: string,
+): string {
+  const digits = String(amount).padStart(scale + 1, '0');
   const whole = digits.slice(0, digits.length - scale);
   const value = scale ? `${whole}.${digits.slice(-scale)}` : whole;
 
-  return q.unit ? `${value} ${q.unit}` : value;
+  return unit ? `${value} ${unit}` : value;
 }
 
 /** `emails 1, spend 22.90 USD`: names in canonical (code point) order; `?` if malformed. */

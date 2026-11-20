@@ -14,8 +14,8 @@ export interface CheckContext {
   trusted: string[] | ((iss: string) => boolean);
   /** The key that signed the request proof; must equal the grant holder. */
   proofKey: string;
-  /** The exact amount of measure `of` already committed or reserved under a block id (for `total`). */
-  used?: (blockId: string, of: string) => bigint;
+  /** The exact amount already committed or reserved against a `total`'s ledger entry. */
+  used?: (key: LedgerKey) => bigint;
   /**
    * False checks who may act only (ADR-0002): `each`, `total` and `risk` are still checked for
    * shape, but never deny and count no `total`. Defaults to true.
@@ -41,9 +41,24 @@ export type GrantCheck =
       need?: Caveat[];
     };
 
-/** A `total` caveat a COMMIT counts against: its block, measure and exact ceiling. */
-export interface TotalLimit {
-  id: string;
+/** The period of a `total` with `every` that a COMMIT counts in: its length and its start. */
+export interface Period {
+  every: number;
+  start: number;
+}
+
+/**
+ * Where a `total` counts (SPEC §6.3): its block id and measure, and for one with `every`, the
+ * period. A commit's period is worked out once, when its grant is checked, and carried here.
+ */
+export interface LedgerKey {
+  block: string;
   of: string;
+  period?: Period;
+}
+
+/** A `total` caveat a COMMIT counts against: where it counts, and its exact ceiling. */
+export interface TotalLimit {
+  key: LedgerKey;
   max: bigint;
 }

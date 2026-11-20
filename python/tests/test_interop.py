@@ -10,12 +10,14 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from datetime import date, timedelta
 
 import pytest
 from conftest import ROOT
 
 from yea import connect, consent_code, consent_grant, issue_grant, key_from_seed, lens
+from yea.lens import fmt_time
 
 REPO = ROOT.parent
 SEEDS = json.loads((REPO / "conformance" / "grants.json").read_text())["seeds"]
@@ -187,6 +189,31 @@ def test_shop_consent_flow(ts_servers):
             ok = await c.commit(p, grants=[consent_grant(PRINCIPAL, AGENT.public, need.consent)])
             assert ok.kind == "RECEIPT", ok.lens
             assert_same_lens([props, need, ok])
+
+    asyncio.run(go())
+
+
+def test_a_periodic_total_from_python_is_enforced_by_the_ts_shop(ts_servers):
+    """#405: a Python grant's weekly total, anchored at 00:00 UTC today, counts at the TS shop as it
+    does here: the first order fits, the next one in the week asks and names when the week ends."""
+    tcp, _ = ts_servers["shop"]
+    week, midnight = 7 * 86400, int(time.time()) // 86400 * 86400
+    deliver = (date.today() + timedelta(days=2)).isoformat()
+    order = {"items": [{"sku": "m002", "qty": 4}], "deliver": deliver}
+
+    async def go():
+        async with await connect(f"yea://{tcp}", key=AGENT, grants=[]) as probe:
+            first = (await probe.intent("shop.order", order)).proposals[0]
+        weekly = {"of": "spend", "max": first["uses"]["spend"]["amount"], "scale": 2, "unit": "USD", "every": week}
+        g = issue_grant(PRINCIPAL, AGENT.public, [
+            {"svc": ["shop.example"]}, {"total": weekly}, {"nbf": midnight}, {"exp": midnight + 30 * 86400},
+        ])
+        async with await connect(f"yea://{tcp}", key=AGENT, grants=[g]) as c:
+            ok = await c.commit((await c.intent("shop.order", order)).proposals[0])
+            assert ok.kind == "RECEIPT", ok.lens
+            need = await c.commit((await c.intent("shop.order", order)).proposals[0])
+            assert need.code == "consent_required", need.lens
+            assert f"every 7d (starts again {fmt_time(midnight + week)})" in need.message
 
     asyncio.run(go())
 

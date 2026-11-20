@@ -54,19 +54,20 @@ export class UsageLedger {
 
   /**
    * Reserve the proposal's uses against every `total` it counts against, all or nothing: once
-   * per block and measure, under the smallest `max` when a block repeats a limit.
+   * per ledger key, under the smallest `max` when a block repeats a limit. Each key carries the
+   * period the grant check worked out, so the amount lands in the period that was checked.
    */
   reserveAll(proposal: Proposal, totals: TotalLimit[]): Held {
     const held: Reservation[] = [];
 
     for (const t of smallestPerKey(totals)) {
-      const q = usedOf(proposal.uses, t.of);
+      const q = usedOf(proposal.uses, t.key.of);
 
       if (!q) {
         continue;
       }
 
-      const r = this.reserve({ block: t.id, of: t.of }, exact(q), t.max);
+      const r = this.reserve(t.key, exact(q), t.max);
 
       if (!r) {
         for (const h of held) {
@@ -92,12 +93,15 @@ export class UsageLedger {
   }
 }
 
-/** One limit per block and measure: the smallest, when a block repeats one. */
+/**
+ * One limit per ledger key: the smallest, when a block repeats one. Totals on one measure with a
+ * different `every` have different keys, so each keeps its own.
+ */
 function smallestPerKey(totals: TotalLimit[]): TotalLimit[] {
   const out = new Map<string, TotalLimit>();
 
   for (const t of totals) {
-    const id = ledgerId({ block: t.id, of: t.of });
+    const id = ledgerId(t.key);
     const seen = out.get(id);
 
     if (!seen || t.max < seen.max) {

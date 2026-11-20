@@ -4,8 +4,17 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { caveats } from '../src/cli/caveats.js';
 import { COMMANDS } from '../src/cli/commands.js';
+import { keyPair } from '../src/crypto.js';
+import {
+  type Caveat,
+  decodeGrant,
+  delegateGrant,
+  issueGrant,
+} from '../src/grants.js';
+import { fmtTime } from '../src/lens.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const HOME = mkdtempSync(join(tmpdir(), 'yea-cli-'));
@@ -33,6 +42,8 @@ function yea(
 }
 
 const STACK = /^\s+at /m;
+/** A well-formed public key, for flags that need one. */
+const KEY = 'ed25519:gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q';
 
 /** Run every row's `yea …args` at once, each with its expected message. */
 const runAll = (rows: [string[], string][]) =>
@@ -242,6 +253,31 @@ describe.concurrent('usage errors', () => {
       [['grant', '--to', 'notakey'], 'bad --to "notakey": not a public key'],
       [['grant', '--to='], 'bad --to "": not a public key'],
       [['delegate', 'pg1.x', '--to', 'notakey'], 'bad --to "notakey"'],
+      // #405: whatever follows a --total's `/` is a period, or it is refused, never a unit.
+      [
+        ['grant', '--total', 'buy=500USD/week', '--exp', '90d'],
+        'bad period "week" in --total buy=500USD/week \\(use e.g. 24h, 7d\\)',
+      ],
+      [
+        ['grant', '--total', 'buy=500USD/7days', '--exp', '90d'],
+        'bad period "7days"',
+      ],
+      [
+        ['grant', '--total', 'buy=500USD/0d', '--exp', '90d'],
+        'bad period "0d"',
+      ],
+      [
+        ['grant', '--each', 'buy=100USD/1d'],
+        '--each buy=100USD/1d: each takes no period',
+      ],
+      [
+        ['grant', '--total', 'buy=500USD/7d'],
+        '--total buy=500USD/7d needs --exp',
+      ],
+      [
+        ['delegate', 'pg1.x', '--to', KEY, '--total', 'buy=5/1d'],
+        '--total buy=5/1d needs --exp',
+      ],
       [
         ['install', '--target', 'nope'],
         "unknown target nope for 'install'\ntargets: ",
@@ -337,5 +373,242 @@ describe.concurrent('usage errors', () => {
     expect(r.status).toBe(2);
     expect(r.err).toMatch(STACK);
     expect(r.err).toContain("yea: unknown option --foo for 'init'");
+  });
+});
+
+// #405: `yea grant` issues a total that counts per period, and it and `yea inspect` say what
+// that allows in all (SPEC §6.3, §11).
+describe('yea grant and yea inspect with a period', () => {
+  it('signs one nbf at 00:00 UTC today, and prints the periods, their end and the worst case', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-period-'));
+    const env = { YEA_HOME: home, YEA_PRINCIPAL_HOME: '' };
+
+    expect((await yea(['init'], env)).status).toBe(0);
+
+    const g = await yea(
+      [
+        'grant',
+        '--to',
+        KEY,
+        '--can',
+        'buy',
+        '--each',
+        'buy=100USD',
+        '--total',
+        'buy=500USD/7d',
+        '--exp',
+        '90d',
+      ],
+      env,
+    );
+    const caveats = decodeGrant(g.out.trim())[0].p.caveats;
+    const exp = Number(caveats.find((c) => 'exp' in c)?.exp);
+    const nbf = Number(caveats.find((c) => 'nbf' in c)?.nbf);
+    // 13 weeks, or 14 when issued in the first 300 s of a UTC day (the nbf is then yesterday's).
+    const weeks = Math.ceil((exp - nbf) / 604_800);
+    const line = `buy: 500 USD every 7d from ${fmtTime(nbf)} until ${fmtTime(exp)}, at most ${500 * weeks} USD at each service`;
+
+    expect(g.status, g.err).toBe(0);
+    expect(caveats).toEqual([
+      { can: ['buy'] },
+      { exp },
+      { each: { of: 'buy', max: 100, unit: 'USD' } },
+      { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
+      { nbf },
+    ]);
+    // 00:00 UTC of the day 300 s before it was issued: at most a day and 300 s before 90 days
+    // ahead of exp.
+    expect(nbf % 86_400).toBe(0);
+    expect(exp - 90 * 86_400 - nbf).toBeGreaterThanOrEqual(300);
+    expect(exp - 90 * 86_400 - nbf).toBeLessThan(86_400 + 300);
+    expect(g.err).toContain(`\n${line}\n`);
+
+    const i = await yea(['inspect', g.out.trim()], env);
+
+    expect(i.out).toContain(`periods:\n  block 0: ${line}\n`);
+  });
+
+  it("anchors a period's nbf on the midnight at or before now − 300 s, which a slower service accepts", () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+
+    try {
+      const nbfAt = (iso: string) => {
+        vi.setSystemTime(new Date(iso));
+
+        const signed = caveats({ total: ['buy=500USD/7d'], exp: '90d' });
+
+        return signed.find((c) => 'nbf' in c);
+      };
+      const day = Date.parse('2026-11-12T00:00:00Z') / 1000;
+
+      // At 00:00:20 a service 300 s behind is still on the 11th: the period starts then.
+      expect(nbfAt('2026-11-12T00:00:20Z')).toEqual({ nbf: day - 86_400 });
+      expect(nbfAt('2026-11-12T00:04:59Z')).toEqual({ nbf: day - 86_400 });
+      expect(nbfAt('2026-11-12T00:05:00Z')).toEqual({ nbf: day });
+      expect(nbfAt('2026-11-12T23:59:59Z')).toEqual({ nbf: day });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says the worst case is per service, unless svc leaves one, and sums it over several', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-period-'));
+    const env = { YEA_HOME: home, YEA_PRINCIPAL_HOME: '' };
+
+    expect((await yea(['init'], env)).status).toBe(0);
+
+    const flags = ['--to', KEY, '--total', 'buy=500USD/7d', '--exp', '28d'];
+    const svc = (...ids: string[]) => ids.flatMap((id) => ['--svc', id]);
+    const [none, one, two] = await Promise.all(
+      [[], svc('a.example'), svc('a.example', 'b.example')].map((s) =>
+        yea(['grant', ...flags, ...s], env),
+      ),
+    );
+    const lastLine = (r: { err: string }) =>
+      r.err.split('\n').find((l) => l.startsWith('buy: '));
+    // Four weeks, or five when issued in the first 300 s of a UTC day.
+    const weeks = (r: { out: string }) => {
+      const c = decodeGrant(r.out.trim())[0].p.caveats;
+      const at = (k: string) => Number(c.find((x) => k in x)?.[k]);
+
+      return Math.ceil((at('exp') - at('nbf')) / 604_800);
+    };
+
+    expect(lastLine(none)).toMatch(
+      new RegExp(`, at most ${500 * weeks(none)} USD at each service$`),
+    );
+    expect(lastLine(one)).toMatch(
+      new RegExp(`, at most ${500 * weeks(one)} USD$`),
+    );
+    expect(lastLine(two)).toMatch(
+      new RegExp(
+        `, at most ${500 * weeks(two)} USD at each of its 2 services, ${1000 * weeks(two)} USD in all$`,
+      ),
+    );
+
+    // The services are those every block's svc leaves, as a service checks, each counted once.
+    const principal = await keyPair();
+    const agent = await keyPair();
+    const rootTo = (svc: string[]) =>
+      issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [
+          { svc },
+          { total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 } },
+          { nbf: 1_790_000_000 },
+          { exp: 1_790_000_000 + 604_800 },
+        ],
+      });
+    const narrowed = async (from: string[], to: string[]) =>
+      delegateGrant(await rootTo(from), {
+        holder: agent,
+        to: KEY,
+        caveats: [{ svc: to }],
+      });
+    const inspected = async (token: string) =>
+      (await yea(['inspect', token])).out;
+
+    expect(
+      await inspected(
+        await narrowed(['a.example', 'b.example'], ['b.example', 'c.example']),
+      ),
+    ).toContain(', at most 500 USD\n');
+    expect(await inspected(await rootTo(['a.example', 'a.example']))).toContain(
+      ', at most 500 USD\n',
+    );
+    expect(
+      await inspected(await narrowed(['a.example'], ['b.example'])),
+    ).toContain(
+      'buy: 500 USD every 7d, refused everywhere: its svc caveats leave no service\n',
+    );
+  });
+
+  it('yea inspect says a periodic total every service refuses is refused everywhere', async () => {
+    const principal = await keyPair();
+    const agent = await keyPair();
+    const weekly = {
+      total: { of: 'buy', max: 500, unit: 'USD', every: 604_800 },
+    };
+    const issued = (caveats: Caveat[]) =>
+      issueGrant({
+        principal,
+        to: agent.public,
+        caveats: [weekly, ...caveats],
+      });
+    // The only exp is in a block the holder wrote, after the total's.
+    const holderEnded = await delegateGrant(
+      await issued([{ nbf: 1_790_000_000 }]),
+      { holder: agent, to: KEY, caveats: [{ exp: 1_790_000_000 + 604_800 }] },
+    );
+    const unanchored = await issued([{ exp: 1_790_000_000 + 604_800 }]);
+    const [ended, anchored] = await Promise.all(
+      [holderEnded, unanchored].map((t) => yea(['inspect', t])),
+    );
+
+    expect(ended.out).toContain(
+      '  block 0: buy: 500 USD every 7d, refused everywhere: neither its block nor an earlier one has an exp to end it\n',
+    );
+    expect(anchored.out).toContain(
+      '  block 0: buy: 500 USD every 7d, refused everywhere: its block has no single nbf to count from\n',
+    );
+  });
+
+  it('yea inspect works out a worst case past 2^53 exactly', async () => {
+    const principal = await keyPair();
+    const token = await issueGrant({
+      principal,
+      to: KEY,
+      caveats: [
+        { total: { of: 'buy', max: 1, every: 1 } },
+        { nbf: -(2 ** 53 - 1) },
+        { exp: 1_790_000_000 },
+      ],
+    });
+    const i = await yea(['inspect', token]);
+
+    // 2^53 − 1 + 1790000000 one-second periods; in floating point, one more.
+    expect(i.out).toContain(', at most 9007201044740991 at each service\n');
+  });
+
+  it("yea delegate prints its block's periods, and yea inspect ends every block's at the earliest exp", async () => {
+    const home = mkdtempSync(join(tmpdir(), 'yea-period-'));
+    const env = { YEA_HOME: home, YEA_PRINCIPAL_HOME: '' };
+
+    expect((await yea(['init'], env)).status).toBe(0);
+
+    const root = (
+      await yea(['grant', '--total', 'buy=500USD/7d', '--exp', '90d'], env)
+    ).out.trim();
+    const d = await yea(
+      [
+        'delegate',
+        root,
+        '--to',
+        KEY,
+        '--total',
+        'buy=100USD/1d',
+        '--exp',
+        '1d',
+      ],
+      env,
+    );
+    const blocks = decodeGrant(d.out.trim());
+    const caveat = (i: number, k: string) =>
+      Number(blocks[i].p.caveats.find((c) => k in c)?.[k]);
+    // The delegation's exp, a day out, is the grant's earliest: both blocks' periods end there.
+    const until = caveat(1, 'exp');
+    const days = Math.ceil((until - caveat(1, 'nbf')) / 86_400);
+    const own = `buy: 100 USD every 1d from ${fmtTime(caveat(1, 'nbf'))} until ${fmtTime(until)}, at most ${100 * days} USD at each service`;
+
+    expect(d.status, d.err).toBe(0);
+    expect(until).toBeLessThan(caveat(0, 'exp'));
+    expect(d.err).toBe(`\n${own}\n`);
+
+    const i = await yea(['inspect', d.out.trim()], env);
+
+    expect(i.out).toContain(
+      `periods:\n  block 0: buy: 500 USD every 7d from ${fmtTime(caveat(0, 'nbf'))} until ${fmtTime(until)}, at most ${500 * Math.ceil((until - caveat(0, 'nbf')) / 604_800)} USD at each service\n  block 1: ${own}\n`,
+    );
   });
 });

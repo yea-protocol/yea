@@ -6,6 +6,9 @@ export const unixNow = () => Math.floor(Date.now() / 1000);
 /** One day in seconds. */
 export const DAY = 86400;
 
+/** A safe integer: what JSON in a token may hold as a number (SPEC §10). */
+export const isSafeInt = (v: unknown): v is number => Number.isSafeInteger(v);
+
 /** An array of strings. */
 export const isStringList = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === 'string');

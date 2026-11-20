@@ -10,8 +10,7 @@ from dataclasses import dataclass, replace
 from ...errors import YeaError, fix
 from ...grants import Grant, GrantContext, Verification, matches_consent, verify_grant
 from ...keys import verify_proof
-from ...uses import limit_value
-from ..commit_ledger import Admit, Admitted, TotalLimit, Used
+from ..commit_ledger import Admit, Admitted, Used
 from ..replies import consent_request
 from ..state import ServiceState
 
@@ -83,7 +82,7 @@ def admitter(state: ServiceState, grants: list[str], holder: str, principal: str
         if granted is None:
             return grant_failure(state, failed, proposal)
         assert granted.principal is not None  # a grant that authorizes has a root, so a principal
-        return Admitted(granted.principal, [TotalLimit(b, t["of"], limit_value(t)) for b, t in granted.total_limits()])
+        return Admitted(granted.principal, granted.totals)
 
     return admit
 

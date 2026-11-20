@@ -251,6 +251,33 @@ describe('assertIntegers (SPEC-approval §1)', () => {
   });
 });
 
+describe('FileStore ledger periods', () => {
+  it('refuses a period whose length is not a positive safe integer, or whose start is not safe', async () => {
+    const s = new FileStore(tmp());
+    const at = (every: number, start: number) =>
+      s.reserve(
+        { block: 'b_1', of: 'spend', period: { every, start } },
+        1n,
+        10n,
+      );
+
+    for (const [every, start] of [
+      [0, 1],
+      [-1, 1],
+      [1.5, 1],
+      [2 ** 53, 1],
+      [7, 1.5],
+      [7, 2 ** 53],
+    ]) {
+      await expect(at(every, start), `${every} ${start}`).rejects.toThrow(
+        `refusing a ledger period of ${every} seconds from ${start}`,
+      );
+    }
+
+    expect(await at(7, -(2 ** 53 - 1))).not.toBeNull();
+  });
+});
+
 describe('a FileStore id (SPEC-approval §8)', () => {
   it('is made once, whole, in <root>/id, and every store on that root reads it', async () => {
     const root = tmp();

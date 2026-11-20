@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from conftest import CONFORMANCE, load_vectors
+from conftest import CONFORMANCE, ledger_key_json, load_vectors
 
 from yea import canonical, consent_code, decode_consent_code, decode_grant, est, fmt_quantity, key_from_seed, lens, lean, proposal_hash, sign_proof, verify_grant
 from yea._json import CanonicalError
@@ -99,8 +99,14 @@ def test_proof(case):
 @pytest.mark.parametrize("case", cases("grants"))
 def test_grants(case):
     r = verify_grant(case["token"], case["trusted"], case["proofKey"], case["ctx"])
-    assert r.ok == case["expect"]["ok"], r.message
-    assert r.code == case["expect"].get("code")
+    want = case["expect"]
+    assert r.ok == want["ok"], r.message
+    assert r.code == want.get("code")
+    # Where a case pins them: the period a COMMIT counts in, and the refusal's words.
+    if "totals" in want:
+        assert [{"key": ledger_key_json(t.key), "max": str(t.max)} for t in r.totals] == want["totals"]
+    if "reason" in want:
+        assert r.reason == want["reason"]
 
 
 def test_grants_total_block_ids():

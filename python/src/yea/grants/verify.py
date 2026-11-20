@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from .._json import CanonicalError, canonical_bytes
 from ..keys import parse_public_key, verify
-from .caveats import caveat_denial
+from ..uses import limit_value
+from .caveats import BlockFacts, caveat_denial
 from .context import GrantContext
-from .token import Grant, block_id, decode_grant
+from .periods import TotalLimit, anchor_of, end_of, ledger_key
+from .token import Grant, _safe_int, block_id, decode_grant
 
 Trusted = Iterable[str] | Callable[[str], bool]
 
@@ -23,6 +25,9 @@ class Verification:
     grant: Grant | None = None
     failed: list[dict] = field(default_factory=list)  # caveats that were not satisfied
     reason: str = ""  # the same words as the TypeScript core's check
+    # For a COMMIT it authorizes, with the limits: each ``total`` it counts against, in the
+    # period worked out from the check's clock, which the reservation then uses (SPEC §6.3).
+    totals: list[TotalLimit] = field(default_factory=list)
 
     @property
     def need(self) -> list[dict] | None:
@@ -33,15 +38,6 @@ class Verification:
     def principal(self) -> str | None:
         return self.grant.principal if self.grant else None
 
-    def total_limits(self) -> list[tuple[str, dict]]:
-        """(block id, limit) for every ``total`` caveat in the grant."""
-        out = []
-        if self.grant:
-            for b in self.grant.blocks:
-                for c in b["p"]["caveats"]:
-                    if isinstance(c, dict) and "total" in c:
-                        out.append((block_id(b), c["total"]))
-        return out
 
 
 def _trusts(trusted: Trusted, key: str) -> bool:
@@ -54,6 +50,10 @@ def verify_grant(
     """Verify one grant for one request (SPEC §6.4). Never raises."""
     if not isinstance(ctx, GrantContext):
         ctx = GrantContext.from_dict(ctx)
+    # Every time a grant holds is whole seconds, and a period's start is worked out from this one.
+    if not _safe_int(ctx.now):
+        why = f"the time to check at is not a whole second: {ctx.now}"
+        return Verification(False, "forbidden", why, reason=why)
     try:
         g = token if isinstance(token, Grant) else decode_grant(token)
     except ValueError as e:
@@ -81,11 +81,16 @@ def verify_grant(
         return Verification(False, "unauthorized", "the proof key is not the grant's holder", g,
                             reason="proof key is not the grant holder")
 
-    denials = [(c, d) for b in g.blocks for c in b["p"]["caveats"] if (d := caveat_denial(c, block_id(b), ctx))]
+    denials = [
+        (c, d)
+        for i, b in enumerate(g.blocks)
+        for c in b["p"]["caveats"]
+        if (d := caveat_denial(c, block_id(b), ctx, _facts(g.blocks, i)))
+    ]
     if not ctx.limits:  # only the limits deny softly: who may act is decided by the hard denials
         denials = [(c, d) for c, d in denials if d.hard]
     if not denials:
-        return Verification(True, grant=g)
+        return Verification(True, grant=g, totals=_totals(g, ctx))
     hard = [(c, d) for c, d in denials if d.hard]
     if hard:
         shown = ", ".join(d.why for _, d in hard[:3])
@@ -94,3 +99,23 @@ def verify_grant(
     shown = ", ".join(d.why for _, d in denials[:3])
     return Verification(False, "consent_required", f"the proposal exceeds the grant's limits ({shown})", g,
                         [c for c, _ in denials], reason="; ".join(d.why for _, d in denials))
+
+
+def _facts(blocks: Sequence[Mapping[str, Any]], i: int) -> BlockFacts:
+    """What block ``i``'s caveats need from the rest of the grant. A later block's ``exp`` only
+    shortens the grant: it never ends block ``i``'s periods."""
+    return BlockFacts(anchor_of(blocks[i]), end_of(blocks[: i + 1]), end_of(blocks))
+
+
+def _totals(g: Grant, ctx: GrantContext) -> list[TotalLimit]:
+    """The ``total`` limits a COMMIT counts against, each at its ledger key at ``ctx.now``. None
+    outside COMMIT, or when the limits aren't checked."""
+    if ctx.verb != "COMMIT" or not ctx.limits:
+        return []
+    out = []
+    for b in g.blocks:
+        for c in b["p"]["caveats"]:
+            key = ledger_key(block_id(b), c["total"], anchor_of(b), ctx.now) if "total" in c else None
+            if key:
+                out.append(TotalLimit(key, limit_value(c["total"])))
+    return out

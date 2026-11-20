@@ -24,6 +24,12 @@ def _whole(v: Any, lo: int, hi: int) -> int | None:
     return v if type(v) is int and lo <= v <= hi else None
 
 
+def is_lens_time(t: Any) -> bool:
+    """Whether ``t`` is a time Lens renders as a time (§9.2): a whole number of seconds in
+    [0, 9999-12-31T23:59:59Z]. Like isLensTime in ts/src/lens/format.ts."""
+    return _whole(t, 0, MAX_TIME) is not None
+
+
 def fmt_time(t: Any) -> str:
     """An ISO time; anything that isn't a whole number of seconds in [0, 9999-12-31] renders as its
     lean scalar (§9.2 malformed values)."""

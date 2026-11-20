@@ -24,6 +24,7 @@ import {
   UsageError,
   type Values,
 } from './command.js';
+import { periodLines } from './periods.js';
 import { die } from './shared.js';
 
 export const cmdInit = command({
@@ -148,9 +149,14 @@ async function grant(o: Values<typeof GRANT_FLAGS>) {
     saveGrant(token, 'grants', info.id.slice(0, 16));
   }
 
+  const shown = [
+    lean({ caveats: info.blocks[0].caveats }),
+    ...periodLines(info.blocks, 0),
+  ];
+
   console.log(token);
   console.error(
-    `\ngrant ${info.id.slice(0, 16)} → ${to}\n${lean({ caveats: info.blocks[0].caveats })}${o.to ? '' : `\nsaved to ${home()}/grants`}`,
+    `\ngrant ${info.id.slice(0, 16)} → ${to}\n${shown.join('\n')}${o.to ? '' : `\nsaved to ${home()}/grants`}`,
   );
 }
 
@@ -206,8 +212,16 @@ async function delegate(rest: string[], o: Values<typeof DELEGATE_FLAGS>) {
   const to = publicKey(o.to);
   const cav = caveats(o);
   const a = (await agentKey()) ?? die('no agent key');
+  const narrowed = await delegateGrant(token, { holder: a, to, caveats: cav });
+  const { blocks } = await inspectGrant(narrowed);
+  // A total with `every` renews, so the person sees its worst case here, as `yea grant` shows it.
+  const periods = periodLines(blocks, blocks.length - 1);
 
-  console.log(await delegateGrant(token, { holder: a, to, caveats: cav }));
+  console.log(narrowed);
+
+  if (periods.length) {
+    console.error(`\n${periods.join('\n')}`);
+  }
 }
 
 /** `--to`'s value, if it is a public key: the holder the grant is signed to. */
@@ -231,6 +245,10 @@ export const cmdInspect = command({
 
 async function inspect(rest: string[]) {
   const info = await inspectGrant(positional(rest, 0, 'token'));
+  // A total with `every`, as the person should read it: its periods, their end, its worst case.
+  const periods = info.blocks.flatMap((_, i) =>
+    periodLines(info.blocks, i).map((line) => `  block ${i}: ${line}`),
+  );
 
   console.log(
     lean({
@@ -244,4 +262,8 @@ async function inspect(rest: string[]) {
       })),
     }),
   );
+
+  if (periods.length) {
+    console.log(`periods:\n${periods.join('\n')}`);
+  }
 }

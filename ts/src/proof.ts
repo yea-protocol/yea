@@ -7,6 +7,9 @@ import { keyPair, sign, verify } from './crypto.js';
 import type { Proof, Verb } from './types.js';
 import { unixNow } from './util.js';
 
+/** How far, in seconds, a proof's `ts` may be from the service's clock either way. */
+export const PROOF_SKEW = 300;
+
 export interface ProofTarget {
   aud: string;
   verb: Verb;
@@ -44,8 +47,8 @@ export async function checkProof(
     return 'missing or malformed proof';
   }
 
-  if (Math.abs(at - proof.ts) > 300) {
-    return 'proof timestamp is outside the 300s window';
+  if (Math.abs(at - proof.ts) > PROOF_SKEW) {
+    return `proof timestamp is outside the ${PROOF_SKEW}s window`;
   }
 
   const ok = await verify(

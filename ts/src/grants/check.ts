@@ -1,6 +1,7 @@
 /** Verifying a grant token against a request (SPEC §6.4): decode, chain, trust, holder, then caveats. */
 import { canonical } from '../canonical.js';
 import { verify } from '../crypto.js';
+import { isSafeInt } from '../util.js';
 import type { CheckContext, GrantCheck } from './context.js';
 import { evaluateCaveats } from './evaluate.js';
 import { type Block, blockId, decodeGrant, isPublicKey } from './token.js';
@@ -10,6 +11,15 @@ export async function checkGrant(
   token: string,
   ctx: CheckContext,
 ): Promise<GrantCheck> {
+  // Every time a grant holds is whole seconds, and a period's start is worked out from this one.
+  if (ctx.now !== undefined && !isSafeInt(ctx.now)) {
+    return {
+      ok: false,
+      code: 'forbidden',
+      reason: `the time to check at is not a whole second: ${ctx.now}`,
+    };
+  }
+
   try {
     return await checkGrantUnsafe(token, ctx);
   } catch (e) {

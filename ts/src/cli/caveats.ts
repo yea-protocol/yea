@@ -1,9 +1,10 @@
 /** The caveat flags of `yea grant` and `yea delegate`, and the caveats they ask for (SPEC §6.3). */
 import type { Caveat } from '../grants.js';
+import { PROOF_SKEW } from '../proof.js';
 import { isRisk, RISKS } from '../risk.js';
 import { isVerb, VERBS, type Verb } from '../types.js';
 import { isLimit, type Limit } from '../uses.js';
-import { unixNow } from '../util.js';
+import { DAY, unixNow } from '../util.js';
 import { type Flags, UsageError, type Values } from './command.js';
 
 /** The caveat flags of `grant` and `delegate`, each a caveat (SPEC §6.3). */
@@ -39,8 +40,8 @@ export const CAVEAT_FLAGS = {
   total: {
     type: 'string',
     multiple: true,
-    value: 'measure=max',
-    help: 'a limit over all commits, such as emails=20',
+    value: 'measure=max[/period]',
+    help: 'a limit over all commits, such as emails=20, or per period from 00:00 UTC, such as spend=500USD/7d (needs --exp)',
   },
   risk: {
     type: 'string',
@@ -105,6 +106,70 @@ function limit(s: string): Limit {
   return isLimit(l) ? l : bad(`bad limit ${s} (amount or unit out of range)`);
 }
 
+/** A period: `<n>` seconds, minutes, hours or days, n ≥ 1. */
+const PERIOD = /^[1-9]\d*[smhd]$/;
+
+/** `--each`'s limit. A period after a `/` is refused: only a total counts per period. */
+function each(s: string): Limit {
+  return /\/\d+[smhd]$/.test(s)
+    ? bad(
+        `--each ${s}: each takes no period (use --total for a limit per period)`,
+      )
+    : limit(s);
+}
+
+/**
+ * `--total`'s limit: `spend=500USD` for the grant's lifetime, or `spend=500USD/7d` per period
+ * (SPEC §6.3). Whatever follows the `/` is the period, so a unit with a `/` can't be set here.
+ */
+function total(s: string): Limit {
+  const slash = s.indexOf('/');
+
+  if (slash < 0) {
+    return limit(s);
+  }
+
+  const period = s.slice(slash + 1);
+
+  if (!PERIOD.test(period)) {
+    bad(
+      `bad period ${JSON.stringify(period)} in --total ${s} (use e.g. 24h, 7d)`,
+    );
+  }
+
+  return { ...limit(s.slice(0, slash)), every: duration(period) };
+}
+
+/**
+ * The `nbf` a total with a period counts from: 00:00 UTC on the day of `now` minus the proof
+ * skew, so a service whose clock is behind ours by as much as a proof allows already accepts it.
+ */
+const periodAnchor = (now: number) =>
+  Math.floor((now - PROOF_SKEW) / DAY) * DAY;
+
+/**
+ * The `each` and `total` caveats the flags ask for. A total with a period counts from one `nbf`
+ * in its block, 00:00 UTC today (or yesterday, in the first minutes of the day), so it needs
+ * `--exp` to end: its max comes back every period.
+ */
+function limitCaveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
+  const eaches = (o.each ?? []).map((s) => ({ each: each(s) }));
+  const totals = (o.total ?? []).map((s) => ({ s, limit: total(s) }));
+  const periodic = totals.find((t) => t.limit.every !== undefined);
+
+  if (periodic && o.exp === undefined) {
+    bad(
+      `--total ${periodic.s} needs --exp: its max comes back every period until the grant ends`,
+    );
+  }
+
+  return [
+    ...eaches,
+    ...totals.map((t) => ({ total: t.limit })),
+    ...(periodic ? [{ nbf: periodAnchor(unixNow()) }] : []),
+  ];
+}
+
 /** The caveats the flags in `o` ask for; exits on a bad one. */
 export function caveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
   const c: Caveat[] = [];
@@ -125,13 +190,7 @@ export function caveats(o: Values<typeof CAVEAT_FLAGS>): Caveat[] {
     c.push({ exp: unixNow() + duration(o.exp) });
   }
 
-  for (const l of o.each ?? []) {
-    c.push({ each: limit(l) });
-  }
-
-  for (const l of o.total ?? []) {
-    c.push({ total: limit(l) });
-  }
+  c.push(...limitCaveats(o));
 
   if (o.risk !== undefined) {
     c.push({

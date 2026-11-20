@@ -6,7 +6,7 @@
  * It imports only policy.ts, by its full name, so the tests can load it under Node.
  */
 import type { Caveat } from '@yea-protocol/sdk';
-import { amount, span } from './policy.ts';
+import { amount, span, totalAmount } from './policy.ts';
 
 /** The caveats a term can come from, in the order the page lists them. */
 export type TermKey = 'svc' | 'risk' | 'each' | 'total' | 'exp';
@@ -39,7 +39,7 @@ function term(c: Caveat, issuedAt: number): PolicyTerm | null {
   }
 
   if ('total' in c) {
-    return { key: 'total', text: `${amount(c.total)} in total` };
+    return { key: 'total', text: totalAmount(c.total) };
   }
 
   if ('exp' in c) {

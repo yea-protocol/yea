@@ -238,7 +238,7 @@ function grantContext(
       uses: proposal.uses,
       risk: proposal.risk,
     },
-    used: (block, of) => scope.limits?.({ block, of }) ?? 0n,
+    used: (key) => scope.limits?.(key) ?? 0n,
     limits: scope.limits !== null,
   };
 }
